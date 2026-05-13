@@ -2,7 +2,6 @@ from argparse import ArgumentParser
 
 from job.entities import Arguments
 
-
 def parse_arguments() -> Arguments:
     parser = ArgumentParser()
     parser.add_argument("--trigger_date", type=str, required=True)
