@@ -8,6 +8,7 @@ from pyspark.sql.functions import (
     get_json_object,
     lag,
     lit,
+    regexp_replace,
     sum as spark_sum,
     to_date,
     trim,
@@ -32,12 +33,16 @@ def _category_id_expr(
 
 
 def _query_expr(query_col: str = "query"):
-    return coalesce(trim(col(query_col)), lit(""))
+    return coalesce(trim(_normalize_query_quotes(col(query_col))), lit(""))
 
 
 def _non_empty_query_expr(query_col: str):
-    trimmed_query = trim(col(query_col))
+    trimmed_query = trim(_normalize_query_quotes(col(query_col)))
     return when(trimmed_query != "", trimmed_query)
+
+
+def _normalize_query_quotes(column):
+    return regexp_replace(column, r"[`'ʻ']", "'")
 
 
 def _partition_date_expr(partition_date: str):
