@@ -75,7 +75,7 @@ RUN set -ex; \
 ENV SPARK_HOME /opt/spark
 ENV JAVA_HOME /opt/java
 
-COPY entrypoint.sh /opt/
+COPY layers/silver/sku_group_install/v1/entrypoint.sh /opt/
 
 WORKDIR /opt/spark/work-dir
 RUN chmod g+w /opt/spark/work-dir
@@ -102,7 +102,9 @@ RUN pip install --no-cache-dir --extra-index-url https://${NEXUS_USERNAME}:${NEX
 
 RUN pip install pyspark_feature_store_dag-*-py3-none-any.whl
 RUN rm requirements.txt && rm pyspark_feature_store_dag-*-py3-none-any.whl
-COPY entrypoints/ /opt/spark/entrypoints
+COPY layers/silver/sku_group_install/v1/entrypoints/ /opt/spark/entrypoints
+COPY layers/silver/sku_group_install/v1/job/ /opt/spark/job
+COPY layers/silver/sku_group_install/v1/migrations/ /opt/spark/migrations
 
 RUN /opt/java/bin/keytool -importcert \
              -alias YandexCA \
