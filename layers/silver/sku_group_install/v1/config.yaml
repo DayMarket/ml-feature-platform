@@ -1,0 +1,2 @@
+resources: config/resources.yaml
+table_name: silver.feature_platform_sku_group_install_stats
