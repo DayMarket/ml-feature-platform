@@ -10,7 +10,6 @@ trigger:
 node:
   type: um-common
 
-
 image_pull_secrets:
   - cr_pull_secret
 
