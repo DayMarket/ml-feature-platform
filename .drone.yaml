@@ -21,13 +21,15 @@ volumes:
 steps:
   - name: Update submodule reference to the latest state
     image: alpine/git:v2.26.2
+    environment:
+      PUSH_TOKEN:
+        from_secret: dag_repo_pusher_ghmachine
     commands:
       - export DAG_FOLDER=$(basename $DRONE_REPO | tr '-' '_')
       - echo $DAG_FOLDER
-      - git clone https://github.com/DayMarket/airflow-dags
+      - git clone https://$$PUSH_TOKEN@github.com/DayMarket/airflow-dags.git
       - cd airflow-dags
       - git checkout $DRONE_COMMIT_BRANCH
-      - if ! [ -d dags/$DAG_FOLDER ]; then git submodule add -b $DRONE_COMMIT_BRANCH https://github.com/$(echo $DRONE_REPO).git dags/$DAG_FOLDER ; fi
       - git submodule update --recursive --remote --init dags/$DAG_FOLDER
       - git -C dags/$DAG_FOLDER pull origin $DRONE_COMMIT_BRANCH
       - git commit --allow-empty -a -m "Updated $DAG_FOLDER ($DRONE_COMMIT_BRANCH) - $DRONE_COMMIT_MESSAGE"
