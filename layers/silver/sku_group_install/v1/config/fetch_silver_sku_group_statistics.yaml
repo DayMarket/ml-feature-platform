@@ -9,7 +9,7 @@ spec:
   type: Python
   pythonVersion: "3"
   mode: cluster
-  image: cr.yandex/de-common/pyspark-silver-sku-group-query-statistics:spark-silver-search-sku-group-install-stats-v0.2.4
+  image: cr.yandex/de-common/pyspark-silver-sku-group-query-statistics:spark-silver-search-sku-group-install-stats-v0.2.5
   imagePullPolicy: Always
   mainApplicationFile: local:///opt/spark/entrypoints/get_search_sku_group_silver_stats.py
   sparkVersion: "3.3.2"

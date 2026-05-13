@@ -4,8 +4,11 @@ import sys
 from datetime import datetime, timedelta
 
 from airflow.decorators import dag
+from airflow.models.dagrun import DagRun
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
-from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.sensors.python import PythonSensor
+from airflow.utils.session import provide_session
+from airflow.utils.state import DagRunState
 
 from airflow_commons.helpers.oncall import send_oncall_notification
 
@@ -31,6 +34,44 @@ default_args = {
 }
 
 
+@provide_session
+def _is_external_dag_succeeded(
+    external_dag_id: str,
+    logical_date: str,
+    session=None,
+) -> bool:
+    target_dt = datetime.fromisoformat(logical_date)
+    day_start = target_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+
+    dag_run = (
+        session.query(DagRun)
+        .filter(
+            DagRun.dag_id == external_dag_id,
+            DagRun.logical_date >= day_start,
+            DagRun.logical_date < day_end,
+        )
+        .order_by(DagRun.logical_date.desc())
+        .first()
+    )
+
+    if dag_run is None:
+        logger.info(
+            "No DagRun found yet for external_dag_id=%s on %s",
+            external_dag_id,
+            day_start.date().isoformat(),
+        )
+        return False
+
+    logger.info(
+        "External DagRun check: dag_id=%s logical_date=%s state=%s",
+        external_dag_id,
+        dag_run.logical_date,
+        dag_run.state,
+    )
+    return dag_run.state == DagRunState.SUCCESS
+
+
 @dag(
     default_args=default_args,
     max_active_runs=1,
@@ -41,26 +82,28 @@ default_args = {
     dag_id="feature_platform_sku_group_install_silver_stats_dag",
 )
 def collect_silver_sku_group_query_install_stats():
-    wait_for_sessions_dq = ExternalTaskSensor(
+    wait_for_sessions_dq = PythonSensor(
         task_id="wait_for_sessions_dq",
-        external_dag_id="dbt.tests.dbt_clickhouse_dwh.sessions.dq",
-        allowed_states=["success"],
-        failed_states=["failed"],
+        python_callable=_is_external_dag_succeeded,
+        op_kwargs={
+            "external_dag_id": "dbt.tests.dbt_clickhouse_dwh.sessions.dq",
+            "logical_date": "{{ logical_date.isoformat() }}",
+        },
         mode="reschedule",
         poke_interval=30,
         timeout=6 * 60 * 60,
-        check_existence=True,
     )
 
-    wait_for_events_dq = ExternalTaskSensor(
+    wait_for_events_dq = PythonSensor(
         task_id="wait_for_events_dq",
-        external_dag_id="dbt.tests.dbt_clickhouse_dwh.events.dq",
-        allowed_states=["success"],
-        failed_states=["failed"],
+        python_callable=_is_external_dag_succeeded,
+        op_kwargs={
+            "external_dag_id": "dbt.tests.dbt_clickhouse_dwh.events.dq",
+            "logical_date": "{{ logical_date.isoformat() }}",
+        },
         mode="reschedule",
         poke_interval=30,
         timeout=6 * 60 * 60,
-        check_existence=True,
     )
 
     collect_stats = SparkKubernetesOperator(
