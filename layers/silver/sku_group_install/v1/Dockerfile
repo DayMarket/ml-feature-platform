@@ -1,9 +1,3 @@
-FROM python:3.9.13 AS poetry
-
-COPY . .
-
-RUN pip install poetry && poetry build -f wheel
-
 FROM python:3.9.13
 
 ARG spark_uid=185
@@ -93,15 +87,11 @@ ENV NEXUS_PASSWORD=$NEXUS_PASSWORD
 RUN wget "https://storage.yandexcloud.net/cloud-certs/CA.pem" --output-document /opt/cert/YandexInternalRootCA.crt &&  \
     chmod 655 /opt/cert/YandexInternalRootCA.crt
 
-COPY --from=poetry "dist/pyspark_feature_store_dag-*-py3-none-any.whl" pyspark_feature_store_dag-*-py3-none-any.whl
-COPY --from=poetry "requirements.txt" requirements.txt
-RUN pip install -r requirements.txt
+COPY layers/silver/sku_group_install/v1/requirements.txt /tmp/requirements.txt
+RUN if [ -s /tmp/requirements.txt ]; then pip install -r /tmp/requirements.txt; fi
 RUN echo $NEXUS_USERNAME && echo $NEXUS_PASSWORD
-RUN pip install --no-cache-dir --extra-index-url https://${NEXUS_USERNAME}:${NEXUS_PASSWORD}@nexus.infra.cluster.daymarket.uz/repository/um-pypi/simple/  ranking-python-client==3.0.4
-
-
-RUN pip install pyspark_feature_store_dag-*-py3-none-any.whl
-RUN rm requirements.txt && rm pyspark_feature_store_dag-*-py3-none-any.whl
+RUN pip install --no-cache-dir --extra-index-url https://${NEXUS_USERNAME}:${NEXUS_PASSWORD}@nexus.infra.cluster.daymarket.uz/repository/um-pypi/simple/ ranking-python-client==3.0.4
+RUN rm -f /tmp/requirements.txt
 COPY layers/silver/sku_group_install/v1/entrypoints/ /opt/spark/entrypoints
 COPY layers/silver/sku_group_install/v1/job/ /opt/spark/job
 COPY layers/silver/sku_group_install/v1/migrations/ /opt/spark/migrations
