@@ -314,7 +314,6 @@ def save_search_atc_stats_to_stage(
     target_table: str,
 ) -> None:
     stats = build_search_results_stats(spark, partition_date).select(
-        col("date"),
         col("install_id").cast("string").alias("install_id"),
         col("sku_group_id").cast("long").alias("sku_group_id"),
         col("section").cast("string").alias("section"),
@@ -322,6 +321,7 @@ def save_search_atc_stats_to_stage(
         col("sum_atc").cast("long").alias("sum_atc"),
         col("sum_clicks").cast("long").alias("sum_clicks"),
         col("sum_impressions").cast("long").alias("sum_impressions"),
+        col("date"),
     )
 
     if not spark.catalog.tableExists(target_table):
