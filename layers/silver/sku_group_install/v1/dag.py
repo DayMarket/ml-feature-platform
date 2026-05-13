@@ -47,7 +47,7 @@ def collect_silver_sku_group_query_install_stats():
         allowed_states=["success"],
         failed_states=["failed"],
         mode="reschedule",
-        poke_interval=300,
+        poke_interval=30,
         timeout=6 * 60 * 60,
         check_existence=True,
     )
@@ -58,7 +58,7 @@ def collect_silver_sku_group_query_install_stats():
         allowed_states=["success"],
         failed_states=["failed"],
         mode="reschedule",
-        poke_interval=300,
+        poke_interval=30,,
         timeout=6 * 60 * 60,
         check_existence=True,
     )
