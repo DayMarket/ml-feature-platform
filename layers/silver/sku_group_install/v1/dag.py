@@ -64,7 +64,7 @@ def collect_silver_sku_group_query_install_stats():
     )
 
     collect_stats = SparkKubernetesOperator(
-        execution_timeout=timedelta(hours=3),
+        execution_timeout=timedelta(hours=10),
         task_id="getting_sku_group_query_install_stats",
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(
