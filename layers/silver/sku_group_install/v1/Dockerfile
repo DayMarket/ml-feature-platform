@@ -3,8 +3,7 @@ FROM python:3.9.13
 ARG spark_uid=185
 ARG NEXUS_USERNAME
 ARG NEXUS_PASSWORD
-# ARG SPARK_KAFKA_LOGIN
-# ARG SPARK_KAFKA_PASSWORD
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN groupadd --system --gid=${spark_uid} spark && \
@@ -102,6 +101,6 @@ RUN /opt/java/bin/keytool -importcert \
              -keystore /opt/spark/work-dir/client.truststore \
              -storepass changeit \
              -storetype JKS \
-             --noprompt
+             --noprompt 
 
 ENTRYPOINT [ "/opt/entrypoint.sh" ]
