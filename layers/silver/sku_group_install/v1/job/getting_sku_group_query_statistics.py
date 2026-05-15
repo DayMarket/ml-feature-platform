@@ -130,7 +130,7 @@ def build_search_results_stats(
                 lit("SEARCH_RESULTS"),
             )
             .otherwise(lit("CATEGORY"))
-            .alias("section"),
+            .alias("space"),
             _query_expr("query").alias("event_query"),
             _category_id_expr().alias("category_id"),
             when(
@@ -172,7 +172,7 @@ def build_search_results_stats(
             ["install_id", "session_id", "join_section_name", "event_query", "category_id"],
             "inner",
         )
-        .groupBy("date", "install_id", "session_id", "sku_group_id", "section", "uniqs")
+        .groupBy("date", "install_id", "session_id", "sku_group_id", "space", "uniqs")
         .count()
         .withColumnRenamed("count", "sum_impressions")
     )
@@ -215,7 +215,7 @@ def build_search_results_stats(
             ["install_id", "session_id", "join_section_name", "event_query", "category_id"],
             "inner",
         )
-        .groupBy("date", "install_id", "session_id", "sku_group_id", "section", "uniqs")
+        .groupBy("date", "install_id", "session_id", "sku_group_id", "space", "uniqs")
         .count()
         .withColumnRenamed("count", "sum_clicks")
     )
@@ -256,7 +256,7 @@ def build_search_results_stats(
             ["install_id", "session_id", "join_section_name", "event_query", "category_id"],
             "inner",
         )
-        .groupBy("date", "install_id", "session_id", "sku_group_id", "section", "uniqs")
+        .groupBy("date", "install_id", "session_id", "sku_group_id", "space", "uniqs")
         .count()
         .withColumnRenamed("count", "sum_atc")
     )
@@ -267,7 +267,7 @@ def build_search_results_stats(
             "date",
             "install_id",
             "sku_group_id",
-            "section",
+            "space",
             "uniqs",
             zero.alias("sum_atc"),
             zero.alias("sum_clicks"),
@@ -278,7 +278,7 @@ def build_search_results_stats(
                 "date",
                 "install_id",
                 "sku_group_id",
-                "section",
+                "space",
                 "uniqs",
                 zero.alias("sum_atc"),
                 col("sum_clicks").cast("long"),
@@ -290,14 +290,14 @@ def build_search_results_stats(
                 "date",
                 "install_id",
                 "sku_group_id",
-                "section",
+                "space",
                 "uniqs",
                 col("sum_atc").cast("long"),
                 zero.alias("sum_clicks"),
                 zero.alias("sum_impressions"),
             )
         )
-        .groupBy("date", "install_id", "sku_group_id", "section", "uniqs")
+        .groupBy("date", "install_id", "sku_group_id", "space", "uniqs")
         .agg(
             spark_sum("sum_atc").alias("sum_atc"),
             spark_sum("sum_clicks").alias("sum_clicks"),
@@ -315,7 +315,7 @@ def save_search_atc_stats_to_stage(
     stats = build_search_results_stats(spark, partition_start, partition_end).select(
         col("install_id").cast("string").alias("install_id"),
         col("sku_group_id").cast("long").alias("sku_group_id"),
-        col("section").cast("string").alias("section"),
+        col("space").cast("string").alias("space"),
         col("uniqs").cast("string").alias("uniqs"),
         col("sum_atc").cast("long").alias("sum_atc"),
         col("sum_clicks").cast("long").alias("sum_clicks"),
