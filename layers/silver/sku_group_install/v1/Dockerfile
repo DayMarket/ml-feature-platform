@@ -83,9 +83,9 @@ ENV NEXUS_PASSWORD=$NEXUS_PASSWORD
 RUN wget "https://storage.yandexcloud.net/cloud-certs/CA.pem" --output-document /opt/cert/YandexInternalRootCA.crt && \
     chmod 655 /opt/cert/YandexInternalRootCA.crt
 
-COPY --from=poetry /src/layers/silver/sku_group_install/v1/dist/pyspark_sku_group_install_silver_stats-*.whl /tmp/pyspark_sku_group_install_silver_stats.whl
-RUN pip install /tmp/pyspark_sku_group_install_silver_stats.whl
-RUN rm -f /tmp/pyspark_sku_group_install_silver_stats.whl
+COPY --from=poetry /src/layers/silver/sku_group_install/v1/dist/*.whl /tmp/
+RUN pip install /tmp/*.whl
+RUN rm -f /tmp/*.whl
 
 COPY layers/silver/sku_group_install/v1/entrypoints/ /opt/spark/entrypoints
 
