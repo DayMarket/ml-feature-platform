@@ -1,2 +1,2 @@
 resources: config/resources.yaml
-table_name: iceberg.silver.feature_platform_searchsku_group_install
+table_name: iceberg.silver.feature_platform_search_sku_group_id_install_query
