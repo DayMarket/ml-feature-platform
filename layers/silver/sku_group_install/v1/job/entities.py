@@ -2,5 +2,6 @@ from dataclasses import dataclass
 
 @dataclass
 class Arguments:
-    trigger_date: str
+    partition_start: str
+    partition_end: str
     table_name: str

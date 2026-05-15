@@ -4,7 +4,7 @@ metadata:
   name: "fetch-silver-sku-group-statistics-<random_string>"
   namespace: svc-data-spark-jobs
   labels:
-    run-count: trigger_date
+    run-count: partition_start
 spec:
   type: Python
   pythonVersion: "3"
@@ -57,8 +57,10 @@ spec:
     spark.sql.catalog.iceberg.s3.region: "ru-central1"
     spark.sql.catalog.iceberg.s3.path-style-access: "true"
   arguments:
-    - --trigger_date
-    - <trigger_date>
+    - --partition_start
+    - <partition_start>
+    - --partition_end
+    - <partition_end>
     - --table_name
     - <table_name>
   restartPolicy:

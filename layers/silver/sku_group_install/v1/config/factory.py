@@ -83,7 +83,8 @@ def _fill_arguments(deployment_content: str, deployment_name: Optional[str] = No
     ).lower()
 
     from_to_replacement = {
-        "<trigger_date>": "{{ ds }}",
+        "<partition_start>": "{{ ds }} 00:00:00",
+        "<partition_end>": "{{ next_ds }} 00:00:00",
         "<random_string>": random_string,
         "<app_type>": str(resources_config["app_type"]),
         "<spark_event_log_bucket_name>": str(resources_config["spark_event_log_bucket"]),
