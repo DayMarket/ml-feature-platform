@@ -19,6 +19,11 @@ volumes:
       path: /var/run/docker.sock  
 
 steps:
+  - name: test step
+    image: python:3.11-slim
+    commands:
+      - python test_script.py
+
   - name: Update submodule reference to the latest state
     image: alpine/git:v2.26.2
     environment:
@@ -34,7 +39,6 @@ steps:
       - git -C dags/$DAG_FOLDER pull origin $DRONE_COMMIT_BRANCH
       - git commit --allow-empty -a -m "Updated $DAG_FOLDER ($DRONE_COMMIT_BRANCH) - $DRONE_COMMIT_MESSAGE"
       - git push https://$$PUSH_TOKEN@github.com/DayMarket/airflow-dags.git
-
 ---
 kind: pipeline
 name: Build pyspark docker image for sku group install silver stats
