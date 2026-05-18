@@ -9,6 +9,7 @@ from typing import Any, Optional
 
 
 TABLE_NAME_PATTERN = re.compile(r"^\s*-\s+name:\s+(?P<name>[A-Za-z0-9_]+)\s*$", re.MULTILINE)
+SOURCES_FILE_NAME = "sources.yaml"
 
 
 @dataclass(frozen=True)
@@ -56,10 +57,12 @@ def main() -> int:
     models_path = runtime.workspace / config["dbt"]["models_path"]
     models_path.mkdir(parents=True, exist_ok=True)
     print(f"models_path_exists={models_path.exists()} path={models_path}")
+    sources_path = models_path / SOURCES_FILE_NAME
+    print(f"sources_path={sources_path}")
 
     _log_section("scan existing dbt source tables")
-    existing_tables = _existing_tables(models_path)
-    print(f"existing_yaml_files={len(_yaml_files(models_path))}")
+    existing_tables = _existing_tables(sources_path)
+    print(f"sources_file_exists={sources_path.exists()}")
     print(f"existing_tables_count={len(existing_tables)}")
     if existing_tables:
         print("existing_tables=" + ", ".join(sorted(existing_tables)))
@@ -78,11 +81,17 @@ def main() -> int:
             print(f"Skip existing dbt source table: {table_name}")
             continue
 
-        source_yaml = render_source_yaml(config["dbt"], table_config, runtime.branch)
-        target_path = models_path / f"{table_name}.yml"
-        target_path.write_text(source_yaml, encoding="utf-8")
-        created_files.append(target_path)
-        print(f"Added dbt source table: {table_name} -> {target_path.relative_to(runtime.workspace)}")
+        source_yaml = render_source_yaml(
+            config["dbt"],
+            table_config,
+            runtime.branch,
+            include_header=not sources_path.exists() and not created_files,
+        )
+        _append_to_sources_file(sources_path, source_yaml)
+        if sources_path not in created_files:
+            created_files.append(sources_path)
+        existing_tables.add(table_name)
+        print(f"Added dbt source table: {table_name} -> {sources_path.relative_to(runtime.workspace)}")
         print("rendered_yaml_begin")
         print(source_yaml.rstrip())
         print("rendered_yaml_end")
@@ -107,26 +116,35 @@ def render_source_yaml(
     dbt_config: dict[str, Any],
     table_config: dict[str, Any],
     branch: str,
+    include_header: bool = True,
 ) -> str:
     source_schema = _source_schema(dbt_config, table_config, branch)
     source_name = f"ml_feature_platform_{source_schema}"
     include_dq = branch in set(dbt_config.get("dq_enabled_branches", []))
     database = table_config.get("database") or dbt_config["database_mapping"][table_config["catalog"]]
 
-    lines = [
-        "version: 2",
-        "",
-        "sources:",
-        f"  - name: {source_name}",
-        '    description: "Silver-layer Iceberg tables produced by ml-feature-platform and consumed by ML feature pipelines."',
-        f"    database: {database}",
-        f"    schema: {source_schema}",
-        "    meta:",
-        f'      owner: "{dbt_config["owner"]}"',
-        "    tables:",
-        f"      - name: {table_config['name']}",
-        "        description: >",
-    ]
+    if include_header:
+        lines = [
+            "version: 2",
+            "",
+            "sources:",
+            f"  - name: {source_name}",
+            '    description: "Silver-layer Iceberg tables produced by ml-feature-platform and consumed by ML feature pipelines."',
+            f"    database: {database}",
+            f"    schema: {source_schema}",
+            "    meta:",
+            f'      owner: "{dbt_config["owner"]}"',
+            "    tables:",
+        ]
+    else:
+        lines = []
+
+    lines.extend(
+        [
+            f"      - name: {table_config['name']}",
+            "        description: >",
+        ]
+    )
     lines.extend(_wrapped_description(str(table_config["description"]), 10))
     lines.extend(
         [
@@ -210,17 +228,25 @@ def _wrapped_description(description: str, indent: int) -> list[str]:
     return [f"{prefix}{description}"]
 
 
-def _yaml_files(models_path: Path) -> list[Path]:
-    return sorted(list(models_path.glob("*.yml")) + list(models_path.glob("*.yaml")))
+def _existing_tables(sources_path: Path) -> set[str]:
+    if not sources_path.exists():
+        print("sources.yaml does not exist yet")
+        return set()
+    print(f"scan_yaml={sources_path}")
+    content = sources_path.read_text(encoding="utf-8")
+    return set(TABLE_NAME_PATTERN.findall(content))
 
 
-def _existing_tables(models_path: Path) -> set[str]:
-    existing_tables = set()
-    for yaml_path in _yaml_files(models_path):
-        print(f"scan_yaml={yaml_path.relative_to(models_path)}")
-        content = yaml_path.read_text(encoding="utf-8")
-        existing_tables.update(TABLE_NAME_PATTERN.findall(content))
-    return existing_tables
+def _append_to_sources_file(sources_path: Path, source_yaml: str) -> None:
+    if not sources_path.exists() or sources_path.stat().st_size == 0:
+        sources_path.write_text(source_yaml, encoding="utf-8")
+        return
+
+    existing_content = sources_path.read_text(encoding="utf-8")
+    sources_path.write_text(
+        existing_content.rstrip() + "\n\n" + source_yaml,
+        encoding="utf-8",
+    )
 
 
 def _checkout_branch(runtime: RuntimeConfig, base_branch: str) -> str:
