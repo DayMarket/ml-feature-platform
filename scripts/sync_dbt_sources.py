@@ -324,7 +324,7 @@ def _comment_source_pr_if_possible(runtime: RuntimeConfig, pr_url: str) -> None:
 def _with_token(repo_url: str, token: str) -> str:
     repo_url = _normalize_repo_url(repo_url)
     if repo_url.startswith("https://"):
-        return repo_url.replace("https://", f"https://x-access-token:{token}@", 1)
+        return repo_url.replace("https://", f"https://{token}@", 1)
     return repo_url
 
 
@@ -392,7 +392,10 @@ def print_clone_failure_hint(command: list[str]) -> None:
 
 
 def _mask_token(value: str) -> str:
-    return re.sub(r"x-access-token:[^@]+@", "x-access-token:***@", value)
+    value = re.sub(r"x-access-token:[^@]+@", "x-access-token:***@", value)
+    value = re.sub(r"https://github_pat_[^@]+@", "https://github_pat_***@", value)
+    value = re.sub(r"https://ghp_[^@]+@", "https://ghp_***@", value)
+    return value
 
 
 def _log_section(title: str) -> None:
