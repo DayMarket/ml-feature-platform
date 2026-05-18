@@ -48,6 +48,7 @@ def main() -> int:
 
     _log_section("clone dbt repo")
     clone_url = _with_token(runtime.dbt_repo_url, runtime.git_token)
+    _run(["git", "ls-remote", "--heads", clone_url])
     _run(["git", "clone", clone_url, runtime.workspace.as_posix()])
 
     _log_section("checkout automation branch")
@@ -321,12 +322,23 @@ def _comment_source_pr_if_possible(runtime: RuntimeConfig, pr_url: str) -> None:
 
 
 def _with_token(repo_url: str, token: str) -> str:
+    repo_url = _normalize_repo_url(repo_url)
     if repo_url.startswith("https://"):
         return repo_url.replace("https://", f"https://x-access-token:{token}@", 1)
     return repo_url
 
 
+def _normalize_repo_url(repo_url: str) -> str:
+    repo_url = repo_url.strip()
+    if repo_url.startswith("github.com/"):
+        repo_url = f"https://{repo_url}"
+    if repo_url.startswith("https://github.com/") and not repo_url.endswith(".git"):
+        repo_url = f"{repo_url}.git"
+    return repo_url
+
+
 def _github_slug(repo_url: str) -> Optional[str]:
+    repo_url = _normalize_repo_url(repo_url)
     match = re.search(r"github\.com[:/](?P<slug>[^/]+/[^/.]+)(?:\.git)?$", repo_url)
     if not match:
         return None
@@ -350,14 +362,33 @@ def _run(
     printable = " ".join(_mask_token(part) for part in command)
     cwd_text = f" cwd={cwd}" if cwd else ""
     print(f"+{cwd_text} {printable}")
-    return subprocess.run(
+    result = subprocess.run(
         command,
         cwd=cwd,
         env=env,
-        check=check,
+        check=False,
         text=True,
-        capture_output=capture_output,
+        capture_output=True,
     )
+    if result.stdout:
+        print(_mask_token(result.stdout.rstrip()))
+    if result.stderr:
+        print(_mask_token(result.stderr.rstrip()))
+    if check and result.returncode != 0:
+        print(f"command_failed_returncode={result.returncode}")
+        print_clone_failure_hint(command)
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            [_mask_token(part) for part in command],
+            output=_mask_token(result.stdout or ""),
+            stderr=_mask_token(result.stderr or ""),
+        )
+    return result
+
+
+def print_clone_failure_hint(command: list[str]) -> None:
+    if len(command) >= 2 and command[0] == "git" and command[1] in {"clone", "ls-remote"}:
+        print("git_auth_hint=Check DBT_REPO_URL, GIT_TOKEN repo access, org SSO approval, and contents read permission.")
 
 
 def _mask_token(value: str) -> str:
