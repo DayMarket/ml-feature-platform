@@ -1,0 +1,69 @@
+{
+  "dbt": {
+    "repo_url_env": "DBT_REPO_URL",
+    "models_path": "dbt-trino/models/ml_feature_platform",
+    "base_branch": "master",
+    "database_mapping": {
+      "iceberg": "dwh-iceberg"
+    },
+    "schema_overrides": {
+      "dev": "staging"
+    },
+    "dq_enabled_branches": ["master"],
+    "owner": "team:search"
+  },
+  "tables": [
+    {
+      "key": "sku_group_install_silver_stats",
+      "catalog": "iceberg",
+      "database": "dwh-iceberg",
+      "schema": "silver",
+      "name": "feature_platform_search_sku_group_id_install_query",
+      "description": "Feature platform table at the search SKU-group/install/query grain. Contains feature rows used by ML pipelines for search personalization and ranking scenarios.",
+      "loaded_at_field": "CAST(date AS timestamp) + INTERVAL '1' DAY",
+      "freshness": {
+        "error_after": {
+          "count": 2,
+          "period": "day"
+        }
+      },
+      "primary_key": ["date", "sku_group_id", "install_id", "query"],
+      "columns": [
+        {
+          "name": "date",
+          "description": "Feature calculation business date (DATE). Data is expected to be available for the previous calendar day.",
+          "tests": ["not_null"]
+        },
+        {
+          "name": "sku_group_id",
+          "description": "SKU group identifier used as the item-side entity in search feature calculations.",
+          "tests": [
+            "not_null",
+            {
+              "dbt_utils.expression_is_true": {
+                "expression": "sku_group_id > 0"
+              }
+            }
+          ]
+        },
+        {
+          "name": "install_id",
+          "description": "Install identifier used as the user/device-side entity in search feature calculations.",
+          "tests": ["not_null"]
+        },
+        {
+          "name": "query",
+          "description": "Search query text used as the query-side entity in search feature calculations.",
+          "tests": [
+            "not_null",
+            {
+              "dbt_utils.expression_is_true": {
+                "expression": "length(trim(query)) > 1"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
