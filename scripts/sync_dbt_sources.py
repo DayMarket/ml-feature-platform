@@ -48,7 +48,6 @@ def main() -> int:
 
     _log_section("clone dbt repo")
     clone_url = _with_token(runtime.dbt_repo_url, runtime.git_token)
-    _run(["git", "ls-remote", "--heads", clone_url])
     _run(["git", "clone", clone_url, runtime.workspace.as_posix()])
 
     _log_section("checkout automation branch")
