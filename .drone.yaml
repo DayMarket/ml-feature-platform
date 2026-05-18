@@ -21,6 +21,9 @@ volumes:
 steps:
   - name: test step
     image: python:3.11-slim
+    environment:
+      SECRET:
+        from_secret: SECRET
     commands:
       - python test_script.py
 

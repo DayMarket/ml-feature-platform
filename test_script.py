@@ -18,6 +18,7 @@ CREATE_TABLE_PATTERN = re.compile(
 def main() -> int:
     branch = os.getenv("DRONE_COMMIT_BRANCH", "local")
     print(f"Running test step for branch: {branch}")
+    print_secret_status()
 
     missing_files = [file_path for file_path in REQUIRED_FILES if not Path(file_path).is_file()]
     if missing_files:
@@ -30,6 +31,13 @@ def main() -> int:
 
     print("Test step completed successfully")
     return 0
+
+
+def print_secret_status() -> None:
+    if os.getenv("SECRET"):
+        print("Drone secret SECRET is available")
+    else:
+        print("Drone secret SECRET is not available")
 
 
 def print_created_tables() -> None:
