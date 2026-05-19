@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 
-TABLE_NAME_PATTERN = re.compile(r"^\s*-\s+name:\s+(?P<name>[A-Za-z0-9_]+)\s*$", re.MULTILINE)
+NAME_LINE_PATTERN = re.compile(r"^-\s+name:\s+['\"]?(?P<name>[A-Za-z0-9_]+)['\"]?\s*$")
 SOURCES_FILE_NAME = "sources.yaml"
 
 
@@ -72,8 +72,16 @@ def main() -> int:
     existing_tables = _existing_tables(sources_path)
     print(f"sources_file_exists={sources_path.exists()}")
     print(f"existing_tables_count={len(existing_tables)}")
-    if existing_tables:
-        print("existing_tables=" + ", ".join(sorted(existing_tables)))
+    print_table_list("existing_table", existing_tables)
+
+    repo_slug = _github_slug(runtime.dbt_repo_url)
+    pending_pr_tables = {}
+    if repo_slug:
+        _log_section("scan open dbt source PRs")
+        pending_pr_tables = _open_pr_tables(runtime, repo_slug)
+        print(f"open_pr_tables_count={len(pending_pr_tables)}")
+        for pending_table, pr_url in sorted(pending_pr_tables.items()):
+            print(f"open_pr_table={pending_table} pr={pr_url}")
 
     created_files = []
     _log_section("render missing sources")
@@ -87,6 +95,12 @@ def main() -> int:
         )
         if table_name in existing_tables:
             print(f"Skip existing dbt source table: {table_name}")
+            continue
+        if table_name in pending_pr_tables:
+            print(
+                f"Skip table already present in open dbt PR: "
+                f"{table_name} pr={pending_pr_tables[table_name]}"
+            )
             continue
 
         source_yaml = render_source_yaml(
@@ -171,8 +185,9 @@ def _parse_primary_key(primary_key: str) -> list[str]:
 
 def print_primary_key_tests(table_config: dict[str, Any]) -> None:
     print("primary_key_tests_begin")
+    print(f"- table: dbt_utils.unique_combination_of_columns({table_config['primary_key']})")
     for column_name in table_config["primary_key"]:
-        print(f"- column={column_name}: not_null, unique")
+        print(f"- column={column_name}: not_null")
     print("primary_key_tests_end")
 
 
@@ -235,16 +250,20 @@ def render_source_yaml(
             f"      - name: {table_config['name']}",
             "        meta:",
             f'          owner: "{team}"',
-            "        columns:",
+            "        tests:",
+            "          - dbt_utils.unique_combination_of_columns:",
+            "              combination_of_columns:",
         ]
     )
+    for column_name in table_config["primary_key"]:
+        lines.append(f"                - {column_name}")
+    lines.append("        columns:")
     for column_name in table_config["primary_key"]:
         lines.extend(
             [
                 f"          - name: {column_name}",
                 "            tests:",
                 "              - not_null",
-                "              - unique",
             ]
         )
 
@@ -265,7 +284,103 @@ def _existing_tables(sources_path: Path) -> set[str]:
         return set()
     print(f"scan_yaml={sources_path}")
     content = sources_path.read_text(encoding="utf-8")
-    return set(TABLE_NAME_PATTERN.findall(content))
+    return _extract_source_table_names(content)
+
+
+def _extract_source_table_names(content: str) -> set[str]:
+    table_names = set()
+    in_tables_block = False
+    tables_indent = -1
+
+    for raw_line in content.splitlines():
+        line = _strip_diff_prefix(raw_line.rstrip())
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        indent = len(line) - len(line.lstrip(" "))
+        if stripped == "tables:":
+            in_tables_block = True
+            tables_indent = indent
+            continue
+
+        if in_tables_block and indent <= tables_indent:
+            in_tables_block = False
+
+        if not in_tables_block or indent != tables_indent + 2:
+            continue
+
+        match = NAME_LINE_PATTERN.match(stripped)
+        if match:
+            table_names.add(match.group("name"))
+
+    return table_names
+
+
+def _strip_diff_prefix(line: str) -> str:
+    if line.startswith(("+", "-", " ")) and not line.startswith(("+++", "---")):
+        return line[1:]
+    return line
+
+
+def print_table_list(prefix: str, table_names: set[str]) -> None:
+    if not table_names:
+        print(f"{prefix}=none")
+        return
+    for table_name in sorted(table_names):
+        print(f"{prefix}={table_name}")
+
+
+def _open_pr_tables(runtime: RuntimeConfig, repo_slug: str) -> dict[str, str]:
+    result = _run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            repo_slug,
+            "--state",
+            "open",
+            "--limit",
+            "100",
+            "--json",
+            "number,url,title,headRefName",
+        ],
+        env={**os.environ, "GITHUB_TOKEN": runtime.git_token},
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        print("No open PR metadata returned")
+        return {}
+
+    try:
+        pull_requests = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        print(f"Cannot parse gh pr list output: {exc}")
+        return {}
+
+    pending_tables = {}
+    for pull_request in pull_requests:
+        pr_number = str(pull_request["number"])
+        pr_url = str(pull_request["url"])
+        print(
+            f"scan_open_pr=number:{pr_number} "
+            f"head:{pull_request.get('headRefName')} title:{pull_request.get('title')}"
+        )
+        diff_result = _run(
+            ["gh", "pr", "diff", pr_number, "--repo", repo_slug, "--patch"],
+            env={**os.environ, "GITHUB_TOKEN": runtime.git_token},
+            check=False,
+            capture_output=True,
+        )
+        if diff_result.returncode != 0:
+            print(f"Cannot read diff for open PR #{pr_number}")
+            continue
+
+        for table_name in _extract_source_table_names(diff_result.stdout or ""):
+            pending_tables[table_name] = pr_url
+    return pending_tables
 
 
 def _append_to_sources_file(sources_path: Path, source_yaml: str) -> None:
