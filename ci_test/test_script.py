@@ -28,6 +28,13 @@ def main() -> int:
             print(f"- {file_path}")
         return 1
 
+    config_errors = validate_table_configs(Path("."))
+    if config_errors:
+        print("Invalid table configs:")
+        for error in config_errors:
+            print(f"- {error}")
+        return 1
+
     print_created_tables()
 
     print("Test step completed successfully")
@@ -68,6 +75,63 @@ def find_created_tables(repo_root: Path) -> list[tuple[str, str]]:
 
 def normalize_table_name(table_name: str) -> str:
     return table_name.strip().strip(";").replace("{target_table}", "<target_table>")
+
+
+def validate_table_configs(repo_root: Path) -> list[str]:
+    errors = []
+    for config_path in sorted(repo_root.glob("layers/**/config.yaml")):
+        config = read_simple_nested_config(config_path)
+        table = config.get("table")
+        if not table:
+            continue
+
+        missing_fields = []
+        for field_name in ("catalog", "schema", "name", "primary_key"):
+            if not table.get(field_name):
+                missing_fields.append(f"table.{field_name}")
+
+        meta = table.get("meta")
+        if not isinstance(meta, dict) or not meta.get("team"):
+            missing_fields.append("table.meta.team")
+
+        if missing_fields:
+            errors.append(f"{config_path}: missing {', '.join(missing_fields)}")
+            continue
+
+        print(
+            "Valid table config: "
+            f"{config_path} -> {table['catalog']}.{table['schema']}.{table['name']} "
+            f"primary_key={table['primary_key']} team={meta['team']}"
+        )
+    return errors
+
+
+def read_simple_nested_config(config_path: Path) -> dict:
+    config = {}
+    stack = [(-1, config)]
+    for raw_line in config_path.read_text(encoding="utf-8").splitlines():
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+            continue
+
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        line = raw_line.strip()
+        key, separator, value = line.partition(":")
+        if not separator or not key:
+            continue
+
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+
+        parent = stack[-1][1]
+        key = key.strip()
+        value = value.strip()
+        if value:
+            parent[key] = value
+        else:
+            nested = {}
+            parent[key] = nested
+            stack.append((indent, nested))
+    return config
 
 
 if __name__ == "__main__":
