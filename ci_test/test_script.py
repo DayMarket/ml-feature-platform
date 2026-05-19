@@ -5,6 +5,7 @@ from pathlib import Path
 
 REQUIRED_FILES = (
     ".drone.yaml",
+    "ci_config.yaml",
     "layers/silver/sku_group_install/v1/dag.py",
     "layers/silver/sku_group_install/v1/config.yaml",
 )

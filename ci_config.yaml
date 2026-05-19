@@ -1,0 +1,13 @@
+{
+  "dbt": {
+    "repo_url_env": "DBT_REPO_URL",
+    "models_path": "dbt-trino/models/ml_feature_platform",
+    "base_branch": "master",
+    "database_mapping": {
+      "iceberg": "dwh-iceberg"
+    },
+    "schema_overrides": {
+      "dev": "staging"
+    }
+  }
+}

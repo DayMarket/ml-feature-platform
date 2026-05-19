@@ -24,28 +24,56 @@ def _read_json_like_yaml(path: str) -> Dict[str, Any]:
         return json.load(config_file)
 
 
-def _read_simple_config(path: str) -> Dict[str, str]:
-    config: Dict[str, str] = {}
+def _read_simple_config(path: str) -> Dict[str, Any]:
+    config: Dict[str, Any] = {}
+    stack = [(-1, config)]
     with open(path, "r", encoding="utf-8") as config_file:
         for raw_line in config_file:
+            if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+                continue
+
+            indent = len(raw_line) - len(raw_line.lstrip(" "))
             line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
+
             key, _, value = line.partition(":")
-            if key and value:
-                config[key.strip()] = value.strip()
+            if not key:
+                continue
+
+            while stack and indent <= stack[-1][0]:
+                stack.pop()
+
+            parent = stack[-1][1]
+            key = key.strip()
+            value = value.strip()
+            if value:
+                parent[key] = value
+            else:
+                nested: Dict[str, Any] = {}
+                parent[key] = nested
+                stack.append((indent, nested))
     return config
 
 
-def _get_dag_config() -> Dict[str, str]:
+def _get_dag_config() -> Dict[str, Any]:
     dag_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     return _read_simple_config(os.path.join(dag_root, "config.yaml"))
+
+
+def _get_table_name(config: Dict[str, Any]) -> str:
+    table = config.get("table", config)
+    table_name = table.get("name", table.get("table_name"))
+    if "." in table_name:
+        return table_name
+    return ".".join((table["catalog"], table["schema"], table_name))
 
 
 def _get_resources_config() -> Dict[str, Any]:
     dag_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     config = _get_dag_config()
-    resources_path = config.get("resources", "config/resources.yaml")
+    resources = config.get("resources", {})
+    resources_path = resources.get("path", "config/resources.yaml") if isinstance(resources, dict) else resources
     absolute_resources_path = os.path.abspath(os.path.join(dag_root, resources_path))
     return _read_json_like_yaml(absolute_resources_path)
 
@@ -89,7 +117,7 @@ def _fill_arguments(deployment_content: str, deployment_name: Optional[str] = No
         "<app_type>": str(resources_config["app_type"]),
         "<spark_event_log_bucket_name>": str(resources_config["spark_event_log_bucket"]),
         "<hive_metastore_uris>": str(resources_config["hive_metastore_uris"]),
-        "<table_name>": dag_config["table_name"],
+        "<table_name>": _get_table_name(dag_config),
         "<s3_secret_key>": s3_connection["aws_secret_access_key"],
         "<s3_access_key>": s3_connection["aws_access_key_id"],
         "<s3_search_research_secret_key>": s3_search_research_connection["aws_secret_access_key"],

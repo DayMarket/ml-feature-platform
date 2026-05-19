@@ -26,10 +26,12 @@ def main() -> int:
     repo_root = Path.cwd()
     _log_section("load config")
     print(f"repo_root={repo_root}")
-    config = json.loads((repo_root / "config.yaml").read_text(encoding="utf-8"))
+    ci_config = json.loads((repo_root / "ci_config.yaml").read_text(encoding="utf-8"))
+    dbt_config = ci_config["dbt"]
+    table_configs = discover_table_configs(repo_root)
     runtime = RuntimeConfig(
         branch=os.getenv("DRONE_COMMIT_BRANCH", "local"),
-        dbt_repo_url=_required_env(config["dbt"].get("repo_url_env", "DBT_REPO_URL")),
+        dbt_repo_url=_required_env(dbt_config.get("repo_url_env", "DBT_REPO_URL")),
         git_token=_required_env("GIT_TOKEN"),
         workspace=repo_root / ".tmp_dbt_repo",
         dry_run=os.getenv("DRY_RUN", "false").lower() == "true",
@@ -39,9 +41,15 @@ def main() -> int:
     print(f"dry_run={runtime.dry_run}")
     print(f"dbt_repo_url={_mask_token(runtime.dbt_repo_url)}")
     print(f"workspace={runtime.workspace}")
-    print(f"models_path={config['dbt']['models_path']}")
-    print(f"configured_tables={len(config['tables'])}")
-    print(f"dq_enabled_branches={config['dbt'].get('dq_enabled_branches', [])}")
+    print(f"models_path={dbt_config['models_path']}")
+    print(f"discovered_tables={len(table_configs)}")
+    for table_config in table_configs:
+        print(
+            "discovered_table="
+            f"{table_config['catalog']}.{table_config['schema']}.{table_config['name']} "
+            f"team={table_config['team']} primary_key={table_config['primary_key']} "
+            f"config={table_config['config_path']}"
+        )
 
     if runtime.workspace.exists():
         print(f"remove_existing_workspace={runtime.workspace}")
@@ -52,9 +60,9 @@ def main() -> int:
     _run(["git", "clone", clone_url, runtime.workspace.as_posix()])
 
     _log_section("checkout automation branch")
-    target_branch = _checkout_branch(runtime, config["dbt"]["base_branch"])
+    target_branch = _checkout_branch(runtime, dbt_config["base_branch"])
     print(f"target_branch={target_branch}")
-    models_path = runtime.workspace / config["dbt"]["models_path"]
+    models_path = runtime.workspace / dbt_config["models_path"]
     models_path.mkdir(parents=True, exist_ok=True)
     print(f"models_path_exists={models_path.exists()} path={models_path}")
     sources_path = models_path / SOURCES_FILE_NAME
@@ -69,20 +77,20 @@ def main() -> int:
 
     created_files = []
     _log_section("render missing sources")
-    for table_config in config["tables"]:
+    for table_config in table_configs:
         table_name = str(table_config["name"])
-        source_schema = _source_schema(config["dbt"], table_config, runtime.branch)
-        include_dq = runtime.branch in set(config["dbt"].get("dq_enabled_branches", []))
+        source_schema = _source_schema(dbt_config, table_config, runtime.branch)
         print(
-            f"table={table_name} schema={source_schema} "
-            f"include_dq={include_dq} primary_key={table_config['primary_key']}"
+            f"table={table_name} catalog={table_config['catalog']} "
+            f"schema={source_schema} team={table_config['team']} "
+            f"primary_key={table_config['primary_key']}"
         )
         if table_name in existing_tables:
             print(f"Skip existing dbt source table: {table_name}")
             continue
 
         source_yaml = render_source_yaml(
-            config["dbt"],
+            dbt_config,
             table_config,
             runtime.branch,
             include_header=not sources_path.exists() and not created_files,
@@ -92,6 +100,7 @@ def main() -> int:
             created_files.append(sources_path)
         existing_tables.add(table_name)
         print(f"Added dbt source table: {table_name} -> {sources_path.relative_to(runtime.workspace)}")
+        print_primary_key_tests(table_config)
         print("rendered_yaml_begin")
         print(source_yaml.rstrip())
         print("rendered_yaml_end")
@@ -108,8 +117,91 @@ def main() -> int:
         return 0
 
     _log_section("publish changes")
-    _publish_changes(runtime, target_branch, config["dbt"]["base_branch"], created_files)
+    _publish_changes(runtime, target_branch, dbt_config["base_branch"], created_files)
     return 0
+
+
+def discover_table_configs(repo_root: Path) -> list[dict[str, Any]]:
+    table_configs = []
+    for config_path in sorted(repo_root.glob("layers/**/config.yaml")):
+        local_config = _read_simple_config(config_path)
+        table = local_config.get("table", {})
+        if not table:
+            continue
+        validate_table_config(table, config_path)
+
+        primary_key = _parse_primary_key(str(table["primary_key"]))
+        if not primary_key:
+            raise ValueError(f"table.primary_key must not be empty in {config_path}")
+
+        meta = table["meta"]
+        table_configs.append(
+            {
+                "catalog": table["catalog"],
+                "schema": table["schema"],
+                "name": table["name"],
+                "primary_key": primary_key,
+                "team": meta["team"],
+                "config_path": config_path.relative_to(repo_root).as_posix(),
+            }
+        )
+    return table_configs
+
+
+def validate_table_config(table: dict[str, Any], config_path: Path) -> None:
+    missing_fields = []
+    for field_name in ("catalog", "schema", "name", "primary_key"):
+        if not table.get(field_name):
+            missing_fields.append(f"table.{field_name}")
+
+    meta = table.get("meta")
+    if not isinstance(meta, dict) or not meta.get("team"):
+        missing_fields.append("table.meta.team")
+
+    if missing_fields:
+        raise ValueError(
+            f"Missing required table config fields in {config_path}: "
+            + ", ".join(missing_fields)
+        )
+
+
+def _parse_primary_key(primary_key: str) -> list[str]:
+    return [column.strip() for column in primary_key.split(",") if column.strip()]
+
+
+def print_primary_key_tests(table_config: dict[str, Any]) -> None:
+    print("primary_key_tests_begin")
+    for column_name in table_config["primary_key"]:
+        print(f"- column={column_name}: not_null, unique")
+    print("primary_key_tests_end")
+
+
+def _read_simple_config(config_path: Path) -> dict[str, Any]:
+    config = {}
+    stack = [(-1, config)]
+    for raw_line in config_path.read_text(encoding="utf-8").splitlines():
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+            continue
+
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        line = raw_line.strip()
+        key, separator, value = line.partition(":")
+        if not separator or not key:
+            continue
+
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+
+        parent = stack[-1][1]
+        key = key.strip()
+        value = value.strip()
+        if value:
+            parent[key] = value
+        else:
+            nested = {}
+            parent[key] = nested
+            stack.append((indent, nested))
+    return config
 
 
 def render_source_yaml(
@@ -120,8 +212,8 @@ def render_source_yaml(
 ) -> str:
     source_schema = _source_schema(dbt_config, table_config, branch)
     source_name = f"ml_feature_platform_{source_schema}"
-    include_dq = branch in set(dbt_config.get("dq_enabled_branches", []))
-    database = table_config.get("database") or dbt_config["database_mapping"][table_config["catalog"]]
+    database = dbt_config["database_mapping"][table_config["catalog"]]
+    team = table_config["team"]
 
     if include_header:
         lines = [
@@ -129,11 +221,10 @@ def render_source_yaml(
             "",
             "sources:",
             f"  - name: {source_name}",
-            '    description: "Silver-layer Iceberg tables produced by ml-feature-platform and consumed by ML feature pipelines."',
             f"    database: {database}",
             f"    schema: {source_schema}",
             "    meta:",
-            f'      owner: "{dbt_config["owner"]}"',
+            f'      owner: "{team}"',
             "    tables:",
         ]
     else:
@@ -142,26 +233,20 @@ def render_source_yaml(
     lines.extend(
         [
             f"      - name: {table_config['name']}",
-            "        description: >",
+            "        meta:",
+            f'          owner: "{team}"',
+            "        columns:",
         ]
     )
-    lines.extend(_wrapped_description(str(table_config["description"]), 10))
-    lines.extend(
-        [
-            f'        loaded_at_field: "{table_config["loaded_at_field"]}"',
-            "        freshness:",
-            "          error_after:",
-            f"            count: {table_config['freshness']['error_after']['count']}",
-            f"            period: {table_config['freshness']['error_after']['period']}",
-        ]
-    )
-
-    if include_dq:
-        lines.extend(_table_tests(table_config))
-
-    lines.append("        columns:")
-    for column in table_config["columns"]:
-        lines.extend(_column_yaml(column, include_dq))
+    for column_name in table_config["primary_key"]:
+        lines.extend(
+            [
+                f"          - name: {column_name}",
+                "            tests:",
+                "              - not_null",
+                "              - unique",
+            ]
+        )
 
     return "\n".join(lines) + "\n"
 
@@ -172,60 +257,6 @@ def _source_schema(
     branch: str,
 ) -> str:
     return str(dbt_config.get("schema_overrides", {}).get(branch, table_config["schema"]))
-
-
-def _table_tests(table_config: dict[str, Any]) -> list[str]:
-    date_column = table_config["primary_key"][0]
-    primary_key_not_null = " AND ".join(
-        f"{column_name} IS NOT NULL" for column_name in table_config["primary_key"]
-    )
-    lines = [
-        "        tests:",
-        "          - dbt_utils.recency:",
-        f"              field: {date_column}",
-        "              datepart: day",
-        "              interval: 2",
-        "          - dbt_utils.expression_is_true:",
-        f"              expression: \"{date_column} <= current_date\"",
-        "          - dbt_utils.expression_is_true:",
-        f"              expression: \"{date_column} >= DATE '2020-01-01'\"",
-        "          - dbt_utils.expression_is_true:",
-        f"              expression: \"{primary_key_not_null}\"",
-        "          - dbt_utils.unique_combination_of_columns:",
-        "              combination_of_columns:",
-    ]
-    lines.extend(f"                - {column_name}" for column_name in table_config["primary_key"])
-    return lines
-
-
-def _column_yaml(column: dict[str, Any], include_dq: bool) -> list[str]:
-    lines = [
-        f"          - name: {column['name']}",
-        f'            description: "{column["description"]}"',
-    ]
-    if include_dq and column.get("tests"):
-        lines.append("            tests:")
-        for test in column["tests"]:
-            lines.extend(_test_yaml(test, indent=14))
-    return lines
-
-
-def _test_yaml(test: Any, indent: int) -> list[str]:
-    prefix = " " * indent
-    if isinstance(test, str):
-        return [f"{prefix}- {test}"]
-
-    lines = []
-    for test_name, test_config in test.items():
-        lines.append(f"{prefix}- {test_name}:")
-        for key, value in test_config.items():
-            lines.append(f"{prefix}    {key}: {json.dumps(value, ensure_ascii=False)}")
-    return lines
-
-
-def _wrapped_description(description: str, indent: int) -> list[str]:
-    prefix = " " * indent
-    return [f"{prefix}{description}"]
 
 
 def _existing_tables(sources_path: Path) -> set[str]:
@@ -325,8 +356,15 @@ def _write_created_pr_url(runtime: RuntimeConfig, pr_url: str) -> None:
 def _comment_source_pr_if_possible(runtime: RuntimeConfig, pr_url: str) -> None:
     source_pr = os.getenv("DRONE_PULL_REQUEST")
     source_repo = os.getenv("DRONE_REPO")
-    if not source_pr or not source_repo:
-        print("No source PR context in Drone, skip source PR comment")
+    if not source_repo:
+        print("No source repo context in Drone, skip source PR comment")
+        return
+
+    if not source_pr:
+        source_pr = _find_merged_source_pr(runtime, source_repo)
+
+    if not source_pr:
+        print("No source PR number found, skip source PR comment")
         return
 
     print(f"Comment source PR #{source_pr} in {source_repo}")
@@ -344,6 +382,39 @@ def _comment_source_pr_if_possible(runtime: RuntimeConfig, pr_url: str) -> None:
         env={**os.environ, "GITHUB_TOKEN": runtime.git_token},
         check=False,
     )
+
+
+def _find_merged_source_pr(runtime: RuntimeConfig, source_repo: str) -> str:
+    commit_sha = os.getenv("DRONE_COMMIT_SHA")
+    if not commit_sha:
+        print("No DRONE_COMMIT_SHA, cannot search merged source PR")
+        return ""
+
+    print(f"Search merged source PR by commit sha={commit_sha}")
+    result = _run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            source_repo,
+            "--state",
+            "merged",
+            "--search",
+            commit_sha,
+            "--json",
+            "number",
+            "--jq",
+            ".[0].number",
+        ],
+        env={**os.environ, "GITHUB_TOKEN": runtime.git_token},
+        check=False,
+        capture_output=True,
+    )
+    source_pr = (result.stdout or "").strip()
+    if source_pr:
+        print(f"found_source_pr={source_pr}")
+    return source_pr
 
 
 def _with_token(repo_url: str, token: str) -> str:
