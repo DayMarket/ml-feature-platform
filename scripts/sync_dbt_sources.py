@@ -396,10 +396,22 @@ def _append_to_sources_file(sources_path: Path, source_yaml: str) -> None:
 
 
 def _checkout_branch(runtime: RuntimeConfig, base_branch: str) -> str:
-    branch_name = f"automation/ml-feature-platform-sources-{runtime.branch}"
+    branch_name = f"automation/ml-feature-platform-sources-{runtime.branch}-{_branch_suffix()}"
     _run(["git", "checkout", base_branch], cwd=runtime.workspace)
     _run(["git", "checkout", "-B", branch_name], cwd=runtime.workspace)
     return branch_name
+
+
+def _branch_suffix() -> str:
+    commit_sha = os.getenv("DRONE_COMMIT_SHA", "")
+    if commit_sha:
+        return commit_sha[:8]
+
+    build_number = os.getenv("DRONE_BUILD_NUMBER", "")
+    if build_number:
+        return f"build-{build_number}"
+
+    return "local"
 
 
 def _publish_changes(
