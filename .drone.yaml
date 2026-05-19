@@ -19,22 +19,54 @@ volumes:
       path: /var/run/docker.sock  
 
 steps:
+  - name: test step
+    image: python:3.11-slim
+    environment:
+      SECRET:
+        from_secret: SECRET
+    commands:
+      - echo "=== test step ==="
+      - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
+      - echo "commit=$DRONE_COMMIT_SHA"
+      - python ci_test/test_script.py
+
+  - name: sync dbt source
+    image: alpine:3.20
+    environment:
+      GIT_TOKEN:
+        from_secret: GIT_TOKEN
+      DBT_REPO_URL:
+        from_secret: DBT_REPO_URL
+    commands:
+      - echo "=== sync dbt source ==="
+      - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
+      - echo "installing runtime dependencies"
+      - apk add --no-cache git github-cli python3
+      - git --version
+      - gh --version
+      - python3 --version
+      - echo "running dbt source sync"
+      - python3 scripts/sync_dbt_sources.py
+      - if [ -f created_dbt_pr_url.txt ]; then echo "created dbt PR:"; cat created_dbt_pr_url.txt; fi
+
   - name: Update submodule reference to the latest state
     image: alpine/git:v2.26.2
     environment:
       PUSH_TOKEN:
         from_secret: dag_repo_pusher_ghmachine
     commands:
+      - echo "=== sync airflow-dags submodule ==="
+      - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
       - export DAG_FOLDER=$(basename $DRONE_REPO | tr '-' '_')
-      - echo $DAG_FOLDER
+      - echo "dag_folder=$DAG_FOLDER"
       - git clone https://$$PUSH_TOKEN@github.com/DayMarket/airflow-dags.git
       - cd airflow-dags
       - git checkout $DRONE_COMMIT_BRANCH
       - git submodule update --recursive --remote --init dags/$DAG_FOLDER
       - git -C dags/$DAG_FOLDER pull origin $DRONE_COMMIT_BRANCH
+      - git status --short
       - git commit --allow-empty -a -m "Updated $DAG_FOLDER ($DRONE_COMMIT_BRANCH) - $DRONE_COMMIT_MESSAGE"
       - git push https://$$PUSH_TOKEN@github.com/DayMarket/airflow-dags.git
-
 ---
 kind: pipeline
 name: Build pyspark docker image for sku group install silver stats
