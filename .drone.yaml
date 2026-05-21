@@ -34,7 +34,7 @@ steps:
     image: alpine:3.20
     environment:
       GIT_TOKEN:
-        from_secret: ghmachine_token
+        from_secret: GIT_TOKEN
       DBT_REPO_URL:
         from_secret: DBT_REPO_URL
     commands:
