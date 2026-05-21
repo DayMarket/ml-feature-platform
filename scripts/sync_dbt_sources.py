@@ -251,11 +251,27 @@ def render_source_yaml(
     else:
         lines = []
 
+    has_date_column = _has_date_column(table_config)
     lines.extend(
         [
             f"      - name: {table_config['name']}",
             "        meta:",
             f'          owner: "{team}"',
+        ]
+    )
+    if has_date_column:
+        lines.extend(
+            [
+                "        loaded_at_field: \"CAST(date AS timestamp) + INTERVAL '1' DAY\"",
+                "        freshness:",
+                "          error_after:",
+                "            count: 2",
+                "            period: day",
+            ]
+        )
+
+    lines.extend(
+        [
             "        tests:",
             "          - dbt_utils.unique_combination_of_columns:",
             "              combination_of_columns:",
@@ -263,6 +279,20 @@ def render_source_yaml(
     )
     for column_name in table_config["primary_key"]:
         lines.append(f"                - {column_name}")
+    if has_date_column:
+        table_name = table_config["name"]
+        lines.extend(
+            [
+                "          - row_count_greater_than_for_date:",
+                f"              name: {table_name}_previous_day_has_rows",
+                "              date_column: date",
+                "              min_rows: 0",
+                "          - row_count_growth_within_limit:",
+                f"              name: {table_name}_previous_day_row_count_growth_within_20_percent",
+                "              date_column: date",
+                "              max_growth_ratio: 0.2",
+            ]
+        )
     lines.append("        columns:")
     for column_name in table_config["primary_key"]:
         lines.extend(
@@ -274,6 +304,10 @@ def render_source_yaml(
         )
 
     return "\n".join(lines) + "\n"
+
+
+def _has_date_column(table_config: dict[str, Any]) -> bool:
+    return "date" in table_config["primary_key"]
 
 
 def _source_schema(
