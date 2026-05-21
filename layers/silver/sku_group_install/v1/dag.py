@@ -30,14 +30,14 @@ default_args = {
     ),
 }
 
-#version 3.2
+#version 3.3
 @dag(
     default_args=default_args,
     max_active_runs=1,
     tags=["spark", "feature-platform", "team::search", "silver"],
     is_paused_upon_creation=True,
     schedule_interval="0 1 * * *",
-    start_date=datetime(2026, 5, 20, 0, 0, 0),
+    start_date=datetime(2026, 2, 1, 0, 0, 0),
     dag_id="feature_platform_sku_group_install_silver_stats_dag",
 )
 def collect_silver_sku_group_query_install_stats():
