@@ -4,11 +4,11 @@ from pathlib import Path
 
 
 REQUIRED_FILES = (
+    ".drone.yaml",
     "ci_config.yaml",
     "layers/silver/sku_group_install/v1/dag.py",
     "layers/silver/sku_group_install/v1/config.yaml",
 )
-REQUIRED_ROOT_FILES = ("../.drone.yaml",)
 
 CREATE_TABLE_PATTERN = re.compile(
     r"CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+(?P<table>[^\s(]+)",
@@ -23,7 +23,7 @@ def main() -> int:
 
     missing_files = [
         file_path
-        for file_path in (*REQUIRED_ROOT_FILES, *REQUIRED_FILES)
+        for file_path in REQUIRED_FILES
         if not Path(file_path).is_file()
     ]
     if missing_files:
