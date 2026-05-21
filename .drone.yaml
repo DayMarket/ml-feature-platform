@@ -57,15 +57,16 @@ steps:
     commands:
       - echo "=== sync airflow-dags submodule ==="
       - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
-      - export REPO_BASENAME=$(basename $DRONE_REPO)
-      - export DAG_FOLDER=$(echo $REPO_BASENAME | tr '-' '_')
+      - export DAG_FOLDER=$(basename $DRONE_REPO | tr '-' '_')
       - echo "dag_folder=$DAG_FOLDER"
       - git clone https://$$PUSH_TOKEN@github.com/DayMarket/airflow-dags.git
       - cd airflow-dags
       - git checkout $DRONE_COMMIT_BRANCH
-      - if [ ! -e "dags/$DAG_FOLDER" ]; then echo "adding missing submodule dags/$DAG_FOLDER"; git submodule add -b $DRONE_COMMIT_BRANCH https://github.com/DayMarket/$REPO_BASENAME.git dags/$DAG_FOLDER; else echo "updating existing submodule dags/$DAG_FOLDER"; git submodule update --recursive --remote --init dags/$DAG_FOLDER; git -C dags/$DAG_FOLDER pull origin $DRONE_COMMIT_BRANCH; fi
+      - git submodule update --recursive --remote --init dags/$DAG_FOLDER
+      - git -C dags/$DAG_FOLDER pull origin $DRONE_COMMIT_BRANCH
       - git status --short
       - git commit --allow-empty -a -m "Updated $DAG_FOLDER ($DRONE_COMMIT_BRANCH) - $DRONE_COMMIT_MESSAGE"
+      - git push https://$$PUSH_TOKEN@github.com/DayMarket/airflow-dags.git
 ---
 kind: pipeline
 name: Build pyspark docker image for sku group install silver stats
