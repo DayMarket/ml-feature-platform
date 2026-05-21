@@ -30,7 +30,7 @@ default_args = {
     ),
 }
 
-
+#version 3.2
 @dag(
     default_args=default_args,
     max_active_runs=1,
