@@ -130,6 +130,12 @@ def main() -> int:
         print("DRY_RUN=true, skip commit/push/PR")
         return 0
 
+    if _skip_dbt_pr_creation(runtime):
+        _log_section("skip publish")
+        _run(["git", "status", "--short"], cwd=runtime.workspace)
+        print(f"branch={runtime.branch}, skip commit/push/PR for dbt sources")
+        return 0
+
     _log_section("publish changes")
     _publish_changes(runtime, target_branch, dbt_config["base_branch"], created_files)
     return 0
@@ -412,6 +418,10 @@ def _branch_suffix() -> str:
         return f"build-{build_number}"
 
     return "local"
+
+
+def _skip_dbt_pr_creation(runtime: RuntimeConfig) -> bool:
+    return runtime.branch == "dev"
 
 
 def _publish_changes(
