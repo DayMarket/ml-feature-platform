@@ -74,7 +74,8 @@ def collect_silver_sku_group_query_install_stats():
         kubernetes_conn_id="spark_k8s",
     )
 
-    [wait_for_sessions_dq, wait_for_events_dq] >> collect_stats
+    #[wait_for_sessions_dq, wait_for_events_dq] >> collect_stats
+    collect_stats
 
 
 dag = collect_silver_sku_group_query_install_stats()
