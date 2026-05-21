@@ -41,27 +41,28 @@ default_args = {
     dag_id="feature_platform_sku_group_install_silver_stats_dag",
 )
 def collect_silver_sku_group_query_install_stats():
-    wait_for_sessions_dq = ExternalTaskSensor(
-        task_id="wait_for_sessions_dq",
-        external_dag_id="dbt.tests.dbt_clickhouse_dwh.sessions.dq",
-        allowed_states=["success"],
-        failed_states=["failed"],
-        mode="poke",
-        poke_interval=30,
-        timeout=6 * 60 * 60,
-        check_existence=True,
-    )
 
-    wait_for_events_dq = ExternalTaskSensor(
-        task_id="wait_for_events_dq",
-        external_dag_id="dbt.tests.dbt_clickhouse_dwh.events.dq",
-        allowed_states=["success"],
-        failed_states=["failed"],
-        mode="poke",
-        poke_interval=30,
-        timeout=6 * 60 * 60,
-        check_existence=True,
-    )
+    #wait_for_sessions_dq = ExternalTaskSensor(
+    #    task_id="wait_for_sessions_dq",
+    #    external_dag_id="dbt.tests.dbt_clickhouse_dwh.sessions.dq",
+    #    allowed_states=["success"],
+   #     failed_states=["failed"],
+   #     mode="poke",
+   #     poke_interval=30,
+   #     timeout=6 * 60 * 60,
+   #     check_existence=True,
+    #)
+
+    #wait_for_events_dq = ExternalTaskSensor(
+    #    task_id="wait_for_events_dq",
+    #    external_dag_id="dbt.tests.dbt_clickhouse_dwh.events.dq",
+    #    allowed_states=["success"],
+    #    failed_states=["failed"],
+    #    mode="poke",
+    #    poke_interval=30,
+    #    timeout=6 * 60 * 60,
+    #    check_existence=True,
+    #)
 
     collect_stats = SparkKubernetesOperator(
         execution_timeout=timedelta(hours=10),
