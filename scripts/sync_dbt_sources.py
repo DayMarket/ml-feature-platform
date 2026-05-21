@@ -78,7 +78,7 @@ def main() -> int:
     pending_pr_tables = {}
     if repo_slug:
         _log_section("scan open dbt source PRs")
-        pending_pr_tables = _open_pr_tables(runtime, repo_slug)
+        pending_pr_tables = _open_pr_tables(runtime, repo_slug, dbt_config)
         print(f"open_pr_tables_count={len(pending_pr_tables)}")
         for pending_table, pr_url in sorted(pending_pr_tables.items()):
             print(f"open_pr_table={pending_table} pr={pr_url}")
@@ -371,7 +371,11 @@ def print_table_list(prefix: str, table_names: set[str]) -> None:
         print(f"{prefix}={table_name}")
 
 
-def _open_pr_tables(runtime: RuntimeConfig, repo_slug: str) -> dict[str, str]:
+def _open_pr_tables(
+    runtime: RuntimeConfig,
+    repo_slug: str,
+    dbt_config: dict[str, Any],
+) -> dict[str, str]:
     result = _run(
         [
             "gh",
@@ -401,6 +405,7 @@ def _open_pr_tables(runtime: RuntimeConfig, repo_slug: str) -> dict[str, str]:
         return {}
 
     pending_tables = {}
+    sources_path = f"{dbt_config['models_path'].rstrip('/')}/{SOURCES_FILE_NAME}"
     for pull_request in pull_requests:
         pr_number = str(pull_request["number"])
         pr_url = str(pull_request["url"])
@@ -408,6 +413,12 @@ def _open_pr_tables(runtime: RuntimeConfig, repo_slug: str) -> dict[str, str]:
             f"scan_open_pr=number:{pr_number} "
             f"head:{pull_request.get('headRefName')} title:{pull_request.get('title')}"
         )
+        branch_tables = _open_pr_branch_tables(runtime, pr_number, sources_path)
+        if branch_tables:
+            for table_name in branch_tables:
+                pending_tables[table_name] = pr_url
+            continue
+
         diff_result = _run(
             ["gh", "pr", "diff", pr_number, "--repo", repo_slug, "--patch"],
             env={**os.environ, "GITHUB_TOKEN": runtime.git_token},
@@ -421,6 +432,38 @@ def _open_pr_tables(runtime: RuntimeConfig, repo_slug: str) -> dict[str, str]:
         for table_name in _extract_source_table_names(diff_result.stdout or ""):
             pending_tables[table_name] = pr_url
     return pending_tables
+
+
+def _open_pr_branch_tables(
+    runtime: RuntimeConfig,
+    pr_number: str,
+    sources_path: str,
+) -> set[str]:
+    pr_ref = f"refs/remotes/origin/pr/{pr_number}"
+    fetch_result = _run(
+        ["git", "fetch", "origin", f"+pull/{pr_number}/head:{pr_ref}"],
+        cwd=runtime.workspace,
+        check=False,
+        capture_output=True,
+    )
+    if fetch_result.returncode != 0:
+        print(f"Cannot fetch head branch for open PR #{pr_number}, fallback to diff")
+        return set()
+
+    show_result = _run(
+        ["git", "show", f"{pr_ref}:{sources_path}"],
+        cwd=runtime.workspace,
+        check=False,
+        capture_output=True,
+        log_output=False,
+    )
+    if show_result.returncode != 0:
+        print(f"Cannot read {sources_path} from open PR #{pr_number}, fallback to diff")
+        return set()
+
+    table_names = _extract_source_table_names(show_result.stdout or "")
+    print(f"open_pr_branch_tables_count={len(table_names)} pr={pr_number}")
+    return table_names
 
 
 def _append_to_sources_file(sources_path: Path, source_yaml: str) -> None:
@@ -625,6 +668,7 @@ def _run(
     env: Optional[dict[str, str]] = None,
     check: bool = True,
     capture_output: bool = False,
+    log_output: bool = True,
 ) -> subprocess.CompletedProcess:
     printable = " ".join(_mask_token(part) for part in command)
     cwd_text = f" cwd={cwd}" if cwd else ""
@@ -637,9 +681,9 @@ def _run(
         text=True,
         capture_output=True,
     )
-    if result.stdout:
+    if log_output and result.stdout:
         print(_mask_token(result.stdout.rstrip()))
-    if result.stderr:
+    if log_output and result.stderr:
         print(_mask_token(result.stderr.rstrip()))
     if check and result.returncode != 0:
         print(f"command_failed_returncode={result.returncode}")
