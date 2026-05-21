@@ -28,6 +28,7 @@ steps:
       - echo "=== test step ==="
       - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
       - echo "commit=$DRONE_COMMIT_SHA"
+      - cd dags_v3
       - python ci_test/test_script.py
 
   - name: sync dbt source
@@ -46,6 +47,7 @@ steps:
       - gh --version
       - python3 --version
       - echo "running dbt source sync"
+      - cd dags_v3
       - python3 scripts/sync_dbt_sources.py
       - if [ -f created_dbt_pr_url.txt ]; then echo "created dbt PR:"; cat created_dbt_pr_url.txt; fi
 
@@ -93,7 +95,7 @@ steps:
       repo: cr.yandex/de-common/pyspark-silver-sku-group-query-statistics
       tags: ${DRONE_TAG}
       use_cache: true
-      dockerfile: layers/silver/sku_group_install/v1/Dockerfile
+      dockerfile: dags_v3/layers/silver/sku_group_install/v1/Dockerfile
       purge: false
       password:
         from_secret: de_common_cr_json_key
@@ -136,7 +138,7 @@ steps:
       repo: cr.yandex/de-common/pyspark-gold-sku-group-query-atc-features
       tags: ${DRONE_TAG}
       use_cache: true
-      dockerfile: layers/gold/sku_group_query_atc_features/v1/Dockerfile
+      dockerfile: dags_v3/layers/gold/sku_group_query_atc_features/v1/Dockerfile
       purge: false
       password:
         from_secret: de_common_cr_json_key
