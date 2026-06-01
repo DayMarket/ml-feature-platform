@@ -10,6 +10,7 @@ The repository is organized by data layer under `layers/` and currently contains
 
 - `silver/sku_group_install/v1`: daily pre-aggregated search/category interaction statistics by install, SKU group, and query/category key.
 - `silver/sku_group_id_prices/v1`: daily SKU group end-of-day price aggregates.
+- `silver/sku_group_query_search_orders/v1`: daily search order statistics by query and SKU group.
 - `gold/sku_group_query_atc_features/v1`: daily query and SKU group ATC conversion features built from the silver table.
 - `gold/feedback_product_id/v1`: daily all-time feedback and rating aggregates by product.
 - `gold/feedback_sku_group_id/v1`: daily all-time feedback and rating aggregates by SKU group.
@@ -120,6 +121,47 @@ Docker/CI image:
 - Drone tag trigger: `refs/tags/spark-silver-sku-group-id-prices-*`
 - Published image repo: `cr.yandex/de-common/pyspark-silver-sku-group-id-prices`
 - Current SparkApplication image in config: `cr.yandex/de-common/pyspark-silver-sku-group-id-prices:spark-silver-sku-group-id-prices-v0.1.0`
+
+## Silver Search Orders Pipeline
+
+Path: `layers/silver/sku_group_query_search_orders/v1`
+
+Airflow DAG:
+
+- DAG id: `feature_platform_sku_group_query_search_orders_silver_dag`
+- Schedule: `0 1 * * *`
+- Start date: `2026-06-01`
+- Tags include `spark`, `feature-platform`, `team::search`, `silver`, `orders`.
+- Spark task id: `getting_sku_group_query_search_orders`
+- Runs SparkApplication template `fetch_silver_sku_group_query_search_orders.yaml`.
+
+Target table config:
+
+- Catalog/schema/table: `iceberg.silver.feature_platform_sku_group_query_search_orders`
+- Primary key: `date,query,sku_group_id`
+- Partition: `date`.
+
+Transformation summary:
+
+- Reads search attribution from `iceberg.silver.order_items_attribution`.
+- Reads order items from `iceberg.silver.order_items`.
+- Joins SKU metadata from `iceberg.silver.sku` by `sku_id`.
+- Uses Airflow `{{ ds }} 00:00:00` as `target_date`, `{{ next_ds }} 00:00:00` as `end_date`, and `target_date - INTERVAL 20 DAYS` for attribution/order lookback.
+- Filters search attribution to `SHOP_SEARCH_RESULTS`, `COLLECTION_SEARCH_RESULTS`, `SEARCH`, and `SEARCH_RESULTS`.
+- Aggregates generated, completed, and returned order metrics by `date`, `query`, and `sku_group_id`.
+- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
+
+Docker/CI image:
+
+- Drone tag trigger: `refs/tags/spark-silver-sku-group-query-search-orders-*`
+- Published image repo: `cr.yandex/de-common/pyspark-silver-sku-group-query-search-orders`
+- Current SparkApplication image in config: `cr.yandex/de-common/pyspark-silver-sku-group-query-search-orders:spark-silver-sku-group-query-search-orders-v0.1.0`
+
+Resources note:
+
+- Current implemented Spark layers use the same profile: driver `1 core / 10g`, executors `5 x 8 cores / 16g`.
+- Feedback and daily price pipelines use a reduced profile: driver `1 core / 4g`, executors `3 x 4 cores / 8g`.
+- The larger driver `1 core / 10g`, executors `5 x 8 cores / 16g` profile is kept for order/search jobs with joins over order facts and lookback windows.
 
 ## Gold Pipeline
 

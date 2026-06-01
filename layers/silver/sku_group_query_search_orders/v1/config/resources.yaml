@@ -3,9 +3,9 @@
   "spark_event_log_bucket": "um-prod-spark-history", 
   "hive_metastore_uris": "thrift://hive-metastore.svc-data-hive-metastore.svc.cluster.local:9083", 
   "driver_cores": "1", 
-  "driver_memory": "4g", 
-  "executor_cores": "4", 
-  "executor_instances": "3", 
-  "executor_memory": "8g",
-  "maxExecutors": "3"
+  "driver_memory": "10g", 
+  "executor_cores": "8", 
+  "executor_instances": "5", 
+  "executor_memory": "16g",
+  "maxExecutors": "5"
 }
