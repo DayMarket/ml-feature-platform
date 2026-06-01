@@ -37,7 +37,7 @@ default_args = {
     tags=["spark", "feature-platform", "team::search", "gold"],
     is_paused_upon_creation=True,
     schedule_interval="0 2 * * *",
-    start_date=datetime(2026, 5, 18, 0, 0, 0),
+    start_date=datetime(2026, 3, 10, 0, 0, 0),
     dag_id="feature_platform_sku_group_query_atc_features_gold_dag",
 )
 def collect_gold_sku_group_query_atc_features():

@@ -1,0 +1,11 @@
+resources:
+  path: config/resources.yaml
+
+table:
+  key: product_feedback_base_stats
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_product_feedback_base_stats
+  primary_key: date,product_id
+  meta:
+    team: team:search
