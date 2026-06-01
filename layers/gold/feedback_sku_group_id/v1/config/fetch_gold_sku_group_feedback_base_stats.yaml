@@ -9,7 +9,7 @@ spec:
   type: Python
   pythonVersion: "3"
   mode: cluster
-  image: cr.yandex/de-common/pyspark-gold-sku-group-feedback-base-stats:spark-gold-sku-group-feedback-base-stats-v0.1.1
+  image: cr.yandex/de-common/pyspark-gold-sku-group-feedback-base-stats:spark-gold-sku-group-feedback-base-stats-v0.1.2
   imagePullPolicy: Always
   mainApplicationFile: local:///opt/spark/entrypoints/get_sku_group_feedback_base_stats.py
   sparkVersion: "3.4.1"
