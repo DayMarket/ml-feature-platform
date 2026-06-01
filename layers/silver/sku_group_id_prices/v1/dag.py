@@ -37,7 +37,7 @@ default_args = {
     tags=["spark", "feature-platform", "team::search", "silver", "prices"],
     is_paused_upon_creation=True,
     schedule_interval="0 1 * * *",
-    start_date=datetime(2026, 6, 1, 0, 0, 0),
+    start_date=datetime(2026, 1, 1, 0, 0, 0),
     dag_id="feature_platform_sku_group_id_prices_silver_dag",
 )
 def collect_silver_sku_group_id_prices():
