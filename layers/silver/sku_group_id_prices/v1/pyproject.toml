@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "pyspark-sku-group-install-silver-stats"
+name = "pyspark-sku-group-id-prices"
 version = "0.1.0"
-description = "SKU group install silver stats collection using PySpark"
+description = "SKU group daily price silver features using PySpark"
 authors = ["Search Team"]
 readme = "README.md"
 packages = [

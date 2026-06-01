@@ -1,13 +1,11 @@
 CREATE TABLE IF NOT EXISTS {target_table} (
-    install_id STRING COMMENT 'Уникальный идентификатор пользователя',
-    sku_group_id BIGINT COMMENT 'ID товара в поиске',
-    section STRING COMMENT 'Секция или категория',
-    uniqs STRING COMMENT 'Уникальные идентификатор поисковый запрос или категория',
-    sum_atc BIGINT COMMENT 'Суммарное число добавлений в корзину',
-    sum_clicks BIGINT COMMENT 'Суммарное количество кликов',
-    sum_impressions BIGINT COMMENT 'Суммарное количество показов',
-    date DATE COMMENT 'Дата партиционирования'
+    date DATE COMMENT 'Дата партиционирования, соответствует ds расчета',
+    sku_group_id BIGINT COMMENT 'ID sku group',
+    avg_sell_price_eod DOUBLE COMMENT 'Средняя цена продажи на конец дня по SKU внутри sku group',
+    median_sell_price_eod DOUBLE COMMENT 'Медианная цена продажи на конец дня по SKU внутри sku group',
+    avg_full_price_eod DOUBLE COMMENT 'Средняя полная цена на конец дня по SKU внутри sku group',
+    median_full_price_eod DOUBLE COMMENT 'Медианная полная цена на конец дня по SKU внутри sku group'
 )
 USING iceberg
-COMMENT 'Предагрегированная статистика поиска и категорий на уровне install_id - query/category_id - sku_group_id'
+COMMENT 'Дневная silver-статистика цен на уровне sku_group_id'
 PARTITIONED BY (date)

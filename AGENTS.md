@@ -9,6 +9,7 @@ Keep it concise, factual, and updated when repository structure or pipeline beha
 The repository is organized by data layer under `layers/` and currently contains production code for:
 
 - `silver/sku_group_install/v1`: daily pre-aggregated search/category interaction statistics by install, SKU group, and query/category key.
+- `silver/sku_group_id_prices/v1`: daily SKU group end-of-day price aggregates.
 - `gold/sku_group_query_atc_features/v1`: daily query and SKU group ATC conversion features built from the silver table.
 - `gold/feedback_product_id/v1`: daily all-time feedback and rating aggregates by product.
 - `gold/feedback_sku_group_id/v1`: daily all-time feedback and rating aggregates by SKU group.
@@ -85,6 +86,41 @@ Docker/CI image:
 - Published image repo: `cr.yandex/de-common/pyspark-silver-sku-group-query-statistics`
 - Current SparkApplication image in config: `cr.yandex/de-common/pyspark-silver-sku-group-query-statistics:spark-silver-search-sku-group-install-stats-v0.3.3`
 
+## Silver SKU Group Prices Pipeline
+
+Path: `layers/silver/sku_group_id_prices/v1`
+
+Airflow DAG:
+
+- DAG id: `feature_platform_sku_group_id_prices_silver_dag`
+- Schedule: `0 1 * * *`
+- Start date: `2026-06-01`
+- Tags include `spark`, `feature-platform`, `team::search`, `silver`, `prices`.
+- Sensor task id: `wait_for_sku_eod`
+- Sensor waits for DAG `dbt.models.dwh_trino.sku_eod` with `execution_delta=timedelta(hours=1)` because the dbt DAG runs at `0 0 * * *`.
+- Spark task id: `getting_sku_group_id_prices`
+- Runs SparkApplication template `fetch_silver_sku_group_id_prices.yaml`.
+
+Target table config:
+
+- Catalog/schema/table: `iceberg.silver.feature_platform_sku_group_id_prices`
+- Primary key: `date,sku_group_id`
+- Partition: `date`.
+
+Transformation summary:
+
+- Reads `iceberg.silver.sku_eod` for `dt = {{ ds }}`.
+- Joins SKU metadata from `iceberg.silver.sku` by `sku_id`.
+- Aggregates by `sku_group_id`.
+- Produces average and median end-of-day sell price and full price.
+- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
+
+Docker/CI image:
+
+- Drone tag trigger: `refs/tags/spark-silver-sku-group-id-prices-*`
+- Published image repo: `cr.yandex/de-common/pyspark-silver-sku-group-id-prices`
+- Current SparkApplication image in config: `cr.yandex/de-common/pyspark-silver-sku-group-id-prices:spark-silver-sku-group-id-prices-v0.1.0`
+
 ## Gold Pipeline
 
 Path: `layers/gold/sku_group_query_atc_features/v1`
@@ -147,8 +183,8 @@ Target table configs:
 
 Transformation summary:
 
-- Reads published feedback from `foodback.public.feedback`.
-- Joins SKU metadata from `` `dwh-iceberg`.silver.sku `` by `sku_id`.
+- Reads published feedback from `iceberg.silver_bxappdb2_foodback.public_feedback`.
+- Joins SKU metadata from `iceberg.silver.sku` by `sku_id`.
 - Builds daily snapshots for Airflow `{{ ds }}`.
 - Uses all feedback history with `date_published < {{ ds }}` so the snapshot reflects the state up to the previous day.
 - Uses only `status = 'PUBLISHED'`.
@@ -157,7 +193,7 @@ Transformation summary:
 
 Important implementation note:
 
-- Spark SQL uses backticks for the hyphenated catalog name: `` `dwh-iceberg`.silver.sku ``.
+- Trino source name `"dwh-iceberg".silver_bxappdb2_foodback.public_feedback` maps to Spark source `iceberg.silver_bxappdb2_foodback.public_feedback` in these jobs.
 
 Docker/CI images:
 

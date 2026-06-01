@@ -7,12 +7,12 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from job.arguments import parse_arguments
-from job.getting_sku_group_query_statistics import run
+from job.getting_sku_group_id_prices import run
 
 
 if __name__ == "__main__":
     spark = (
-        SparkSession.builder.appName("getting-search-sku-group-silver-stats")
+        SparkSession.builder.appName("getting-sku-group-id-prices")
         .enableHiveSupport()
         .getOrCreate()
     )

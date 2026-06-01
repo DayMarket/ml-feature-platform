@@ -30,53 +30,41 @@ default_args = {
     ),
 }
 
-#version 3.3
+
 @dag(
     default_args=default_args,
     max_active_runs=1,
-    tags=["spark", "feature-platform", "team::search", "silver"],
+    tags=["spark", "feature-platform", "team::search", "silver", "prices"],
     is_paused_upon_creation=True,
     schedule_interval="0 1 * * *",
-    start_date=datetime(2026, 2, 1, 0, 0, 0),
-    dag_id="feature_platform_sku_group_install_silver_stats_dag",
+    start_date=datetime(2026, 6, 1, 0, 0, 0),
+    dag_id="feature_platform_sku_group_id_prices_silver_dag",
 )
-def collect_silver_sku_group_query_install_stats():
+def collect_silver_sku_group_id_prices():
+    wait_for_sku_eod = ExternalTaskSensor(
+        task_id="wait_for_sku_eod",
+        external_dag_id="dbt.models.dwh_trino.sku_eod",
+        allowed_states=["success"],
+        failed_states=["failed"],
+        mode="poke",
+        poke_interval=30,
+        timeout=6 * 60 * 60,
+        check_existence=True,
+        execution_delta=timedelta(hours=1),
+    )
 
-    #wait_for_sessions_dq = ExternalTaskSensor(
-    #    task_id="wait_for_sessions_dq",
-    #    external_dag_id="dbt.tests.dbt_clickhouse_dwh.sessions.dq",
-    #    allowed_states=["success"],
-   #     failed_states=["failed"],
-   #     mode="poke",
-   #     poke_interval=30,
-   #     timeout=6 * 60 * 60,
-   #     check_existence=True,
-    #)
-
-    #wait_for_events_dq = ExternalTaskSensor(
-    #    task_id="wait_for_events_dq",
-    #    external_dag_id="dbt.tests.dbt_clickhouse_dwh.events.dq",
-    #    allowed_states=["success"],
-    #    failed_states=["failed"],
-    #    mode="poke",
-    #    poke_interval=30,
-    #    timeout=6 * 60 * 60,
-    #    check_existence=True,
-    #)
-
-    collect_stats = SparkKubernetesOperator(
+    collect_prices = SparkKubernetesOperator(
         execution_timeout=timedelta(hours=10),
-        task_id="getting_sku_group_query_install_stats",
+        task_id="getting_sku_group_id_prices",
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(
             ".",
-            "fetch_silver_sku_group_statistics.yaml",
+            "fetch_silver_sku_group_id_prices.yaml",
         ),
         kubernetes_conn_id="spark_k8s",
     )
 
-    #[wait_for_sessions_dq, wait_for_events_dq] >> collect_stats
-    collect_stats
+    wait_for_sku_eod >> collect_prices
 
 
-dag = collect_silver_sku_group_query_install_stats()
+dag = collect_silver_sku_group_id_prices()

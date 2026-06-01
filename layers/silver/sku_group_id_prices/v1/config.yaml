@@ -1,0 +1,11 @@
+resources:
+  path: config/resources.yaml
+
+table:
+  key: sku_group_id_prices
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_sku_group_id_prices
+  primary_key: date,sku_group_id
+  meta:
+    team: team:search

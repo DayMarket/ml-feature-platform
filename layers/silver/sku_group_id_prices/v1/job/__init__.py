@@ -1,1 +1,1 @@
-# Runtime package for sku_group_install spark job.
+# Runtime package for sku_group_id_prices spark job.

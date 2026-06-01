@@ -29,13 +29,13 @@ WITH stats AS (
         COUNT(f.id) FILTER (WHERE f.rating = 4) AS reviews_mark_four_count,
         COUNT(f.id) FILTER (WHERE f.rating = 5) AS reviews_mark_five_count,
         COUNT(f.id) FILTER (WHERE COALESCE(f.message, '') != '') AS total_reviews_with_text
-    FROM foodback.public.feedback f
+    FROM iceberg.silver_bxappdb2_foodback.public_feedback f
     INNER JOIN (
         SELECT
             id AS sku_id,
             product_id,
             sku_group_id
-        FROM `dwh-iceberg`.silver.sku
+        FROM iceberg.silver.sku
     ) s ON s.sku_id = f.sku_id
     WHERE
         f.status = 'PUBLISHED'

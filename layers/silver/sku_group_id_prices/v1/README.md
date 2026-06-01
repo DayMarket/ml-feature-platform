@@ -1,15 +1,16 @@
-# Silver-статистика SKU Group по Install
+# Silver-цены по SKU Group ID
 
-Пайплайн собирает дневную предагрегированную статистику поисковых и категорийных взаимодействий на уровне `install_id`, `sku_group_id` и текста запроса или категории.
+Пайплайн собирает дневную статистику цен на уровне `sku_group_id`.
 
-Целевая таблица: `iceberg.silver.feature_platform_search_sku_group_id_install_query`.
+Целевая таблица: `iceberg.silver.feature_platform_sku_group_id_prices`.
 
 Основная логика:
 
-- читает события из `iceberg.silver_b2c_clickstream.events` за партиционный интервал;
-- использует `iceberg.silver.sku` для fallback-маппинга товара в `sku_group_id`;
-- учитывает `SEARCH_RESULTS`, `PRODUCT_IMPRESSION`, `PRODUCT_VIEW` и `ADD_TO_CART`;
-- считает показы, клики и добавления в корзину;
+- читает дневные цены из `iceberg.silver.sku_eod`;
+- обогащает записи SKU-данными из `iceberg.silver.sku`;
+- фильтрует `sku_eod` по `dt = ds`;
+- агрегирует среднюю и медианную цену продажи на конец дня;
+- агрегирует среднюю и медианную полную цену на конец дня;
 - пишет результат в Iceberg через `overwritePartitions()`.
 
-Партиция расчета задается аргументами Airflow `partition_start` и `partition_end`.
+DAG запускается ежедневно в `01:00` и ждет DAG `dbt.models.dwh_trino.sku_eod`, который запускается в `00:00`.
