@@ -36,7 +36,7 @@ default_args = {
     tags=["spark", "feature-platform", "team::search", "gold", "feedback"],
     is_paused_upon_creation=True,
     schedule_interval="10 3 * * *",
-    start_date=datetime(2026, 6, 1, 0, 0, 0),
+    start_date=datetime(2026, 1, 1, 0, 0, 0),
     dag_id="feature_platform_sku_group_feedback_base_stats_gold_dag",
 )
 def collect_gold_sku_group_feedback_base_stats():
