@@ -15,6 +15,7 @@ The repository is organized by data layer under `layers/` and currently contains
 - `gold/sku_group_query_atc_features/v1`: daily query and SKU group ATC conversion features built from the silver table.
 - `gold/sku_group_query_atc_order_features/v1`: daily query and SKU group ATC/order conversion features built from silver interaction and search-order tables.
 - `gold/sku_group_median_sales_7d/v1`: three-hourly median daily sales count over the last 7 days by SKU group.
+- `gold/sku_group_price_features/v1`: daily SKU group price features built from silver price aggregates.
 - `gold/sku_group_price_index_status/v1`: temporary SKU group price index status compatibility feature.
 - `gold/feedback_product_id/v1`: daily all-time feedback and rating aggregates by product.
 - `gold/feedback_sku_group_id/v1`: daily all-time feedback and rating aggregates by SKU group.
@@ -199,7 +200,7 @@ Docker/CI image:
 Resources note:
 
 - Current implemented Spark layers use the same profile: driver `1 core / 10g`, executors `5 x 8 cores / 16g`.
-- Feedback and daily price pipelines use a reduced profile: driver `1 core / 4g`, executors `3 x 4 cores / 8g`.
+- Feedback and price pipelines use a reduced profile: driver `1 core / 4g`, executors `3 x 4 cores / 8g`.
 - The larger driver `1 core / 10g`, executors `5 x 8 cores / 16g` profile is kept for order/search jobs with joins over order facts and lookback windows.
 - Resource-only changes in `config/resources.yaml` do not require rebuilding Spark images; code, entrypoint, dependency, or wheel changes do.
 
@@ -313,6 +314,41 @@ Docker/CI image:
 - Drone tag trigger: `refs/tags/spark-gold-sku-group-median-sales-7d-*`
 - Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-median-sales-7d`
 - Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-median-sales-7d:spark-gold-sku-group-median-sales-7d-v0.1.0`
+
+## Gold SKU Group Price Features Pipeline
+
+Path: `layers/gold/sku_group_price_features/v1`
+
+Airflow DAG:
+
+- DAG id: `feature_platform_sku_group_price_features_gold_dag`
+- Schedule: `0 2 * * *`
+- Start date: `2026-06-01`
+- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `prices`.
+- Sensor waits for silver DAG task `feature_platform_sku_group_id_prices_silver_dag.getting_sku_group_id_prices` with `execution_delta=timedelta(hours=1)`.
+- Spark task id: `getting_sku_group_price_features`
+- Runs SparkApplication template `fetch_gold_sku_group_price_features.yaml`.
+
+Target table config:
+
+- Catalog/schema/table: `iceberg.gold.feature_platform_sku_group_price_features`
+- Primary key: `date,sku_group_id`
+- Partition: `date`.
+
+Transformation summary:
+
+- Reads daily price aggregates from `iceberg.silver.feature_platform_sku_group_id_prices`.
+- Joins SKU metadata from `iceberg.silver.sku` to get `category_id`.
+- Computes category average sell price, `log1p(avg_sell_price_eod)` as `sell_price_eod`, absolute discount, and `fraq_discount`.
+- Computes ratios of yesterday's `min_full_price_eod` to average `min_full_price_eod` over the previous 14 and 30 days.
+- Uses nullable division semantics matching SQL `NULLIF`: zero or missing denominators produce `NULL`.
+- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
+
+Docker/CI image:
+
+- Drone tag trigger: `refs/tags/spark-gold-sku-group-price-features-*`
+- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-price-features`
+- Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-price-features:spark-gold-sku-group-price-features-v0.1.0`
 
 ## Gold SKU Group Price Index Status Pipeline
 
