@@ -13,6 +13,7 @@ The repository is organized by data layer under `layers/` and currently contains
 - `silver/sku_group_orders/v1`: daily SKU group order statistics.
 - `silver/sku_group_query_search_orders/v1`: daily search order statistics by query and SKU group.
 - `gold/sku_group_query_atc_features/v1`: daily query and SKU group ATC conversion features built from the silver table.
+- `gold/sku_group_price_index_status/v1`: temporary SKU group price index status compatibility feature.
 - `gold/feedback_product_id/v1`: daily all-time feedback and rating aggregates by product.
 - `gold/feedback_sku_group_id/v1`: daily all-time feedback and rating aggregates by SKU group.
 
@@ -235,6 +236,42 @@ Transformation summary:
 Important implementation note:
 
 - In the current SQL, `query_skg_conv_imp2atc_90` divides `atc_90_day` by `impressions_60_day`. This may be intentional or a bug; verify before touching related logic.
+
+## Gold SKU Group Price Index Status Pipeline
+
+Path: `layers/gold/sku_group_price_index_status/v1`
+
+Purpose:
+
+- Temporary compatibility table for an old model.
+- Produces only `date`, `sku_group_id`, and numeric `price_index_status`.
+
+Airflow DAG:
+
+- DAG id: `feature_platform_sku_group_price_index_status_gold_dag`
+- Schedule: `0 3 * * *`
+- Start date: `2026-06-01`
+- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `price-index`.
+- Spark task id: `getting_sku_group_price_index_status`
+- Runs SparkApplication template `fetch_gold_sku_group_price_index_status.yaml`.
+
+Target table config:
+
+- Catalog/schema/table: `iceberg.gold.feature_platform_sku_group_price_index_status`
+- Primary key: `date,sku_group_id`
+- Partition: `date`.
+
+Transformation summary:
+
+- Checks that `s3a://um-prod-airflow-fs/price_index_dag/dag_runs/{{ ds }}/price_index_features.parquet` exists before reading.
+- Fails with a clear `FileNotFoundError` if the parquet path is missing.
+- Reads the parquet file, filters out `price_index_status = 'NO_BOOST'`, maps supported statuses to integers, and writes the three output columns.
+
+Docker/CI image:
+
+- Drone tag trigger: `refs/tags/spark-gold-sku-group-price-index-status-*`
+- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-price-index-status`
+- Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-price-index-status:spark-gold-sku-group-price-index-status-v0.1.0`
 
 ## Feedback Gold Pipelines
 
