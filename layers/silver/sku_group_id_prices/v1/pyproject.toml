@@ -10,6 +10,7 @@ packages = [
 ]
 include = [
     { path = "migrations/create_table.sql", format = ["sdist", "wheel"] },
+    { path = "migrations/20260602_add_price_min_max_columns.sql", format = ["sdist", "wheel"] },
 ]
 
 [tool.poetry.dependencies]

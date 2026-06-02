@@ -114,7 +114,9 @@ Transformation summary:
 - Reads `iceberg.silver.sku_eod` for `dt = {{ ds }}`.
 - Joins SKU metadata from `iceberg.silver.sku` by `sku_id`.
 - Aggregates by `sku_group_id`.
-- Produces average and median end-of-day sell price and full price.
+- Produces average, median, minimum, and maximum end-of-day sell price and full price.
+- Migration `20260602_add_price_min_max_columns.sql` adds `min_sell_price_eod`, `max_sell_price_eod`, `min_full_price_eod`, and `max_full_price_eod` with `ALTER TABLE`.
+- The job ensures missing price min/max columns before building the feature dataframe.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
 Docker/CI image:

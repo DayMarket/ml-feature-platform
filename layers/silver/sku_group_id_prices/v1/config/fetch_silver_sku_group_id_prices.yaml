@@ -9,7 +9,7 @@ spec:
   type: Python
   pythonVersion: "3"
   mode: cluster
-  image: cr.yandex/de-common/pyspark-silver-sku-group-id-prices:spark-silver-sku-group-id-prices-v0.1.1
+  image: cr.yandex/de-common/pyspark-silver-sku-group-id-prices:spark-silver-sku-group-id-prices-v0.1.2
   imagePullPolicy: Always
   mainApplicationFile: local:///opt/spark/entrypoints/get_sku_group_id_prices.py
   sparkVersion: "3.4.1"
