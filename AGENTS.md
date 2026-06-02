@@ -13,6 +13,8 @@ The repository is organized by data layer under `layers/` and currently contains
 - `silver/sku_group_orders/v1`: daily SKU group order statistics.
 - `silver/sku_group_query_search_orders/v1`: daily search order statistics by query and SKU group.
 - `gold/sku_group_query_atc_features/v1`: daily query and SKU group ATC conversion features built from the silver table.
+- `gold/sku_group_query_atc_order_features/v1`: daily query and SKU group ATC/order conversion features built from silver interaction and search-order tables.
+- `gold/sku_group_median_sales_7d/v1`: three-hourly median daily sales count over the last 7 days by SKU group.
 - `gold/sku_group_price_index_status/v1`: temporary SKU group price index status compatibility feature.
 - `gold/feedback_product_id/v1`: daily all-time feedback and rating aggregates by product.
 - `gold/feedback_sku_group_id/v1`: daily all-time feedback and rating aggregates by SKU group.
@@ -236,6 +238,81 @@ Transformation summary:
 Important implementation note:
 
 - In the current SQL, `query_skg_conv_imp2atc_90` divides `atc_90_day` by `impressions_60_day`. This may be intentional or a bug; verify before touching related logic.
+
+## Gold SKU Group Query ATC Order Features Pipeline
+
+Path: `layers/gold/sku_group_query_atc_order_features/v1`
+
+Airflow DAG:
+
+- DAG id: `feature_platform_sku_group_query_atc_order_features_gold_dag`
+- Schedule: `0 3 * * *`
+- Start date: `2026-06-01`
+- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `orders`, `atc`.
+- Sensor waits for silver DAG task `feature_platform_sku_group_install_silver_stats_dag.getting_sku_group_query_install_stats` with `execution_delta=timedelta(hours=2)`.
+- Sensor waits for silver DAG task `feature_platform_sku_group_query_search_orders_silver_dag.getting_sku_group_query_search_orders` with `execution_delta=timedelta(hours=2)`.
+- Spark task id: `getting_sku_group_query_atc_order_features`
+- Runs SparkApplication template `fetch_gold_sku_group_query_atc_order_features.yaml`.
+
+Target table config:
+
+- Catalog/schema/table: `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features`
+- Primary key: `date,query,sku_group_id`
+- Partition: `date`.
+
+Transformation summary:
+
+- Reads search interaction stats from `iceberg.silver.feature_platform_search_sku_group_id_install_query`.
+- Reads search order stats from `iceberg.silver.feature_platform_sku_group_query_search_orders`.
+- Uses only `space = 'SEARCH_RESULTS'`.
+- Builds 1, 3, 7, 14, 21, 30, 60, and 90 day windows ending at Airflow `{{ ds }}`.
+- Produces order counts, `impression -> atc` conversions, `impression -> order` conversions, and cross-window conversion ratios.
+- Filters output to pairs where `query_skg_uniq_impressions_14 >= 2`.
+- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
+
+Docker/CI image:
+
+- Drone tag trigger: `refs/tags/spark-gold-sku-group-query-atc-order-features-*`
+- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-query-atc-order-features`
+- Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-query-atc-order-features:spark-gold-sku-group-query-atc-order-features-v0.1.0`
+
+## Gold SKU Group Median Sales 7D Pipeline
+
+Path: `layers/gold/sku_group_median_sales_7d/v1`
+
+Airflow DAG:
+
+- DAG id: `feature_platform_sku_group_median_sales_7d_gold_dag`
+- Schedule: `0 */3 * * *`
+- Start date: `2026-06-01`
+- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `orders`.
+- Spark task id: `getting_sku_group_median_sales_7d`
+- Runs SparkApplication template `fetch_gold_sku_group_median_sales_7d.yaml`.
+
+Target table config:
+
+- Catalog/schema/table: `iceberg.gold.feature_platform_sku_group_median_sales_7d`
+- Primary key: `date,sku_group_id`
+- Partition: `date`.
+
+Transformation summary:
+
+- Reads order items from `iceberg.silver.order_items`.
+- Joins SKU metadata from `iceberg.silver.sku` by `sku_id`.
+- Uses `data_interval_end` as the rolling-window cutoff because the DAG runs every 3 hours.
+- Takes completed sales from the last 7 суток before `data_interval_end`, excluding items returned before the interval end.
+- Splits the rolling window into seven 24-hour buckets, fills missing buckets with zero sales for SKU groups active in the window, then computes `median_sales_count_7d`.
+- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
+
+Important implementation note:
+
+- This layer's `config/factory.py` intentionally injects `data_interval_start` and `data_interval_end` instead of `{{ ds }}` / `{{ next_ds }}` so three-hourly runs use the actual interval boundaries.
+
+Docker/CI image:
+
+- Drone tag trigger: `refs/tags/spark-gold-sku-group-median-sales-7d-*`
+- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-median-sales-7d`
+- Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-median-sales-7d:spark-gold-sku-group-median-sales-7d-v0.1.0`
 
 ## Gold SKU Group Price Index Status Pipeline
 

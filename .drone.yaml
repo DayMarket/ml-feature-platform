@@ -155,6 +155,92 @@ steps:
         path: /var/run/docker.sock
 ---
 kind: pipeline
+name: Build pyspark docker image for sku group median sales 7d
+
+node:
+  type: um-common
+trigger:
+  ref:
+    - refs/tags/spark-gold-sku-group-median-sales-7d-*
+
+volumes:
+  - name: m2-cache
+    host:
+      path: /tmp/m2-cache-new
+  - name: docker
+    host:
+      path: /var/run/docker.sock
+
+steps:
+  - name: build and publish image
+    image: plugins/docker
+    settings:
+      username: json_key
+      registry: cr.yandex
+      repo: cr.yandex/de-common/pyspark-gold-sku-group-median-sales-7d
+      tags: ${DRONE_TAG}
+      use_cache: true
+      dockerfile: layers/gold/sku_group_median_sales_7d/v1/Dockerfile
+      purge: false
+      password:
+        from_secret: de_common_cr_json_key
+      build_args_from_env:
+        - NEXUS_USERNAME
+        - NEXUS_PASSWORD
+    environment:
+      NEXUS_USERNAME:
+        from_secret: nexus_pypi_um_reader_username
+      NEXUS_PASSWORD:
+        from_secret: nexus_pypi_um_reader_password
+
+    volumes:
+      - name: docker
+        path: /var/run/docker.sock
+---
+kind: pipeline
+name: Build pyspark docker image for sku group query atc order features
+
+node:
+  type: um-common
+trigger:
+  ref:
+    - refs/tags/spark-gold-sku-group-query-atc-order-features-*
+
+volumes:
+  - name: m2-cache
+    host:
+      path: /tmp/m2-cache-new
+  - name: docker
+    host:
+      path: /var/run/docker.sock
+
+steps:
+  - name: build and publish image
+    image: plugins/docker
+    settings:
+      username: json_key
+      registry: cr.yandex
+      repo: cr.yandex/de-common/pyspark-gold-sku-group-query-atc-order-features
+      tags: ${DRONE_TAG}
+      use_cache: true
+      dockerfile: layers/gold/sku_group_query_atc_order_features/v1/Dockerfile
+      purge: false
+      password:
+        from_secret: de_common_cr_json_key
+      build_args_from_env:
+        - NEXUS_USERNAME
+        - NEXUS_PASSWORD
+    environment:
+      NEXUS_USERNAME:
+        from_secret: nexus_pypi_um_reader_username
+      NEXUS_PASSWORD:
+        from_secret: nexus_pypi_um_reader_password
+
+    volumes:
+      - name: docker
+        path: /var/run/docker.sock
+---
+kind: pipeline
 name: Build pyspark docker image for sku group price index status
 
 node:

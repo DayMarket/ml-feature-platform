@@ -1,0 +1,37 @@
+CREATE TABLE IF NOT EXISTS {target_table} (
+    date DATE COMMENT 'Дата партиционирования, соответствует ds расчета',
+    query STRING COMMENT 'Текст поискового запроса',
+    sku_group_id BIGINT COMMENT 'ID sku group',
+    query_skg_uniq_orders_7 DOUBLE COMMENT 'Количество сгенерированных заказов по query и sku_group_id за 7 дней',
+    query_skg_conv_imp2atc_7 DOUBLE COMMENT 'Конверсия из показа в ATC по query и sku_group_id за 7 дней',
+    query_skg_conv_imp2order_7 DOUBLE COMMENT 'Конверсия из показа в заказ по query и sku_group_id за 7 дней',
+    query_skg_uniq_orders_14 DOUBLE COMMENT 'Количество сгенерированных заказов по query и sku_group_id за 14 дней',
+    query_skg_conv_imp2atc_14 DOUBLE COMMENT 'Конверсия из показа в ATC по query и sku_group_id за 14 дней',
+    query_skg_conv_imp2order_14 DOUBLE COMMENT 'Конверсия из показа в заказ по query и sku_group_id за 14 дней',
+    query_skg_uniq_orders_21 DOUBLE COMMENT 'Количество сгенерированных заказов по query и sku_group_id за 21 день',
+    query_skg_conv_imp2atc_21 DOUBLE COMMENT 'Конверсия из показа в ATC по query и sku_group_id за 21 день',
+    query_skg_conv_imp2order_21 DOUBLE COMMENT 'Конверсия из показа в заказ по query и sku_group_id за 21 день',
+    query_skg_uniq_orders_30 DOUBLE COMMENT 'Количество сгенерированных заказов по query и sku_group_id за 30 дней',
+    query_skg_conv_imp2atc_30 DOUBLE COMMENT 'Конверсия из показа в ATC по query и sku_group_id за 30 дней',
+    query_skg_conv_imp2order_30 DOUBLE COMMENT 'Конверсия из показа в заказ по query и sku_group_id за 30 дней',
+    query_skg_imp2atc_3_to_1 DOUBLE COMMENT 'Отношение конверсии imp2atc за 3 дня к конверсии за 1 день',
+    query_skg_imp2atc_7_to_3 DOUBLE COMMENT 'Отношение конверсии imp2atc за 7 дней к конверсии за 3 дня',
+    query_skg_imp2atc_14_to_7 DOUBLE COMMENT 'Отношение конверсии imp2atc за 14 дней к конверсии за 7 дней',
+    query_skg_imp2atc_30_to_14 DOUBLE COMMENT 'Отношение конверсии imp2atc за 30 дней к конверсии за 14 дней',
+    query_skg_imp2order_30_to_14 DOUBLE COMMENT 'Отношение конверсии imp2order за 30 дней к конверсии за 14 дней',
+    query_skg_uniq_atcs_60 DOUBLE COMMENT 'Количество ATC по query и sku_group_id за 60 дней',
+    query_skg_uniq_orders_60 DOUBLE COMMENT 'Количество сгенерированных заказов по query и sku_group_id за 60 дней',
+    query_skg_conv_imp2atc_60 DOUBLE COMMENT 'Конверсия из показа в ATC по query и sku_group_id за 60 дней',
+    query_skg_conv_imp2order_60 DOUBLE COMMENT 'Конверсия из показа в заказ по query и sku_group_id за 60 дней',
+    query_skg_uniq_atcs_90 DOUBLE COMMENT 'Количество ATC по query и sku_group_id за 90 дней',
+    query_skg_uniq_orders_90 DOUBLE COMMENT 'Количество сгенерированных заказов по query и sku_group_id за 90 дней',
+    query_skg_conv_imp2atc_90 DOUBLE COMMENT 'Конверсия из показа в ATC по query и sku_group_id за 90 дней',
+    query_skg_conv_imp2order_90 DOUBLE COMMENT 'Конверсия из показа в заказ по query и sku_group_id за 90 дней',
+    query_skg_imp2atc_60_to_30 DOUBLE COMMENT 'Отношение конверсии imp2atc за 60 дней к конверсии за 30 дней',
+    query_skg_imp2order_60_to_30 DOUBLE COMMENT 'Отношение конверсии imp2order за 60 дней к конверсии за 30 дней',
+    query_skg_imp2atc_90_to_60 DOUBLE COMMENT 'Отношение конверсии imp2atc за 90 дней к конверсии за 60 дней',
+    query_skg_imp2order_90_to_60 DOUBLE COMMENT 'Отношение конверсии imp2order за 90 дней к конверсии за 60 дней'
+)
+USING iceberg
+COMMENT 'Gold-фичи ATC и заказных конверсий по query и sku_group_id'
+PARTITIONED BY (date)

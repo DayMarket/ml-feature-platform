@@ -1,0 +1,11 @@
+resources:
+  path: config/resources.yaml
+
+table:
+  key: sku_group_query_atc_order_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_search_sku_group_id_query_atc_order_features
+  primary_key: date,query,sku_group_id
+  meta:
+    team: team:search
