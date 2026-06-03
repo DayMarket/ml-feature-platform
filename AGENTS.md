@@ -28,6 +28,13 @@ Layer semantics:
 - `silver` contains reusable pre-aggregates and intermediate daily/statistical tables.
 - `gold` contains final feature tables intended for model consumption.
 
+DQ dependency semantics:
+
+- Each entity automatically gets DQ tests in the `dbt-trino` repository.
+- DQ DAG ids follow this pattern: `dbt.source.trino.ml_feature_platform_<layer>.<table_name>.dq`.
+- Example: `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_orders.dq`.
+- DAGs that depend on `feature_platform` tables must wait for the dependent table's DQ DAG, not for the Spark DAG or Spark task that writes that table.
+
 ## Top-Level Structure
 
 - `.drone.yaml`: Drone CI pipelines for tests, dbt source sync, Airflow submodule sync, and Docker image publishing.
@@ -221,7 +228,7 @@ Airflow DAG:
 - Start date: `2026-05-18`
 - Tags include `spark`, `feature-platform`, `team::search`, `gold`.
 - Sensor task id: `wait_for_silver_sku_group_install_stats`
-- Sensor waits for silver DAG task `getting_sku_group_query_install_stats` with `execution_delta=timedelta(hours=1)`.
+- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` with `execution_delta=timedelta(hours=1)`.
 - Spark task id: `getting_sku_group_query_atc_features`
 - Runs SparkApplication template `fetch_gold_sku_group_query_atc_features.yaml`.
 
@@ -256,8 +263,8 @@ Airflow DAG:
 - Schedule: `0 3 * * *`
 - Start date: `2026-06-01`
 - Tags include `spark`, `feature-platform`, `team::search`, `gold`, `orders`, `atc`.
-- Sensor waits for silver DAG task `feature_platform_sku_group_install_silver_stats_dag.getting_sku_group_query_install_stats` with `execution_delta=timedelta(hours=2)`.
-- Sensor waits for silver DAG task `feature_platform_sku_group_query_search_orders_silver_dag.getting_sku_group_query_search_orders` with `execution_delta=timedelta(hours=2)`.
+- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` with `execution_delta=timedelta(hours=2)`.
+- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` with `execution_delta=timedelta(hours=2)`.
 - Spark task id: `getting_sku_group_query_atc_order_features`
 - Runs SparkApplication template `fetch_gold_sku_group_query_atc_order_features.yaml`.
 
@@ -298,8 +305,8 @@ Airflow DAG:
 - Schedule: `0 3 * * *`
 - Start date: `2026-06-01`
 - Tags include `spark`, `feature-platform`, `team::search`, `gold`, `orders`, `conversion`.
-- Sensor waits for silver DAG task `feature_platform_sku_group_install_silver_stats_dag.getting_sku_group_query_install_stats` with `execution_delta=timedelta(hours=2)`.
-- Sensor waits for silver DAG task `feature_platform_sku_group_query_search_orders_silver_dag.getting_sku_group_query_search_orders` with `execution_delta=timedelta(hours=2)`.
+- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` with `execution_delta=timedelta(hours=2)`.
+- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` with `execution_delta=timedelta(hours=2)`.
 - Spark task id: `getting_sku_group_search_conversion_features`
 - Runs SparkApplication template `fetch_gold_sku_group_search_conversion_features.yaml`.
 
@@ -373,7 +380,7 @@ Airflow DAG:
 - Schedule: `0 2 * * *`
 - Start date: `2026-06-01`
 - Tags include `spark`, `feature-platform`, `team::search`, `gold`, `prices`.
-- Sensor waits for silver DAG task `feature_platform_sku_group_id_prices_silver_dag.getting_sku_group_id_prices` with `execution_delta=timedelta(hours=1)`.
+- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_id_prices.dq` with `execution_delta=timedelta(hours=1)`.
 - Spark task id: `getting_sku_group_price_features`
 - Runs SparkApplication template `fetch_gold_sku_group_price_features.yaml`.
 

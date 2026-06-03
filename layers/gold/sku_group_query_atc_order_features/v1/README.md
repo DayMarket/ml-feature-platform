@@ -15,4 +15,7 @@
 - оставляет пары с `query_skg_uniq_impressions_14 >= 2`;
 - пишет результат в Iceberg через `overwritePartitions()`.
 
-DAG ждет silver DAG-и `feature_platform_sku_group_install_silver_stats_dag` и `feature_platform_sku_group_query_search_orders_silver_dag`.
+DAG ждет DQ DAG-и silver-источников:
+
+- `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`;
+- `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq`.
