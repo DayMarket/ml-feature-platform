@@ -8,6 +8,11 @@ from pyspark.sql import SparkSession
 
 
 COMMENT_LINE_PATTERN = re.compile(r"^\s*--")
+ADD_COLUMN_IF_NOT_EXISTS_PATTERN = re.compile(
+    r"^\s*ALTER\s+TABLE\s+(?P<table>\S+)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+"
+    r"(?P<column>`?[\w]+`?)\s+(?P<definition>.+?)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -155,6 +160,36 @@ def build_spark_session() -> SparkSession:
     )
 
 
+def normalize_identifier(identifier: str) -> str:
+    return identifier.strip().strip("`").lower()
+
+
+def get_existing_columns(spark: SparkSession, table_name: str) -> set[str]:
+    return {
+        normalize_identifier(field.name)
+        for field in spark.table(table_name).schema.fields
+    }
+
+
+def run_statement(spark: SparkSession, statement: str) -> None:
+    add_column_match = ADD_COLUMN_IF_NOT_EXISTS_PATTERN.match(statement)
+    if not add_column_match:
+        spark.sql(statement)
+        return
+
+    table_name = add_column_match.group("table")
+    column_name = normalize_identifier(add_column_match.group("column"))
+    if column_name in get_existing_columns(spark, table_name):
+        print(f"Skip existing column {table_name}.{column_name}")
+        return
+
+    spark_statement = (
+        f"ALTER TABLE {table_name} ADD COLUMN "
+        f"{add_column_match.group('column')} {add_column_match.group('definition')}"
+    )
+    spark.sql(spark_statement)
+
+
 def run_layer_migrations(
     spark: SparkSession,
     config_path: Path,
@@ -176,7 +211,7 @@ def run_layer_migrations(
 
         print(f"Running {migration_path} for {target_table} ({len(statements)} statements)")
         for statement in statements:
-            spark.sql(statement)
+            run_statement(spark, statement)
 
 
 def run_migrations(
