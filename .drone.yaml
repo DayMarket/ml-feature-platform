@@ -41,11 +41,14 @@ steps:
         from_secret: HIVE_METASTORE_URIS
       ICEBERG_WAREHOUSE:
         from_secret: ICEBERG_WAREHOUSE
+      AWS_REGION: ru-central1
+      AWS_DEFAULT_REGION: ru-central1
+      S3_ENDPOINT: http://storage.yandexcloud.net
     commands:
       - echo "=== run pyspark migrations ==="
       - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
       - mkdir -p /tmp/.ivy2/cache /tmp/.ivy2/jars
-      - /opt/spark/bin/spark-submit --conf spark.jars.ivy=/tmp/.ivy2 --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.iceberg:iceberg-aws-bundle:1.5.2 scripts/run_pyspark_migrations.py --repo-root .
+      - /opt/spark/bin/spark-submit --conf spark.jars.ivy=/tmp/.ivy2 --conf spark.driver.extraJavaOptions=-Daws.region=ru-central1 --conf spark.executor.extraJavaOptions=-Daws.region=ru-central1 --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.iceberg:iceberg-aws-bundle:1.5.2 scripts/run_pyspark_migrations.py --repo-root .
     when:
       branch:
         - master

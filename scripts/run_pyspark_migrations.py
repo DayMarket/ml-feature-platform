@@ -122,6 +122,7 @@ def build_spark_session() -> SparkSession:
         "s3a://um-prod-data-platform-landing-layer/",
     )
     s3_endpoint = os.getenv("S3_ENDPOINT", "http://storage.yandexcloud.net")
+    aws_region = os.getenv("AWS_REGION", "ru-central1")
 
     return (
         SparkSession.builder.appName("feature-platform-pyspark-migrations")
@@ -137,7 +138,8 @@ def build_spark_session() -> SparkSession:
         .config("spark.sql.catalog.iceberg.s3.endpoint", s3_endpoint)
         .config("spark.sql.catalog.iceberg.s3.access-key-id", s3_access_key)
         .config("spark.sql.catalog.iceberg.s3.secret-access-key", s3_secret_key)
-        .config("spark.sql.catalog.iceberg.s3.region", "ru-central1")
+        .config("spark.sql.catalog.iceberg.s3.region", aws_region)
+        .config("spark.sql.catalog.iceberg.client.region", aws_region)
         .config("spark.sql.catalog.iceberg.s3.path-style-access", "true")
         .config("spark.hadoop.fs.s3a.endpoint", "storage.yandexcloud.net")
         .config("spark.hadoop.fs.s3a.access.key", s3_access_key)
