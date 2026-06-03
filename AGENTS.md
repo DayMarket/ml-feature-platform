@@ -14,6 +14,7 @@ The repository is organized by data layer under `layers/` and currently contains
 - `silver/sku_group_query_search_orders/v1`: daily search order statistics by query and SKU group.
 - `gold/sku_group_query_atc_features/v1`: daily query and SKU group ATC conversion features built from the silver table.
 - `gold/sku_group_query_atc_order_features/v1`: daily query and SKU group ATC/order conversion features built from silver interaction and search-order tables.
+- `gold/sku_group_search_conversion_features/v1`: daily SKU group search imp-to-order conversion compatibility features.
 - `gold/sku_group_median_sales_7d/v1`: three-hourly median daily sales count over the last 7 days by SKU group.
 - `gold/sku_group_price_features/v1`: daily SKU group price features built from silver price aggregates.
 - `gold/sku_group_price_index_status/v1`: temporary SKU group price index status compatibility feature.
@@ -21,6 +22,11 @@ The repository is organized by data layer under `layers/` and currently contains
 - `gold/feedback_sku_group_id/v1`: daily all-time feedback and rating aggregates by SKU group.
 
 The owning team in configs and DAG metadata is `team:search`.
+
+Layer semantics:
+
+- `silver` contains reusable pre-aggregates and intermediate daily/statistical tables.
+- `gold` contains final feature tables intended for model consumption.
 
 ## Top-Level Structure
 
@@ -276,6 +282,48 @@ Docker/CI image:
 - Drone tag trigger: `refs/tags/spark-gold-sku-group-query-atc-order-features-*`
 - Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-query-atc-order-features`
 - Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-query-atc-order-features:spark-gold-sku-group-query-atc-order-features-v0.1.0`
+
+## Gold SKU Group Search Conversion Features Pipeline
+
+Path: `layers/gold/sku_group_search_conversion_features/v1`
+
+Purpose:
+
+- Compatibility feature set for the previous model's SKU group search conversion features.
+- Produces only `smooth_conv_imp2order_3`, `smooth_conv_imp2order_7`, `smooth_conv_imp2order_14`, `imp2order_3_to_1`, `imp2order_21_to_14`, and `imp2order_30_to_21`.
+
+Airflow DAG:
+
+- DAG id: `feature_platform_sku_group_search_conversion_features_gold_dag`
+- Schedule: `0 3 * * *`
+- Start date: `2026-06-01`
+- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `orders`, `conversion`.
+- Sensor waits for silver DAG task `feature_platform_sku_group_install_silver_stats_dag.getting_sku_group_query_install_stats` with `execution_delta=timedelta(hours=2)`.
+- Sensor waits for silver DAG task `feature_platform_sku_group_query_search_orders_silver_dag.getting_sku_group_query_search_orders` with `execution_delta=timedelta(hours=2)`.
+- Spark task id: `getting_sku_group_search_conversion_features`
+- Runs SparkApplication template `fetch_gold_sku_group_search_conversion_features.yaml`.
+
+Target table config:
+
+- Catalog/schema/table: `iceberg.gold.feature_platform_sku_group_search_conversion_features`
+- Primary key: `date,sku_group_id`
+- Partition: `date`.
+
+Transformation summary:
+
+- Reads search impressions from `iceberg.silver.feature_platform_search_sku_group_id_install_query` with `space = 'SEARCH_RESULTS'`.
+- Reads search generated orders from `iceberg.silver.feature_platform_sku_group_query_search_orders`.
+- Aggregates both sources to `date,sku_group_id`, then builds windows 1, 3, 7, 14, 21, and 30 days.
+- SKU group windows exclude the Airflow `{{ ds }}` day and end at `{{ ds }} - 1`, matching the previous model's behavior.
+- Smooth order conversion uses `(0.003384 + orders) / (0.003384 + 1.402240 + impressions)`.
+- Raw conversion ratios use safe division and return `0.0` for missing or zero denominators.
+- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
+
+Docker/CI image:
+
+- Drone tag trigger: `refs/tags/spark-gold-sku-group-search-conversion-features-*`
+- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-search-conversion-features`
+- Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-search-conversion-features:spark-gold-sku-group-search-conversion-features-v0.1.0`
 
 ## Gold SKU Group Median Sales 7D Pipeline
 
