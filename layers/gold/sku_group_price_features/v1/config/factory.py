@@ -7,6 +7,37 @@ from typing import Any, Dict, Optional
 from airflow.hooks.base import BaseHook
 
 
+def _normalize_team_name(team_value: Any) -> str:
+    team_name = str(team_value or "search")
+    if team_name.startswith("team:"):
+        return team_name.split(":", 1)[1]
+    if team_name.startswith("team::"):
+        return team_name.split("::", 1)[1]
+    return team_name
+
+
+def get_dag_settings() -> Dict[str, str]:
+    config = _get_dag_config()
+    table_meta = config.get("table", {}).get("meta", {})
+    dag_config = config.get("dag", {})
+    alerts_config = config.get("alerts", {})
+
+    dag_team = _normalize_team_name(
+        dag_config.get("team", table_meta.get("team", "search"))
+    )
+    alert_team = _normalize_team_name(alerts_config.get("team", dag_team))
+
+    return {
+        "owner": str(dag_config.get("owner", f"team:{dag_team}")),
+        "team_tag": str(dag_config.get("team_tag", f"team::{dag_team}")),
+        "alert_severity": str(alerts_config.get("severity", "P3")),
+        "alert_team": alert_team,
+        "alert_oncall_webhook_conn_id": str(
+            alerts_config.get("oncall_webhook_conn_id", f"oncall_webhook_{alert_team}")
+        ),
+    }
+
+
 def get_deployment(folder_name: str, deployment_name: str) -> str:
     deployment_content = _read_deployment(folder_name, deployment_name)
     return _fill_arguments(deployment_content, deployment_name)

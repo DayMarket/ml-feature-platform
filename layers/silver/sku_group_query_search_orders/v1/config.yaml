@@ -9,3 +9,11 @@ table:
   primary_key: date,query,sku_group_id
   meta:
     team: team:search
+dag:
+  team: search
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
+

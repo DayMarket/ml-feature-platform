@@ -53,6 +53,7 @@ Each implemented pipeline follows this shape:
 
 - `dag.py`: Airflow DAG definition. Uses `SparkKubernetesOperator` and `config.factory.get_deployment`.
 - `config.yaml`: table metadata used by the DAG factory, CI, and dbt source sync.
+- `config.yaml` may also define `dag.team` and `alerts.*` values used by `dag.py` for Airflow owner, `team::...` tag, and on-call failure callback.
 - `config/resources.yaml`: JSON-formatted resource values for Spark driver/executors and infrastructure placeholders.
 - `config/fetch_*.yaml`: SparkApplication template with placeholders filled at DAG parse/runtime.
 - `config/factory.py`: fills SparkApplication placeholders using `config.yaml`, `resources.yaml`, random suffixes, Airflow connections, and Airflow date macros.
@@ -497,8 +498,9 @@ Docker/CI image:
 ## Airflow and Deployment Details
 
 - DAGs import `send_oncall_notification` from `airflow_commons.helpers.oncall`.
-- Default Airflow owner: `team:search`.
-- Failure callback sends P3 notifications to `oncall_webhook_search`.
+- Airflow owner and the `team::...` DAG tag should be derived from `config.yaml` via `config.factory.get_dag_settings()`, using `dag.team` with fallback to `table.meta.team`.
+- Failure callback alert settings should be derived from `config.yaml` via `config.factory.get_dag_settings()`, using `alerts.team`, `alerts.severity`, and `alerts.oncall_webhook_conn_id`.
+- Current default/fallback values are owner `team:search`, team tag `team::search`, severity `P3`, and webhook `oncall_webhook_search`.
 - Spark namespace: `svc-data-spark-jobs`.
 - Kubernetes connection id: `spark_k8s`.
 - SparkApplication placeholders are filled by `config/factory.py`.

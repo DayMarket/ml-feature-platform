@@ -12,21 +12,23 @@ from airflow_commons.helpers.oncall import send_oncall_notification
 DAG_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, DAG_DIR)
 
-from config.factory import get_deployment
+from config.factory import get_dag_settings, get_deployment
+
+dag_settings = get_dag_settings()
 
 logger = logging.getLogger("airflow.task")
 logger.setLevel("INFO")
 
 default_args = {
-    "owner": "team:search",
+    "owner": dag_settings["owner"],
     "depends_on_past": False,
     "trigger_rule": "all_success",
     "retries": 3,
     "retry_delay": timedelta(minutes=1),
     "on_failure_callback": send_oncall_notification(
-        severity="P3",
-        team="search",
-        oncall_webhook_conn_id="oncall_webhook_search",
+        severity=dag_settings["alert_severity"],
+        team=dag_settings["alert_team"],
+        oncall_webhook_conn_id=dag_settings["alert_oncall_webhook_conn_id"],
     ),
 }
 
@@ -34,7 +36,7 @@ default_args = {
 @dag(
     default_args=default_args,
     max_active_runs=1,
-    tags=["spark", "feature-platform", "team::search", "silver"],
+    tags=["spark", "feature-platform", dag_settings["team_tag"], "silver"],
     is_paused_upon_creation=True,
     schedule_interval="0 1 * * *",
     start_date=datetime(2026, 2, 1, 0, 0, 0),
