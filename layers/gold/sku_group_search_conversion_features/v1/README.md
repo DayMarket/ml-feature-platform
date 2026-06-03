@@ -35,3 +35,5 @@ skg_conv_imp2order_d = skg_uniq_orders_d / skg_uniq_impressions_d
 ```
 
 Деление оставляет Spark-семантику `NULL` для нулевого или отсутствующего знаменателя. Это важно для совместимости признаков `smooth_conv_imp2order_3`, `smooth_conv_imp2order_7`, `smooth_conv_imp2order_14`, `imp2order_3_to_1`, `imp2order_21_to_14` и `imp2order_30_to_21` со старым feature-store пайплайном, где raw ratio не подменялись на `0.0`.
+
+Пайплайн использует новый способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_search_conversion_features/v1/entrypoints/get_sku_group_search_conversion_features.py`, поэтому отдельный Docker image для этой сущности не собирается.

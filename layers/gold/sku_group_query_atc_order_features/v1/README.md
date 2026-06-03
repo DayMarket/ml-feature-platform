@@ -24,3 +24,5 @@ DAG ждет DQ DAG-и silver-источников:
 
 - `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`;
 - `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq`.
+
+Пайплайн использует новый способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_query_atc_order_features/v1/entrypoints/get_sku_group_query_atc_order_features.py`, поэтому отдельный Docker image для этой сущности не собирается.

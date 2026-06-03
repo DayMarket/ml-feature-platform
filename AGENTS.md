@@ -67,9 +67,9 @@ Each implemented pipeline follows this shape:
 - `entrypoint.sh`: Spark container entrypoint script.
 - `pyproject.toml`: Poetry package metadata. Python is pinned to `3.9.13`, PySpark to `3.4.1`.
 
-Exception:
+Exceptions:
 
-- `gold/sku_group_median_sales_7d/v1` is the pilot for the git-sync deployment approach. It uses the default Spark image and runs `mainApplicationFile` from `/git/repo/...`, so this entity does not have its own Dockerfile, `entrypoint.sh`, or `pyproject.toml`.
+- `silver/sku_group_query_search_orders/v1`, `gold/sku_group_query_atc_order_features/v1`, `gold/sku_group_search_conversion_features/v1`, and `gold/sku_group_median_sales_7d/v1` use the git-sync deployment approach. They use the default Spark image and run `mainApplicationFile` from `/git/repo/...`, so these entities do not have their own Dockerfile, `entrypoint.sh`, or `pyproject.toml`.
 
 ## Silver Pipeline
 
@@ -211,11 +211,13 @@ Transformation summary:
 - `orders_generated` is intentionally counted as distinct `order_item_id` for backward compatibility with legacy `query_skg_uniq_orders_*` gold features.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
-Docker/CI image:
+Deployment:
 
-- Drone tag trigger: `refs/tags/spark-silver-sku-group-query-search-orders-*`
-- Published image repo: `cr.yandex/de-common/pyspark-silver-sku-group-query-search-orders`
-- Current SparkApplication image in config: `cr.yandex/de-common/pyspark-silver-sku-group-query-search-orders:spark-silver-sku-group-query-search-orders-v0.1.0`
+- Uses default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
+- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/silver/sku_group_query_search_orders/v1/entrypoints/get_sku_group_query_search_orders.py`.
+- Driver pod uses a `git-sync` initContainer to clone `https://github.com/DayMarket/ml-feature-platform/` into `/git/repo`.
+- Git branch is controlled by Airflow variable `gitsync_branch`.
+- This entity has no per-entity Docker image build in Drone; code changes are picked up from git on the next SparkApplication run.
 
 Resources note:
 
@@ -293,11 +295,13 @@ Transformation summary:
 - Applies legacy pairwise carry-forward: the current calculation is unioned with previous target-table partitions for 90 days, and the latest available row by `(query, sku_group_id)` is written to the current partition.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
-Docker/CI image:
+Deployment:
 
-- Drone tag trigger: `refs/tags/spark-gold-sku-group-query-atc-order-features-*`
-- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-query-atc-order-features`
-- Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-query-atc-order-features:spark-gold-sku-group-query-atc-order-features-v0.1.0`
+- Uses default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
+- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_query_atc_order_features/v1/entrypoints/get_sku_group_query_atc_order_features.py`.
+- Driver pod uses a `git-sync` initContainer to clone `https://github.com/DayMarket/ml-feature-platform/` into `/git/repo`.
+- Git branch is controlled by Airflow variable `gitsync_branch`.
+- This entity has no per-entity Docker image build in Drone; code changes are picked up from git on the next SparkApplication run.
 
 ## Gold SKU Group Search Conversion Features Pipeline
 
@@ -335,11 +339,13 @@ Transformation summary:
 - Raw conversion ratios use Spark division semantics and keep `NULL` for missing or zero denominators, matching the legacy feature-store behavior more closely.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
-Docker/CI image:
+Deployment:
 
-- Drone tag trigger: `refs/tags/spark-gold-sku-group-search-conversion-features-*`
-- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-search-conversion-features`
-- Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-search-conversion-features:spark-gold-sku-group-search-conversion-features-v0.1.0`
+- Uses default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
+- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_search_conversion_features/v1/entrypoints/get_sku_group_search_conversion_features.py`.
+- Driver pod uses a `git-sync` initContainer to clone `https://github.com/DayMarket/ml-feature-platform/` into `/git/repo`.
+- Git branch is controlled by Airflow variable `gitsync_branch`.
+- This entity has no per-entity Docker image build in Drone; code changes are picked up from git on the next SparkApplication run.
 
 ## Gold SKU Group Median Sales 7D Pipeline
 
