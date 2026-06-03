@@ -29,7 +29,7 @@ def _load_migration_query(migration_name: str) -> str:
 
 
 def _safe_div(num: Column, den: Column) -> Column:
-    return F.when((den.isNull()) | (den == 0), F.lit(0.0)).otherwise(num / den)
+    return num / den
 
 
 def _window_bounds(run_date: str) -> tuple[str, str, dict[int, str]]:

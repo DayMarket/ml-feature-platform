@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql.column import Column
 from pyspark.sql import functions as F
 
@@ -9,6 +9,8 @@ from job.entities import Arguments
 
 
 WINDOWS = (1, 3, 7, 14, 21, 30, 60, 90)
+LEGACY_PAIRWISE_LOOKBACK_DAYS = 90
+STOP_WORDS_PATH = "s3a://um-prod-feature-store/stop_words.txt"
 SELECTED_COLUMNS = (
     "date",
     "query",
@@ -51,7 +53,52 @@ def _load_migration_query(migration_name: str) -> str:
 
 
 def _safe_div(num: Column, den: Column) -> Column:
-    return F.when((den.isNull()) | (den == 0), F.lit(0.0)).otherwise(num / den)
+    return num / den
+
+
+def _load_stopwords(spark: SparkSession) -> list[str]:
+    try:
+        stopwords_text = "\n".join(
+            row["value"] for row in spark.read.text(STOP_WORDS_PATH).collect()
+        )
+    except Exception as error:
+        print(f"Failed to load stop words from {STOP_WORDS_PATH}: {error}")
+        return []
+
+    return [
+        word.strip().lower().replace("ё", "е")
+        for word in stopwords_text.replace("\r", "\n").split("\n")
+        if word.strip()
+    ]
+
+
+def _base_query_expr(query_col: Column, stopwords: list[str]) -> Column:
+    normalized_query = F.trim(
+        F.regexp_replace(
+            F.regexp_replace(F.lower(query_col), "ё", "е"),
+            r"\s+",
+            " ",
+        )
+    )
+    tokens = F.split(F.regexp_replace(normalized_query, r"[^0-9a-zа-я]+", " "), r"\s+")
+    tokens = F.filter(tokens, lambda token: token != F.lit(""))
+    if stopwords:
+        tokens = F.array_except(
+            tokens,
+            F.array(*[F.lit(word) for word in sorted(set(stopwords))]),
+        )
+    return F.concat_ws(" ", F.sort_array(F.array_distinct(tokens)))
+
+
+def _normalize_query_frame(
+    frame: DataFrame,
+    stopwords: list[str],
+) -> DataFrame:
+    return (
+        frame.withColumn("query", _base_query_expr(F.col("query"), stopwords))
+        .filter(F.col("query").isNotNull())
+        .filter(F.col("query") != F.lit(""))
+    )
 
 
 def _window_start_dates(run_date: str) -> dict[int, str]:
@@ -101,29 +148,40 @@ def build_sku_group_query_atc_order_features(
 ) -> DataFrame:
     window_dates = _window_start_dates(run_date)
     d90 = window_dates[90]
+    stopwords = _load_stopwords(spark)
 
-    events = (
-        spark.table("iceberg.silver.feature_platform_search_sku_group_id_install_query")
-        .filter((F.col("date") >= F.lit(d90)) & (F.col("date") <= F.lit(run_date)))
-        .filter(F.col("space") == F.lit("SEARCH_RESULTS"))
-        .select(
-            F.col("date"),
-            F.col("uniqs").alias("query"),
-            F.col("sku_group_id").cast("long").alias("sku_group_id"),
-            F.col("sum_atc").cast("double").alias("sum_atc"),
-            F.col("sum_impressions").cast("double").alias("sum_impressions"),
+    events = _normalize_query_frame(
+        (
+            spark.table("iceberg.silver.feature_platform_search_sku_group_id_install_query")
+            .filter((F.col("date") >= F.lit(d90)) & (F.col("date") <= F.lit(run_date)))
+            .filter(F.col("space") == F.lit("SEARCH_RESULTS"))
+            .select(
+                F.col("date"),
+                F.col("uniqs").alias("query"),
+                F.col("sku_group_id").cast("long").alias("sku_group_id"),
+                F.col("sum_atc").cast("double").alias("sum_atc"),
+                F.col("sum_impressions").cast("double").alias("sum_impressions"),
+            )
+            .filter(F.col("query").isNotNull())
         )
+        ,
+        stopwords,
     )
 
-    orders = (
-        spark.table("iceberg.silver.feature_platform_sku_group_query_search_orders")
-        .filter((F.col("date") >= F.lit(d90)) & (F.col("date") <= F.lit(run_date)))
-        .select(
-            F.col("date"),
-            F.col("query"),
-            F.col("sku_group_id").cast("long").alias("sku_group_id"),
-            F.col("orders_generated").cast("double").alias("orders_generated"),
+    orders = _normalize_query_frame(
+        (
+            spark.table("iceberg.silver.feature_platform_sku_group_query_search_orders")
+            .filter((F.col("date") >= F.lit(d90)) & (F.col("date") <= F.lit(run_date)))
+            .select(
+                F.col("date"),
+                F.col("query"),
+                F.col("sku_group_id").cast("long").alias("sku_group_id"),
+                F.col("orders_generated").cast("double").alias("orders_generated"),
+            )
+            .filter(F.col("query").isNotNull())
         )
+        ,
+        stopwords,
     )
 
     events_agg = _build_events_agg(events, window_dates)
@@ -190,10 +248,48 @@ def build_sku_group_query_atc_order_features(
             _safe_div(F.col("query_skg_conv_imp2order_90"), F.col("query_skg_conv_imp2order_60")),
         )
         .withColumn("date", F.lit(run_date).cast("date"))
-        .filter(F.col("query_skg_uniq_impressions_14") >= 2)
     )
 
     return features.select(*SELECTED_COLUMNS)
+
+
+def _apply_latest_known_pairwise_features(
+    spark: SparkSession,
+    current_features: DataFrame,
+    run_date: str,
+    target_table: str,
+) -> DataFrame:
+    if not spark.catalog.tableExists(target_table):
+        return current_features
+
+    start_date = (
+        datetime.strptime(run_date, "%Y-%m-%d").date()
+        - timedelta(days=LEGACY_PAIRWISE_LOOKBACK_DAYS)
+    ).isoformat()
+
+    history = (
+        spark.table(target_table)
+        .filter((F.col("date") >= F.lit(start_date).cast("date")) & (F.col("date") < F.lit(run_date).cast("date")))
+        .select(*SELECTED_COLUMNS)
+    )
+
+    ranked = (
+        current_features.select(*SELECTED_COLUMNS)
+        .unionByName(history)
+        .withColumn(
+            "_rn",
+            F.row_number().over(
+                Window.partitionBy("query", "sku_group_id").orderBy(F.col("date").desc())
+            ),
+        )
+    )
+
+    return (
+        ranked.filter(F.col("_rn") == 1)
+        .drop("_rn")
+        .withColumn("date", F.lit(run_date).cast("date"))
+        .select(*SELECTED_COLUMNS)
+    )
 
 
 def save_sku_group_query_atc_order_features(
@@ -205,7 +301,13 @@ def save_sku_group_query_atc_order_features(
         migration_query = _load_migration_query("create_table.sql")
         spark.sql(migration_query.format(target_table=target_table))
 
-    features = build_sku_group_query_atc_order_features(spark, run_date)
+    current_features = build_sku_group_query_atc_order_features(spark, run_date)
+    features = _apply_latest_known_pairwise_features(
+        spark,
+        current_features,
+        run_date,
+        target_table,
+    )
     features.writeTo(target_table).overwritePartitions()
 
 

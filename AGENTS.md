@@ -208,6 +208,7 @@ Transformation summary:
 - Uses Airflow `{{ ds }} 00:00:00` as `target_date`, `{{ next_ds }} 00:00:00` as `end_date`, and `target_date - INTERVAL 20 DAYS` for attribution/order lookback.
 - Filters search attribution to `SHOP_SEARCH_RESULTS`, `COLLECTION_SEARCH_RESULTS`, `SEARCH`, and `SEARCH_RESULTS`.
 - Aggregates generated, completed, and returned order metrics by `date`, `query`, and `sku_group_id`.
+- `orders_generated` is intentionally counted as distinct `order_item_id` for backward compatibility with legacy `query_skg_uniq_orders_*` gold features.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
 Docker/CI image:
@@ -285,9 +286,11 @@ Transformation summary:
 - Reads search interaction stats from `iceberg.silver.feature_platform_search_sku_group_id_install_query`.
 - Reads search order stats from `iceberg.silver.feature_platform_sku_group_query_search_orders`.
 - Uses only `space = 'SEARCH_RESULTS'`.
+- Normalizes query text in the legacy-compatible style: lower-case, replace `ё` with `е`, collapse whitespace, trim, filter empty values, tokenize, remove stopwords from `s3a://um-prod-feature-store/stop_words.txt`, deduplicate tokens, sort them, and join back to `base_query`.
 - Builds 1, 3, 7, 14, 21, 30, 60, and 90 day windows ending at Airflow `{{ ds }}`.
 - Produces order counts, `impression -> atc` conversions, `impression -> order` conversions, and cross-window conversion ratios.
-- Filters output to pairs where `query_skg_uniq_impressions_14 >= 2`.
+- Uses Spark division semantics for conversions and ratios instead of replacing missing or zero denominators with `0.0`; this keeps legacy-like `NULL` behavior for unstable ratio features.
+- Applies legacy pairwise carry-forward: the current calculation is unioned with previous target-table partitions for 90 days, and the latest available row by `(query, sku_group_id)` is written to the current partition.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
 Docker/CI image:
@@ -329,7 +332,7 @@ Transformation summary:
 - Aggregates both sources to `date,sku_group_id`, then builds windows 1, 3, 7, 14, 21, and 30 days.
 - SKU group windows exclude the Airflow `{{ ds }}` day and end at `{{ ds }} - 1`, matching the previous model's behavior.
 - Smooth order conversion uses `(0.003384 + orders) / (0.003384 + 1.402240 + impressions)`.
-- Raw conversion ratios use safe division and return `0.0` for missing or zero denominators.
+- Raw conversion ratios use Spark division semantics and keep `NULL` for missing or zero denominators, matching the legacy feature-store behavior more closely.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
 Docker/CI image:

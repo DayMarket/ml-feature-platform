@@ -44,7 +44,8 @@ steps:
     commands:
       - echo "=== run pyspark migrations ==="
       - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
-      - /opt/spark/bin/spark-submit --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.iceberg:iceberg-aws-bundle:1.5.2 scripts/run_pyspark_migrations.py --repo-root .
+      - mkdir -p /tmp/.ivy2/cache /tmp/.ivy2/jars
+      - /opt/spark/bin/spark-submit --conf spark.jars.ivy=/tmp/.ivy2 --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.iceberg:iceberg-aws-bundle:1.5.2 scripts/run_pyspark_migrations.py --repo-root .
     when:
       branch:
         - master

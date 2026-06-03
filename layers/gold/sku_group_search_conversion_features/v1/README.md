@@ -34,4 +34,4 @@ Raw ratio-признаки считаются как отношение обыч
 skg_conv_imp2order_d = skg_uniq_orders_d / skg_uniq_impressions_d
 ```
 
-Если знаменатель равен нулю или отсутствует, конверсия и ratio записываются как `0.0`.
+Деление оставляет Spark-семантику `NULL` для нулевого или отсутствующего знаменателя. Это важно для совместимости признаков `smooth_conv_imp2order_3`, `smooth_conv_imp2order_7`, `smooth_conv_imp2order_14`, `imp2order_3_to_1`, `imp2order_21_to_14` и `imp2order_30_to_21` со старым feature-store пайплайном, где raw ratio не подменялись на `0.0`.

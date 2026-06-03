@@ -4,6 +4,8 @@
 
 Целевая таблица: `iceberg.silver.feature_platform_sku_group_query_search_orders`.
 
+`orders_generated` считается как количество уникальных `order_item_id` из поисковой атрибуции. Это сохранено намеренно для обратной совместимости gold-признаков `query_skg_uniq_orders_*` со старым feature-store подходом.
+
 Основная логика:
 
 - читает поисковую атрибуцию из `iceberg.silver.order_items_attribution`;

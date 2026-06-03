@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     date DATE COMMENT 'Дата партиционирования, соответствует ds расчета',
     query STRING COMMENT 'Текст поискового запроса',
     sku_group_id BIGINT COMMENT 'ID sku group',
-    orders_generated BIGINT COMMENT 'Количество сгенерированных заказов из поиска',
+    orders_generated BIGINT COMMENT 'Количество уникальных order_item_id, сгенерированных из поиска',
     items_generated BIGINT COMMENT 'Количество сгенерированных товарных позиций из поиска',
     gmv_generated DOUBLE COMMENT 'GMV сгенерированных заказов из поиска',
     items_completed BIGINT COMMENT 'Количество завершенных товарных позиций из поиска',

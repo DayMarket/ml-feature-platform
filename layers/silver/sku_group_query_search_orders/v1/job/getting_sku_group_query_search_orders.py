@@ -120,9 +120,8 @@ generated_stats AS (
     SELECT
         p.target_date AS date,
         sk.sku_group_id,
-        oi.order_id,
         oi.order_item_id,
-        COUNT(DISTINCT oi.order_id) AS orders_generated,
+        COUNT(DISTINCT oi.order_item_id) AS orders_generated,
         SUM(oi.item_quantity) AS items_generated,
         SUM(oi.gmv_generated) AS gmv_generated
     FROM iceberg.silver.order_items oi
@@ -135,8 +134,7 @@ generated_stats AS (
     GROUP BY
         sk.sku_group_id,
         p.target_date,
-        oi.order_item_id,
-        oi.order_id
+        oi.order_item_id
 ),
 search_generated_orders AS (
     SELECT
