@@ -41,6 +41,7 @@ DQ dependency semantics:
 - `.github/CODEOWNERS`: repository code owners.
 - `ci_config.yaml`: dbt source sync settings.
 - `ci_test/test_script.py`: lightweight CI validation for required files, table configs, and migration CREATE TABLE statements.
+- `scripts/run_pyspark_migrations.py`: CI helper for executing repository SQL migrations through PySpark after a merge to `master`.
 - `scripts/sync_dbt_sources.py`: CI helper that discovers layer `config.yaml` table definitions and publishes missing dbt source entries to the dbt repository.
 - `layers/`: versioned feature pipelines grouped by data layer.
 - `docs/`: currently empty.
@@ -61,10 +62,14 @@ Each implemented pipeline follows this shape:
 - `job/entities.py`: dataclass for runtime arguments.
 - `job/getting_*.py`: main PySpark transformation and write logic.
 - `entrypoints/*.py`: executable Spark entrypoint that creates `SparkSession`, parses args, calls `job.run`, and stops Spark.
-- `migrations/create_table.sql`: Iceberg table DDL used when the target table does not exist.
+- `migrations/create_table.sql`: Iceberg table DDL. Most existing Spark jobs still run it when the target table does not exist; `gold/sku_group_median_sales_7d/v1` is the pilot where the migration is executed by CI after merge to `master` instead of at job runtime.
 - `Dockerfile`: builds the wheel, installs Spark 3.4.1 / Java 11, copies entrypoints, and prepares the Spark-on-Kubernetes image.
 - `entrypoint.sh`: Spark container entrypoint script.
 - `pyproject.toml`: Poetry package metadata. Python is pinned to `3.9.13`, PySpark to `3.4.1`.
+
+Exception:
+
+- `gold/sku_group_median_sales_7d/v1` is the pilot for the git-sync deployment approach. It uses the default Spark image and runs `mainApplicationFile` from `/git/repo/...`, so this entity does not have its own Dockerfile, `entrypoint.sh`, or `pyproject.toml`.
 
 ## Silver Pipeline
 
@@ -365,11 +370,13 @@ Important implementation note:
 
 - This layer's `config/factory.py` intentionally injects `data_interval_start` and `data_interval_end` instead of `{{ ds }}` / `{{ next_ds }}` so three-hourly runs use the actual interval boundaries.
 
-Docker/CI image:
+Deployment:
 
-- Drone tag trigger: `refs/tags/spark-gold-sku-group-median-sales-7d-*`
-- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-median-sales-7d`
-- Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-median-sales-7d:spark-gold-sku-group-median-sales-7d-v0.1.0`
+- Uses default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
+- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_median_sales_7d/v1/entrypoints/get_sku_group_median_sales_7d.py`.
+- Driver pod uses a `git-sync` initContainer to clone `https://github.com/DayMarket/ml-feature-platform/` into `/git/repo`.
+- Git branch is controlled by Airflow variable `gitsync_branch`.
+- This entity has no per-entity Docker image build in Drone; code changes are picked up from git on the next SparkApplication run.
 
 ## Gold SKU Group Price Features Pipeline
 
@@ -518,8 +525,19 @@ Docker/CI image:
 Drone has three main responsibilities:
 
 - Run `ci_test/test_script.py`.
+- Run all repository SQL migrations through PySpark on `master` push after merge.
 - Run `scripts/sync_dbt_sources.py` to create/update dbt source entries for tables declared in layer `config.yaml` files.
 - Sync the corresponding submodule reference in `DayMarket/airflow-dags`.
+
+PySpark migration CI step:
+
+- Runs only for `branch: master` and `event: push`, so migrations are not applied from PR checks.
+- Uses default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
+- Runs `scripts/run_pyspark_migrations.py --repo-root .` through `spark-submit` and discovers every `layers/**/config.yaml` that has SQL files under `migrations/`.
+- Reads Spark/Iceberg settings from `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `HIVE_METASTORE_URIS`, and optionally `ICEBERG_WAREHOUSE`.
+- Substitutes `{target_table}` with the Spark table name from `config.yaml`, for example `iceberg.gold.feature_platform_sku_group_median_sales_7d`.
+- Runs `create_table.sql` first for each entity, then the remaining migrations in filename order.
+- Validates idempotency before execution: `CREATE TABLE` must use `IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN` must use `IF NOT EXISTS`, and destructive `DROP`/`DELETE`/`TRUNCATE` statements are rejected.
 
 `ci_config.yaml` configures dbt source sync:
 

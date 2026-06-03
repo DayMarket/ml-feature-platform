@@ -41,6 +41,13 @@ def main() -> int:
 
     print_created_tables()
 
+    migration_errors = validate_migrations_are_idempotent(Path("."))
+    if migration_errors:
+        print("Non-idempotent migrations:")
+        for error in migration_errors:
+            print(f"- {error}")
+        return 1
+
     print("Test step completed successfully")
     return 0
 
@@ -75,6 +82,47 @@ def find_created_tables(repo_root: Path) -> list[tuple[str, str]]:
                 )
             )
     return created_tables
+
+
+def validate_migrations_are_idempotent(repo_root: Path) -> list[str]:
+    errors = []
+    for migration_path in sorted(repo_root.glob("layers/**/migrations/*.sql")):
+        statements = split_sql(migration_path.read_text(encoding="utf-8"))
+        for statement in statements:
+            normalized = " ".join(statement.split()).upper()
+            if normalized.startswith("CREATE TABLE") and not normalized.startswith(
+                "CREATE TABLE IF NOT EXISTS"
+            ):
+                errors.append(
+                    f"{migration_path}: CREATE TABLE must use IF NOT EXISTS"
+                )
+            if normalized.startswith("ALTER TABLE") and " ADD COLUMN " in normalized:
+                if " ADD COLUMN IF NOT EXISTS " not in normalized:
+                    errors.append(
+                        f"{migration_path}: ADD COLUMN must use IF NOT EXISTS"
+                    )
+            if normalized.startswith(("DROP ", "DELETE ", "TRUNCATE ")):
+                errors.append(f"{migration_path}: destructive statement is not allowed")
+    return errors
+
+
+def split_sql(sql: str) -> list[str]:
+    statements = []
+    current_lines = []
+    for line in sql.splitlines():
+        if line.lstrip().startswith("--"):
+            continue
+        current_lines.append(line)
+        if line.rstrip().endswith(";"):
+            statement = "\n".join(current_lines).strip().rstrip(";").strip()
+            if statement:
+                statements.append(statement)
+            current_lines = []
+
+    tail_statement = "\n".join(current_lines).strip()
+    if tail_statement:
+        statements.append(tail_statement)
+    return statements
 
 
 def normalize_table_name(table_name: str) -> str:

@@ -39,7 +39,10 @@ def _ensure_table_schema(spark: SparkSession, target_table: str) -> None:
         return
 
     for statement in _load_migration_statements("20260602_add_price_min_max_columns.sql"):
-        column_name = statement.split(" ADD COLUMN ", 1)[1].split(" ", 1)[0].lower()
+        column_definition = statement.split(" ADD COLUMN ", 1)[1]
+        column_name = (
+            column_definition.replace("IF NOT EXISTS ", "", 1).split(" ", 1)[0].lower()
+        )
         if column_name in missing_columns:
             spark.sql(statement.format(target_table=target_table))
 
