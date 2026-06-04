@@ -41,6 +41,7 @@ DQ dependency semantics:
 - `.github/CODEOWNERS`: repository code owners.
 - `ci_config.yaml`: dbt source sync settings.
 - `ci_test/test_script.py`: lightweight CI validation for required files, table configs, and migration CREATE TABLE statements.
+- `ci_test/test_sync_dbt_sources.py`: regression test for schema-aware dbt source placement and repair.
 - `scripts/run_pyspark_migrations.py`: CI helper for executing repository SQL migrations through PySpark after a merge to `master`.
 - `scripts/validate_ranking_upload_configs.py`: validates ranking upload feature groups against source table configs and migration columns.
 - `scripts/sync_dbt_sources.py`: CI helper that discovers layer `config.yaml` table definitions and publishes missing dbt source entries to the dbt repository.
@@ -559,6 +560,7 @@ Airflow DAG:
 Deployment:
 
 - Spark job code and `config.yaml` are delivered through `git-sync`.
+- The ranking upload uses a Python UDF for protobuf serialization, so both driver and executor pods run `git-sync`; executors receive `/git/repo/upload/ranking_features/v1` through `spark.executorEnv.PYTHONPATH`.
 - The shared image `cr.yandex/de-common/pyspark-feature-platform-ranking-upload` contains `ranking-python-client` and the Kafka truststore.
 - Code or config-only changes do not require rebuilding the image. Dependency or truststore changes do.
 - Drone image tag trigger: `refs/tags/spark-feature-platform-ranking-upload-*`.
@@ -636,6 +638,9 @@ PySpark migration CI step:
 
 - Discovers all `layers/**/config.yaml` files with `table` metadata.
 - Requires `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`.
+- Creates dbt source names from each table's effective schema: `ml_feature_platform_<schema>`.
+- Keeps source tables separated by schema and uses an existing source file for that schema when available, otherwise creates `sources_<schema>.yaml`.
+- Removes repository-managed tables found under the wrong dbt source schema and adds them back under their configured schema in the same generated PR.
 - Adds dbt tests:
   - `dbt_utils.unique_combination_of_columns` over the primary key.
   - `not_null` for each primary key column.

@@ -29,6 +29,7 @@ steps:
       - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
       - echo "commit=$DRONE_COMMIT_SHA"
       - python ci_test/test_script.py
+      - python ci_test/test_sync_dbt_sources.py
 
   - name: validate ranking upload configs
     image: python:3.11-slim
