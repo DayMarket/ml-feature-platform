@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from pyspark.sql import DataFrame, SparkSession, Window
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.column import Column
 from pyspark.sql import functions as F
 
@@ -9,7 +9,6 @@ from job.entities import Arguments
 
 
 WINDOWS = (1, 3, 7, 14, 21, 30, 60, 90)
-LEGACY_PAIRWISE_LOOKBACK_DAYS = 90
 STOP_WORDS_PATH = "s3a://um-prod-feature-store/stop_words.txt"
 SELECTED_COLUMNS = (
     "date",
@@ -187,10 +186,12 @@ def build_sku_group_query_atc_order_features(
     events_agg = _build_events_agg(events, window_dates)
     orders_agg = _build_orders_agg(orders, window_dates)
 
-    features = events_agg.join(orders_agg, on=["query", "sku_group_id"], how="full")
+    features = events_agg.join(orders_agg, on=["query", "sku_group_id"], how="left")
     for column_name in features.columns:
         if column_name not in ("query", "sku_group_id"):
             features = features.withColumn(column_name, F.coalesce(F.col(column_name), F.lit(0.0)))
+
+    features = features.filter(F.col("query_skg_uniq_impressions_14") >= F.lit(2.0))
 
     for window in WINDOWS:
         features = features.withColumn(
@@ -253,45 +254,6 @@ def build_sku_group_query_atc_order_features(
     return features.select(*SELECTED_COLUMNS)
 
 
-def _apply_latest_known_pairwise_features(
-    spark: SparkSession,
-    current_features: DataFrame,
-    run_date: str,
-    target_table: str,
-) -> DataFrame:
-    if not spark.catalog.tableExists(target_table):
-        return current_features
-
-    start_date = (
-        datetime.strptime(run_date, "%Y-%m-%d").date()
-        - timedelta(days=LEGACY_PAIRWISE_LOOKBACK_DAYS)
-    ).isoformat()
-
-    history = (
-        spark.table(target_table)
-        .filter((F.col("date") >= F.lit(start_date).cast("date")) & (F.col("date") < F.lit(run_date).cast("date")))
-        .select(*SELECTED_COLUMNS)
-    )
-
-    ranked = (
-        current_features.select(*SELECTED_COLUMNS)
-        .unionByName(history)
-        .withColumn(
-            "_rn",
-            F.row_number().over(
-                Window.partitionBy("query", "sku_group_id").orderBy(F.col("date").desc())
-            ),
-        )
-    )
-
-    return (
-        ranked.filter(F.col("_rn") == 1)
-        .drop("_rn")
-        .withColumn("date", F.lit(run_date).cast("date"))
-        .select(*SELECTED_COLUMNS)
-    )
-
-
 def save_sku_group_query_atc_order_features(
     spark: SparkSession,
     run_date: str,
@@ -301,13 +263,7 @@ def save_sku_group_query_atc_order_features(
         migration_query = _load_migration_query("create_table.sql")
         spark.sql(migration_query.format(target_table=target_table))
 
-    current_features = build_sku_group_query_atc_order_features(spark, run_date)
-    features = _apply_latest_known_pairwise_features(
-        spark,
-        current_features,
-        run_date,
-        target_table,
-    )
+    features = build_sku_group_query_atc_order_features(spark, run_date)
     features.writeTo(target_table).overwritePartitions()
 
 

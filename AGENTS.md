@@ -290,9 +290,11 @@ Transformation summary:
 - Uses only `space = 'SEARCH_RESULTS'`.
 - Normalizes query text in the legacy-compatible style: lower-case, replace `ё` with `е`, collapse whitespace, trim, filter empty values, tokenize, remove stopwords from `s3a://um-prod-feature-store/stop_words.txt`, deduplicate tokens, sort them, and join back to `base_query`.
 - Builds 1, 3, 7, 14, 21, 30, 60, and 90 day windows ending at Airflow `{{ ds }}`.
+- Uses interaction pairs as the output key base and left-joins order aggregates.
+- Keeps only pairs where `query_skg_uniq_impressions_14 >= 2`, matching the legacy pairwise filter.
 - Produces order counts, `impression -> atc` conversions, `impression -> order` conversions, and cross-window conversion ratios.
 - Uses Spark division semantics for conversions and ratios instead of replacing missing or zero denominators with `0.0`; this keeps legacy-like `NULL` behavior for unstable ratio features.
-- Applies legacy pairwise carry-forward: the current calculation is unioned with previous target-table partitions for 90 days, and the latest available row by `(query, sku_group_id)` is written to the current partition.
+- Builds each daily snapshot from silver sources and does not carry rows forward from previous target-table partitions.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
 Deployment:
