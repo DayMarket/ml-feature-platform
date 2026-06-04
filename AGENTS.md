@@ -292,6 +292,7 @@ Transformation summary:
 - Builds 1, 3, 7, 14, 21, 30, 60, and 90 day windows ending at Airflow `{{ ds }}`.
 - Uses interaction pairs as the output key base and left-joins order aggregates.
 - Keeps only pairs where `query_skg_uniq_impressions_14 >= 2`, matching the legacy pairwise filter.
+- Excludes pairs with no ATC and no orders in the 90-day window because all final features for those pairs are zero.
 - Produces order counts, `impression -> atc` conversions, `impression -> order` conversions, and cross-window conversion ratios.
 - Uses Spark division semantics for conversions and ratios instead of replacing missing or zero denominators with `0.0`; this keeps legacy-like `NULL` behavior for unstable ratio features.
 - Builds each daily snapshot from silver sources and does not carry rows forward from previous target-table partitions.

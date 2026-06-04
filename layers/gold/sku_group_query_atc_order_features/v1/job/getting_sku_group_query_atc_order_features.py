@@ -192,6 +192,10 @@ def build_sku_group_query_atc_order_features(
             features = features.withColumn(column_name, F.coalesce(F.col(column_name), F.lit(0.0)))
 
     features = features.filter(F.col("query_skg_uniq_impressions_14") >= F.lit(2.0))
+    features = features.filter(
+        (F.col("query_skg_uniq_atcs_90") > F.lit(0.0))
+        | (F.col("query_skg_uniq_orders_90") > F.lit(0.0))
+    )
 
     for window in WINDOWS:
         features = features.withColumn(
