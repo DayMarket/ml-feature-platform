@@ -563,6 +563,16 @@ Deployment:
 - Code or config-only changes do not require rebuilding the image. Dependency or truststore changes do.
 - Drone image tag trigger: `refs/tags/spark-feature-platform-ranking-upload-*`.
 
+One-time PySpark image build for non-standard libraries:
+
+- Use a dedicated or shared PySpark image when a job imports a Python library that is not present in the default Spark image, requires a truststore, or needs other runtime files that cannot be delivered through `git-sync`.
+- Add the dependency to the relevant `Dockerfile`. Internal Python packages should be installed from Nexus using Drone-provided `NEXUS_USERNAME` and `NEXUS_PASSWORD` build arguments; do not commit credentials.
+- Add or reuse a Drone Docker build pipeline with a unique tag trigger and image repository.
+- Push a versioned git tag matching the trigger, for example `spark-feature-platform-ranking-upload-v0.1.0`. Drone builds and publishes `cr.yandex/de-common/pyspark-feature-platform-ranking-upload:spark-feature-platform-ranking-upload-v0.1.0`.
+- Update the SparkApplication `spec.image` to the published tag and deploy the DAG.
+- This image build is normally required only once. Later changes to job Python code or `config.yaml` are delivered through `git-sync` and do not require a new image tag.
+- Rebuild and publish a new image tag only when dependencies, the base Spark image, truststore, or other Dockerfile-managed runtime files change.
+
 Agent workflow for adding ranking features:
 
 - An ML engineer may provide only the source table and ordered feature names.
