@@ -34,8 +34,11 @@ def main() -> int:
 
 sources:
   - name: ml_feature_platform_silver
+    description: "Old description"
     database: dwh-iceberg
     schema: silver
+    meta:
+      owner: "team:search"
     tables:
       - name: feature_platform_sku_group_orders
         columns:
@@ -66,13 +69,64 @@ sources:
 
     with tempfile.TemporaryDirectory() as temp_dir:
         models_path = Path(temp_dir)
-        existing_sources_path = models_path / "sources.yaml"
-        existing_sources_path.write_text(repaired_yaml, encoding="utf-8")
-        source_files = sync._source_files_by_schema(models_path)
-        assert sync._sources_path(models_path, "silver", source_files) == existing_sources_path
-        assert sync._sources_path(models_path, "gold", source_files) == (
-            models_path / "sources_gold.yaml"
+        sources_path = models_path / sync.SOURCES_FILE_NAME
+        repaired_yaml, descriptions_changed = sync._ensure_source_descriptions(
+            repaired_yaml
         )
+        assert descriptions_changed
+        sources_path.write_text(repaired_yaml, encoding="utf-8")
+
+        gold_table_config = {
+            "catalog": "iceberg",
+            "schema": "gold",
+            "name": "feature_platform_sku_group_price_features",
+            "primary_key": ["date", "sku_group_id"],
+            "team": "team:search",
+        }
+        gold_source_yaml = sync.render_source_yaml(
+            dbt_config,
+            gold_table_config,
+            "master",
+            include_document_header=False,
+            include_source_header=True,
+        )
+        sync._append_to_sources_file(sources_path, gold_source_yaml)
+
+        silver_table_config = {
+            "catalog": "iceberg",
+            "schema": "silver",
+            "name": "feature_platform_sku_group_id_prices",
+            "primary_key": ["date", "sku_group_id"],
+            "team": "team:search",
+        }
+        silver_table_yaml = sync.render_source_yaml(
+            dbt_config,
+            silver_table_config,
+            "master",
+            include_document_header=False,
+            include_source_header=False,
+        )
+        sync._append_table_to_source_block(
+            sources_path,
+            "silver",
+            silver_table_yaml,
+        )
+
+        final_yaml = sources_path.read_text(encoding="utf-8")
+        assert sync._extract_source_tables(final_yaml) == {
+            ("silver", "feature_platform_sku_group_orders"),
+            ("silver", "feature_platform_sku_group_id_prices"),
+            ("gold", "feature_platform_sku_group_price_features"),
+        }
+        assert (
+            'description: "Silver-layer Iceberg tables produced by '
+            'ml-feature-platform and consumed by ML feature pipelines."'
+        ) in final_yaml
+        assert (
+            'description: "Gold-layer Iceberg tables produced by '
+            'ml-feature-platform and consumed by ML feature pipelines."'
+        ) in final_yaml
+        assert not (models_path / "sources_gold.yaml").exists()
 
     print("dbt source schema sync tests completed successfully")
     return 0

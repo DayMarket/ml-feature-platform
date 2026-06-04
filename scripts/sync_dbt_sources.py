@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 NAME_LINE_PATTERN = re.compile(r"^-\s+name:\s+['\"]?(?P<name>[A-Za-z0-9_]+)['\"]?\s*$")
 SCHEMA_LINE_PATTERN = re.compile(r"^schema:\s+['\"]?(?P<schema>[A-Za-z0-9_]+)['\"]?\s*$")
-SOURCES_FILE_GLOB = "sources*.yaml"
+SOURCES_FILE_NAME = "sources.yaml"
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,20 @@ def main() -> int:
     _log_section("repair misplaced dbt source tables")
     desired_schemas = _desired_schemas_by_table(dbt_config, table_configs, runtime.branch)
     created_files = _remove_misplaced_tables(models_path, desired_schemas)
-    source_files_by_schema = _source_files_by_schema(models_path)
+    sources_path = models_path / SOURCES_FILE_NAME
+    if sources_path.exists():
+        content = sources_path.read_text(encoding="utf-8")
+        repaired_content, descriptions_changed = _ensure_source_descriptions(content)
+        if descriptions_changed:
+            sources_path.write_text(repaired_content, encoding="utf-8")
+            if sources_path not in created_files:
+                created_files.append(sources_path)
+            print(f"Updated dbt source descriptions: {sources_path}")
+    source_schemas = (
+        _extract_source_schemas(sources_path.read_text(encoding="utf-8"))
+        if sources_path.exists()
+        else set()
+    )
 
     _log_section("scan existing dbt source tables")
     existing_tables = _existing_tables(models_path)
@@ -91,11 +104,6 @@ def main() -> int:
         table_name = str(table_config["name"])
         source_schema = _source_schema(dbt_config, table_config, runtime.branch)
         table_key = (source_schema, table_name)
-        sources_path = _sources_path(
-            models_path,
-            source_schema,
-            source_files_by_schema,
-        )
         print(
             f"table={table_name} catalog={table_config['catalog']} "
             f"schema={source_schema} team={table_config['team']} "
@@ -115,12 +123,16 @@ def main() -> int:
             dbt_config,
             table_config,
             runtime.branch,
-            include_header=not sources_path.exists(),
+            include_document_header=not sources_path.exists(),
+            include_source_header=source_schema not in source_schemas,
         )
-        _append_to_sources_file(sources_path, source_yaml)
+        if source_schema in source_schemas:
+            _append_table_to_source_block(sources_path, source_schema, source_yaml)
+        else:
+            _append_to_sources_file(sources_path, source_yaml)
         if sources_path not in created_files:
             created_files.append(sources_path)
-        source_files_by_schema.setdefault(source_schema, sources_path)
+        source_schemas.add(source_schema)
         existing_tables.add(table_key)
         print(
             f"Added dbt source table: {source_schema}.{table_name} -> "
@@ -241,27 +253,29 @@ def render_source_yaml(
     dbt_config: dict[str, Any],
     table_config: dict[str, Any],
     branch: str,
-    include_header: bool = True,
+    include_document_header: bool = True,
+    include_source_header: bool = True,
 ) -> str:
     source_schema = _source_schema(dbt_config, table_config, branch)
     source_name = f"ml_feature_platform_{source_schema}"
     database = dbt_config["database_mapping"][table_config["catalog"]]
     team = table_config["team"]
 
-    if include_header:
-        lines = [
-            "version: 2",
-            "",
-            "sources:",
-            f"  - name: {source_name}",
-            f"    database: {database}",
-            f"    schema: {source_schema}",
-            "    meta:",
-            f'      owner: "{team}"',
-            "    tables:",
-        ]
-    else:
-        lines = []
+    lines = []
+    if include_document_header:
+        lines.extend(["version: 2", "", "sources:"])
+    if include_source_header:
+        lines.extend(
+            [
+                f"  - name: {source_name}",
+                f'    description: "{_source_description(source_schema)}"',
+                f"    database: {database}",
+                f"    schema: {source_schema}",
+                "    meta:",
+                f'      owner: "{team}"',
+                "    tables:",
+            ]
+        )
 
     has_date_column = _has_date_column(table_config)
     lines.extend(
@@ -330,11 +344,12 @@ def _source_schema(
     return str(dbt_config.get("schema_overrides", {}).get(branch, table_config["schema"]))
 
 
-def _sources_file_name(source_schema: str) -> str:
-    safe_schema = re.sub(r"[^A-Za-z0-9_]+", "_", source_schema).strip("_")
-    if not safe_schema:
-        raise ValueError(f"Cannot build dbt sources file name for schema {source_schema!r}")
-    return f"sources_{safe_schema}.yaml"
+def _source_description(source_schema: str) -> str:
+    layer_name = source_schema.replace("_", " ").title()
+    return (
+        f"{layer_name}-layer Iceberg tables produced by ml-feature-platform "
+        "and consumed by ML feature pipelines."
+    )
 
 
 def _desired_schemas_by_table(
@@ -356,59 +371,28 @@ def _desired_schemas_by_table(
     return desired_schemas
 
 
-def _source_files_by_schema(models_path: Path) -> dict[str, Path]:
-    source_files: dict[str, Path] = {}
-    for sources_path in sorted(models_path.glob(SOURCES_FILE_GLOB)):
-        source_schemas = _extract_source_schemas(
-            sources_path.read_text(encoding="utf-8")
-        )
-        if len(source_schemas) > 1:
-            raise ValueError(
-                f"dbt sources file must contain only one schema: "
-                f"{sources_path} has {sorted(source_schemas)}"
-            )
-        for source_schema in source_schemas:
-            existing_path = source_files.get(source_schema)
-            if existing_path and existing_path != sources_path:
-                raise ValueError(
-                    f"dbt source schema {source_schema} is declared in multiple files: "
-                    f"{existing_path}, {sources_path}"
-                )
-            source_files[source_schema] = sources_path
-    return source_files
-
-
-def _sources_path(
-    models_path: Path,
-    source_schema: str,
-    source_files_by_schema: dict[str, Path],
-) -> Path:
-    return source_files_by_schema.get(
-        source_schema,
-        models_path / _sources_file_name(source_schema),
-    )
-
-
 def _remove_misplaced_tables(
     models_path: Path,
     desired_schemas: dict[str, str],
 ) -> list[Path]:
     changed_files = []
-    for sources_path in sorted(models_path.glob(SOURCES_FILE_GLOB)):
-        content = sources_path.read_text(encoding="utf-8")
-        repaired_content, removed_tables = _remove_misplaced_tables_from_content(
-            content,
-            desired_schemas,
+    sources_path = models_path / SOURCES_FILE_NAME
+    if not sources_path.exists():
+        return changed_files
+    content = sources_path.read_text(encoding="utf-8")
+    repaired_content, removed_tables = _remove_misplaced_tables_from_content(
+        content,
+        desired_schemas,
+    )
+    if not removed_tables:
+        return changed_files
+    sources_path.write_text(repaired_content, encoding="utf-8")
+    changed_files.append(sources_path)
+    for source_schema, table_name, desired_schema in removed_tables:
+        print(
+            f"Removed misplaced dbt source table: {source_schema}.{table_name} "
+            f"expected_schema={desired_schema} file={sources_path}"
         )
-        if not removed_tables:
-            continue
-        sources_path.write_text(repaired_content, encoding="utf-8")
-        changed_files.append(sources_path)
-        for source_schema, table_name, desired_schema in removed_tables:
-            print(
-                f"Removed misplaced dbt source table: {source_schema}.{table_name} "
-                f"expected_schema={desired_schema} file={sources_path}"
-            )
     return changed_files
 
 
@@ -466,15 +450,57 @@ def _remove_misplaced_tables_from_content(
     return "\n".join(kept_lines).rstrip() + suffix, removed_tables
 
 
+def _ensure_source_descriptions(content: str) -> tuple[str, bool]:
+    lines = content.splitlines()
+    updated_lines: list[str] = []
+    changed = False
+    index = 0
+
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+        source_match = NAME_LINE_PATTERN.match(stripped)
+        if (
+            indent == 2
+            and source_match
+            and source_match.group("name").startswith("ml_feature_platform_")
+        ):
+            source_schema = source_match.group("name").removeprefix(
+                "ml_feature_platform_"
+            )
+            description_line = (
+                f'    description: "{_source_description(source_schema)}"'
+            )
+            updated_lines.append(line)
+            if index + 1 < len(lines) and lines[index + 1].strip().startswith(
+                "description:"
+            ):
+                if lines[index + 1] != description_line:
+                    changed = True
+                updated_lines.append(description_line)
+                index += 2
+                continue
+            updated_lines.append(description_line)
+            changed = True
+            index += 1
+            continue
+
+        updated_lines.append(line)
+        index += 1
+
+    suffix = "\n" if content.endswith("\n") else ""
+    return "\n".join(updated_lines) + suffix, changed
+
+
 def _existing_tables(models_path: Path) -> set[tuple[str, str]]:
     source_tables: set[tuple[str, str]] = set()
-    sources_paths = sorted(models_path.glob(SOURCES_FILE_GLOB))
-    if not sources_paths:
-        print(f"No {SOURCES_FILE_GLOB} files found under {models_path}")
+    sources_path = models_path / SOURCES_FILE_NAME
+    if not sources_path.exists():
+        print(f"No {SOURCES_FILE_NAME} file found under {models_path}")
         return source_tables
-    for sources_path in sources_paths:
-        print(f"scan_yaml={sources_path}")
-        source_tables.update(_extract_source_tables(sources_path.read_text(encoding="utf-8")))
+    print(f"scan_yaml={sources_path}")
+    source_tables.update(_extract_source_tables(sources_path.read_text(encoding="utf-8")))
     return source_tables
 
 
@@ -629,7 +655,7 @@ def _open_pr_branch_tables(
 
     source_tables: set[tuple[str, str]] = set()
     for source_path in (tree_result.stdout or "").splitlines():
-        if not Path(source_path).match(f"**/{SOURCES_FILE_GLOB}"):
+        if Path(source_path).name != SOURCES_FILE_NAME:
             continue
         show_result = _run(
             ["git", "show", f"{pr_ref}:{source_path}"],
@@ -654,6 +680,46 @@ def _append_to_sources_file(sources_path: Path, source_yaml: str) -> None:
         existing_content.rstrip() + "\n\n" + source_yaml,
         encoding="utf-8",
     )
+
+
+def _append_table_to_source_block(
+    sources_path: Path,
+    source_schema: str,
+    table_yaml: str,
+) -> None:
+    content = sources_path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    source_name = f"ml_feature_platform_{source_schema}"
+    source_start = None
+    insert_at = len(lines)
+
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+        match = NAME_LINE_PATTERN.match(stripped)
+        if indent != 2 or not match:
+            continue
+        if match.group("name") == source_name:
+            source_start = index
+            continue
+        if source_start is not None:
+            insert_at = index
+            break
+
+    if source_start is None:
+        raise ValueError(
+            f"Cannot find dbt source block {source_name} in {sources_path}"
+        )
+
+    table_lines = table_yaml.rstrip().splitlines()
+    prefix = lines[:insert_at]
+    suffix = lines[insert_at:]
+    while prefix and not prefix[-1].strip():
+        prefix.pop()
+    updated_lines = prefix + table_lines
+    if suffix:
+        updated_lines.extend([""] + suffix)
+    sources_path.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
 
 
 def _checkout_branch(runtime: RuntimeConfig, base_branch: str) -> str:

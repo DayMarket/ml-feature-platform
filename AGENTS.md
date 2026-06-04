@@ -639,7 +639,8 @@ PySpark migration CI step:
 - Discovers all `layers/**/config.yaml` files with `table` metadata.
 - Requires `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`.
 - Creates dbt source names from each table's effective schema: `ml_feature_platform_<schema>`.
-- Keeps source tables separated by schema and uses an existing source file for that schema when available, otherwise creates `sources_<schema>.yaml`.
+- Keeps all ml-feature-platform source blocks in `models/ml_feature_platform/sources.yaml`; each effective schema gets its own `ml_feature_platform_<schema>` source block in that file.
+- Adds and repairs source descriptions such as `Silver-layer Iceberg tables produced by ml-feature-platform and consumed by ML feature pipelines.`
 - Removes repository-managed tables found under the wrong dbt source schema and adds them back under their configured schema in the same generated PR.
 - Adds dbt tests:
   - `dbt_utils.unique_combination_of_columns` over the primary key.
