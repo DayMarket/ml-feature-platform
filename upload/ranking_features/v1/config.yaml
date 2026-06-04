@@ -21,8 +21,7 @@
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_sku_group_feedback_base_stats",
-        "limit": 1
+        "table": "feature_platform_sku_group_feedback_base_stats"
       },
       "name": "fs_search_skg_rating_v1",
       "features": [
@@ -32,8 +31,7 @@
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_sku_group_price_features",
-        "limit": 1
+        "table": "feature_platform_sku_group_price_features"
       },
       "name": "fs_search_skg_price_ratios_v1",
       "features": [
@@ -44,8 +42,7 @@
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_sku_group_search_conversion_features",
-        "limit": 1
+        "table": "feature_platform_sku_group_search_conversion_features"
       },
       "name": "fs_search_skg_conversion_features_v1",
       "features": [
@@ -60,8 +57,7 @@
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_sku_group_price_index_status",
-        "limit": 1
+        "table": "feature_platform_sku_group_price_index_status"
       },
       "name": "fs_search_skg_price_index_status_v1",
       "features": [
@@ -71,8 +67,7 @@
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_sku_group_price_features",
-        "limit": 1
+        "table": "feature_platform_sku_group_price_features"
       },
       "name": "fs_search_skg_price_features_v1",
       "features": [
@@ -85,8 +80,7 @@
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_search_sku_group_id_query_atc_order_features",
-        "limit": 1
+        "table": "feature_platform_search_sku_group_id_query_atc_order_features"
       },
       "name": "fs_search_query_skg_v3",
       "features": [

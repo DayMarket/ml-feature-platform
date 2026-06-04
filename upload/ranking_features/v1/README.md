@@ -19,7 +19,7 @@ Catalog, колонка даты и ключи сущности автомати
 - `log1p_features`: список признаков, к которым перед отправкой применяется `log1p`.
 - `source.limit`: ограничение числа строк после фильтрации партиции. Поле предназначено только для тестовой проверки загрузки.
 
-Сейчас для всех источников в `config.yaml` временно задано `source.limit: 1`. Перед production-загрузкой это ограничение необходимо удалить.
+Production-конфиг не должен содержать `source.limit`, чтобы DAG загружал полные партиции всех feature groups.
 
 Пример:
 
@@ -27,8 +27,7 @@ Catalog, колонка даты и ключи сущности автомати
 {
   "source": {
     "schema": "gold",
-    "table": "feature_platform_sku_group_price_features",
-    "limit": 1
+    "table": "feature_platform_sku_group_price_features"
   },
   "name": "fs_search_skg_prices_v1",
   "features": ["sell_price_eod", "fraq_discount"]
