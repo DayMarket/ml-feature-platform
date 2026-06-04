@@ -42,8 +42,10 @@ DQ dependency semantics:
 - `ci_config.yaml`: dbt source sync settings.
 - `ci_test/test_script.py`: lightweight CI validation for required files, table configs, and migration CREATE TABLE statements.
 - `scripts/run_pyspark_migrations.py`: CI helper for executing repository SQL migrations through PySpark after a merge to `master`.
+- `scripts/validate_ranking_upload_configs.py`: validates ranking upload feature groups against source table configs and migration columns.
 - `scripts/sync_dbt_sources.py`: CI helper that discovers layer `config.yaml` table definitions and publishes missing dbt source entries to the dbt repository.
 - `layers/`: versioned feature pipelines grouped by data layer.
+- `upload/`: processes that publish final gold features to downstream services.
 - `docs/`: currently empty.
 
 There are also empty/unimplemented directories such as `layers/gold/sku_group_query_orders/v1`.
@@ -515,6 +517,65 @@ Docker/CI image:
 - Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-query-atc-features`
 - Current SparkApplication image in config: `cr.yandex/de-common/pyspark-gold-sku-group-query-atc-features:spark-gold-sku-group-query-atc-features-v0.1.0`
 
+## Ranking Features Upload
+
+Path: `upload/ranking_features/v1`
+
+Purpose:
+
+- Publishes final feature groups from feature platform tables to the ranking service through Kafka.
+- Uses one DAG and one `config.yaml` for multiple feature groups.
+- Reads only repository-managed source tables; final model features should normally come from the `gold` layer.
+
+Configuration:
+
+- Each feature group reads exactly one source table. Do not join multiple source tables inside the upload job; create separate ranking feature groups for features stored in different sources.
+- Each feature group declares `source.schema`, `source.table`, ranking service feature group `name`, and ordered `features`.
+- `features` contains source table column names. The ranking service does not receive individual feature names.
+- Feature and feature group order are part of the ranking service contract because protobuf messages contain an ordered values array rather than feature names.
+- Do not reuse one ranking feature group `name` for partial vectors from multiple source tables.
+- Catalog, date column, and entity keys are derived automatically from the source table layer `config.yaml`; entity keys are the table `primary_key` without `date`.
+- `log1p_features` is optional and is needed only for features that must be transformed before upload.
+- `source.limit` is an optional positive integer intended only for temporary delivery checks. Remove it before a production upload.
+- `ranking_service_input.yaml` documents the corresponding feature group order for the ranking service.
+
+Supported entity key sets:
+
+- `sku_group_id`
+- `query`
+- `account_id`
+- `query,sku_group_id`
+- `category_id,sku_group_id`
+- `account_id,category_id`
+
+Airflow DAG:
+
+- DAG id: `feature_platform_ranking_features_upload_dag`
+- Schedule: `0 4 * * *`
+- Waits for the DQ DAG of every configured source table.
+- Reads the source partition for Airflow `{{ ds }}`.
+- Serializes `ranking_python_client.FeaturesUpdate` messages and writes them to Kafka topic `ranking.features.updates`.
+
+Deployment:
+
+- Spark job code and `config.yaml` are delivered through `git-sync`.
+- The shared image `cr.yandex/de-common/pyspark-feature-platform-ranking-upload` contains `ranking-python-client` and the Kafka truststore.
+- Code or config-only changes do not require rebuilding the image. Dependency or truststore changes do.
+- Drone image tag trigger: `refs/tags/spark-feature-platform-ranking-upload-*`.
+
+Agent workflow for adding ranking features:
+
+- An ML engineer may provide only the source table and ordered feature names.
+- Find the source table under `layers/**/config.yaml`.
+- Add `source.schema`, `source.table`, feature group `name`, and ordered `features`; the runtime and CI derive the remaining source metadata.
+- Read migration DDL to confirm feature columns.
+- Check legacy upload code when compatibility requires preserving value order or applying `log1p`.
+- Keep one source table per feature group and use a distinct ranking service feature group name for each source.
+- Update `ranking_service_input.yaml` when adding or reordering feature groups.
+- Use `source.limit: 1` only for an explicit test upload, then remove it before production.
+- Add the feature group to `upload/ranking_features/v1/config.yaml`; do not duplicate serialization code.
+- Run `python scripts/validate_ranking_upload_configs.py`.
+
 ## Airflow and Deployment Details
 
 - DAGs import `send_oncall_notification` from `airflow_commons.helpers.oncall`.
@@ -535,9 +596,10 @@ Docker/CI image:
 
 ## CI and dbt Source Sync
 
-Drone has three main responsibilities:
+Drone responsibilities:
 
 - Run `ci_test/test_script.py`.
+- Run `scripts/validate_ranking_upload_configs.py` to ensure configured upload features exist in their source table migrations.
 - Run all repository SQL migrations through PySpark on `master` push after merge.
 - Run `scripts/sync_dbt_sources.py` to create/update dbt source entries for tables declared in layer `config.yaml` files.
 - Sync the corresponding submodule reference in `DayMarket/airflow-dags`.

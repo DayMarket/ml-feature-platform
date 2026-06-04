@@ -1,0 +1,125 @@
+{
+  "resources": {
+    "path": "config/resources.yaml"
+  },
+  "dag": {
+    "id": "feature_platform_ranking_features_upload_dag",
+    "schedule": "0 4 * * *",
+    "start_date": "2026-06-01",
+    "team": "search"
+  },
+  "alerts": {
+    "team": "search",
+    "severity": "P3",
+    "oncall_webhook_conn_id": "oncall_webhook_search"
+  },
+  "kafka": {
+    "connection_id": "kafka_ranking",
+    "topic": "ranking.features.updates"
+  },
+  "feature_groups": [
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_sku_group_feedback_base_stats",
+        "limit": 1
+      },
+      "name": "fs_search_skg_rating_v1",
+      "features": [
+        "product_rating"
+      ]
+    },
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_sku_group_price_features",
+        "limit": 1
+      },
+      "name": "fs_search_skg_price_ratios_v1",
+      "features": [
+        "ratio_crnt_min_to_avg_min_full_price_14",
+        "ratio_crnt_min_to_avg_min_full_price_30"
+      ]
+    },
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_sku_group_search_conversion_features",
+        "limit": 1
+      },
+      "name": "fs_search_skg_conversion_features_v1",
+      "features": [
+        "smooth_conv_imp2order_3",
+        "smooth_conv_imp2order_7",
+        "smooth_conv_imp2order_14",
+        "imp2order_3_to_1",
+        "imp2order_21_to_14",
+        "imp2order_30_to_21"
+      ]
+    },
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_sku_group_price_index_status",
+        "limit": 1
+      },
+      "name": "fs_search_skg_price_index_status_v1",
+      "features": [
+        "price_index_status"
+      ]
+    },
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_sku_group_price_features",
+        "limit": 1
+      },
+      "name": "fs_search_skg_price_features_v1",
+      "features": [
+        "sell_price_eod",
+        "abs_discount",
+        "fraq_discount",
+        "category_mean_sell_price"
+      ]
+    },
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_search_sku_group_id_query_atc_order_features",
+        "limit": 1
+      },
+      "name": "fs_search_query_skg_v3",
+      "features": [
+        "query_skg_uniq_orders_7",
+        "query_skg_conv_imp2atc_7",
+        "query_skg_conv_imp2order_7",
+        "query_skg_uniq_orders_14",
+        "query_skg_conv_imp2atc_14",
+        "query_skg_conv_imp2order_14",
+        "query_skg_uniq_orders_21",
+        "query_skg_conv_imp2atc_21",
+        "query_skg_conv_imp2order_21",
+        "query_skg_uniq_orders_30",
+        "query_skg_conv_imp2atc_30",
+        "query_skg_conv_imp2order_30",
+        "query_skg_imp2atc_3_to_1",
+        "query_skg_imp2atc_7_to_3",
+        "query_skg_imp2atc_14_to_7",
+        "query_skg_imp2atc_30_to_14",
+        "query_skg_imp2order_30_to_14",
+        "query_skg_uniq_atcs_60",
+        "query_skg_uniq_orders_60",
+        "query_skg_conv_imp2atc_60",
+        "query_skg_conv_imp2order_60",
+        "query_skg_uniq_atcs_90",
+        "query_skg_uniq_orders_90",
+        "query_skg_conv_imp2atc_90",
+        "query_skg_conv_imp2order_90",
+        "query_skg_imp2atc_60_to_30",
+        "query_skg_imp2order_60_to_30",
+        "query_skg_imp2atc_90_to_60",
+        "query_skg_imp2order_90_to_60"
+      ]
+    }
+  ]
+}

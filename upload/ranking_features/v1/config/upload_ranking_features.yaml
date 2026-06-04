@@ -1,0 +1,109 @@
+apiVersion: "sparkoperator.k8s.io/v1beta2"
+kind: SparkApplication
+metadata:
+  name: "upload-feature-platform-ranking-features-<random_string>"
+  namespace: svc-data-spark-jobs
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: cr.yandex/de-common/pyspark-feature-platform-ranking-upload:spark-feature-platform-ranking-upload-v0.1.0
+  imagePullPolicy: Always
+  mainApplicationFile: local:///git/repo/upload/ranking_features/v1/entrypoints/upload_ranking_features.py
+  sparkVersion: "3.5.5"
+  timeToLiveSeconds: 600
+  nodeSelector:
+    app_type: <app_type>
+  deps:
+    packages:
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2
+      - org.apache.iceberg:iceberg-aws-bundle:1.5.2
+      - org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5
+  sparkConf:
+    spark.eventLog.enabled: "true"
+    spark.eventLog.dir: s3a://<spark_event_log_bucket_name>/logs/
+    spark.hadoop.fs.s3a.endpoint: storage.yandexcloud.net
+    spark.hadoop.fs.s3a.secret.key: <s3_secret_key>
+    spark.hadoop.fs.s3a.access.key: <s3_access_key>
+    spark.hadoop.fs.s3a.impl: org.apache.hadoop.fs.s3a.S3AFileSystem
+    spark.hadoop.hive.metastore.uris: <hive_metastore_uris>
+    spark.serializer: org.apache.spark.serializer.KryoSerializer
+    spark.sql.extensions: org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+    spark.sql.catalog.iceberg: org.apache.iceberg.spark.SparkCatalog
+    spark.sql.catalog.iceberg.type: hive
+    spark.sql.catalog.iceberg.uri: <hive_metastore_uris>
+    spark.sql.catalog.iceberg.warehouse: s3a://um-prod-data-platform-landing-layer/
+    spark.sql.catalog.iceberg.io-impl: org.apache.iceberg.aws.s3.S3FileIO
+    spark.sql.catalog.iceberg.s3.endpoint: http://storage.yandexcloud.net
+    spark.sql.catalog.iceberg.s3.access-key-id: <s3_access_key>
+    spark.sql.catalog.iceberg.s3.secret-access-key: <s3_secret_key>
+    spark.sql.catalog.iceberg.s3.region: ru-central1
+    spark.sql.catalog.iceberg.s3.path-style-access: "true"
+  arguments:
+    - --run_date
+    - <run_date>
+    - --config_path
+    - <config_path>
+    - --repo_root
+    - /git/repo
+    - --kafka_topic
+    - <kafka_topic>
+    - --kafka_brokers
+    - <kafka_brokers>
+    - --kafka_login
+    - <kafka_login>
+    - --kafka_password
+    - <kafka_password>
+  restartPolicy:
+    type: Never
+  driver:
+    labels:
+      app: spark
+    cores: <driver_cores>
+    memory: <driver_memory>
+    serviceAccount: spark-operator-spark
+    tolerations:
+      - key: app_type
+        operator: Equal
+        value: <app_type>
+        effect: NoSchedule
+    initContainers:
+      - name: git-sync
+        image: "k8s.gcr.io/git-sync/git-sync:v3.6.1"
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: GIT_SYNC_REPO
+            value: "https://github.com/DayMarket/ml-feature-platform/"
+          - name: GIT_SYNC_BRANCH
+            value: '{{ var.value.get("gitsync_branch") }}'
+          - name: GIT_SYNC_DEST
+            value: repo
+          - name: GIT_SYNC_ROOT
+            value: /git
+          - name: GIT_SYNC_ONE_TIME
+            value: "true"
+          - name: GIT_SYNC_USERNAME
+            value: "{{ conn.git_sync.login }}"
+          - name: GIT_SYNC_PASSWORD
+            value: "{{ conn.git_sync.password }}"
+        volumeMounts:
+          - mountPath: /git
+            name: git
+    volumeMounts:
+      - mountPath: /git
+        name: git
+    javaOptions: "-Divy.cache.dir=/tmp -Divy.home=/tmp -Daws.region=ru-central1"
+  volumes:
+    - emptyDir: {}
+      name: git
+  executor:
+    cores: <executor_cores>
+    instances: <executor_instances>
+    memory: <executor_memory>
+    serviceAccount: spark-operator-spark
+    tolerations:
+      - key: app_type
+        operator: Equal
+        value: <app_type>
+        effect: NoSchedule
+    javaOptions: "-Divy.cache.dir=/tmp -Divy.home=/tmp -Daws.region=ru-central1"
