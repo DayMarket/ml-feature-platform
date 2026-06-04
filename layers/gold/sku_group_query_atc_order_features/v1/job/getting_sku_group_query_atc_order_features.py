@@ -9,7 +9,6 @@ from job.entities import Arguments
 
 
 WINDOWS = (1, 3, 7, 14, 21, 30, 60, 90)
-STOP_WORDS_PATH = "s3a://um-prod-feature-store/stop_words.txt"
 SELECTED_COLUMNS = (
     "date",
     "query",
@@ -55,48 +54,13 @@ def _safe_div(num: Column, den: Column) -> Column:
     return num / den
 
 
-def _load_stopwords(spark: SparkSession) -> list[str]:
-    try:
-        stopwords_text = "\n".join(
-            row["value"] for row in spark.read.text(STOP_WORDS_PATH).collect()
-        )
-    except Exception as error:
-        print(f"Failed to load stop words from {STOP_WORDS_PATH}: {error}")
-        return []
-
-    return [
-        word.strip().lower().replace("ё", "е")
-        for word in stopwords_text.replace("\r", "\n").split("\n")
-        if word.strip()
-    ]
-
-
-def _base_query_expr(query_col: Column, stopwords: list[str]) -> Column:
-    normalized_query = F.trim(
-        F.regexp_replace(
-            F.regexp_replace(F.lower(query_col), "ё", "е"),
-            r"\s+",
-            " ",
-        )
-    )
-    tokens = F.split(F.regexp_replace(normalized_query, r"[^0-9a-zа-я]+", " "), r"\s+")
-    tokens = F.filter(tokens, lambda token: token != F.lit(""))
-    if stopwords:
-        tokens = F.array_except(
-            tokens,
-            F.array(*[F.lit(word) for word in sorted(set(stopwords))]),
-        )
-    return F.concat_ws(" ", F.sort_array(F.array_distinct(tokens)))
-
-
-def _normalize_query_frame(
-    frame: DataFrame,
-    stopwords: list[str],
-) -> DataFrame:
+def _normalize_query_frame(frame: DataFrame) -> DataFrame:
     return (
-        frame.withColumn("query", _base_query_expr(F.col("query"), stopwords))
-        .filter(F.col("query").isNotNull())
-        .filter(F.col("query") != F.lit(""))
+        frame.withColumn("query", F.lower(F.col("query")))
+        .withColumn("query", F.regexp_replace(F.col("query"), "ё", "е"))
+        .withColumn("query", F.regexp_replace(F.col("query"), r"\s+", " "))
+        .withColumn("query", F.trim(F.col("query")))
+        .filter(F.col("query").isNotNull() & F.col("query").rlike(r"\S"))
     )
 
 
@@ -147,40 +111,29 @@ def build_sku_group_query_atc_order_features(
 ) -> DataFrame:
     window_dates = _window_start_dates(run_date)
     d90 = window_dates[90]
-    stopwords = _load_stopwords(spark)
 
     events = _normalize_query_frame(
-        (
-            spark.table("iceberg.silver.feature_platform_search_sku_group_id_install_query")
-            .filter((F.col("date") >= F.lit(d90)) & (F.col("date") <= F.lit(run_date)))
-            .filter(F.col("space") == F.lit("SEARCH_RESULTS"))
-            .select(
-                F.col("date"),
-                F.col("uniqs").alias("query"),
-                F.col("sku_group_id").cast("long").alias("sku_group_id"),
-                F.col("sum_atc").cast("double").alias("sum_atc"),
-                F.col("sum_impressions").cast("double").alias("sum_impressions"),
-            )
-            .filter(F.col("query").isNotNull())
+        spark.table("iceberg.silver.feature_platform_search_sku_group_id_install_query")
+        .filter((F.col("date") >= F.lit(d90)) & (F.col("date") <= F.lit(run_date)))
+        .filter(F.col("space") == F.lit("SEARCH_RESULTS"))
+        .select(
+            F.col("date"),
+            F.col("uniqs").alias("query"),
+            F.col("sku_group_id").cast("long").alias("sku_group_id"),
+            F.col("sum_atc").cast("double").alias("sum_atc"),
+            F.col("sum_impressions").cast("double").alias("sum_impressions"),
         )
-        ,
-        stopwords,
     )
 
     orders = _normalize_query_frame(
-        (
-            spark.table("iceberg.silver.feature_platform_sku_group_query_search_orders")
-            .filter((F.col("date") >= F.lit(d90)) & (F.col("date") <= F.lit(run_date)))
-            .select(
-                F.col("date"),
-                F.col("query"),
-                F.col("sku_group_id").cast("long").alias("sku_group_id"),
-                F.col("orders_generated").cast("double").alias("orders_generated"),
-            )
-            .filter(F.col("query").isNotNull())
+        spark.table("iceberg.silver.feature_platform_sku_group_query_search_orders")
+        .filter((F.col("date") >= F.lit(d90)) & (F.col("date") <= F.lit(run_date)))
+        .select(
+            F.col("date"),
+            F.col("query"),
+            F.col("sku_group_id").cast("long").alias("sku_group_id"),
+            F.col("orders_generated").cast("double").alias("orders_generated"),
         )
-        ,
-        stopwords,
     )
 
     events_agg = _build_events_agg(events, window_dates)

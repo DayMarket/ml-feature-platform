@@ -288,7 +288,8 @@ Transformation summary:
 - Reads search interaction stats from `iceberg.silver.feature_platform_search_sku_group_id_install_query`.
 - Reads search order stats from `iceberg.silver.feature_platform_sku_group_query_search_orders`.
 - Uses only `space = 'SEARCH_RESULTS'`.
-- Normalizes query text in the legacy-compatible style: lower-case, replace `ё` with `е`, collapse whitespace, trim, filter empty values, tokenize, remove stopwords from `s3a://um-prod-feature-store/stop_words.txt`, deduplicate tokens, sort them, and join back to `base_query`.
+- Normalizes the original query text by lower-casing, replacing `ё` with `е`, collapsing whitespace, trimming, and filtering empty values.
+- Does not transform queries into `base_query`: stopwords, repeated tokens, punctuation, and word order are otherwise preserved.
 - Builds 1, 3, 7, 14, 21, 30, 60, and 90 day windows ending at Airflow `{{ ds }}`.
 - Uses interaction pairs as the output key base and left-joins order aggregates.
 - Keeps only pairs where `query_skg_uniq_impressions_14 >= 2`, matching the legacy pairwise filter.
