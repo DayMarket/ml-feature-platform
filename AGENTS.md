@@ -547,7 +547,7 @@ Airflow DAG:
 - Reads the source partition for Airflow `{{ ds }}`.
 - Serializes `ranking_python_client.FeaturesUpdate` messages and writes them to Kafka topic `ranking.features.updates`.
 - The Kafka writer uses `acks=all` so delivery/auth/broker problems fail the Spark task instead of being hidden by fire-and-forget writes.
-- The job logs source row counts and Kafka record counts per feature group; with the current smoke-test `source.limit: 5`, expect at most 5 Kafka records per feature group.
+- The job logs source row counts and Kafka record counts per feature group.
 - Kafka keys are built as `feature_group_name|entity_keys...` so multiple feature groups for the same entity do not overwrite or deduplicate each other downstream.
 
 Deployment:
@@ -578,7 +578,7 @@ Agent workflow for adding ranking features:
 - Check legacy upload code when compatibility requires preserving value order or applying `log1p`.
 - Keep one source table per feature group and use a distinct ranking service feature group name for each source.
 - Update `ranking_service_input.yaml` when adding or reordering feature groups.
-- Use `source.limit` only for an explicit test upload, then remove it before production. Current temporary upload smoke-test limit is `5` rows per source.
+- Use `source.limit` only for an explicit test upload, then remove it before production.
 - Add the feature group to `upload/ranking_features/v1/config.yaml`; do not duplicate serialization code.
 - Run `python scripts/validate_ranking_upload_configs.py`.
 

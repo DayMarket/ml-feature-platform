@@ -50,7 +50,7 @@ CI запускает `scripts/validate_ranking_upload_configs.py`. Провер
 - `category_id,sku_group_id`;
 - `account_id,category_id`.
 
-DAG ждет DQ DAG каждой зависимой source-таблицы, затем читает партицию за `{{ ds }}`, сериализует `FeaturesUpdate` через `ranking-python-client` и пишет сообщения в `ranking.features.updates`. Текущий smoke-test конфиг содержит `source.limit: 5`, поэтому ожидаемый объем - до 5 Kafka records на feature group.
+DAG ждет DQ DAG каждой зависимой source-таблицы, затем читает партицию за `{{ ds }}`, сериализует `FeaturesUpdate` через `ranking-python-client` и пишет сообщения в `ranking.features.updates`.
 
 Kafka key строится как `feature_group_name|entity_keys...`. Это важно, чтобы разные feature groups для одного `sku_group_id` не конфликтовали в compacted topic или в downstream-дедупликации по key.
 
