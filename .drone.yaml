@@ -30,6 +30,7 @@ steps:
       - echo "commit=$DRONE_COMMIT_SHA"
       - python ci_test/test_script.py
       - python ci_test/test_sync_dbt_sources.py
+      - python ci_test/test_sync_iceberg_maintenance.py
 
   - name: validate ranking upload configs
     image: python:3.11-slim
@@ -80,6 +81,23 @@ steps:
       - echo "running dbt source sync"
       - python3 scripts/sync_dbt_sources.py
       - if [ -f created_dbt_pr_url.txt ]; then echo "created dbt PR:"; cat created_dbt_pr_url.txt; fi
+
+  - name: sync iceberg maintenance
+    image: alpine:3.20
+    environment:
+      GIT_TOKEN:
+        from_secret: ghmachine_token
+    commands:
+      - echo "=== sync iceberg maintenance ==="
+      - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
+      - echo "installing runtime dependencies"
+      - apk add --no-cache git github-cli python3
+      - git --version
+      - gh --version
+      - python3 --version
+      - echo "running iceberg maintenance sync"
+      - python3 scripts/sync_iceberg_maintenance.py
+      - if [ -f created_maintenance_pr_url.txt ]; then echo "created maintenance PR:"; cat created_maintenance_pr_url.txt; fi
 
   - name: Update submodule reference to the latest state
     image: alpine/git:v2.26.2

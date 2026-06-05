@@ -608,6 +608,7 @@ Drone responsibilities:
 - Run `scripts/validate_ranking_upload_configs.py` to ensure configured upload features exist in their source table migrations.
 - Run all repository SQL migrations through PySpark on `master` push after merge.
 - Run `scripts/sync_dbt_sources.py` to create/update dbt source entries for tables declared in layer `config.yaml` files.
+- Run `scripts/sync_iceberg_maintenance.py` to create/update a `DayMarket/pyspark-etl` PR for Iceberg maintenance of tables created by this repository.
 - Sync the corresponding submodule reference in `DayMarket/airflow-dags`.
 
 PySpark migration CI step:
@@ -672,8 +673,9 @@ Maintenance table source:
 
 Expected CI automation:
 
-- Add a dedicated sync script in this repository, similar in spirit to `scripts/sync_dbt_sources.py`.
-- The script should clone/update `DayMarket/pyspark-etl`, add missing feature-platform tables to the feature-platform maintenance config, and create a PR there.
+- Dedicated sync script: `scripts/sync_iceberg_maintenance.py`.
+- CI test: `ci_test/test_sync_iceberg_maintenance.py`.
+- The script clones/updates `DayMarket/pyspark-etl`, adds missing feature-platform tables to `dags_v3/maintenance_generator/feature_platform_config.yaml`, patches `dag.py` for the dedicated `_fp` DAG, and creates a PR there.
 - The script should be idempotent: reruns must not reorder or duplicate existing maintenance entries.
 - When the current repository has an open PR from `dev` to `master`, the CI should comment there with the created `pyspark-etl` maintenance PR link.
 - If no such PR is found, CI should still print and persist the maintenance PR URL in build artifacts/logs.
