@@ -1,511 +1,370 @@
-# Repository Context
+# Agent Handbook
 
-This file is intended to be read by Codex at the start of each new session in this repository.
-Keep it concise, factual, and updated when repository structure or pipeline behavior changes.
+This file is the single source of repository instructions for any coding agent or ML engineer assistant working in this repo. Read it before making changes. Keep it factual and update it whenever repository structure, feature semantics, CI, deployment, or downstream contracts change.
 
-## Purpose
+## Repository Purpose
 
-`ml-feature-platform` contains Airflow-managed PySpark feature pipelines for search-related SKU group features.
-The repository is organized by data layer under `layers/` and currently contains production code for:
-
-- `silver/sku_group_install/v1`: daily pre-aggregated search/category interaction statistics by install, SKU group, and query/category key.
-- `silver/sku_group_id_prices/v1`: daily SKU group end-of-day price aggregates.
-- `silver/sku_group_orders/v1`: daily SKU group order statistics.
-- `silver/sku_group_query_search_orders/v1`: daily search order statistics by query and SKU group.
-- `gold/sku_group_query_atc_features/v1`: daily query and SKU group ATC conversion features built from the silver table.
-- `gold/sku_group_query_atc_order_features/v1`: daily query and SKU group ATC/order conversion features built from silver interaction and search-order tables.
-- `gold/sku_group_search_conversion_features/v1`: daily SKU group search imp-to-order conversion compatibility features.
-- `gold/sku_group_median_sales_7d/v1`: three-hourly median daily sales count over the last 7 days by SKU group.
-- `gold/sku_group_price_features/v1`: daily SKU group price features built from silver price aggregates.
-- `gold/sku_group_price_index_status/v1`: temporary SKU group price index status compatibility feature.
-- `gold/feedback_product_id/v1`: daily all-time feedback and rating aggregates by product.
-- `gold/feedback_sku_group_id/v1`: daily all-time feedback and rating aggregates by SKU group.
-
-The owning team in configs and DAG metadata is `team:search`.
+`ml-feature-platform` contains Airflow-managed PySpark feature pipelines for search-related marketplace features. Pipelines are organized by data layer under `layers/`.
 
 Layer semantics:
 
-- `silver` contains reusable pre-aggregates and intermediate daily/statistical tables.
-- `gold` contains final feature tables intended for model consumption.
+- `silver` contains reusable pre-aggregates and intermediate tables.
+- `gold` contains final feature tables intended for model consumption and ranking-service upload.
 
-DQ dependency semantics:
+Owner metadata:
 
-- Each entity automatically gets DQ tests in the `dbt-trino` repository.
-- DQ DAG ids follow this pattern: `dbt.source.trino.ml_feature_platform_<layer>.<table_name>.dq`.
-- Example: `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_orders.dq`.
-- DAGs that depend on `feature_platform` tables must wait for the dependent table's DQ DAG, not for the Spark DAG or Spark task that writes that table.
+- Current owning team in configs and DAG metadata is `team:search`.
+- DAG tags should include `team::search` unless the owning team is intentionally changed in `config.yaml`.
 
-## Top-Level Structure
+## First Rules For Agents
 
-- `.drone.yaml`: Drone CI pipelines for tests, dbt source sync, Airflow submodule sync, and Docker image publishing.
+- Read this file first, then inspect the code/configs that are relevant to the requested table or feature.
+- Do not rely on memory alone. Confirm feature names, source tables, keys, schedules, sensors, and formulas in `layers/**/config.yaml`, migrations, README files, and PySpark jobs.
+- Before creating a new feature, search the repository for the requested feature name and close variants. If the feature or an equivalent feature already exists, stop and tell the user where it is produced, what table stores it, and how it is uploaded if applicable.
+- If a user asks for lineage of a feature from `feature_marketplace` or ranking/model context, answer from final feature back to all source tables, including formulas, windows, grain, date semantics, DAG/DQ dependencies, and upload feature group order.
+- If new code imports a library that is not available in the default Spark image, warn the user before finalizing. Add or update the custom image build path and Drone tag trigger only when `git-sync` cannot deliver the dependency.
+- New layer jobs should use the shared Spark image plus `git-sync`. Do not add per-entity images for ordinary PySpark code, SQL, config, README, migration, or resource changes.
+- Migrations are executed by CI after merge to `master`; jobs may keep defensive table/column checks, but schema evolution belongs in migrations.
+- DAGs that depend on feature-platform tables must wait for the dependent table's dbt DQ DAG, not the Spark DAG that writes that table.
+- Be careful with dirty worktrees and generated files. Do not revert unrelated user changes.
+
+## Duplicate Feature Check
+
+Before adding or renaming any feature:
+
+- Search feature names and close variants with `rg` across `layers/`, `upload/`, `scripts/`, and README files.
+- Inspect target-table migrations under `layers/**/migrations/*.sql`; CI validates upload features against migration columns.
+- Inspect `upload/ranking_features/v1/config.yaml` and `upload/ranking_features/v1/ranking_service_input.yaml` for downstream usage and required order.
+- Inspect the PySpark transformation that writes the candidate source table. Similar column names can have different date windows, grains, or null semantics.
+- If a requested feature already exists with the same grain and semantics, do not create a duplicate. Report the existing path, table, feature column, schedule, and any downstream feature group.
+- If a requested feature is similar but differs in grain/window/formula/null handling, call out the difference and ask whether a new feature is still required.
+
+## Lineage Answer Format
+
+When asked for lineage, include:
+
+- Final feature column and final table.
+- Entity grain and primary key.
+- Source layers/tables and join keys.
+- Formula, including smoothing constants, `log1p`, window boundaries, filters, null/zero denominator behavior, and query normalization.
+- Airflow DAG id, schedule, and DQ sensors for feature-platform dependencies.
+- Migration/code/README paths.
+- Ranking upload feature group name and order if the feature is published to the ranking service.
+- Known caveats from the current implementation.
+
+## Repository Map
+
+- `.drone.yaml`: Drone CI for tests, migrations, dbt source sync, Iceberg maintenance sync, Airflow submodule sync, and custom image publishing.
 - `.github/CODEOWNERS`: repository code owners.
 - `ci_config.yaml`: dbt source sync settings.
-- `ci_test/test_script.py`: lightweight CI validation for required files, table configs, and migration CREATE TABLE statements.
-- `ci_test/test_sync_dbt_sources.py`: regression test for schema-aware dbt source placement and repair.
-- `scripts/run_pyspark_migrations.py`: CI helper for executing repository SQL migrations through PySpark after a merge to `master`.
-- `scripts/validate_ranking_upload_configs.py`: validates ranking upload feature groups against source table configs and migration columns.
-- `scripts/sync_dbt_sources.py`: CI helper that discovers layer `config.yaml` table definitions and publishes missing dbt source entries to the dbt repository.
-- `layers/`: versioned feature pipelines grouped by data layer.
-- `upload/`: processes that publish final gold features to downstream services.
-- `docs/`: currently empty.
+- `ci_test/test_script.py`: validates required files, table configs, and migration idempotency.
+- `ci_test/test_sync_dbt_sources.py`: regression tests for schema-aware dbt source sync.
+- `ci_test/test_sync_iceberg_maintenance.py`: regression tests for Iceberg maintenance sync.
+- `scripts/run_pyspark_migrations.py`: executes repository SQL migrations through PySpark on `master` push.
+- `scripts/sync_dbt_sources.py`: creates/repairs dbt source entries for repository-managed layer tables.
+- `scripts/sync_iceberg_maintenance.py`: creates/updates a PR in `DayMarket/pyspark-etl` for Iceberg maintenance of repository-managed tables.
+- `scripts/validate_ranking_upload_configs.py`: validates ranking upload feature groups against layer configs and migrations.
+- `layers/`: versioned feature pipelines grouped by layer.
+- `upload/`: downstream upload processes, currently ranking-service Kafka upload.
+- `docs/`: optional project documentation.
 
-There are also empty/unimplemented directories such as `layers/gold/sku_group_query_orders/v1`.
+## Layer Layout
 
-## Layer Layout Convention
+Implemented layer pipelines follow this shape:
 
-Each implemented pipeline follows this shape:
-
-- `dag.py`: Airflow DAG definition. Uses `SparkKubernetesOperator` and `config.factory.get_deployment`.
-- `config.yaml`: table metadata used by the DAG factory, CI, and dbt source sync.
-- `config.yaml` may also define `dag.team` and `alerts.*` values used by `dag.py` for Airflow owner, `team::...` tag, and on-call failure callback.
-- `config/resources.yaml`: JSON-formatted resource values for Spark driver/executors and infrastructure placeholders.
-- `config/fetch_*.yaml`: SparkApplication template with placeholders filled at DAG parse/runtime.
-- `config/factory.py`: fills SparkApplication placeholders using `config.yaml`, `resources.yaml`, random suffixes, Airflow connections, and Airflow date macros.
+- `dag.py`: Airflow DAG definition using `SparkKubernetesOperator` and `config.factory.get_deployment`.
+- `config.yaml`: table metadata used by DAG factories, CI, dbt source sync, maintenance sync, and upload validation.
+- `config.yaml` may define `dag.team` and `alerts.*` for Airflow owner, `team::...` tag, and on-call callback.
+- `config/resources.yaml`: JSON-formatted Spark driver/executor resources and infrastructure placeholders.
+- `config/fetch_*.yaml`: SparkApplication template populated by `config/factory.py`.
+- `config/factory.py`: fills placeholders using `config.yaml`, `resources.yaml`, random suffixes, Airflow connections, and Airflow date macros.
 - `job/arguments.py`: parses `--partition_start`, `--partition_end`, and `--table_name`.
 - `job/entities.py`: dataclass for runtime arguments.
 - `job/getting_*.py`: main PySpark transformation and write logic.
 - `entrypoints/*.py`: executable Spark entrypoint that creates `SparkSession`, parses args, calls `job.run`, and stops Spark.
-- `migrations/create_table.sql`: Iceberg table DDL. Migrations are executed by CI after merge to `master`; jobs may still contain defensive create-table logic, but schema changes should be delivered through migrations.
+- `migrations/create_table.sql`: Iceberg DDL. Add extra migration files for schema changes.
+- `README.md`: Russian-language human summary of purpose, sources, grain, key formulas, and operational notes.
 
-Deployment convention:
+Configuration constraints:
 
-- All layer table Spark jobs use the shared default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
-- Job code is delivered through a `git-sync` initContainer and `mainApplicationFile` points to `local:///git/repo/layers/.../entrypoints/*.py`.
-- Code, config, README, DAG, migration, or resource-only changes for layer tables do not require building a per-entity Docker image.
-- Historical `Dockerfile`, `entrypoint.sh`, and `pyproject.toml` files may still exist in some older layer directories, but Drone no longer builds those per-table images and new layer tables should not add them.
-- Use a custom Spark image only for runtime dependencies or files that cannot be delivered through `git-sync`; the ranking upload is the current example because it needs `ranking-python-client` and the Kafka truststore.
+- Existing CI parsers read `config.yaml` with a simple nested key parser. Keep layer configs simple: nested mappings are fine, but avoid YAML anchors, complex lists, and non-obvious syntax unless the CI parser is updated.
+- Required table fields are `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`.
+- Primary keys should include `date` for daily/hourly feature tables unless there is a deliberate exception documented in README and code.
 
-## Silver Pipeline
+## Deployment Standard
+
+Layer table jobs:
+
+- Use shared default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
+- Deliver job code through a `git-sync` initContainer.
+- Set `mainApplicationFile` to `local:///git/repo/layers/.../entrypoints/*.py`.
+- Use Airflow variable `gitsync_branch` to choose the branch cloned into Spark pods.
+- Do not build a new image for code/config/README/DAG/migration/resource-only changes.
+
+Inactive runtime files:
+
+- Some layer directories still contain `Dockerfile`, `entrypoint.sh`, or `pyproject.toml` from earlier deployment patterns. Treat them as inactive unless the active SparkApplication template references them.
+- New layer tables should not add those files unless a custom runtime image is truly needed.
+
+Custom image decision:
+
+- Use a custom Spark image only when the job needs Python libraries, truststores, binaries, or runtime files that are not present in the default image and cannot be delivered by `git-sync`.
+- Current example: `upload/ranking_features/v1` uses a custom image because it needs `ranking-python-client` and a Kafka truststore.
+- If a new custom image is needed, add/update a Dockerfile, add/reuse a Drone Docker build pipeline with a unique tag trigger, document the tag naming, and update the SparkApplication image.
+- Internal packages must be installed from Nexus using Drone-provided `NEXUS_USERNAME` and `NEXUS_PASSWORD` build args. Never commit credentials.
+- Example tag pattern: `spark-feature-platform-ranking-upload-v0.1.0`; Drone publishes the configured image for tags matching the trigger.
+- After the image is built once, later Python job/config changes should still flow through `git-sync`; rebuild only for dependency, base-image, truststore, or Dockerfile-managed runtime changes.
+
+## DQ And Scheduling
+
+- Every repository-managed entity gets DQ tests in `dbt-trino`.
+- DQ DAG id pattern: `dbt.source.trino.ml_feature_platform_<schema>.<table_name>.dq`.
+- Example: `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_orders.dq`.
+- Use the table's actual schema in the DQ source name. Do not assume every source is `silver`.
+- Downstream DAGs must wait for DQ DAGs of feature-platform dependency tables.
+- For upstream DE-owned tables, use the source DAG/DQ contract that the producing team owns. Example: `silver/sku_group_id_prices` waits for `dbt.models.dwh_trino.sku_eod`.
+
+## CI Contracts
+
+Drone currently does the following:
+
+- Runs `ci_test/test_script.py`.
+- Runs `ci_test/test_sync_dbt_sources.py`.
+- Runs `ci_test/test_sync_iceberg_maintenance.py`.
+- Runs `scripts/validate_ranking_upload_configs.py`.
+- Runs all repository SQL migrations through PySpark on `master` push after merge.
+- Runs `scripts/sync_dbt_sources.py` to create/update dbt source entries for tables declared in layer configs.
+- Runs `scripts/sync_iceberg_maintenance.py` to create/update a PR in `DayMarket/pyspark-etl`.
+- Syncs the corresponding submodule reference in `DayMarket/airflow-dags`.
+- Builds the ranking upload custom image only on tags matching `spark-feature-platform-ranking-upload-*`.
+
+Migration CI:
+
+- Runs only for `branch: master` and `event: push`.
+- Uses the default Spark image and `spark-submit scripts/run_pyspark_migrations.py --repo-root .`.
+- Discovers every `layers/**/config.yaml` with SQL files under `migrations/`.
+- Reads Spark/Iceberg settings from `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `HIVE_METASTORE_URIS`, optional `ICEBERG_WAREHOUSE`, and S3/AWS region settings.
+- Substitutes `{target_table}` with the Spark table name from `config.yaml`.
+- Runs `create_table.sql` first, then remaining migrations in filename order.
+- Validates idempotency before execution: `CREATE TABLE` must use `IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN` must use `IF NOT EXISTS`, and destructive `DROP`/`DELETE`/`TRUNCATE` statements are rejected.
+
+dbt source sync:
+
+- `ci_config.yaml` maps `iceberg` to `dwh-iceberg`.
+- `scripts/sync_dbt_sources.py` discovers all layer configs with table metadata.
+- It writes repository-managed source blocks to `models/ml_feature_platform/sources.yaml`.
+- It creates one source block per effective schema, named `ml_feature_platform_<schema>`.
+- It does not create `sources_gold.yaml`.
+- It adds uniqueness/not-null tests from primary keys and adds freshness/row-count tests when `date` is part of the primary key.
+- It skips PR publication on branch `dev`.
+
+Iceberg maintenance sync:
+
+- Maintenance is configured in `DayMarket/pyspark-etl`, path `dags_v3/maintenance_generator`.
+- `ml-feature-platform` owns maintenance registration only for Iceberg tables it creates from `layers/**/config.yaml`.
+- Do not use dbt source files or dbt manifests as the source of truth for maintenance.
+- Include both repository-created `silver` and `gold` tables.
+- Do not add upstream DE-owned dependency tables such as `iceberg.silver.order_items` or `iceberg.silver.sku`.
+- The generated maintenance DAG is separate: `create_dag(config_name="feature_platform", dag_suffix="_fp")`, producing DAG id `spark.iceberg_maintenance_fp`.
+- CI should create/update a PR in `DayMarket/pyspark-etl`; when the current repo has an open dev-to-master PR, CI should comment there with the maintenance PR link.
+- Do not remove maintenance entries automatically when a table disappears locally; removals need manual review.
+
+## Adding Or Changing A Feature
+
+Use this workflow:
+
+- Classify the requested output: reusable pre-aggregate goes to `silver`; final model feature goes to `gold`; downstream publication goes to `upload`.
+- Run the duplicate feature check before scaffolding anything.
+- Choose the entity grain and primary key. Include `date` for scheduled snapshots.
+- Add or update migrations first. Use idempotent DDL and include comments for all columns.
+- Implement PySpark using existing local patterns. Prefer Spark functions/DataFrame API where it improves maintainability; Spark SQL is acceptable when it mirrors a validated analytical SQL clearly.
+- Keep source table names inside transformation code or config as existing jobs do; do not introduce hidden constants that make lineage harder to read.
+- Update `config.yaml`, `dag.py`, resources, SparkApplication template, factory, entrypoint, job code, migrations, and README together.
+- Add DQ sensor dependencies on DQ DAGs for feature-platform source tables.
+- Add ranking upload config only if the model/service needs the feature now.
+- Run the local validation commands listed at the end of this file.
+- Update this handbook if the new feature changes structure, contracts, deployment, CI, or feature inventory.
+
+Schema-change checklist:
+
+- Update `migrations/create_table.sql` for new environments.
+- Add an `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` migration for existing environments.
+- Update PySpark select/write columns.
+- Update README feature descriptions.
+- Update ranking upload config if the feature is published.
+- Ensure migration comments are present.
+
+## Current Feature Inventory
+
+### Silver: SKU Group Install/Search Interactions
 
 Path: `layers/silver/sku_group_install/v1`
 
-Airflow DAG:
+- Table: `iceberg.silver.feature_platform_search_sku_group_id_install_query`.
+- Primary key: `sku_group_id,install_id,query`.
+- DAG id: `feature_platform_sku_group_install_silver_stats_dag`.
+- Schedule: `0 1 * * *`.
+- Source tables: `iceberg.silver_b2c_clickstream.events`, `iceberg.silver.sku`.
+- Grain: `install_id`, `sku_group_id`, and search query/category key.
+- Metrics: `sum_impressions`, `sum_clicks`, `sum_atc`.
+- Filters/logic: uses `SEARCH_RESULTS`, `PRODUCT_IMPRESSION`, `PRODUCT_VIEW`, `ADD_TO_CART`; click/ATC follow product impression in the same `session_id`/`product_id` window.
+- Note: migration and code historically used `section`/`space` naming differently. Verify schema and writes before changing this table.
 
-- DAG id: `feature_platform_sku_group_install_silver_stats_dag`
-- Schedule: `0 1 * * *`
-- Start date: `2026-02-01`
-- Tags include `spark`, `feature-platform`, `team::search`, `silver`.
-- Task id: `getting_sku_group_query_install_stats`
-- Runs SparkApplication template `fetch_silver_sku_group_statistics.yaml`.
-- ExternalTaskSensor dependencies for clickstream DQ are present but commented out.
-
-Target table config:
-
-- Catalog/schema/table: `iceberg.silver.feature_platform_search_sku_group_id_install_query`
-- Config primary key: `sku_group_id,install_id,query`
-- Migration columns include `install_id`, `sku_group_id`, `section`, `uniqs`, `sum_atc`, `sum_clicks`, `sum_impressions`, `date`.
-- The transformation writes columns `install_id`, `sku_group_id`, `space`, `uniqs`, `sum_atc`, `sum_clicks`, `sum_impressions`, `date`. Note that migration uses `section`, while code writes `space`; check this carefully before changing schema or writes.
-- Partition: `date`.
-
-Transformation summary:
-
-- Reads `iceberg.silver_b2c_clickstream.events` for the partition window and `iceberg.silver.sku` for SKU-to-SKU-group fallback.
-- Filters clickstream events to `SEARCH_RESULTS`, `PRODUCT_IMPRESSION`, `PRODUCT_VIEW`, and `ADD_TO_CART`.
-- Normalizes query quotes and trims query text.
-- Builds interaction aggregates for search results and category contexts.
-- Counts:
-  - impressions from `PRODUCT_IMPRESSION`;
-  - clicks from `PRODUCT_VIEW` immediately following a product impression in the same `session_id`/`product_id` window;
-  - ATC from `ADD_TO_CART` immediately following a product impression in the same `session_id`/`product_id` window.
-- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
-
-Deployment:
-
-- Uses the shared Spark 3.5.5 image and `git-sync`.
-- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/silver/sku_group_install/v1/entrypoints/get_search_sku_group_silver_stats.py`.
-
-## Silver SKU Group Prices Pipeline
+### Silver: SKU Group Prices
 
 Path: `layers/silver/sku_group_id_prices/v1`
 
-Airflow DAG:
+- Table: `iceberg.silver.feature_platform_sku_group_id_prices`.
+- Primary key: `date,sku_group_id`.
+- DAG id: `feature_platform_sku_group_id_prices_silver_dag`.
+- Schedule: `0 1 * * *`.
+- Sensor: waits for `dbt.models.dwh_trino.sku_eod` with `execution_delta=timedelta(hours=1)`.
+- Source tables: `iceberg.silver.sku_eod`, `iceberg.silver.sku`.
+- Logic: filters `sku_eod.dt = {{ ds }}`, joins SKU metadata, aggregates by `sku_group_id`.
+- Features: average, median, minimum, and maximum EOD sell/full prices.
 
-- DAG id: `feature_platform_sku_group_id_prices_silver_dag`
-- Schedule: `0 1 * * *`
-- Start date: `2026-06-01`
-- Tags include `spark`, `feature-platform`, `team::search`, `silver`, `prices`.
-- Sensor task id: `wait_for_sku_eod`
-- Sensor waits for DAG `dbt.models.dwh_trino.sku_eod` with `execution_delta=timedelta(hours=1)` because the dbt DAG runs at `0 0 * * *`.
-- Spark task id: `getting_sku_group_id_prices`
-- Runs SparkApplication template `fetch_silver_sku_group_id_prices.yaml`.
-
-Target table config:
-
-- Catalog/schema/table: `iceberg.silver.feature_platform_sku_group_id_prices`
-- Primary key: `date,sku_group_id`
-- Partition: `date`.
-
-Transformation summary:
-
-- Reads `iceberg.silver.sku_eod` for `dt = {{ ds }}`.
-- Joins SKU metadata from `iceberg.silver.sku` by `sku_id`.
-- Aggregates by `sku_group_id`.
-- Produces average, median, minimum, and maximum end-of-day sell price and full price.
-- Migration `20260602_add_price_min_max_columns.sql` adds `min_sell_price_eod`, `max_sell_price_eod`, `min_full_price_eod`, and `max_full_price_eod` with `ALTER TABLE`.
-- The job ensures missing price min/max columns before building the feature dataframe.
-- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
-
-Deployment:
-
-- Uses the shared Spark 3.5.5 image and `git-sync`.
-- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/silver/sku_group_id_prices/v1/entrypoints/get_sku_group_id_prices.py`.
-
-## Silver SKU Group Orders Pipeline
+### Silver: SKU Group Orders
 
 Path: `layers/silver/sku_group_orders/v1`
 
-Airflow DAG:
+- Table: `iceberg.silver.feature_platform_sku_group_orders`.
+- Primary key: `date,sku_group_id`.
+- DAG id: `feature_platform_sku_group_orders_silver_dag`.
+- Schedule: `0 1 * * *`.
+- Source tables: `iceberg.silver.order_items`, `iceberg.silver.sku`.
+- Logic: uses `{{ ds }} 00:00:00` to `{{ next_ds }} 00:00:00` and a 20-day generated-at lookback.
+- Metrics: generated, completed, and returned item/order/GMV metrics by `sku_group_id`.
 
-- DAG id: `feature_platform_sku_group_orders_silver_dag`
-- Schedule: `0 1 * * *`
-- Start date: `2026-06-01`
-- Tags include `spark`, `feature-platform`, `team::search`, `silver`, `orders`.
-- Spark task id: `getting_sku_group_orders`
-- Runs SparkApplication template `fetch_silver_sku_group_orders.yaml`.
-
-Target table config:
-
-- Catalog/schema/table: `iceberg.silver.feature_platform_sku_group_orders`
-- Primary key: `date,sku_group_id`
-- Partition: `date`.
-
-Transformation summary:
-
-- Reads order items from `iceberg.silver.order_items`.
-- Joins SKU metadata from `iceberg.silver.sku` by `sku_id`.
-- Uses Airflow `{{ ds }} 00:00:00` as `target_date`, `{{ next_ds }} 00:00:00` as `end_date`, and `target_date - INTERVAL 20 DAY` for order lookback.
-- Aggregates generated, completed, and returned order metrics by `date` and `sku_group_id`.
-- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
-
-Deployment:
-
-- Uses the shared Spark 3.5.5 image and `git-sync`.
-- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/silver/sku_group_orders/v1/entrypoints/get_sku_group_orders.py`.
-
-## Silver Search Orders Pipeline
+### Silver: Search Orders By Query And SKU Group
 
 Path: `layers/silver/sku_group_query_search_orders/v1`
 
-Airflow DAG:
+- Table: `iceberg.silver.feature_platform_sku_group_query_search_orders`.
+- Primary key: `date,query,sku_group_id`.
+- DAG id: `feature_platform_sku_group_query_search_orders_silver_dag`.
+- Schedule: `0 1 * * *`.
+- Source tables: `iceberg.silver.order_items_attribution`, `iceberg.silver.order_items`, `iceberg.silver.sku`.
+- Search attribution spaces: `SHOP_SEARCH_RESULTS`, `COLLECTION_SEARCH_RESULTS`, `SEARCH`, `SEARCH_RESULTS`.
+- Logic: uses `{{ ds }} 00:00:00` to `{{ next_ds }} 00:00:00` and a 20-day attribution/order lookback.
+- Metrics: generated, completed, and returned item/order/GMV metrics by `query` and `sku_group_id`.
+- Important: `orders_generated` is counted as distinct `order_item_id`. Current gold query-order features depend on that exact meaning.
 
-- DAG id: `feature_platform_sku_group_query_search_orders_silver_dag`
-- Schedule: `0 1 * * *`
-- Start date: `2026-06-01`
-- Tags include `spark`, `feature-platform`, `team::search`, `silver`, `orders`.
-- Spark task id: `getting_sku_group_query_search_orders`
-- Runs SparkApplication template `fetch_silver_sku_group_query_search_orders.yaml`.
-
-Target table config:
-
-- Catalog/schema/table: `iceberg.silver.feature_platform_sku_group_query_search_orders`
-- Primary key: `date,query,sku_group_id`
-- Partition: `date`.
-
-Transformation summary:
-
-- Reads search attribution from `iceberg.silver.order_items_attribution`.
-- Reads order items from `iceberg.silver.order_items`.
-- Joins SKU metadata from `iceberg.silver.sku` by `sku_id`.
-- Uses Airflow `{{ ds }} 00:00:00` as `target_date`, `{{ next_ds }} 00:00:00` as `end_date`, and `target_date - INTERVAL 20 DAYS` for attribution/order lookback.
-- Filters search attribution to `SHOP_SEARCH_RESULTS`, `COLLECTION_SEARCH_RESULTS`, `SEARCH`, and `SEARCH_RESULTS`.
-- Aggregates generated, completed, and returned order metrics by `date`, `query`, and `sku_group_id`.
-- `orders_generated` is intentionally counted as distinct `order_item_id` for backward compatibility with legacy `query_skg_uniq_orders_*` gold features.
-- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
-
-Deployment:
-
-- Uses default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
-- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/silver/sku_group_query_search_orders/v1/entrypoints/get_sku_group_query_search_orders.py`.
-- Driver pod uses a `git-sync` initContainer to clone `https://github.com/DayMarket/ml-feature-platform/` into `/git/repo`.
-- Git branch is controlled by Airflow variable `gitsync_branch`.
-- This entity has no per-entity Docker image build in Drone; code changes are picked up from git on the next SparkApplication run.
-
-Resources note:
-
-- Current implemented Spark layers use the same profile: driver `1 core / 10g`, executors `5 x 8 cores / 16g`.
-- Feedback and price pipelines use a reduced profile: driver `1 core / 4g`, executors `3 x 4 cores / 8g`.
-- The larger driver `1 core / 10g`, executors `5 x 8 cores / 16g` profile is kept for order/search jobs with joins over order facts and lookback windows.
-- Resource-only changes in `config/resources.yaml` do not require rebuilding Spark images; code, entrypoint, dependency, or wheel changes do.
-
-## Gold Pipeline
+### Gold: Query ATC Features
 
 Path: `layers/gold/sku_group_query_atc_features/v1`
 
-Airflow DAG:
+- Table: `iceberg.gold.feature_platform_search_sku_group_id_query_atc_features`.
+- Primary key: `date,sku_group_id,query_text`.
+- DAG id: `feature_platform_sku_group_query_atc_features_gold_dag`.
+- Schedule: `0 2 * * *`.
+- Sensor: waits for DQ of `iceberg.silver.feature_platform_search_sku_group_id_install_query`.
+- Source table: `iceberg.silver.feature_platform_search_sku_group_id_install_query`.
+- Logic: uses `space = 'SEARCH_RESULTS'`, normalizes query text with lower/trim, builds 1/3/7/14/21/30/60/90-day windows.
+- Features: `query_skg_conv_imp2atc_*` and `share_of_atc_*`.
+- Caveat: current implementation should be inspected before changing `query_skg_conv_imp2atc_90`; verify the denominator before editing related formulas.
 
-- DAG id: `feature_platform_sku_group_query_atc_features_gold_dag`
-- Schedule: `0 2 * * *`
-- Start date: `2026-05-18`
-- Tags include `spark`, `feature-platform`, `team::search`, `gold`.
-- Sensor task id: `wait_for_silver_sku_group_install_stats`
-- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` with `execution_delta=timedelta(hours=1)`.
-- Spark task id: `getting_sku_group_query_atc_features`
-- Runs SparkApplication template `fetch_gold_sku_group_query_atc_features.yaml`.
-
-Target table config:
-
-- Catalog/schema/table: `iceberg.gold.feature_platform_search_sku_group_id_query_atc_features`
-- Primary key: `date,sku_group_id,query_text`
-- Partition: `date`.
-
-Transformation summary:
-
-- Reads `iceberg.silver.feature_platform_search_sku_group_id_install_query`.
-- Uses only `space = 'SEARCH_RESULTS'`.
-- Aggregates by `sku_group_id` and normalized `query_text`.
-- Builds ATC and impression windows for 1, 3, 7, 14, 21, 30, 60, and 90 days.
-- Produces:
-  - `query_skg_conv_imp2atc_*`: ATC/impression conversion features.
-  - `share_of_atc_*`: SKU group share of ATC inside each query.
-- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
-
-Important implementation note:
-
-- In the current SQL, `query_skg_conv_imp2atc_90` divides `atc_90_day` by `impressions_60_day`. This may be intentional or a bug; verify before touching related logic.
-
-## Gold SKU Group Query ATC Order Features Pipeline
+### Gold: Query ATC And Order Features
 
 Path: `layers/gold/sku_group_query_atc_order_features/v1`
 
-Airflow DAG:
+- Table: `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features`.
+- Primary key: `date,query,sku_group_id`.
+- DAG id: `feature_platform_sku_group_query_atc_order_features_gold_dag`.
+- Schedule: `0 3 * * *`.
+- Sensors: wait for DQ of `iceberg.silver.feature_platform_search_sku_group_id_install_query` and `iceberg.silver.feature_platform_sku_group_query_search_orders`.
+- Source tables: search interaction silver table and search-order silver table.
+- Query normalization: `lower(query)`, replace `ё` with `е`, collapse whitespace, `trim`, filter non-empty query.
+- Do not transform query into a tokenized `base_query`; do not remove stopwords, deduplicate tokens, or sort tokens.
+- Windows: 1/3/7/14/21/30/60/90 days ending at Airflow `{{ ds }}`.
+- Output key base: interaction pairs; order aggregates are left-joined.
+- Filters: keep pairs with `query_skg_uniq_impressions_14 >= 2`; exclude pairs with no ATC and no orders over the 90-day feature horizon.
+- Division: Spark division semantics are kept for conversions and ratios; zero or missing denominators become `NULL`, not forced to `0.0`.
+- Features include `query_skg_uniq_orders_*`, `query_skg_conv_imp2atc_*`, `query_skg_conv_imp2order_*`, and cross-window ratio features such as `query_skg_imp2atc_7_to_3`.
+- This table builds each daily partition from silver sources and does not carry rows forward from previous gold partitions.
 
-- DAG id: `feature_platform_sku_group_query_atc_order_features_gold_dag`
-- Schedule: `0 3 * * *`
-- Start date: `2026-06-01`
-- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `orders`, `atc`.
-- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` with `execution_delta=timedelta(hours=2)`.
-- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` with `execution_delta=timedelta(hours=2)`.
-- Spark task id: `getting_sku_group_query_atc_order_features`
-- Runs SparkApplication template `fetch_gold_sku_group_query_atc_order_features.yaml`.
-
-Target table config:
-
-- Catalog/schema/table: `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features`
-- Primary key: `date,query,sku_group_id`
-- Partition: `date`.
-
-Transformation summary:
-
-- Reads search interaction stats from `iceberg.silver.feature_platform_search_sku_group_id_install_query`.
-- Reads search order stats from `iceberg.silver.feature_platform_sku_group_query_search_orders`.
-- Uses only `space = 'SEARCH_RESULTS'`.
-- Normalizes the original query text by lower-casing, replacing `ё` with `е`, collapsing whitespace, trimming, and filtering empty values.
-- Does not transform queries into `base_query`: stopwords, repeated tokens, punctuation, and word order are otherwise preserved.
-- Builds 1, 3, 7, 14, 21, 30, 60, and 90 day windows ending at Airflow `{{ ds }}`.
-- Uses interaction pairs as the output key base and left-joins order aggregates.
-- Keeps only pairs where `query_skg_uniq_impressions_14 >= 2`, matching the legacy pairwise filter.
-- Excludes pairs with no ATC and no orders in the 90-day window because all final features for those pairs are zero.
-- Produces order counts, `impression -> atc` conversions, `impression -> order` conversions, and cross-window conversion ratios.
-- Uses Spark division semantics for conversions and ratios instead of replacing missing or zero denominators with `0.0`; this keeps legacy-like `NULL` behavior for unstable ratio features.
-- Builds each daily snapshot from silver sources and does not carry rows forward from previous target-table partitions.
-- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
-
-Deployment:
-
-- Uses default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
-- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_query_atc_order_features/v1/entrypoints/get_sku_group_query_atc_order_features.py`.
-- Driver pod uses a `git-sync` initContainer to clone `https://github.com/DayMarket/ml-feature-platform/` into `/git/repo`.
-- Git branch is controlled by Airflow variable `gitsync_branch`.
-- This entity has no per-entity Docker image build in Drone; code changes are picked up from git on the next SparkApplication run.
-
-## Gold SKU Group Search Conversion Features Pipeline
+### Gold: SKU Group Search Conversion Features
 
 Path: `layers/gold/sku_group_search_conversion_features/v1`
 
-Purpose:
+- Table: `iceberg.gold.feature_platform_sku_group_search_conversion_features`.
+- Primary key: `date,sku_group_id`.
+- DAG id: `feature_platform_sku_group_search_conversion_features_gold_dag`.
+- Schedule: `0 3 * * *`.
+- Sensors: wait for DQ of search interaction and search-order silver tables.
+- Source tables: `iceberg.silver.feature_platform_search_sku_group_id_install_query`, `iceberg.silver.feature_platform_sku_group_query_search_orders`.
+- Grain: `sku_group_id`.
+- Windows exclude Airflow `{{ ds }}` and end at `{{ ds }} - 1`.
+- Smooth formula: `(0.003384 + orders) / (0.003384 + 1.402240 + impressions)`.
+- Raw ratios use Spark division semantics and keep `NULL` for missing or zero denominators.
+- Features: `smooth_conv_imp2order_3`, `smooth_conv_imp2order_7`, `smooth_conv_imp2order_14`, `imp2order_3_to_1`, `imp2order_21_to_14`, `imp2order_30_to_21`.
 
-- Compatibility feature set for the previous model's SKU group search conversion features.
-- Produces only `smooth_conv_imp2order_3`, `smooth_conv_imp2order_7`, `smooth_conv_imp2order_14`, `imp2order_3_to_1`, `imp2order_21_to_14`, and `imp2order_30_to_21`.
-
-Airflow DAG:
-
-- DAG id: `feature_platform_sku_group_search_conversion_features_gold_dag`
-- Schedule: `0 3 * * *`
-- Start date: `2026-06-01`
-- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `orders`, `conversion`.
-- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` with `execution_delta=timedelta(hours=2)`.
-- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` with `execution_delta=timedelta(hours=2)`.
-- Spark task id: `getting_sku_group_search_conversion_features`
-- Runs SparkApplication template `fetch_gold_sku_group_search_conversion_features.yaml`.
-
-Target table config:
-
-- Catalog/schema/table: `iceberg.gold.feature_platform_sku_group_search_conversion_features`
-- Primary key: `date,sku_group_id`
-- Partition: `date`.
-
-Transformation summary:
-
-- Reads search impressions from `iceberg.silver.feature_platform_search_sku_group_id_install_query` with `space = 'SEARCH_RESULTS'`.
-- Reads search generated orders from `iceberg.silver.feature_platform_sku_group_query_search_orders`.
-- Aggregates both sources to `date,sku_group_id`, then builds windows 1, 3, 7, 14, 21, and 30 days.
-- SKU group windows exclude the Airflow `{{ ds }}` day and end at `{{ ds }} - 1`, matching the previous model's behavior.
-- Smooth order conversion uses `(0.003384 + orders) / (0.003384 + 1.402240 + impressions)`.
-- Raw conversion ratios use Spark division semantics and keep `NULL` for missing or zero denominators, matching the legacy feature-store behavior more closely.
-- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
-
-Deployment:
-
-- Uses default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
-- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_search_conversion_features/v1/entrypoints/get_sku_group_search_conversion_features.py`.
-- Driver pod uses a `git-sync` initContainer to clone `https://github.com/DayMarket/ml-feature-platform/` into `/git/repo`.
-- Git branch is controlled by Airflow variable `gitsync_branch`.
-- This entity has no per-entity Docker image build in Drone; code changes are picked up from git on the next SparkApplication run.
-
-## Gold SKU Group Median Sales 7D Pipeline
+### Gold: SKU Group Median Sales 7D
 
 Path: `layers/gold/sku_group_median_sales_7d/v1`
 
-Airflow DAG:
+- Table: `iceberg.gold.feature_platform_sku_group_median_sales_7d`.
+- Primary key: `date,sku_group_id`.
+- DAG id: `feature_platform_sku_group_median_sales_7d_gold_dag`.
+- Schedule: `0 */3 * * *`.
+- Source tables: `iceberg.silver.order_items`, `iceberg.silver.sku`.
+- Runtime boundary: uses Airflow `data_interval_end`, not plain `{{ ds }}`.
+- Logic: completed sales over the last 7 days before `data_interval_end`, excluding items returned before the cutoff; split into seven 24-hour buckets, fill missing buckets with zero, compute `median_sales_count_7d`.
 
-- DAG id: `feature_platform_sku_group_median_sales_7d_gold_dag`
-- Schedule: `0 */3 * * *`
-- Start date: `2026-06-01`
-- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `orders`.
-- Spark task id: `getting_sku_group_median_sales_7d`
-- Runs SparkApplication template `fetch_gold_sku_group_median_sales_7d.yaml`.
-
-Target table config:
-
-- Catalog/schema/table: `iceberg.gold.feature_platform_sku_group_median_sales_7d`
-- Primary key: `date,sku_group_id`
-- Partition: `date`.
-
-Transformation summary:
-
-- Reads order items from `iceberg.silver.order_items`.
-- Joins SKU metadata from `iceberg.silver.sku` by `sku_id`.
-- Uses `data_interval_end` as the rolling-window cutoff because the DAG runs every 3 hours.
-- Takes completed sales from the last 7 суток before `data_interval_end`, excluding items returned before the interval end.
-- Splits the rolling window into seven 24-hour buckets, fills missing buckets with zero sales for SKU groups active in the window, then computes `median_sales_count_7d`.
-- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
-
-Important implementation note:
-
-- This layer's `config/factory.py` intentionally injects `data_interval_start` and `data_interval_end` instead of `{{ ds }}` / `{{ next_ds }}` so three-hourly runs use the actual interval boundaries.
-
-Deployment:
-
-- Uses default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
-- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_median_sales_7d/v1/entrypoints/get_sku_group_median_sales_7d.py`.
-- Driver pod uses a `git-sync` initContainer to clone `https://github.com/DayMarket/ml-feature-platform/` into `/git/repo`.
-- Git branch is controlled by Airflow variable `gitsync_branch`.
-- This entity has no per-entity Docker image build in Drone; code changes are picked up from git on the next SparkApplication run.
-
-## Gold SKU Group Price Features Pipeline
+### Gold: SKU Group Price Features
 
 Path: `layers/gold/sku_group_price_features/v1`
 
-Airflow DAG:
+- Table: `iceberg.gold.feature_platform_sku_group_price_features`.
+- Primary key: `date,sku_group_id`.
+- DAG id: `feature_platform_sku_group_price_features_gold_dag`.
+- Schedule: `0 2 * * *`.
+- Sensor: waits for DQ of `iceberg.silver.feature_platform_sku_group_id_prices`.
+- Source tables: `iceberg.silver.feature_platform_sku_group_id_prices`, `iceberg.silver.sku`.
+- Logic: joins SKU category metadata, computes category mean sell price, discounts, and historical min-full-price ratios.
+- Important formula: `sell_price_eod = log1p(avg_sell_price_eod)`.
+- Discount columns: `abs_discount = median_full_price_eod - median_sell_price_eod`; `fraq_discount = median_sell_price_eod / median_full_price_eod`.
+- Ratio columns: yesterday's `min_full_price_eod` divided by average `min_full_price_eod` over previous 14 and 30 days.
+- Division: zero or missing denominators produce `NULL`.
 
-- DAG id: `feature_platform_sku_group_price_features_gold_dag`
-- Schedule: `0 2 * * *`
-- Start date: `2026-06-01`
-- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `prices`.
-- Sensor waits for DQ DAG `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_id_prices.dq` with `execution_delta=timedelta(hours=1)`.
-- Spark task id: `getting_sku_group_price_features`
-- Runs SparkApplication template `fetch_gold_sku_group_price_features.yaml`.
-
-Target table config:
-
-- Catalog/schema/table: `iceberg.gold.feature_platform_sku_group_price_features`
-- Primary key: `date,sku_group_id`
-- Partition: `date`.
-
-Transformation summary:
-
-- Reads daily price aggregates from `iceberg.silver.feature_platform_sku_group_id_prices`.
-- Joins SKU metadata from `iceberg.silver.sku` to get `category_id`.
-- Computes category average sell price, `log1p(avg_sell_price_eod)` as `sell_price_eod`, absolute discount, and `fraq_discount`.
-- Computes ratios of yesterday's `min_full_price_eod` to average `min_full_price_eod` over the previous 14 and 30 days.
-- Uses nullable division semantics matching SQL `NULLIF`: zero or missing denominators produce `NULL`.
-- Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
-
-Deployment:
-
-- Uses the shared Spark 3.5.5 image and `git-sync`.
-- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_price_features/v1/entrypoints/get_sku_group_price_features.py`.
-
-## Gold SKU Group Price Index Status Pipeline
+### Gold: SKU Group Price Index Status
 
 Path: `layers/gold/sku_group_price_index_status/v1`
 
-Purpose:
+- Table: `iceberg.gold.feature_platform_sku_group_price_index_status`.
+- Primary key: `date,sku_group_id`.
+- DAG id: `feature_platform_sku_group_price_index_status_gold_dag`.
+- Schedule: `0 3 * * *`.
+- Source path: `s3a://um-prod-airflow-fs/price_index_dag/dag_runs/{{ ds }}/price_index_features.parquet`.
+- Logic: fail clearly if the parquet path is missing; filter out `NO_BOOST`; map supported statuses to numeric classes.
+- Columns: `date`, `sku_group_id`, `price_index_status`.
+- This is a temporary model-contract table; do not extend it without confirming the serving contract.
 
-- Temporary compatibility table for an old model.
-- Produces only `date`, `sku_group_id`, and numeric `price_index_status`.
-
-Airflow DAG:
-
-- DAG id: `feature_platform_sku_group_price_index_status_gold_dag`
-- Schedule: `0 3 * * *`
-- Start date: `2026-06-01`
-- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `price-index`.
-- Spark task id: `getting_sku_group_price_index_status`
-- Runs SparkApplication template `fetch_gold_sku_group_price_index_status.yaml`.
-
-Target table config:
-
-- Catalog/schema/table: `iceberg.gold.feature_platform_sku_group_price_index_status`
-- Primary key: `date,sku_group_id`
-- Partition: `date`.
-
-Transformation summary:
-
-- Checks that `s3a://um-prod-airflow-fs/price_index_dag/dag_runs/{{ ds }}/price_index_features.parquet` exists before reading.
-- Fails with a clear `FileNotFoundError` if the parquet path is missing.
-- Reads the parquet file, filters out `price_index_status = 'NO_BOOST'`, maps supported statuses to integers, and writes the three output columns.
-
-Deployment:
-
-- Uses the shared Spark 3.5.5 image and `git-sync`.
-- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_price_index_status/v1/entrypoints/get_sku_group_price_index_status.py`.
-
-## Feedback Gold Pipelines
+### Gold: Feedback Features
 
 Paths:
 
-- `layers/gold/feedback_product_id/v1`
-- `layers/gold/feedback_sku_group_id/v1`
+- `layers/gold/feedback_product_id/v1`.
+- `layers/gold/feedback_sku_group_id/v1`.
 
-Airflow DAGs:
+Tables:
 
-- Product DAG id: `feature_platform_product_feedback_base_stats_gold_dag`
-- SKU group DAG id: `feature_platform_sku_group_feedback_base_stats_gold_dag`
-- Product schedule: `0 3 * * *`
-- SKU group schedule: `10 3 * * *`
-- Start date: `2026-06-01`
-- Tags include `spark`, `feature-platform`, `team::search`, `gold`, `feedback`.
+- `iceberg.gold.feature_platform_product_feedback_base_stats`, primary key `date,product_id`.
+- `iceberg.gold.feature_platform_sku_group_feedback_base_stats`, primary key `date,sku_group_id`.
 
-Target table configs:
+DAGs:
 
-- Product table: `iceberg.gold.feature_platform_product_feedback_base_stats`
-- Product primary key: `date,product_id`
-- SKU group table: `iceberg.gold.feature_platform_sku_group_feedback_base_stats`
-- SKU group primary key: `date,sku_group_id`
-- Partition: `date`.
+- `feature_platform_product_feedback_base_stats_gold_dag`, schedule `0 3 * * *`.
+- `feature_platform_sku_group_feedback_base_stats_gold_dag`, schedule `10 3 * * *`.
 
-Transformation summary:
+Logic:
 
-- Reads published feedback from `iceberg.silver_bxappdb2_foodback.public_feedback`.
-- Joins SKU metadata from `iceberg.silver.sku` by `sku_id`.
-- Builds daily snapshots for Airflow `{{ ds }}`.
-- Uses all feedback history with `date_published < {{ ds }}` so the snapshot reflects the state up to the previous day.
-- Uses only `status = 'PUBLISHED'`.
-- Product pipeline groups by `f.product_id`; SKU group pipeline groups by `s.sku_group_id`.
-- Produces average rating, good/bad review counts, rating bucket counts, text review count, and review ratio features.
-
-Important implementation note:
-
-- Trino source name `"dwh-iceberg".silver_bxappdb2_foodback.public_feedback` maps to Spark source `iceberg.silver_bxappdb2_foodback.public_feedback` in these jobs.
-
-Deployment:
-
-- Both feedback pipelines use the shared Spark 3.5.5 image and `git-sync`.
-- Product SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/feedback_product_id/v1/entrypoints/get_product_feedback_base_stats.py`.
-- SKU group SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/feedback_sku_group_id/v1/entrypoints/get_sku_group_feedback_base_stats.py`.
-
-Gold query ATC features also use the shared Spark 3.5.5 image and `git-sync`; its SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_query_atc_features/v1/entrypoints/get_search_sku_group_query_atc_features.py`.
+- Source feedback table in Spark: `iceberg.silver_bxappdb2_foodback.public_feedback`.
+- Trino source name equivalent: `"dwh-iceberg".silver_bxappdb2_foodback.public_feedback`.
+- Join `iceberg.silver.sku` by `sku_id`.
+- Use only `status = 'PUBLISHED'`.
+- Use all published feedback history with `date_published < {{ ds }}` so the snapshot reflects state up to the previous day.
+- Product pipeline groups by `product_id`; SKU group pipeline groups by `sku_group_id`.
+- Features: average rating, good/bad counts, counts for ratings 1-5, text-review count, and ratio features.
 
 ## Ranking Features Upload
 
@@ -513,203 +372,108 @@ Path: `upload/ranking_features/v1`
 
 Purpose:
 
-- Publishes final feature groups from feature platform tables to the ranking service through Kafka.
+- Publishes final gold feature groups to the ranking service through Kafka topic `ranking.features.updates`.
 - Uses one DAG and one `config.yaml` for multiple feature groups.
-- Reads only repository-managed source tables; final model features should normally come from the `gold` layer.
+- Reads only repository-managed gold source tables.
 
-Configuration:
+Configuration rules:
 
-- Each feature group reads exactly one source table. Do not join multiple source tables inside the upload job; create separate ranking feature groups for features stored in different sources.
-- Each feature group declares `source.schema`, `source.table`, ranking service feature group `name`, and ordered `features`.
-- `features` contains source table column names. The ranking service does not receive individual feature names.
-- Feature and feature group order are part of the ranking service contract because protobuf messages contain an ordered values array rather than feature names.
-- Do not reuse one ranking feature group `name` for partial vectors from multiple source tables.
-- Catalog, date column, and entity keys are derived automatically from the source table layer `config.yaml`; entity keys are the table `primary_key` without `date`.
-- `log1p_features` is optional and is needed only for features that must be transformed before upload.
-- `source.limit` is an optional positive integer intended only for temporary delivery checks. Remove it before a production upload.
-- `source.dq_execution_delta_minutes` sets the ExternalTaskSensor delta from the upload DAG logical date to the source table DQ DAG logical date.
-- `ranking_service_input.yaml` documents the corresponding feature group order for the ranking service.
+- Each feature group reads exactly one source table. Do not join multiple source tables inside upload.
+- Each group declares `source.schema`, `source.table`, ranking feature group `name`, and ordered `features`.
+- `features` are source-table column names. The ranking service receives ordered values, not individual feature names.
+- Feature order and feature group order are part of the serving contract.
+- Do not reuse one feature group `name` for partial vectors from multiple sources.
+- Catalog, date column, and entity keys are derived from the source layer `config.yaml`; entity keys are the primary key without `date`.
+- Supported entity keys are `sku_group_id`, `query`, `account_id`, `query,sku_group_id`, `category_id,sku_group_id`, and `account_id,category_id`.
+- `source.dq_execution_delta_minutes` sets the sensor delta from upload logical date to the source DQ logical date.
+- `source.limit` is only for temporary smoke tests. Production configs must not contain it.
+- `log1p_features` is optional and only for features that must be transformed at upload time.
+- Update `ranking_service_input.yaml` whenever feature group order, names, schemas, or sizes change.
 
-Supported entity key sets:
+Current upload groups:
 
-- `sku_group_id`
-- `query`
-- `account_id`
-- `query,sku_group_id`
-- `category_id,sku_group_id`
-- `account_id,category_id`
+- `fs_search_skg_rating_v1`: `product_rating` from `feature_platform_sku_group_feedback_base_stats`.
+- `fs_search_skg_price_ratios_v1`: 14/30-day min-full-price ratios from `feature_platform_sku_group_price_features`.
+- `fs_search_skg_conversion_features_v1`: six SKU-group search conversion features from `feature_platform_sku_group_search_conversion_features`.
+- `fs_search_skg_price_index_status_v1`: `price_index_status` from `feature_platform_sku_group_price_index_status`.
+- `fs_search_skg_price_features_v1`: `sell_price_eod`, `abs_discount`, `fraq_discount`, `category_mean_sell_price` from `feature_platform_sku_group_price_features`.
+- `fs_search_query_skg_v3`: 29 query/SKU-group ATC/order features from `feature_platform_search_sku_group_id_query_atc_order_features`.
 
-Airflow DAG:
+Runtime:
 
-- DAG id: `feature_platform_ranking_features_upload_dag`
-- Schedule: `0 4 * * *`
-- Waits for the DQ DAG of every configured source table.
-- Reads the source partition for Airflow `{{ ds }}`.
-- Serializes `ranking_python_client.FeaturesUpdate` messages and writes them to Kafka topic `ranking.features.updates`.
-- The Kafka writer uses `acks=all` so delivery/auth/broker problems fail the Spark task instead of being hidden by fire-and-forget writes.
-- The job logs source row counts and Kafka record counts per feature group.
-- Kafka keys are built as `feature_group_name|entity_keys...` so multiple feature groups for the same entity do not overwrite or deduplicate each other downstream.
+- DAG id: `feature_platform_ranking_features_upload_dag`.
+- Schedule: `0 4 * * *`.
+- Waits for DQ DAGs of all configured source tables.
+- Reads each source partition for Airflow `{{ ds }}`.
+- Serializes `ranking_python_client.FeaturesUpdate` messages.
+- Kafka writer uses `acks=all`.
+- Kafka keys are `feature_group_name|entity_keys...` so different feature groups for the same entity do not collide.
+- Job logs source row counts, Kafka record counts, and sample key/payload information.
+- Driver and executors use `git-sync`; executors receive `/git/repo/upload/ranking_features/v1` through `spark.executorEnv.PYTHONPATH`.
+- Custom image `cr.yandex/de-common/pyspark-feature-platform-ranking-upload` contains `ranking-python-client` and Kafka truststore.
 
-Deployment:
+## Agent Workflow For Ranking Feature Additions
 
-- Spark job code and `config.yaml` are delivered through `git-sync`.
-- The ranking upload uses a Python UDF for protobuf serialization, so both driver and executor pods run `git-sync`; executors receive `/git/repo/upload/ranking_features/v1` through `spark.executorEnv.PYTHONPATH`.
-- The shared image `cr.yandex/de-common/pyspark-feature-platform-ranking-upload` contains `ranking-python-client` and the Kafka truststore.
-- Code or config-only changes do not require rebuilding the image. Dependency or truststore changes do.
-- Drone image tag trigger: `refs/tags/spark-feature-platform-ranking-upload-*`.
+An ML engineer may provide only a source table and ordered feature names. The agent should:
 
-One-time PySpark image build for non-standard libraries:
+- Find the source under `layers/**/config.yaml`.
+- Confirm the source is a repository-managed `gold` table.
+- Confirm all requested columns exist in migrations.
+- Confirm the primary key maps to a supported entity schema.
+- Add one feature group per source table.
+- Preserve the requested feature order exactly.
+- Set `source.dq_execution_delta_minutes` from upload schedule and source DQ schedule.
+- Update `ranking_service_input.yaml`.
+- Run `python3 scripts/validate_ranking_upload_configs.py`.
+- If `source.limit` was added for a smoke test, remove it before production.
 
-- Use a dedicated or shared PySpark image when a job imports a Python library that is not present in the default Spark image, requires a truststore, or needs other runtime files that cannot be delivered through `git-sync`.
-- Add the dependency to the relevant `Dockerfile`. Internal Python packages should be installed from Nexus using Drone-provided `NEXUS_USERNAME` and `NEXUS_PASSWORD` build arguments; do not commit credentials.
-- Add or reuse a Drone Docker build pipeline with a unique tag trigger and image repository.
-- Push a versioned git tag matching the trigger, for example `spark-feature-platform-ranking-upload-v0.1.0`. Drone builds and publishes `cr.yandex/de-common/pyspark-feature-platform-ranking-upload:spark-feature-platform-ranking-upload-v0.1.0`.
-- Update the SparkApplication `spec.image` to the published tag and deploy the DAG.
-- This image build is normally required only once. Later changes to job Python code or `config.yaml` are delivered through `git-sync` and do not require a new image tag.
-- Rebuild and publish a new image tag only when dependencies, the base Spark image, truststore, or other Dockerfile-managed runtime files change.
-
-Agent workflow for adding ranking features:
-
-- An ML engineer may provide only the source table and ordered feature names.
-- Find the source table under `layers/**/config.yaml`.
-- Add `source.schema`, `source.table`, feature group `name`, and ordered `features`; the runtime and CI derive the remaining source metadata.
-- Set `source.dq_execution_delta_minutes` to the difference between upload schedule and the source DQ schedule.
-- Read migration DDL to confirm feature columns.
-- Check legacy upload code when compatibility requires preserving value order or applying `log1p`.
-- Keep one source table per feature group and use a distinct ranking service feature group name for each source.
-- Update `ranking_service_input.yaml` when adding or reordering feature groups.
-- Use `source.limit` only for an explicit test upload, then remove it before production.
-- Add the feature group to `upload/ranking_features/v1/config.yaml`; do not duplicate serialization code.
-- Run `python scripts/validate_ranking_upload_configs.py`.
-
-## Airflow and Deployment Details
+## Airflow Details
 
 - DAGs import `send_oncall_notification` from `airflow_commons.helpers.oncall`.
-- Airflow owner and the `team::...` DAG tag should be derived from `config.yaml` via `config.factory.get_dag_settings()`, using `dag.team` with fallback to `table.meta.team`.
-- Failure callback alert settings should be derived from `config.yaml` via `config.factory.get_dag_settings()`, using `alerts.team`, `alerts.severity`, and `alerts.oncall_webhook_conn_id`.
-- Current default/fallback values are owner `team:search`, team tag `team::search`, severity `P3`, and webhook `oncall_webhook_search`.
+- Airflow owner and `team::...` tag should be derived from `config.yaml` through `config.factory.get_dag_settings()`.
+- Alert settings should be derived from `alerts.team`, `alerts.severity`, and `alerts.oncall_webhook_conn_id`.
+- Defaults are owner `team:search`, severity `P3`, and webhook `oncall_webhook_search`.
 - Spark namespace: `svc-data-spark-jobs`.
 - Kubernetes connection id: `spark_k8s`.
-- SparkApplication placeholders are filled by `config/factory.py`.
-- Airflow connections used by the factory:
-  - `spark_ycs_connection`
-  - `spark_search_research_connection`
-- The factory injects:
-  - `{{ ds }} 00:00:00` as `<partition_start>`
-  - `{{ next_ds }} 00:00:00` as `<partition_end>`
-  - fully qualified table name from `config.yaml` as `<table_name>`
-  - S3 credentials, Hive metastore URI, Spark event log bucket, node selector, and Spark resources.
+- Common Airflow connections used by factories: `spark_ycs_connection`, `spark_search_research_connection`.
+- Common factory placeholders include partition start/end, target table name, S3 credentials, Hive metastore URI, Spark event log bucket, node selector, and Spark resources.
+- Three-hourly jobs can use `data_interval_start`/`data_interval_end` instead of `{{ ds }}`/`{{ next_ds }}` when rolling windows require true interval boundaries.
 
-## CI and dbt Source Sync
+## Common Corner Cases
 
-Drone responsibilities:
+- `{{ ds }}` usually means the partition date being written. Some business logic intentionally uses data strictly before `ds` to produce features “as of yesterday”; document this in README and lineage answers.
+- A DAG scheduled later than its source should use `execution_delta` equal to upload/source schedule difference in the correct direction. For example, a `01:00` DAG waiting for a `00:00` DAG uses `timedelta(hours=1)`.
+- Trino table names such as `"dwh-iceberg".silver.table` map to Spark names such as `iceberg.silver.table`.
+- `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` support can differ by engine. Repository migrations are run through PySpark, so validate syntax against Spark/Iceberg, not only Trino.
+- Spark worker imports must be available on executors too. If a UDF imports project code, configure executor `PYTHONPATH` and `git-sync` for executors, as ranking upload does.
+- Do not silently coalesce null/zero denominators to `0.0` unless the feature contract says so. Several conversion features intentionally keep Spark `NULL` division semantics.
+- Query normalization is feature-specific. For current query ATC/order gold features, only lower/`ё` replacement/space collapse/trim/non-empty filtering is used.
+- Production ranking upload must not keep `source.limit`; limits are for explicit smoke checks only.
+- Feature names are not sent to ranking service, only ordered values. Reordering is a model-serving contract change.
+- Maintenance sync should add only tables created by this repo, not external dependency tables.
 
-- Run `ci_test/test_script.py`.
-- Run `scripts/validate_ranking_upload_configs.py` to ensure configured upload features exist in their source table migrations.
-- Run all repository SQL migrations through PySpark on `master` push after merge.
-- Run `scripts/sync_dbt_sources.py` to create/update dbt source entries for tables declared in layer `config.yaml` files.
-- Run `scripts/sync_iceberg_maintenance.py` to create/update a `DayMarket/pyspark-etl` PR for Iceberg maintenance of tables created by this repository.
-- Sync the corresponding submodule reference in `DayMarket/airflow-dags`.
+## Local Validation Commands
 
-PySpark migration CI step:
-
-- Runs only for `branch: master` and `event: push`, so migrations are not applied from PR checks.
-- Uses default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
-- Runs `scripts/run_pyspark_migrations.py --repo-root .` through `spark-submit` and discovers every `layers/**/config.yaml` that has SQL files under `migrations/`.
-- Reads Spark/Iceberg settings from `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `HIVE_METASTORE_URIS`, and optionally `ICEBERG_WAREHOUSE`.
-- Substitutes `{target_table}` with the Spark table name from `config.yaml`, for example `iceberg.gold.feature_platform_sku_group_median_sales_7d`.
-- Runs `create_table.sql` first for each entity, then the remaining migrations in filename order.
-- Validates idempotency before execution: `CREATE TABLE` must use `IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN` must use `IF NOT EXISTS`, and destructive `DROP`/`DELETE`/`TRUNCATE` statements are rejected.
-
-`ci_config.yaml` configures dbt source sync:
-
-- dbt repo URL is read from env var `DBT_REPO_URL`.
-- dbt models path: `models/ml_feature_platform`.
-- base branch: `master`.
-- database mapping: `iceberg` -> `dwh-iceberg`.
-- schema override: branch `dev` uses schema `staging`.
-
-`scripts/sync_dbt_sources.py`:
-
-- Discovers all `layers/**/config.yaml` files with `table` metadata.
-- Requires `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`.
-- Creates dbt source names from each table's effective schema: `ml_feature_platform_<schema>`.
-- Keeps all ml-feature-platform source blocks in `models/ml_feature_platform/sources.yaml`; each effective schema gets its own `ml_feature_platform_<schema>` source block in that file.
-- Adds and repairs source descriptions such as `Silver-layer Iceberg tables produced by ml-feature-platform and consumed by ML feature pipelines.`
-- Removes repository-managed tables found under the wrong dbt source schema and adds them back under their configured schema in the same generated PR.
-- Adds dbt tests:
-  - `dbt_utils.unique_combination_of_columns` over the primary key.
-  - `not_null` for each primary key column.
-  - If `date` is in the primary key, also adds freshness and row-count tests.
-- Skips PR publication on branch `dev`.
-
-## CI and Iceberg Maintenance Sync
-
-Iceberg table maintenance is configured in `DayMarket/pyspark-etl`, not in `dbt-trino`.
-
-Important ownership boundary:
-
-- Do not use `dbt-trino` sources or dbt manifests as the source of truth for ml-feature-platform maintenance.
-- DE owns dbt source registration and DQ source DAGs.
-- `ml-feature-platform` owns only the Iceberg tables it creates from `layers/**/config.yaml`.
-
-Target repository and DAG:
-
-- Repository: `DayMarket/pyspark-etl`.
-- Maintenance code path: `dags_v3/maintenance_generator`.
-- Existing generator reads table lists from config loaders in `dag.py` and runs `job.py` per `schema.table`.
-- For ml-feature-platform, add a dedicated config loader named `feature_platform`.
-- The generated maintenance DAG should be separate:
-  `create_dag(config_name="feature_platform", dag_suffix="_fp")`.
-- The resulting DAG id should be `spark.iceberg_maintenance_fp`.
-
-Maintenance table source:
-
-- Discover only repository-managed Iceberg tables from this repository's `layers/**/config.yaml`.
-- Include tables where `table.catalog: iceberg`.
-- Include both `silver` pre-aggregates and `gold` final feature tables created by this repository.
-- Do not add dbt-trino source tables that are merely dependencies, such as upstream DE-owned silver tables.
-- Do not remove tables automatically from maintenance when they disappear locally; removals need manual review.
-
-Expected CI automation:
-
-- Dedicated sync script: `scripts/sync_iceberg_maintenance.py`.
-- CI test: `ci_test/test_sync_iceberg_maintenance.py`.
-- The script clones/updates `DayMarket/pyspark-etl`, adds missing feature-platform tables to `dags_v3/maintenance_generator/feature_platform_config.yaml`, patches `dag.py` for the dedicated `_fp` DAG, and creates a PR there.
-- The script should be idempotent: reruns must not reorder or duplicate existing maintenance entries.
-- When the current repository has an open PR from `dev` to `master`, the CI should comment there with the created `pyspark-etl` maintenance PR link.
-- If no such PR is found, CI should still print and persist the maintenance PR URL in build artifacts/logs.
-
-## Local Commands
-
-Useful read-only or validation commands:
+Run the relevant checks before finishing changes:
 
 ```bash
-python ci_test/test_script.py
+python3 ci_test/test_script.py
+python3 ci_test/test_sync_dbt_sources.py
+python3 ci_test/test_sync_iceberg_maintenance.py
+python3 scripts/validate_ranking_upload_configs.py
+git diff --check
 ```
 
-Per-layer package metadata is under each layer's `pyproject.toml`; there is no root `pyproject.toml` at the moment.
+For migration behavior, CI runs Spark against real infrastructure after merge. Local execution may require S3, Hive metastore, and network credentials.
 
-Because dependencies are internal/networked, installing packages or building Docker images may require credentials and network access.
+## Updating This Handbook
 
-## Development Guidance
+Update this file when:
 
-- Prefer copying the existing layer pattern when adding a new pipeline.
-- Keep table metadata in `config.yaml` synchronized with migration DDL and transformation write columns.
-- If changing a target table schema, update:
-  - `migrations/create_table.sql`
-  - `config.yaml`
-  - PySpark write/select columns
-  - dbt expectations generated from `scripts/sync_dbt_sources.py`
-  - downstream DAG dependencies if applicable.
-- Do not assume empty README files contain useful context; inspect code/configs directly.
-- Be careful with generated or dirty files. This repository has previously contained Python cache files under layer directories; do not treat them as source.
-- Before editing existing files, check `git status --short` and avoid reverting unrelated user changes.
+- A new layer entity or upload process is added.
+- A feature formula, window, grain, null handling, or query normalization changes.
+- DAG schedules, DQ dependencies, CI behavior, or deployment behavior changes.
+- A custom image or non-standard runtime dependency is introduced.
+- A downstream ranking-service feature group is added or reordered.
 
-## Current Known State
-
-At the time this context file was created:
-
-- `layers/gold/sku_group_query_atc_features/v1/dag.py` was deleted in the working tree.
-- `layers/gold/sku_group_query_atc_features/v1/dag.py` was untracked in the working tree.
-- These DAG changes appear user-owned; do not revert them unless explicitly asked.
+For agent-specific files such as `CLAUDE.md`, do not duplicate repository knowledge. Point them to this `AGENTS.md` so the instructions remain consistent across tools.
