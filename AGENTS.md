@@ -527,6 +527,7 @@ Configuration:
 - Catalog, date column, and entity keys are derived automatically from the source table layer `config.yaml`; entity keys are the table `primary_key` without `date`.
 - `log1p_features` is optional and is needed only for features that must be transformed before upload.
 - `source.limit` is an optional positive integer intended only for temporary delivery checks. Remove it before a production upload.
+- `source.dq_execution_delta_minutes` sets the ExternalTaskSensor delta from the upload DAG logical date to the source table DQ DAG logical date.
 - `ranking_service_input.yaml` documents the corresponding feature group order for the ranking service.
 
 Supported entity key sets:
@@ -545,6 +546,9 @@ Airflow DAG:
 - Waits for the DQ DAG of every configured source table.
 - Reads the source partition for Airflow `{{ ds }}`.
 - Serializes `ranking_python_client.FeaturesUpdate` messages and writes them to Kafka topic `ranking.features.updates`.
+- The Kafka writer uses `acks=all` so delivery/auth/broker problems fail the Spark task instead of being hidden by fire-and-forget writes.
+- The job logs source row counts and Kafka record counts per feature group; with the current smoke-test `source.limit: 5`, expect at most 5 Kafka records per feature group.
+- Kafka keys are built as `feature_group_name|entity_keys...` so multiple feature groups for the same entity do not overwrite or deduplicate each other downstream.
 
 Deployment:
 
@@ -569,6 +573,7 @@ Agent workflow for adding ranking features:
 - An ML engineer may provide only the source table and ordered feature names.
 - Find the source table under `layers/**/config.yaml`.
 - Add `source.schema`, `source.table`, feature group `name`, and ordered `features`; the runtime and CI derive the remaining source metadata.
+- Set `source.dq_execution_delta_minutes` to the difference between upload schedule and the source DQ schedule.
 - Read migration DDL to confirm feature columns.
 - Check legacy upload code when compatibility requires preserving value order or applying `log1p`.
 - Keep one source table per feature group and use a distinct ranking service feature group name for each source.
@@ -636,6 +641,42 @@ PySpark migration CI step:
   - `not_null` for each primary key column.
   - If `date` is in the primary key, also adds freshness and row-count tests.
 - Skips PR publication on branch `dev`.
+
+## CI and Iceberg Maintenance Sync
+
+Iceberg table maintenance is configured in `DayMarket/pyspark-etl`, not in `dbt-trino`.
+
+Important ownership boundary:
+
+- Do not use `dbt-trino` sources or dbt manifests as the source of truth for ml-feature-platform maintenance.
+- DE owns dbt source registration and DQ source DAGs.
+- `ml-feature-platform` owns only the Iceberg tables it creates from `layers/**/config.yaml`.
+
+Target repository and DAG:
+
+- Repository: `DayMarket/pyspark-etl`.
+- Maintenance code path: `dags_v3/maintenance_generator`.
+- Existing generator reads table lists from config loaders in `dag.py` and runs `job.py` per `schema.table`.
+- For ml-feature-platform, add a dedicated config loader named `feature_platform`.
+- The generated maintenance DAG should be separate:
+  `create_dag(config_name="feature_platform", dag_suffix="_fp")`.
+- The resulting DAG id should be `spark.iceberg_maintenance_fp`.
+
+Maintenance table source:
+
+- Discover only repository-managed Iceberg tables from this repository's `layers/**/config.yaml`.
+- Include tables where `table.catalog: iceberg`.
+- Include both `silver` pre-aggregates and `gold` final feature tables created by this repository.
+- Do not add dbt-trino source tables that are merely dependencies, such as upstream DE-owned silver tables.
+- Do not remove tables automatically from maintenance when they disappear locally; removals need manual review.
+
+Expected CI automation:
+
+- Add a dedicated sync script in this repository, similar in spirit to `scripts/sync_dbt_sources.py`.
+- The script should clone/update `DayMarket/pyspark-etl`, add missing feature-platform tables to the feature-platform maintenance config, and create a PR there.
+- The script should be idempotent: reruns must not reorder or duplicate existing maintenance entries.
+- When the current repository has an open PR from `dev` to `master`, the CI should comment there with the created `pyspark-etl` maintenance PR link.
+- If no such PR is found, CI should still print and persist the maintenance PR URL in build artifacts/logs.
 
 ## Local Commands
 

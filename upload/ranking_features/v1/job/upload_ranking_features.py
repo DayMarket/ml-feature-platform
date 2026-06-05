@@ -1,5 +1,6 @@
 import json
 import math
+from decimal import Decimal
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,12 @@ PROTO_KEY_ARGUMENTS = {
     "query": "query",
     "sku_group_id": "skuGroupId",
 }
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return float(value)
+    return str(value)
 
 
 def _load_config(config_path: str) -> dict[str, Any]:
@@ -150,6 +157,17 @@ def _feature_value(row: Any, feature_name: str, log1p_features: set[str]) -> flo
     return float(value)
 
 
+def _feature_values(
+    row: Any,
+    feature_group: dict[str, Any],
+) -> list[float]:
+    log1p_features = set(feature_group.get("log1p_features", []))
+    return [
+        _feature_value(row, feature_name, log1p_features)
+        for feature_name in feature_group["features"]
+    ]
+
+
 def _row_to_proto(
     row: Any,
     feature_group: dict[str, Any],
@@ -161,16 +179,29 @@ def _row_to_proto(
         PROTO_KEY_ARGUMENTS[key]: row[key]
         for key in metadata["entity_keys"]
     }
-    feature_values = [
-        _feature_value(row, feature_name, set(feature_group.get("log1p_features", [])))
-        for feature_name in feature_group["features"]
-    ]
     message = message_class(
         **key_arguments,
         fsName=feature_group["name"],
-        features=feature_values,
+        features=_feature_values(row, feature_group),
     )
     return FeaturesUpdate(**{update_field: message}).SerializeToString()
+
+
+def _row_to_debug_payload(
+    row: Any,
+    feature_group: dict[str, Any],
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    entity_keys = _entity_keys(metadata)
+    update_field, _ = ENTITY_TYPES[entity_keys]
+    feature_values = _feature_values(row, feature_group)
+    return {
+        "update_field": update_field,
+        "fsName": feature_group["name"],
+        "keys": {key: row[key] for key in metadata["entity_keys"]},
+        "features_count": len(feature_values),
+        "features": feature_values,
+    }
 
 
 def _to_kafka_frame(
@@ -189,7 +220,7 @@ def _to_kafka_frame(
     return (
         frame.withColumn("_serialized", serializer(F.struct("*")))
         .select(
-            F.concat_ws("", *key_columns).alias("key"),
+            F.concat_ws("|", F.lit(feature_group["name"]), *key_columns).alias("key"),
             F.col("_serialized").alias("value"),
         )
     )
@@ -214,7 +245,7 @@ def _write_to_kafka(frame: DataFrame, arguments: Arguments) -> None:
         .option("kafka.linger.ms", "10")
         .option("kafka.batch.size", str(120 * 1024))
         .option("kafka.queue.buffering.max.messages", "170000")
-        .option("kafka.acks", "0")
+        .option("kafka.acks", "all")
         .save()
     )
 
@@ -229,9 +260,40 @@ def run(spark: SparkSession, arguments: Arguments) -> None:
             metadata,
             arguments.run_date,
         )
+        source_count = source_frame.count()
+        print(
+            f"Prepared feature group {feature_group['name']} "
+            f"from {_source_table(feature_group, metadata)} "
+            f"date={arguments.run_date} rows={source_count} "
+            f"limit={feature_group['source'].get('limit')}"
+        )
+        if source_count == 0:
+            print(
+                f"Skip Kafka upload for {feature_group['name']}: "
+                f"no rows for date={arguments.run_date}"
+            )
+            continue
+        for sample_index, sample_row in enumerate(source_frame.take(3), start=1):
+            print(
+                "Kafka payload sample "
+                f"feature_group={feature_group['name']} "
+                f"sample={sample_index} "
+                f"{json.dumps(_row_to_debug_payload(sample_row, feature_group, metadata), ensure_ascii=False, default=_json_default)}"
+            )
         kafka_frame = _to_kafka_frame(source_frame, feature_group, metadata)
+        kafka_count = kafka_frame.count()
+        for sample_index, sample_row in enumerate(kafka_frame.select("key").take(3), start=1):
+            print(
+                "Kafka key sample "
+                f"feature_group={feature_group['name']} "
+                f"sample={sample_index} key={sample_row['key']}"
+            )
         print(
             f"Upload feature group {feature_group['name']} "
-            f"from {_source_table(feature_group, metadata)}"
+            f"to Kafka topic={arguments.kafka_topic} records={kafka_count}"
         )
         _write_to_kafka(kafka_frame, arguments)
+        print(
+            f"Uploaded feature group {feature_group['name']} "
+            f"to Kafka topic={arguments.kafka_topic} records={kafka_count}"
+        )

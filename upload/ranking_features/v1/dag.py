@@ -55,7 +55,9 @@ def upload_ranking_features():
                 poke_interval=30,
                 timeout=6 * 60 * 60,
                 check_existence=True,
-                execution_delta=timedelta(hours=3),
+                execution_delta=timedelta(
+                    minutes=dependency["execution_delta_minutes"]
+                ),
             )
         )
 

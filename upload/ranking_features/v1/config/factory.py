@@ -49,7 +49,7 @@ def get_dag_settings() -> Dict[str, str]:
     }
 
 
-def get_source_dependencies() -> list[dict[str, str]]:
+def get_source_dependencies() -> list[dict[str, Any]]:
     dependencies = []
     seen_tables = set()
     for feature_group in get_config()["feature_groups"]:
@@ -64,6 +64,9 @@ def get_source_dependencies() -> list[dict[str, str]]:
                 "external_dag_id": (
                     f"dbt.source.trino.ml_feature_platform_{source['schema']}."
                     f"{source['table']}.dq"
+                ),
+                "execution_delta_minutes": int(
+                    source.get("dq_execution_delta_minutes", 60)
                 ),
             }
         )

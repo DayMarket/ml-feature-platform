@@ -107,6 +107,16 @@ def validate_feature_group(
             f"{config_path}: feature group {group_name} source.limit must be "
             "a positive integer"
         )
+    source_delta = source.get("dq_execution_delta_minutes")
+    if source_delta is not None and (
+        isinstance(source_delta, bool)
+        or not isinstance(source_delta, int)
+        or source_delta <= 0
+    ):
+        errors.append(
+            f"{config_path}: feature group {group_name} "
+            "source.dq_execution_delta_minutes must be a positive integer"
+        )
     table = tables.get(source_key)
     if not table:
         return [
