@@ -115,9 +115,8 @@ spec:
     javaOptions: "-Divy.cache.dir=/tmp -Divy.home=/tmp -Daws.region=ru-central1"
 
   volumes:
-    - emptyDir: { }
+    - emptyDir: {}
       name: git
-
   executor:
     cores: <executor_cores>
     instances: <executor_instances>

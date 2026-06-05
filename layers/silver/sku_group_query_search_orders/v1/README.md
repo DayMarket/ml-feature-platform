@@ -17,4 +17,4 @@
 
 Партиция результата соответствует Airflow `ds`.
 
-Пайплайн использует новый способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/silver/sku_group_query_search_orders/v1/entrypoints/get_sku_group_query_search_orders.py`, поэтому отдельный Docker image для этой сущности не собирается.
+Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/silver/sku_group_query_search_orders/v1/entrypoints/get_sku_group_query_search_orders.py`, поэтому отдельный Docker image для этой сущности не собирается.

@@ -65,14 +65,15 @@ Each implemented pipeline follows this shape:
 - `job/entities.py`: dataclass for runtime arguments.
 - `job/getting_*.py`: main PySpark transformation and write logic.
 - `entrypoints/*.py`: executable Spark entrypoint that creates `SparkSession`, parses args, calls `job.run`, and stops Spark.
-- `migrations/create_table.sql`: Iceberg table DDL. Most existing Spark jobs still run it when the target table does not exist; `gold/sku_group_median_sales_7d/v1` is the pilot where the migration is executed by CI after merge to `master` instead of at job runtime.
-- `Dockerfile`: builds the wheel, installs Spark 3.4.1 / Java 11, copies entrypoints, and prepares the Spark-on-Kubernetes image.
-- `entrypoint.sh`: Spark container entrypoint script.
-- `pyproject.toml`: Poetry package metadata. Python is pinned to `3.9.13`, PySpark to `3.4.1`.
+- `migrations/create_table.sql`: Iceberg table DDL. Migrations are executed by CI after merge to `master`; jobs may still contain defensive create-table logic, but schema changes should be delivered through migrations.
 
-Exceptions:
+Deployment convention:
 
-- `silver/sku_group_query_search_orders/v1`, `gold/sku_group_query_atc_order_features/v1`, `gold/sku_group_search_conversion_features/v1`, and `gold/sku_group_median_sales_7d/v1` use the git-sync deployment approach. They use the default Spark image and run `mainApplicationFile` from `/git/repo/...`, so these entities do not have their own Dockerfile, `entrypoint.sh`, or `pyproject.toml`.
+- All layer table Spark jobs use the shared default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
+- Job code is delivered through a `git-sync` initContainer and `mainApplicationFile` points to `local:///git/repo/layers/.../entrypoints/*.py`.
+- Code, config, README, DAG, migration, or resource-only changes for layer tables do not require building a per-entity Docker image.
+- Historical `Dockerfile`, `entrypoint.sh`, and `pyproject.toml` files may still exist in some older layer directories, but Drone no longer builds those per-table images and new layer tables should not add them.
+- Use a custom Spark image only for runtime dependencies or files that cannot be delivered through `git-sync`; the ranking upload is the current example because it needs `ranking-python-client` and the Kafka truststore.
 
 ## Silver Pipeline
 
@@ -108,11 +109,10 @@ Transformation summary:
   - ATC from `ADD_TO_CART` immediately following a product impression in the same `session_id`/`product_id` window.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
-Docker/CI image:
+Deployment:
 
-- Drone tag trigger: `refs/tags/spark-silver-search-sku-group-install-stats-*`
-- Published image repo: `cr.yandex/de-common/pyspark-silver-sku-group-query-statistics`
-- Current SparkApplication image in config: `cr.yandex/de-common/pyspark-silver-sku-group-query-statistics:spark-silver-search-sku-group-install-stats-v0.3.3`
+- Uses the shared Spark 3.5.5 image and `git-sync`.
+- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/silver/sku_group_install/v1/entrypoints/get_search_sku_group_silver_stats.py`.
 
 ## Silver SKU Group Prices Pipeline
 
@@ -145,11 +145,10 @@ Transformation summary:
 - The job ensures missing price min/max columns before building the feature dataframe.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
-Docker/CI image:
+Deployment:
 
-- Drone tag trigger: `refs/tags/spark-silver-sku-group-id-prices-*`
-- Published image repo: `cr.yandex/de-common/pyspark-silver-sku-group-id-prices`
-- Current SparkApplication image in config: `cr.yandex/de-common/pyspark-silver-sku-group-id-prices:spark-silver-sku-group-id-prices-v0.1.0`
+- Uses the shared Spark 3.5.5 image and `git-sync`.
+- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/silver/sku_group_id_prices/v1/entrypoints/get_sku_group_id_prices.py`.
 
 ## Silver SKU Group Orders Pipeline
 
@@ -178,11 +177,10 @@ Transformation summary:
 - Aggregates generated, completed, and returned order metrics by `date` and `sku_group_id`.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
-Docker/CI image:
+Deployment:
 
-- Drone tag trigger: `refs/tags/spark-silver-sku-group-orders-*`
-- Published image repo: `cr.yandex/de-common/pyspark-silver-sku-group-orders`
-- Current SparkApplication image in config: `cr.yandex/de-common/pyspark-silver-sku-group-orders:spark-silver-sku-group-orders-v0.1.0`
+- Uses the shared Spark 3.5.5 image and `git-sync`.
+- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/silver/sku_group_orders/v1/entrypoints/get_sku_group_orders.py`.
 
 ## Silver Search Orders Pipeline
 
@@ -423,11 +421,10 @@ Transformation summary:
 - Uses nullable division semantics matching SQL `NULLIF`: zero or missing denominators produce `NULL`.
 - Writes with `features.writeTo(target_table).overwritePartitions()` after creating the Iceberg table if needed.
 
-Docker/CI image:
+Deployment:
 
-- Drone tag trigger: `refs/tags/spark-gold-sku-group-price-features-*`
-- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-price-features`
-- Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-price-features:spark-gold-sku-group-price-features-v0.1.0`
+- Uses the shared Spark 3.5.5 image and `git-sync`.
+- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_price_features/v1/entrypoints/get_sku_group_price_features.py`.
 
 ## Gold SKU Group Price Index Status Pipeline
 
@@ -459,11 +456,10 @@ Transformation summary:
 - Fails with a clear `FileNotFoundError` if the parquet path is missing.
 - Reads the parquet file, filters out `price_index_status = 'NO_BOOST'`, maps supported statuses to integers, and writes the three output columns.
 
-Docker/CI image:
+Deployment:
 
-- Drone tag trigger: `refs/tags/spark-gold-sku-group-price-index-status-*`
-- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-price-index-status`
-- Current SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-price-index-status:spark-gold-sku-group-price-index-status-v0.1.0`
+- Uses the shared Spark 3.5.5 image and `git-sync`.
+- SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_price_index_status/v1/entrypoints/get_sku_group_price_index_status.py`.
 
 ## Feedback Gold Pipelines
 
@@ -503,20 +499,13 @@ Important implementation note:
 
 - Trino source name `"dwh-iceberg".silver_bxappdb2_foodback.public_feedback` maps to Spark source `iceberg.silver_bxappdb2_foodback.public_feedback` in these jobs.
 
-Docker/CI images:
+Deployment:
 
-- Product Drone tag trigger: `refs/tags/spark-gold-product-feedback-base-stats-*`
-- Product image repo: `cr.yandex/de-common/pyspark-gold-product-feedback-base-stats`
-- Current Product SparkApplication image: `cr.yandex/de-common/pyspark-gold-product-feedback-base-stats:spark-gold-product-feedback-base-stats-v0.1.0`
-- SKU group Drone tag trigger: `refs/tags/spark-gold-sku-group-feedback-base-stats-*`
-- SKU group image repo: `cr.yandex/de-common/pyspark-gold-sku-group-feedback-base-stats`
-- Current SKU group SparkApplication image: `cr.yandex/de-common/pyspark-gold-sku-group-feedback-base-stats:spark-gold-sku-group-feedback-base-stats-v0.1.0`
+- Both feedback pipelines use the shared Spark 3.5.5 image and `git-sync`.
+- Product SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/feedback_product_id/v1/entrypoints/get_product_feedback_base_stats.py`.
+- SKU group SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/feedback_sku_group_id/v1/entrypoints/get_sku_group_feedback_base_stats.py`.
 
-Docker/CI image:
-
-- Drone tag trigger: `refs/tags/spark-search*`
-- Published image repo: `cr.yandex/de-common/pyspark-gold-sku-group-query-atc-features`
-- Current SparkApplication image in config: `cr.yandex/de-common/pyspark-gold-sku-group-query-atc-features:spark-gold-sku-group-query-atc-features-v0.1.0`
+Gold query ATC features also use the shared Spark 3.5.5 image and `git-sync`; its SparkApplication runs `mainApplicationFile` from `local:///git/repo/layers/gold/sku_group_query_atc_features/v1/entrypoints/get_search_sku_group_query_atc_features.py`.
 
 ## Ranking Features Upload
 
@@ -584,7 +573,7 @@ Agent workflow for adding ranking features:
 - Check legacy upload code when compatibility requires preserving value order or applying `log1p`.
 - Keep one source table per feature group and use a distinct ranking service feature group name for each source.
 - Update `ranking_service_input.yaml` when adding or reordering feature groups.
-- Use `source.limit: 1` only for an explicit test upload, then remove it before production.
+- Use `source.limit` only for an explicit test upload, then remove it before production. Current temporary upload smoke-test limit is `5` rows per source.
 - Add the feature group to `upload/ranking_features/v1/config.yaml`; do not duplicate serialization code.
 - Run `python scripts/validate_ranking_upload_configs.py`.
 

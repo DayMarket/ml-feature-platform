@@ -9,16 +9,16 @@ spec:
   type: Python
   pythonVersion: "3"
   mode: cluster
-  image: cr.yandex/de-common/pyspark-silver-sku-group-orders:spark-silver-sku-group-orders-v0.1.0
+  image: ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3
   imagePullPolicy: Always
-  mainApplicationFile: local:///opt/spark/entrypoints/get_sku_group_orders.py
-  sparkVersion: "3.4.1"
+  mainApplicationFile: local:///git/repo/layers/silver/sku_group_orders/v1/entrypoints/get_sku_group_orders.py
+  sparkVersion: "3.5.5"
   timeToLiveSeconds: 600
   nodeSelector:
     app_type: <app_type>
   deps:
     packages:
-      - org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.5.2
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2
       - org.apache.iceberg:iceberg-aws-bundle:1.5.2
   sparkConf:
     spark.hadoop.spark.sql.legacy.parquet.nanosAsLong: "false"
@@ -76,8 +76,47 @@ spec:
         operator: "Equal"
         value: "<app_type>"
         effect: "NoSchedule"
+    initContainers:
+      - name: git-sync
+        image: "k8s.gcr.io/git-sync/git-sync:v3.6.1"
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: GIT_SYNC_REPO
+            value: "https://github.com/DayMarket/ml-feature-platform/"
+          - name: GIT_SYNC_BRANCH
+            value: '{{ var.value.get("gitsync_branch") }}'
+          - name: GIT_SYNC_DEST
+            value: "repo"
+          - name: GIT_SYNC_ROOT
+            value: "/git"
+          - name: GIT_SYNC_ONE_TIME
+            value: "true"
+          - name: GIT_SYNC_USERNAME
+            value: "{{ conn.git_sync.login }}"
+          - name: GIT_SYNC_PASSWORD
+            value: "{{ conn.git_sync.password }}"
+          - name: change-permissions
+            value: "777"
+          - name: verbose
+            value: "9"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+        volumeMounts:
+          - mountPath: /git
+            name: git
+    volumeMounts:
+      - mountPath: /git
+        name: git
     javaOptions: "-Divy.cache.dir=/tmp -Divy.home=/tmp -Daws.region=ru-central1"
 
+  volumes:
+    - emptyDir: {}
+      name: git
   executor:
     cores: <executor_cores>
     instances: <executor_instances>
