@@ -124,6 +124,28 @@ Custom image decision:
 - Downstream DAGs must wait for DQ DAGs of feature-platform dependency tables.
 - For upstream DE-owned tables, use the source DAG/DQ contract that the producing team owns. Example: `silver/sku_group_id_prices` waits for `dbt.models.dwh_trino.sku_eod`.
 
+Automatically generated DQ tests:
+
+- `dbt_utils.unique_combination_of_columns` over all columns from `table.primary_key`.
+- `not_null` for every primary key column.
+- If `date` is part of the primary key, `loaded_at_field` is generated as `CAST(date AS timestamp) + INTERVAL '1' DAY`.
+- If `date` is part of the primary key, freshness is generated with `error_after: count: 2, period: day`.
+- If `date` is part of the primary key, `row_count_greater_than_for_date` is generated for the previous day with `min_rows: 0`.
+- If `date` is part of the primary key, `row_count_growth_within_limit` is generated for the previous day with `max_growth_ratio: 0.2`.
+
+Additional DQ tests an agent may propose or add when they match the feature contract:
+
+- `not_null` for required non-key columns, for example mandatory entity ids or status columns.
+- Accepted values for enum-like fields, for example numeric status mappings.
+- Range checks for ratios, probabilities, ratings, prices, counts, and non-negative metrics.
+- Cross-column consistency checks, for example bucket counts summing to total count or `min <= median <= max`.
+- Partition completeness checks with a table-specific minimum row threshold when `min_rows: 0` is too weak.
+- Growth/drop thresholds different from the default 20% when the table is expected to be sparse or bursty.
+- Relationship checks to dimension/source tables when the join key contract is stable and the test is not too expensive.
+- Custom SQL tests for business rules that are part of the model contract.
+
+Do not add expensive high-cardinality or source-wide relationship tests blindly. If a DQ test can be costly or noisy, explain the tradeoff and confirm the intended contract with the user.
+
 ## CI Contracts
 
 Drone currently does the following:
@@ -181,8 +203,10 @@ Use this workflow:
 - Keep source table names inside transformation code or config as existing jobs do; do not introduce hidden constants that make lineage harder to read.
 - Update `config.yaml`, `dag.py`, resources, SparkApplication template, factory, entrypoint, job code, migrations, and README together.
 - Add DQ sensor dependencies on DQ DAGs for feature-platform source tables.
+- Decide whether the default generated DQ is enough; if not, propose table-specific DQ tests from the DQ section above.
 - Add ranking upload config only if the model/service needs the feature now.
 - Run the local validation commands listed at the end of this file.
+- After creating or changing a DAG that fills a table, include a concise table summary in the final response.
 - Update this handbook if the new feature changes structure, contracts, deployment, CI, or feature inventory.
 
 Schema-change checklist:
@@ -193,6 +217,18 @@ Schema-change checklist:
 - Update README feature descriptions.
 - Update ranking upload config if the feature is published.
 - Ensure migration comments are present.
+
+Final table summary checklist:
+
+- Target table: fully qualified name, layer, and repository path where it is created.
+- DAG: DAG id, schedule, task name, and important sensors/DQ dependencies.
+- Grain and primary key: list all primary key columns and partition column.
+- Sources: all source tables or external paths, including join keys and important filters.
+- Collection semantics: date/window boundaries, whether `{{ ds }}` is included, lookbacks, all-time snapshots, query normalization, denominator/null behavior, and other non-obvious logic.
+- Output columns/features: short description of the produced fields or feature groups.
+- DQ: generated DQ tests and any table-specific DQ tests added or intentionally not added.
+- Deployment/runtime: default Spark image with `git-sync` or custom image reason if one is used.
+- Downstream usage: ranking upload feature group, maintenance/dbt source sync, or note that there is no downstream upload yet.
 
 ## Current Feature Inventory
 

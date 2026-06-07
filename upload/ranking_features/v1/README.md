@@ -20,6 +20,8 @@ Catalog, колонка даты и ключи сущности автомати
 - `source.limit`: ограничение числа строк после фильтрации партиции. Поле предназначено только для тестовой проверки загрузки.
 - `source.dq_execution_delta_minutes`: разница между расписанием upload DAG и DQ DAG исходной таблицы. Например, upload в `04:00` и source/DQ в `03:00` дают `60`.
 
+Текущий upload DAG запускается в `04:00 UTC`, а DQ DAG-и source-таблиц ожидаются с logical time `01:00 UTC`, поэтому для production feature groups используется `source.dq_execution_delta_minutes = 180`.
+
 Production-конфиг не должен содержать `source.limit`, чтобы DAG загружал полные партиции всех feature groups.
 
 Пример:
