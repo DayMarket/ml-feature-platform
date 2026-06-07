@@ -120,6 +120,7 @@ Custom image decision:
 - Every repository-managed entity gets DQ tests in `dbt-trino`.
 - DQ DAG id pattern: `dbt.source.trino.ml_feature_platform_<schema>.<table_name>.dq`.
 - Example: `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_orders.dq`.
+- Platform dbt source/DQ DAGs start at `01:00 UTC` by default. Use this as the baseline when calculating `ExternalTaskSensor.execution_delta` unless a specific upstream DAG documents a different schedule.
 - Use the table's actual schema in the DQ source name. Do not assume every source is `silver`.
 - Downstream DAGs must wait for DQ DAGs of feature-platform dependency tables.
 - For upstream DE-owned tables, use the source DAG/DQ contract that the producing team owns. Example: `silver/sku_group_id_prices` waits for `dbt.models.dwh_trino.sku_eod`.
@@ -478,7 +479,7 @@ An ML engineer may provide only a source table and ordered feature names. The ag
 ## Common Corner Cases
 
 - `{{ ds }}` usually means the partition date being written. Some business logic intentionally uses data strictly before `ds` to produce features “as of yesterday”; document this in README and lineage answers.
-- A DAG scheduled later than its source should use `execution_delta` equal to upload/source schedule difference in the correct direction. For example, a `01:00` DAG waiting for a `00:00` DAG uses `timedelta(hours=1)`.
+- A DAG scheduled later than its source should use `execution_delta` equal to upload/source schedule difference in the correct direction. Platform dbt DQ DAGs normally start at `01:00 UTC`; for example, an upload DAG at `04:00 UTC` should use `execution_delta=timedelta(hours=3)`.
 - Trino table names such as `"dwh-iceberg".silver.table` map to Spark names such as `iceberg.silver.table`.
 - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` support can differ by engine. Repository migrations are run through PySpark, so validate syntax against Spark/Iceberg, not only Trino.
 - Spark worker imports must be available on executors too. If a UDF imports project code, configure executor `PYTHONPATH` and `git-sync` for executors, as ranking upload does.
