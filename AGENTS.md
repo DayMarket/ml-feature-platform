@@ -20,6 +20,12 @@ Owner metadata:
 
 - Read this file first, then inspect the code/configs that are relevant to the requested table or feature.
 - Do not rely on memory alone. Confirm feature names, source tables, keys, schedules, sensors, and formulas in `layers/**/config.yaml`, migrations, README files, and PySpark jobs.
+- If the request is ambiguous or the implementation contract is not clear, do not invent missing details. Ask concise clarifying questions before generating code, configs, migrations, or upload contracts.
+- If a required ownership or alerting field is not explicitly given and cannot be confidently inferred from existing table context, ask which `team`, `dag.team`, `alerts.team`, severity, and on-call webhook should be used. Do not silently default to `team:search` for new ownership contexts.
+- When there is a meaningful design choice, propose options before implementation. Common examples: add a column to an existing table vs create a new table; publish to ranking upload now vs leave as an internal gold table; use generated orders vs completed sales; include `{{ ds }}` vs use `[ds - N, ds - 1]`.
+- If uncertain after repository inspection, ask. It is better to pause for clarification than to create a plausible but wrong feature contract.
+- If repository files do not contain enough information about an upstream table, table schema, values, or data semantics, say that the repository does not answer the question and ask before querying the table through available MCP tools such as Trino or ClickHouse. Do not silently inspect production data sources.
+- Do not immediately start implementation after interpreting a request. First give the user a short summary of what you understood, mention the intended approach or options, and wait for clarification or agreement when the task changes code, configs, migrations, CI, deployment, or downstream contracts.
 - Before creating a new feature, search the repository for the requested feature name and close variants. If the feature or an equivalent feature already exists, stop and tell the user where it is produced, what table stores it, and how it is uploaded if applicable.
 - If a user asks for lineage of a feature from `feature_marketplace` or ranking/model context, answer from final feature back to all source tables, including formulas, windows, grain, date semantics, DAG/DQ dependencies, and upload feature group order.
 - If new code imports a library that is not available in the default Spark image, warn the user before finalizing. Add or update the custom image build path and Drone tag trigger only when `git-sync` cannot deliver the dependency.
@@ -61,7 +67,7 @@ When asked for lineage, include:
 - `ci_test/test_sync_dbt_sources.py`: regression tests for schema-aware dbt source sync.
 - `ci_test/test_sync_iceberg_maintenance.py`: regression tests for Iceberg maintenance sync.
 - `scripts/run_pyspark_migrations.py`: executes repository SQL migrations through PySpark on `master` push.
-- `scripts/sync_dbt_sources.py`: creates/repairs dbt source entries for repository-managed layer tables.
+- `scripts/sync_dbt_sources.py`: creates/repairs/removes dbt source entries for repository-managed layer tables.
 - `scripts/sync_iceberg_maintenance.py`: creates/updates a PR in `DayMarket/pyspark-etl` for Iceberg maintenance of repository-managed tables.
 - `scripts/validate_ranking_upload_configs.py`: validates ranking upload feature groups against layer configs and migrations.
 - `layers/`: versioned feature pipelines grouped by layer.
@@ -186,6 +192,7 @@ dbt source sync:
 - It creates one source block per effective schema, named `ml_feature_platform_<schema>`.
 - It does not create `sources_gold.yaml`.
 - It adds uniqueness/not-null tests from primary keys and adds freshness/row-count tests when `date` is part of the primary key.
+- It removes stale table blocks from managed `ml_feature_platform_*` source blocks when a table is no longer declared under `layers/**/config.yaml`, so deleted feature-platform tables do not keep obsolete DQ tests in dbt-trino.
 - The side-effecting dbt source sync Drone step should run only on `master` push. Run `ci_test/test_sync_dbt_sources.py` locally when changing source sync behavior.
 
 Iceberg maintenance sync:
@@ -206,6 +213,9 @@ Use this workflow:
 
 - Classify the requested output: reusable pre-aggregate goes to `silver`; final model feature goes to `gold`; downstream publication goes to `upload`.
 - Run the duplicate feature check before scaffolding anything.
+- Before scaffolding, present the viable implementation options when more than one is reasonable, especially whether to add a feature to an existing table or create a new table. Ask the user to choose unless the request already makes the choice explicit.
+- Ask clarifying questions for any unspecified or ambiguous contract: entity grain, source table, attribution space, date window boundaries, whether `{{ ds }}` is included, generated vs completed orders, null/zero denominator behavior, publication to ranking upload, schedule, owner team, and on-call settings.
+- After duplicate checks and clarification, summarize the selected contract back to the user before editing files: target table or existing table, grain, sources, window/date semantics, schedule, DQ dependencies, ownership/on-call, and whether ranking upload is included.
 - Choose the entity grain and primary key. Include `date` for scheduled snapshots.
 - Add or update migrations first. Use idempotent DDL and include comments for all columns.
 - Implement PySpark using existing local patterns. Prefer Spark functions/DataFrame API where it improves maintainability; Spark SQL is acceptable when it mirrors a validated analytical SQL clearly.
@@ -294,6 +304,20 @@ Path: `layers/silver/sku_group_query_search_orders/v1`
 - Metrics: generated, completed, and returned item/order/GMV metrics by `query` and `sku_group_id`.
 - Important: `orders_generated` is counted as distinct `order_item_id`. Current gold query-order features depend on that exact meaning.
 
+### Silver: Legacy Query/SKU Group Daily Conversions
+
+Path: `layers/silver/query_skg_daily_conversions_legacy/v1`
+
+- Table: `iceberg.silver.feature_platform_query_skg_daily_conversions_legacy`.
+- Primary key: `date,query,platform,sku_group_id`.
+- DAG id: `feature_platform_query_skg_daily_conversions_legacy_silver_dag`.
+- Schedule: `0 1 * * *`.
+- Source tables: `iceberg.silver_b2c_clickstream.events`, `iceberg.silver.order_items_attribution`, `iceberg.silver.order_items`, `iceberg.silver.sku`.
+- Grain: daily `query`, `platform`, and `sku_group_id`.
+- Logic: follows the old feature-store daily conversions approach using `lower(query)` for event metrics, `trim(query)` after joining orders, `widget_section_name = 'SEARCH_RESULTS'`, and `last_atc_platform` for order platform.
+- Metrics: `uniq_impressions`, `uniq_clicks`, `uniq_atcs`, `uniq_orders`.
+- Downstream: source for legacy query/SKU group aggregated conversions.
+
 ### Gold: Query ATC Features
 
 Path: `layers/gold/sku_group_query_atc_features/v1`
@@ -326,6 +350,32 @@ Path: `layers/gold/sku_group_query_atc_order_features/v1`
 - Division: Spark division semantics are kept for conversions and ratios; zero or missing denominators become `NULL`, not forced to `0.0`.
 - Features include `query_skg_uniq_orders_*`, `query_skg_conv_imp2atc_*`, `query_skg_conv_imp2order_*`, and cross-window ratio features such as `query_skg_imp2atc_7_to_3`.
 - This table builds each daily partition from silver sources and does not carry rows forward from previous gold partitions.
+
+### Gold: Legacy Query/SKU Group Aggregated And Pairwise Features
+
+Paths:
+
+- `layers/gold/query_skg_aggregated_conversions_legacy/v1`.
+- `layers/gold/query_skg_pairwise_features_legacy/v1`.
+
+Tables:
+
+- `iceberg.gold.feature_platform_query_skg_aggregated_conversions_legacy`, primary key `date,query,sku_group_id`.
+- `iceberg.gold.feature_platform_query_skg_pairwise_features_legacy`, primary key `date,query,sku_group_id`.
+
+DAGs:
+
+- `feature_platform_query_skg_aggregated_conversions_legacy_gold_dag`, schedule `0 3 * * *`, waits for DQ of `iceberg.silver.feature_platform_query_skg_daily_conversions_legacy`.
+- `feature_platform_query_skg_pairwise_features_legacy_gold_dag`, schedule `30 3 * * *`, waits for DQ of `iceberg.gold.feature_platform_query_skg_aggregated_conversions_legacy`.
+
+Logic:
+
+- Aggregated table reads daily conversions for `[{{ ds }} - 90 days, {{ ds }}]` inclusive.
+- Aggregated table collapses `platform`, builds 1/3/7/14/21/30/60/90-day `query_skg_uniq_*` windows, conversion features, and cross-window ratios.
+- Legacy filter: keep only rows with `query_skg_uniq_impressions_14 >= 2`.
+- Division keeps Spark semantics; zero denominators produce `NULL`, not forced to `0.0`.
+- Pairwise table reads aggregated rows for `[{{ ds }} - 30 days, {{ ds }}]`, picks the latest row by `date desc` for each `query,sku_group_id`, and writes it to partition `{{ ds }}`.
+- Ranking upload group `fs_search_query_skg_v3` reads the pairwise table and publishes the ordered 29-feature subset.
 
 ### Gold: SKU Group Search Conversion Features
 
@@ -470,7 +520,7 @@ Current upload groups:
 - `fs_search_skg_conversion_features_v1`: six SKU-group search conversion features from `feature_platform_sku_group_search_conversion_features`.
 - `fs_search_skg_price_index_status_v1`: `price_index_status` from `feature_platform_sku_group_price_index_status`.
 - `fs_search_skg_price_features_v1`: `sell_price_eod`, `abs_discount`, `fraq_discount`, `category_mean_sell_price` from `feature_platform_sku_group_price_features`.
-- `fs_search_query_skg_v3`: 29 query/SKU-group ATC/order features from `feature_platform_search_sku_group_id_query_atc_order_features`.
+- `fs_search_query_skg_v3`: 29 query/SKU-group ATC/order features from `feature_platform_query_skg_pairwise_features_legacy`.
 
 Runtime:
 

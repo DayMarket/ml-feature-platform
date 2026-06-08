@@ -46,6 +46,16 @@ sources:
       - name: feature_platform_sku_group_price_features
         columns:
           - name: sku_group_id
+      - name: feature_platform_removed_table
+        columns:
+          - name: sku_group_id
+  - name: external_silver
+    database: dwh-iceberg
+    schema: silver
+    tables:
+      - name: external_removed_table
+        columns:
+          - name: id
 """
     desired_schemas = {
         "feature_platform_sku_group_orders": "silver",
@@ -61,10 +71,16 @@ sources:
             "silver",
             "feature_platform_sku_group_price_features",
             "gold",
+        ),
+        (
+            "silver",
+            "feature_platform_removed_table",
+            None,
         )
     ]
     assert sync._extract_source_tables(repaired_yaml) == {
-        ("silver", "feature_platform_sku_group_orders")
+        ("silver", "feature_platform_sku_group_orders"),
+        ("silver", "external_removed_table"),
     }
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -115,6 +131,7 @@ sources:
         final_yaml = sources_path.read_text(encoding="utf-8")
         assert sync._extract_source_tables(final_yaml) == {
             ("silver", "feature_platform_sku_group_orders"),
+            ("silver", "external_removed_table"),
             ("silver", "feature_platform_sku_group_id_prices"),
             ("gold", "feature_platform_sku_group_price_features"),
         }

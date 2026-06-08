@@ -389,21 +389,28 @@ def _remove_misplaced_tables(
     sources_path.write_text(repaired_content, encoding="utf-8")
     changed_files.append(sources_path)
     for source_schema, table_name, desired_schema in removed_tables:
-        print(
-            f"Removed misplaced dbt source table: {source_schema}.{table_name} "
-            f"expected_schema={desired_schema} file={sources_path}"
-        )
+        if desired_schema:
+            print(
+                f"Removed misplaced dbt source table: {source_schema}.{table_name} "
+                f"expected_schema={desired_schema} file={sources_path}"
+            )
+        else:
+            print(
+                f"Removed stale dbt source table: {source_schema}.{table_name} "
+                f"table is no longer declared in layers/**/config.yaml file={sources_path}"
+            )
     return changed_files
 
 
 def _remove_misplaced_tables_from_content(
     content: str,
     desired_schemas: dict[str, str],
-) -> tuple[str, list[tuple[str, str, str]]]:
+) -> tuple[str, list[tuple[str, str, Optional[str]]]]:
     lines = content.splitlines()
     kept_lines: list[str] = []
-    removed_tables: list[tuple[str, str, str]] = []
+    removed_tables: list[tuple[str, str, Optional[str]]] = []
     current_schema = ""
+    current_source_is_managed = False
     in_tables_block = False
     tables_indent = -1
     index = 0
@@ -412,6 +419,14 @@ def _remove_misplaced_tables_from_content(
         line = lines[index]
         stripped = line.strip()
         indent = len(line) - len(line.lstrip(" "))
+
+        source_match = NAME_LINE_PATTERN.match(stripped)
+        if indent == 2 and source_match:
+            current_source_is_managed = source_match.group("name").startswith(
+                "ml_feature_platform_"
+            )
+            current_schema = ""
+            in_tables_block = False
 
         schema_match = SCHEMA_LINE_PATTERN.match(stripped)
         if schema_match:
@@ -428,10 +443,11 @@ def _remove_misplaced_tables_from_content(
             and indent == tables_indent + 2
             and table_match
             and current_schema
+            and current_source_is_managed
         ):
             table_name = table_match.group("name")
             desired_schema = desired_schemas.get(table_name)
-            if desired_schema and desired_schema != current_schema:
+            if desired_schema != current_schema:
                 removed_tables.append((current_schema, table_name, desired_schema))
                 index += 1
                 while index < len(lines):
