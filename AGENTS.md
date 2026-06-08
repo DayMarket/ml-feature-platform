@@ -161,12 +161,21 @@ Drone currently does the following:
 - Syncs the corresponding submodule reference in `DayMarket/airflow-dags`.
 - Builds the ranking upload custom image only on tags matching `spark-feature-platform-ranking-upload-*`.
 
+Drone trigger policy:
+
+- The main Drone pipeline is intentionally triggered only on pushes to `dev` and `master`.
+- Feature branches are not expected to run in Drone; test feature-branch changes locally before merging.
+- A push/merge to `dev` should run validation-only checks. It must not apply real PySpark migrations to production Hive/S3 and must not create or update Iceberg maintenance registration.
+- A push/merge to `master` may run both validation and real side-effecting sync/apply steps.
+
 Migration CI:
 
-- Runs only for `branch: master` and `event: push`.
-- Uses the default Spark image and `spark-submit scripts/run_pyspark_migrations.py --repo-root .`.
+- Real migration execution runs only for `branch: master` and `event: push`.
+- Planned validation should run on both `dev` and `master` pipeline executions against a disposable local Spark/Iceberg warehouse, before real master-only migration execution.
+- Validation should use the default Spark image and `spark-submit scripts/run_pyspark_migrations.py --repo-root .` with a validation/local-catalog mode that does not require production Hive Metastore or S3 credentials.
+- Real migration execution uses the default Spark image and `spark-submit scripts/run_pyspark_migrations.py --repo-root .`.
 - Discovers every `layers/**/config.yaml` with SQL files under `migrations/`.
-- Reads Spark/Iceberg settings from `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `HIVE_METASTORE_URIS`, optional `ICEBERG_WAREHOUSE`, and S3/AWS region settings.
+- Real migration execution reads Spark/Iceberg settings from `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `HIVE_METASTORE_URIS`, optional `ICEBERG_WAREHOUSE`, and S3/AWS region settings.
 - Substitutes `{target_table}` with the Spark table name from `config.yaml`.
 - Runs `create_table.sql` first, then remaining migrations in filename order.
 - Validates idempotency before execution: `CREATE TABLE` must use `IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN` must use `IF NOT EXISTS`, and destructive `DROP`/`DELETE`/`TRUNCATE` statements are rejected.
@@ -189,7 +198,8 @@ Iceberg maintenance sync:
 - Include both repository-created `silver` and `gold` tables.
 - Do not add upstream DE-owned dependency tables such as `iceberg.silver.order_items` or `iceberg.silver.sku`.
 - The generated maintenance DAG is separate: `create_dag(config_name="feature_platform", dag_suffix="_fp")`, producing DAG id `spark.iceberg_maintenance_fp`.
-- CI should create/update a PR in `DayMarket/pyspark-etl`; when the current repo has an open dev-to-master PR, CI should comment there with the maintenance PR link.
+- Maintenance sync should run only on `master` push. A `dev` pipeline must not create or update maintenance because the maintenance config is maintained from the master state.
+- CI should create/update a PR in `DayMarket/pyspark-etl` only from master-side maintenance sync; when the current repo has an open dev-to-master PR, CI may comment there with the maintenance PR link.
 - Do not remove maintenance entries automatically when a table disappears locally; removals need manual review.
 
 ## Adding Or Changing A Feature
@@ -347,6 +357,20 @@ Path: `layers/gold/sku_group_search_sales_7d/v1`
 - Source table: `iceberg.silver.feature_platform_sku_group_query_search_orders`.
 - Logic: sums `items_completed` by `sku_group_id` over `[{{ ds }} - 7, {{ ds }} - 1]`; Airflow `{{ ds }}` is excluded.
 - Feature: `search_sales_count_7d`.
+- Downstream usage: not published to ranking upload unless explicitly added to `upload/ranking_features/v1/config.yaml`.
+
+### Gold: SKU Group Home Recommendations Average Sales 7D
+
+Path: `layers/gold/sku_group_home_reco_avg_sales_7d/v1`
+
+- Table: `iceberg.gold.feature_platform_sku_group_home_reco_avg_sales_7d`.
+- Primary key: `date,sku_group_id`.
+- DAG id: `feature_platform_sku_group_home_reco_avg_sales_7d_gold_dag`.
+- Schedule: `0 3 * * *`.
+- Source tables: `iceberg.silver.order_items_attribution`, `iceberg.silver.order_items`, `iceberg.silver.sku`.
+- Logic: identifies homepage recommendation attribution by `widget_space_name`/`widget_section_name`, uses a 20-day generated-at lookback for attribution/order rows, keeps completed items with `issued_at` in `[{{ ds }} - 7, {{ ds }} - 1]`, excludes items returned before the window end, fills missing daily buckets with zero, and averages daily sales over 7 days by `sku_group_id`.
+- Feature: `home_reco_avg_sales_count_7d`.
+- Known caveat: homepage recommendation placement names are inferred from current attribution naming patterns; confirm exact `widget_space_name`/`widget_section_name` values before using this feature in serving.
 - Downstream usage: not published to ranking upload unless explicitly added to `upload/ranking_features/v1/config.yaml`.
 
 ### Gold: SKU Group Median Sales 7D

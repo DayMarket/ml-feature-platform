@@ -1,0 +1,10 @@
+{
+  "app_type": "um-common",
+  "spark_event_log_bucket": "um-prod-spark-events",
+  "hive_metastore_uris": "thrift://hive-metastore.data-platform.svc.cluster.local:9083",
+  "driver_cores": 1,
+  "driver_memory": "10g",
+  "executor_cores": 8,
+  "executor_instances": 5,
+  "executor_memory": "16g"
+}
