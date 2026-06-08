@@ -1,0 +1,19 @@
+resources:
+  path: config/resources.yaml
+
+table:
+  key: sku_group_query_search_orders
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_sku_group_query_search_orders
+  primary_key: date,query,sku_group_id
+  meta:
+    team: team:search
+dag:
+  team: search
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
+

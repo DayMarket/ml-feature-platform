@@ -4,7 +4,6 @@ from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql.functions import (
     coalesce,
     col,
-    expr,
     get_json_object,
     lag,
     lit,
@@ -55,18 +54,11 @@ def build_search_results_stats(
     partition_start: str,
     partition_end: str,
 ) -> DataFrame:
-    received_at_start = lit(partition_start).cast("timestamp") - expr("INTERVAL 2 DAY")
-    received_at_end = lit(partition_end).cast("timestamp") + expr("INTERVAL 2 DAY")
-    logged_at_start = lit(partition_start).cast("timestamp")
-    logged_at_end = lit(partition_end).cast("timestamp")
-
     df_sessions = (
         spark.table("iceberg.silver_b2c_clickstream.events")
         .filter(
-            (col("received_at") >= received_at_start)
-            & (col("received_at") < received_at_end)
-            & (col("logged_at") >= logged_at_start)
-            & (col("logged_at") < logged_at_end)
+            (col("received_at") >= lit(partition_start))
+            & (col("received_at") < lit(partition_end))
             & col("session_id").isNotNull()
             & col("install_id").isNotNull()
         )
@@ -75,10 +67,8 @@ def build_search_results_stats(
     )
 
     df_events_filtered = spark.table("iceberg.silver_b2c_clickstream.events").filter(
-        (col("received_at") >= received_at_start)
-        & (col("received_at") < received_at_end)
-        & (col("logged_at") >= logged_at_start)
-        & (col("logged_at") < logged_at_end)
+        (col("received_at") >= lit(partition_start))
+        & (col("received_at") < lit(partition_end))
         & col("event_type").isin(
             "SEARCH_RESULTS",
             "PRODUCT_IMPRESSION",

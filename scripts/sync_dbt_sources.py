@@ -9,6 +9,7 @@ from typing import Any, Optional
 
 
 NAME_LINE_PATTERN = re.compile(r"^-\s+name:\s+['\"]?(?P<name>[A-Za-z0-9_]+)['\"]?\s*$")
+SCHEMA_LINE_PATTERN = re.compile(r"^schema:\s+['\"]?(?P<schema>[A-Za-z0-9_]+)['\"]?\s*$")
 SOURCES_FILE_NAME = "sources.yaml"
 
 
@@ -65,12 +66,27 @@ def main() -> int:
     models_path = runtime.workspace / dbt_config["models_path"]
     models_path.mkdir(parents=True, exist_ok=True)
     print(f"models_path_exists={models_path.exists()} path={models_path}")
+
+    _log_section("repair misplaced dbt source tables")
+    desired_schemas = _desired_schemas_by_table(dbt_config, table_configs, runtime.branch)
+    created_files = _remove_misplaced_tables(models_path, desired_schemas)
     sources_path = models_path / SOURCES_FILE_NAME
-    print(f"sources_path={sources_path}")
+    if sources_path.exists():
+        content = sources_path.read_text(encoding="utf-8")
+        repaired_content, descriptions_changed = _ensure_source_descriptions(content)
+        if descriptions_changed:
+            sources_path.write_text(repaired_content, encoding="utf-8")
+            if sources_path not in created_files:
+                created_files.append(sources_path)
+            print(f"Updated dbt source descriptions: {sources_path}")
+    source_schemas = (
+        _extract_source_schemas(sources_path.read_text(encoding="utf-8"))
+        if sources_path.exists()
+        else set()
+    )
 
     _log_section("scan existing dbt source tables")
-    existing_tables = _existing_tables(sources_path)
-    print(f"sources_file_exists={sources_path.exists()}")
+    existing_tables = _existing_tables(models_path)
     print(f"existing_tables_count={len(existing_tables)}")
     print_table_list("existing_table", existing_tables)
 
@@ -83,23 +99,23 @@ def main() -> int:
         for pending_table, pr_url in sorted(pending_pr_tables.items()):
             print(f"open_pr_table={pending_table} pr={pr_url}")
 
-    created_files = []
     _log_section("render missing sources")
     for table_config in table_configs:
         table_name = str(table_config["name"])
         source_schema = _source_schema(dbt_config, table_config, runtime.branch)
+        table_key = (source_schema, table_name)
         print(
             f"table={table_name} catalog={table_config['catalog']} "
             f"schema={source_schema} team={table_config['team']} "
-            f"primary_key={table_config['primary_key']}"
+            f"primary_key={table_config['primary_key']} sources_path={sources_path}"
         )
-        if table_name in existing_tables:
-            print(f"Skip existing dbt source table: {table_name}")
+        if table_key in existing_tables:
+            print(f"Skip existing dbt source table: {source_schema}.{table_name}")
             continue
-        if table_name in pending_pr_tables:
+        if table_key in pending_pr_tables:
             print(
                 f"Skip table already present in open dbt PR: "
-                f"{table_name} pr={pending_pr_tables[table_name]}"
+                f"{source_schema}.{table_name} pr={pending_pr_tables[table_key]}"
             )
             continue
 
@@ -107,13 +123,21 @@ def main() -> int:
             dbt_config,
             table_config,
             runtime.branch,
-            include_header=not sources_path.exists() and not created_files,
+            include_document_header=not sources_path.exists(),
+            include_source_header=source_schema not in source_schemas,
         )
-        _append_to_sources_file(sources_path, source_yaml)
+        if source_schema in source_schemas:
+            _append_table_to_source_block(sources_path, source_schema, source_yaml)
+        else:
+            _append_to_sources_file(sources_path, source_yaml)
         if sources_path not in created_files:
             created_files.append(sources_path)
-        existing_tables.add(table_name)
-        print(f"Added dbt source table: {table_name} -> {sources_path.relative_to(runtime.workspace)}")
+        source_schemas.add(source_schema)
+        existing_tables.add(table_key)
+        print(
+            f"Added dbt source table: {source_schema}.{table_name} -> "
+            f"{sources_path.relative_to(runtime.workspace)}"
+        )
         print_primary_key_tests(table_config)
         print("rendered_yaml_begin")
         print(source_yaml.rstrip())
@@ -229,27 +253,29 @@ def render_source_yaml(
     dbt_config: dict[str, Any],
     table_config: dict[str, Any],
     branch: str,
-    include_header: bool = True,
+    include_document_header: bool = True,
+    include_source_header: bool = True,
 ) -> str:
     source_schema = _source_schema(dbt_config, table_config, branch)
     source_name = f"ml_feature_platform_{source_schema}"
     database = dbt_config["database_mapping"][table_config["catalog"]]
     team = table_config["team"]
 
-    if include_header:
-        lines = [
-            "version: 2",
-            "",
-            "sources:",
-            f"  - name: {source_name}",
-            f"    database: {database}",
-            f"    schema: {source_schema}",
-            "    meta:",
-            f'      owner: "{team}"',
-            "    tables:",
-        ]
-    else:
-        lines = []
+    lines = []
+    if include_document_header:
+        lines.extend(["version: 2", "", "sources:"])
+    if include_source_header:
+        lines.extend(
+            [
+                f"  - name: {source_name}",
+                f'    description: "{_source_description(source_schema)}"',
+                f"    database: {database}",
+                f"    schema: {source_schema}",
+                "    meta:",
+                f'      owner: "{team}"',
+                "    tables:",
+            ]
+        )
 
     has_date_column = _has_date_column(table_config)
     lines.extend(
@@ -318,19 +344,181 @@ def _source_schema(
     return str(dbt_config.get("schema_overrides", {}).get(branch, table_config["schema"]))
 
 
-def _existing_tables(sources_path: Path) -> set[str]:
+def _source_description(source_schema: str) -> str:
+    layer_name = source_schema.replace("_", " ").title()
+    return (
+        f"{layer_name}-layer Iceberg tables produced by ml-feature-platform "
+        "and consumed by ML feature pipelines."
+    )
+
+
+def _desired_schemas_by_table(
+    dbt_config: dict[str, Any],
+    table_configs: list[dict[str, Any]],
+    branch: str,
+) -> dict[str, str]:
+    desired_schemas: dict[str, str] = {}
+    for table_config in table_configs:
+        table_name = str(table_config["name"])
+        source_schema = _source_schema(dbt_config, table_config, branch)
+        existing_schema = desired_schemas.get(table_name)
+        if existing_schema and existing_schema != source_schema:
+            raise ValueError(
+                f"Table name {table_name} is declared in multiple schemas: "
+                f"{existing_schema}, {source_schema}"
+            )
+        desired_schemas[table_name] = source_schema
+    return desired_schemas
+
+
+def _remove_misplaced_tables(
+    models_path: Path,
+    desired_schemas: dict[str, str],
+) -> list[Path]:
+    changed_files = []
+    sources_path = models_path / SOURCES_FILE_NAME
     if not sources_path.exists():
-        print("sources.yaml does not exist yet")
-        return set()
-    print(f"scan_yaml={sources_path}")
+        return changed_files
     content = sources_path.read_text(encoding="utf-8")
-    return _extract_source_table_names(content)
+    repaired_content, removed_tables = _remove_misplaced_tables_from_content(
+        content,
+        desired_schemas,
+    )
+    if not removed_tables:
+        return changed_files
+    sources_path.write_text(repaired_content, encoding="utf-8")
+    changed_files.append(sources_path)
+    for source_schema, table_name, desired_schema in removed_tables:
+        print(
+            f"Removed misplaced dbt source table: {source_schema}.{table_name} "
+            f"expected_schema={desired_schema} file={sources_path}"
+        )
+    return changed_files
 
 
-def _extract_source_table_names(content: str) -> set[str]:
-    table_names = set()
+def _remove_misplaced_tables_from_content(
+    content: str,
+    desired_schemas: dict[str, str],
+) -> tuple[str, list[tuple[str, str, str]]]:
+    lines = content.splitlines()
+    kept_lines: list[str] = []
+    removed_tables: list[tuple[str, str, str]] = []
+    current_schema = ""
     in_tables_block = False
     tables_indent = -1
+    index = 0
+
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+
+        schema_match = SCHEMA_LINE_PATTERN.match(stripped)
+        if schema_match:
+            current_schema = schema_match.group("schema")
+        if stripped == "tables:":
+            in_tables_block = True
+            tables_indent = indent
+        elif in_tables_block and stripped and indent <= tables_indent:
+            in_tables_block = False
+
+        table_match = NAME_LINE_PATTERN.match(stripped)
+        if (
+            in_tables_block
+            and indent == tables_indent + 2
+            and table_match
+            and current_schema
+        ):
+            table_name = table_match.group("name")
+            desired_schema = desired_schemas.get(table_name)
+            if desired_schema and desired_schema != current_schema:
+                removed_tables.append((current_schema, table_name, desired_schema))
+                index += 1
+                while index < len(lines):
+                    next_line = lines[index]
+                    next_stripped = next_line.strip()
+                    next_indent = len(next_line) - len(next_line.lstrip(" "))
+                    if next_stripped and next_indent <= indent:
+                        break
+                    index += 1
+                continue
+
+        kept_lines.append(line)
+        index += 1
+
+    suffix = "\n" if content.endswith("\n") else ""
+    return "\n".join(kept_lines).rstrip() + suffix, removed_tables
+
+
+def _ensure_source_descriptions(content: str) -> tuple[str, bool]:
+    lines = content.splitlines()
+    updated_lines: list[str] = []
+    changed = False
+    index = 0
+
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+        source_match = NAME_LINE_PATTERN.match(stripped)
+        if (
+            indent == 2
+            and source_match
+            and source_match.group("name").startswith("ml_feature_platform_")
+        ):
+            source_schema = source_match.group("name").removeprefix(
+                "ml_feature_platform_"
+            )
+            description_line = (
+                f'    description: "{_source_description(source_schema)}"'
+            )
+            updated_lines.append(line)
+            if index + 1 < len(lines) and lines[index + 1].strip().startswith(
+                "description:"
+            ):
+                if lines[index + 1] != description_line:
+                    changed = True
+                updated_lines.append(description_line)
+                index += 2
+                continue
+            updated_lines.append(description_line)
+            changed = True
+            index += 1
+            continue
+
+        updated_lines.append(line)
+        index += 1
+
+    suffix = "\n" if content.endswith("\n") else ""
+    return "\n".join(updated_lines) + suffix, changed
+
+
+def _existing_tables(models_path: Path) -> set[tuple[str, str]]:
+    source_tables: set[tuple[str, str]] = set()
+    sources_path = models_path / SOURCES_FILE_NAME
+    if not sources_path.exists():
+        print(f"No {SOURCES_FILE_NAME} file found under {models_path}")
+        return source_tables
+    print(f"scan_yaml={sources_path}")
+    source_tables.update(_extract_source_tables(sources_path.read_text(encoding="utf-8")))
+    return source_tables
+
+
+def _extract_source_schemas(content: str) -> set[str]:
+    schemas = set()
+    for raw_line in content.splitlines():
+        line = _strip_diff_prefix(raw_line.rstrip())
+        schema_match = SCHEMA_LINE_PATTERN.match(line.strip())
+        if schema_match:
+            schemas.add(schema_match.group("schema"))
+    return schemas
+
+
+def _extract_source_tables(content: str) -> set[tuple[str, str]]:
+    source_tables: set[tuple[str, str]] = set()
+    in_tables_block = False
+    tables_indent = -1
+    current_schema = ""
 
     for raw_line in content.splitlines():
         line = _strip_diff_prefix(raw_line.rstrip())
@@ -339,6 +527,10 @@ def _extract_source_table_names(content: str) -> set[str]:
             continue
 
         indent = len(line) - len(line.lstrip(" "))
+        schema_match = SCHEMA_LINE_PATTERN.match(stripped)
+        if schema_match:
+            current_schema = schema_match.group("schema")
+            continue
         if stripped == "tables:":
             in_tables_block = True
             tables_indent = indent
@@ -351,10 +543,10 @@ def _extract_source_table_names(content: str) -> set[str]:
             continue
 
         match = NAME_LINE_PATTERN.match(stripped)
-        if match:
-            table_names.add(match.group("name"))
+        if match and current_schema:
+            source_tables.add((current_schema, match.group("name")))
 
-    return table_names
+    return source_tables
 
 
 def _strip_diff_prefix(line: str) -> str:
@@ -363,19 +555,19 @@ def _strip_diff_prefix(line: str) -> str:
     return line
 
 
-def print_table_list(prefix: str, table_names: set[str]) -> None:
-    if not table_names:
+def print_table_list(prefix: str, source_tables: set[tuple[str, str]]) -> None:
+    if not source_tables:
         print(f"{prefix}=none")
         return
-    for table_name in sorted(table_names):
-        print(f"{prefix}={table_name}")
+    for source_schema, table_name in sorted(source_tables):
+        print(f"{prefix}={source_schema}.{table_name}")
 
 
 def _open_pr_tables(
     runtime: RuntimeConfig,
     repo_slug: str,
     dbt_config: dict[str, Any],
-) -> dict[str, str]:
+) -> dict[tuple[str, str], str]:
     result = _run(
         [
             "gh",
@@ -404,8 +596,8 @@ def _open_pr_tables(
         print(f"Cannot parse gh pr list output: {exc}")
         return {}
 
-    pending_tables = {}
-    sources_path = f"{dbt_config['models_path'].rstrip('/')}/{SOURCES_FILE_NAME}"
+    pending_tables: dict[tuple[str, str], str] = {}
+    models_path = dbt_config["models_path"].rstrip("/")
     for pull_request in pull_requests:
         pr_number = str(pull_request["number"])
         pr_url = str(pull_request["url"])
@@ -413,10 +605,10 @@ def _open_pr_tables(
             f"scan_open_pr=number:{pr_number} "
             f"head:{pull_request.get('headRefName')} title:{pull_request.get('title')}"
         )
-        branch_tables = _open_pr_branch_tables(runtime, pr_number, sources_path)
+        branch_tables = _open_pr_branch_tables(runtime, pr_number, models_path)
         if branch_tables:
-            for table_name in branch_tables:
-                pending_tables[table_name] = pr_url
+            for table_key in branch_tables:
+                pending_tables[table_key] = pr_url
             continue
 
         diff_result = _run(
@@ -429,16 +621,16 @@ def _open_pr_tables(
             print(f"Cannot read diff for open PR #{pr_number}")
             continue
 
-        for table_name in _extract_source_table_names(diff_result.stdout or ""):
-            pending_tables[table_name] = pr_url
+        for table_key in _extract_source_tables(diff_result.stdout or ""):
+            pending_tables[table_key] = pr_url
     return pending_tables
 
 
 def _open_pr_branch_tables(
     runtime: RuntimeConfig,
     pr_number: str,
-    sources_path: str,
-) -> set[str]:
+    models_path: str,
+) -> set[tuple[str, str]]:
     pr_ref = f"refs/remotes/origin/pr/{pr_number}"
     fetch_result = _run(
         ["git", "fetch", "origin", f"+pull/{pr_number}/head:{pr_ref}"],
@@ -450,20 +642,32 @@ def _open_pr_branch_tables(
         print(f"Cannot fetch head branch for open PR #{pr_number}, fallback to diff")
         return set()
 
-    show_result = _run(
-        ["git", "show", f"{pr_ref}:{sources_path}"],
+    tree_result = _run(
+        ["git", "ls-tree", "-r", "--name-only", pr_ref, models_path],
         cwd=runtime.workspace,
         check=False,
         capture_output=True,
         log_output=False,
     )
-    if show_result.returncode != 0:
-        print(f"Cannot read {sources_path} from open PR #{pr_number}, fallback to diff")
+    if tree_result.returncode != 0:
+        print(f"Cannot list {models_path} from open PR #{pr_number}, fallback to diff")
         return set()
 
-    table_names = _extract_source_table_names(show_result.stdout or "")
-    print(f"open_pr_branch_tables_count={len(table_names)} pr={pr_number}")
-    return table_names
+    source_tables: set[tuple[str, str]] = set()
+    for source_path in (tree_result.stdout or "").splitlines():
+        if Path(source_path).name != SOURCES_FILE_NAME:
+            continue
+        show_result = _run(
+            ["git", "show", f"{pr_ref}:{source_path}"],
+            cwd=runtime.workspace,
+            check=False,
+            capture_output=True,
+            log_output=False,
+        )
+        if show_result.returncode == 0:
+            source_tables.update(_extract_source_tables(show_result.stdout or ""))
+    print(f"open_pr_branch_tables_count={len(source_tables)} pr={pr_number}")
+    return source_tables
 
 
 def _append_to_sources_file(sources_path: Path, source_yaml: str) -> None:
@@ -476,6 +680,46 @@ def _append_to_sources_file(sources_path: Path, source_yaml: str) -> None:
         existing_content.rstrip() + "\n\n" + source_yaml,
         encoding="utf-8",
     )
+
+
+def _append_table_to_source_block(
+    sources_path: Path,
+    source_schema: str,
+    table_yaml: str,
+) -> None:
+    content = sources_path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    source_name = f"ml_feature_platform_{source_schema}"
+    source_start = None
+    insert_at = len(lines)
+
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+        match = NAME_LINE_PATTERN.match(stripped)
+        if indent != 2 or not match:
+            continue
+        if match.group("name") == source_name:
+            source_start = index
+            continue
+        if source_start is not None:
+            insert_at = index
+            break
+
+    if source_start is None:
+        raise ValueError(
+            f"Cannot find dbt source block {source_name} in {sources_path}"
+        )
+
+    table_lines = table_yaml.rstrip().splitlines()
+    prefix = lines[:insert_at]
+    suffix = lines[insert_at:]
+    while prefix and not prefix[-1].strip():
+        prefix.pop()
+    updated_lines = prefix + table_lines
+    if suffix:
+        updated_lines.extend([""] + suffix)
+    sources_path.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
 
 
 def _checkout_branch(runtime: RuntimeConfig, base_branch: str) -> str:

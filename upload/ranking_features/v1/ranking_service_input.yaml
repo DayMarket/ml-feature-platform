@@ -1,0 +1,73 @@
+output-label: output
+input-labels:
+  - label: input
+    type: OFFLINE
+    missing-feature-value: 0.0
+    feature-sets:
+      - name: fs_search_skg_rating_v1
+        schema: SKU_GROUP
+        size: 1
+      - name: fs_search_skg_price_ratios_v1
+        schema: SKU_GROUP
+        size: 2
+      - name: fs_search_skg_conversion_features_v1
+        schema: SKU_GROUP
+        size: 6
+      - name: fs_search_skg_price_index_status_v1
+        schema: SKU_GROUP
+        size: 1
+      - name: fs_search_skg_price_features_v1
+        schema: SKU_GROUP
+        size: 4
+      - name: fs_search_query_skg_v3
+        schema: SKU_GROUP_TO_QUERY
+        size: 29
+      - name: dssm_score
+        schema: EXTERNAL
+        size: 1
+
+  - label: cm2_features
+    type: OFFLINE
+    missing-feature-value: 0.0
+    feature-sets:
+      - name: fs_online_skg_commission_v1
+        schema: SKU_GROUP
+        missing-feature-value: 20
+        size: 1
+      - name: fs_online_skg_min_sell_price_v1
+        schema: SKU_GROUP
+        missing-feature-value: 80000
+        size: 1
+      - name: fs_online_log_inflow_v1
+        schema: SKU_GROUP
+        missing-feature-value: 5000
+        size: 1
+      - name: fs_cm2_cpi_cost
+        schema: SKU_GROUP
+        missing-feature-value: 4762
+        size: 1
+      - name: bid_amounts
+        schema: EXTERNAL
+        size: 1
+      - name: cpo_adv_percents
+        schema: EXTERNAL
+        size: 1
+      - name: nds_score
+        schema: CONSTANT
+        size: 1
+      - name: fs_cm2_items
+        schema: SKU_GROUP
+        missing-feature-value: 1
+        size: 1
+      - name: alpha
+        schema: EXTERNAL
+        size: 1
+      - name: beta
+        schema: EXTERNAL
+        size: 1
+      - name: gamma
+        schema: EXTERNAL
+        size: 1
+      - name: delta
+        schema: EXTERNAL
+        size: 1
