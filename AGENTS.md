@@ -156,16 +156,16 @@ Drone currently does the following:
 - Runs `ci_test/test_sync_iceberg_maintenance.py`.
 - Runs `scripts/validate_ranking_upload_configs.py`.
 - Runs all repository SQL migrations through PySpark on `master` push after merge.
-- Runs `scripts/sync_dbt_sources.py` to create/update dbt source entries for tables declared in layer configs.
-- Runs `scripts/sync_iceberg_maintenance.py` to create/update a PR in `DayMarket/pyspark-etl`.
-- Syncs the corresponding submodule reference in `DayMarket/airflow-dags`.
+- Runs `scripts/sync_dbt_sources.py` on `master` push to create/update dbt source entries for tables declared in layer configs.
+- Runs `scripts/sync_iceberg_maintenance.py` on `master` push to create/update a PR in `DayMarket/pyspark-etl`.
+- Syncs the corresponding submodule reference in `DayMarket/airflow-dags` on `master` push.
 - Builds the ranking upload custom image only on tags matching `spark-feature-platform-ranking-upload-*`.
 
 Drone trigger policy:
 
 - The main Drone pipeline is intentionally triggered only on pushes to `dev` and `master`.
 - Feature branches are not expected to run in Drone; test feature-branch changes locally before merging.
-- A push/merge to `dev` should run validation-only checks. It must not apply real PySpark migrations to production Hive/S3 and must not create or update Iceberg maintenance registration.
+- A push/merge to `dev` should run validation-only checks. It must not apply real PySpark migrations to production Hive/S3, sync dbt source PRs, create or update Iceberg maintenance registration, or push Airflow submodule references.
 - A push/merge to `master` may run both validation and real side-effecting sync/apply steps.
 
 Migration CI:
@@ -188,7 +188,7 @@ dbt source sync:
 - It creates one source block per effective schema, named `ml_feature_platform_<schema>`.
 - It does not create `sources_gold.yaml`.
 - It adds uniqueness/not-null tests from primary keys and adds freshness/row-count tests when `date` is part of the primary key.
-- It skips PR publication on branch `dev`.
+- The side-effecting dbt source sync Drone step should run only on `master` push. On `dev`, only the local regression test `ci_test/test_sync_dbt_sources.py` should run.
 
 Iceberg maintenance sync:
 
