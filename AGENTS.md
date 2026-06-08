@@ -228,6 +228,12 @@ Use this workflow:
 - After creating or changing a DAG that fills a table, include a concise table summary in the final response.
 - Update this handbook if the new feature changes structure, contracts, deployment, CI, or feature inventory.
 
+Post-master merge follow-up for new tables:
+
+- After the feature-platform PR that creates a new table is merged to `master`, remind the user to check and merge the generated dbt-trino PR for DQ tests: https://github.com/DayMarket/dbt-trino/pulls.
+- After the feature-platform PR that creates a new table is merged to `master`, remind the user to check and merge the generated `DayMarket/pyspark-etl` PR for Iceberg maintenance automation: https://github.com/DayMarket/pyspark-etl/pulls.
+- These follow-up PRs are created by master-side CI after the merge to `master`; the user should do this after the master merge, not during the feature-branch stage.
+
 Schema-change checklist:
 
 - Update `migrations/create_table.sql` for new environments.
