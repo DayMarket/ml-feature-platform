@@ -72,7 +72,7 @@
       "source": {
         "schema": "gold",
         "table": "feature_platform_sku_group_price_features",
-        "dq_execution_delta_minutes": 120
+        "dq_execution_delta_minutes": 180
       },
       "name": "fs_search_skg_price_features_v1",
       "features": [
@@ -85,7 +85,7 @@
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_search_sku_group_id_query_atc_order_features",
+        "table": "feature_platform_query_skg_pairwise_features_legacy",
         "dq_execution_delta_minutes": 180
       },
       "name": "fs_search_query_skg_v3",

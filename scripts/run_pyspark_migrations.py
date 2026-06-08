@@ -20,6 +20,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("--config-path")
     parser.add_argument("--migrations-path")
+    parser.add_argument(
+        "--validation-mode",
+        action="store_true",
+        help="Run migrations against a disposable local Spark/Iceberg warehouse.",
+    )
+    parser.add_argument(
+        "--validation-warehouse",
+        default="/tmp/feature-platform-migration-warehouse",
+        help="Local warehouse path used with --validation-mode.",
+    )
     return parser.parse_args()
 
 
@@ -118,7 +128,29 @@ def get_required_env(name: str) -> str:
     return value
 
 
-def build_spark_session() -> SparkSession:
+def build_validation_spark_session(validation_warehouse: str) -> SparkSession:
+    warehouse_path = Path(validation_warehouse).resolve()
+    warehouse_path.mkdir(parents=True, exist_ok=True)
+
+    return (
+        SparkSession.builder.appName("feature-platform-pyspark-migration-validation")
+        .master("local[*]")
+        .config(
+            "spark.sql.extensions",
+            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+        )
+        .config("spark.sql.catalog.iceberg", "org.apache.iceberg.spark.SparkCatalog")
+        .config("spark.sql.catalog.iceberg.type", "hadoop")
+        .config("spark.sql.catalog.iceberg.warehouse", warehouse_path.as_uri())
+        .config("spark.sql.shuffle.partitions", "1")
+        .getOrCreate()
+    )
+
+
+def build_spark_session(validation_mode: bool, validation_warehouse: str) -> SparkSession:
+    if validation_mode:
+        return build_validation_spark_session(validation_warehouse)
+
     s3_access_key = get_required_env("S3_ACCESS_KEY")
     s3_secret_key = get_required_env("S3_SECRET_KEY")
     hive_metastore_uris = get_required_env("HIVE_METASTORE_URIS")
@@ -220,6 +252,18 @@ def run_migrations(
     config_path: Path | None = None,
     migrations_path: Path | None = None,
 ) -> None:
+    targets = get_migration_targets(repo_root, config_path, migrations_path)
+    create_target_namespaces(spark, targets)
+
+    for target_config_path, target_migrations_path in targets:
+        run_layer_migrations(spark, target_config_path, target_migrations_path)
+
+
+def get_migration_targets(
+    repo_root: Path,
+    config_path: Path | None = None,
+    migrations_path: Path | None = None,
+) -> list[tuple[Path, Path]]:
     if config_path or migrations_path:
         if not config_path or not migrations_path:
             raise RuntimeError("--config-path and --migrations-path must be passed together")
@@ -230,13 +274,29 @@ def run_migrations(
     if not targets:
         raise RuntimeError(f"No migration targets found in {repo_root}")
 
-    for target_config_path, target_migrations_path in targets:
-        run_layer_migrations(spark, target_config_path, target_migrations_path)
+    return targets
+
+
+def create_target_namespaces(
+    spark: SparkSession,
+    targets: list[tuple[Path, Path]],
+) -> None:
+    namespaces = set()
+    for config_path, _ in targets:
+        config = read_simple_nested_config(config_path)
+        table_config = config["table"]
+        namespaces.add(f"{table_config['catalog']}.{table_config['schema']}")
+
+    for namespace in sorted(namespaces):
+        spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {namespace}")
 
 
 def main() -> int:
     args = parse_args()
-    spark = build_spark_session()
+    spark = build_spark_session(
+        validation_mode=args.validation_mode,
+        validation_warehouse=args.validation_warehouse,
+    )
     try:
         run_migrations(
             spark=spark,

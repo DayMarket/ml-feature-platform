@@ -1,0 +1,19 @@
+resources:
+  path: config/resources.yaml
+
+table:
+  key: query_skg_daily_conversions_legacy
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_query_skg_daily_conversions_legacy
+  primary_key: date,query,platform,sku_group_id
+  meta:
+    team: team:search
+dag:
+  team: search
+
+alerts:
+  team: search
+  severity: P4
+  oncall_webhook_conn_id: oncall_webhook_search
+
