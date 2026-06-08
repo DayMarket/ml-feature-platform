@@ -151,10 +151,8 @@ Do not add expensive high-cardinality or source-wide relationship tests blindly.
 
 Drone currently does the following:
 
-- Runs `ci_test/test_script.py`.
-- Runs `ci_test/test_sync_dbt_sources.py`.
-- Runs `ci_test/test_sync_iceberg_maintenance.py`.
 - Runs `scripts/validate_ranking_upload_configs.py`.
+- Runs `scripts/run_pyspark_migrations.py --validation-mode` on `dev` and `master` pushes against a disposable local Spark/Iceberg warehouse.
 - Runs all repository SQL migrations through PySpark on `master` push after merge.
 - Runs `scripts/sync_dbt_sources.py` on `master` push to create/update dbt source entries for tables declared in layer configs.
 - Runs `scripts/sync_iceberg_maintenance.py` on `master` push to create/update a PR in `DayMarket/pyspark-etl`.
@@ -165,14 +163,14 @@ Drone trigger policy:
 
 - The main Drone pipeline is intentionally triggered only on pushes to `dev` and `master`.
 - Feature branches are not expected to run in Drone; test feature-branch changes locally before merging.
-- A push/merge to `dev` should run validation-only checks. It must not apply real PySpark migrations to production Hive/S3, sync dbt source PRs, create or update Iceberg maintenance registration, or push Airflow submodule references.
+- A push/merge to `dev` should run validation-only Drone checks: ranking upload config validation and local PySpark migration validation. It must not apply real PySpark migrations to production Hive/S3, sync dbt source PRs, create or update Iceberg maintenance registration, or push Airflow submodule references.
 - A push/merge to `master` may run both validation and real side-effecting sync/apply steps.
 
 Migration CI:
 
 - Real migration execution runs only for `branch: master` and `event: push`.
-- Planned validation should run on both `dev` and `master` pipeline executions against a disposable local Spark/Iceberg warehouse, before real master-only migration execution.
-- Validation should use the default Spark image and `spark-submit scripts/run_pyspark_migrations.py --repo-root .` with a validation/local-catalog mode that does not require production Hive Metastore or S3 credentials.
+- Validation runs on both `dev` and `master` pipeline executions against a disposable local Spark/Iceberg warehouse, before real master-only migration execution.
+- Validation uses the default Spark image and `spark-submit scripts/run_pyspark_migrations.py --repo-root . --validation-mode`; it does not require production Hive Metastore or S3 credentials.
 - Real migration execution uses the default Spark image and `spark-submit scripts/run_pyspark_migrations.py --repo-root .`.
 - Discovers every `layers/**/config.yaml` with SQL files under `migrations/`.
 - Real migration execution reads Spark/Iceberg settings from `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `HIVE_METASTORE_URIS`, optional `ICEBERG_WAREHOUSE`, and S3/AWS region settings.
@@ -188,7 +186,7 @@ dbt source sync:
 - It creates one source block per effective schema, named `ml_feature_platform_<schema>`.
 - It does not create `sources_gold.yaml`.
 - It adds uniqueness/not-null tests from primary keys and adds freshness/row-count tests when `date` is part of the primary key.
-- The side-effecting dbt source sync Drone step should run only on `master` push. On `dev`, only the local regression test `ci_test/test_sync_dbt_sources.py` should run.
+- The side-effecting dbt source sync Drone step should run only on `master` push. Run `ci_test/test_sync_dbt_sources.py` locally when changing source sync behavior.
 
 Iceberg maintenance sync:
 

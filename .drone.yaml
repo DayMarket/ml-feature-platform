@@ -19,24 +19,20 @@ volumes:
       path: /var/run/docker.sock  
 
 steps:
-  - name: test step
-    image: python:3.11-slim
-    environment:
-      SECRET:
-        from_secret: SECRET
-    commands:
-      - echo "=== test step ==="
-      - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
-      - echo "commit=$DRONE_COMMIT_SHA"
-      - python ci_test/test_script.py
-      - python ci_test/test_sync_dbt_sources.py
-      - python ci_test/test_sync_iceberg_maintenance.py
-
   - name: validate ranking upload configs
     image: python:3.11-slim
     commands:
       - echo "=== validate ranking upload configs ==="
       - python scripts/validate_ranking_upload_configs.py
+
+  - name: validate pyspark migrations
+    image: ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3
+    commands:
+      - echo "=== validate pyspark migrations ==="
+      - echo "repo=$DRONE_REPO branch=$DRONE_COMMIT_BRANCH event=$DRONE_BUILD_EVENT build=$DRONE_BUILD_NUMBER"
+      - rm -rf /tmp/feature-platform-migration-warehouse
+      - mkdir -p /tmp/.ivy2/cache /tmp/.ivy2/jars /tmp/feature-platform-migration-warehouse
+      - /opt/spark/bin/spark-submit --conf spark.jars.ivy=/tmp/.ivy2 --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2 scripts/run_pyspark_migrations.py --repo-root . --validation-mode --validation-warehouse /tmp/feature-platform-migration-warehouse
 
   - name: run pyspark migrations
     image: ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3
