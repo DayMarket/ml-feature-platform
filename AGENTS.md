@@ -335,6 +335,20 @@ Path: `layers/gold/sku_group_search_conversion_features/v1`
 - Raw ratios use Spark division semantics and keep `NULL` for missing or zero denominators.
 - Features: `smooth_conv_imp2order_3`, `smooth_conv_imp2order_7`, `smooth_conv_imp2order_14`, `imp2order_3_to_1`, `imp2order_21_to_14`, `imp2order_30_to_21`.
 
+### Gold: SKU Group Search Sales 7D
+
+Path: `layers/gold/sku_group_search_sales_7d/v1`
+
+- Table: `iceberg.gold.feature_platform_sku_group_search_sales_7d`.
+- Primary key: `date,sku_group_id`.
+- DAG id: `feature_platform_sku_group_search_sales_7d_gold_dag`.
+- Schedule: `0 3 * * *`.
+- Sensor: waits for DQ of `iceberg.silver.feature_platform_sku_group_query_search_orders`.
+- Source table: `iceberg.silver.feature_platform_sku_group_query_search_orders`.
+- Logic: sums `items_completed` by `sku_group_id` over `[{{ ds }} - 7, {{ ds }} - 1]`; Airflow `{{ ds }}` is excluded.
+- Feature: `search_sales_count_7d`.
+- Downstream usage: not published to ranking upload unless explicitly added to `upload/ranking_features/v1/config.yaml`.
+
 ### Gold: SKU Group Median Sales 7D
 
 Path: `layers/gold/sku_group_median_sales_7d/v1`
