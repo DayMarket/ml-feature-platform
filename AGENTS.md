@@ -21,7 +21,7 @@ Owner metadata:
 - Read this file first, then inspect the code/configs that are relevant to the requested table or feature.
 - Do not rely on memory alone. Confirm feature names, source tables, keys, schedules, sensors, and formulas in `layers/**/config.yaml`, migrations, README files, and PySpark jobs.
 - If the request is ambiguous or the implementation contract is not clear, do not invent missing details. Ask concise clarifying questions before generating code, configs, migrations, or upload contracts.
-- If a required ownership or alerting field is not explicitly given and cannot be confidently inferred from existing table context, ask which `team`, `dag.team`, `alerts.team`, severity, and on-call webhook should be used. Do not silently default to `team:search` for new ownership contexts.
+- For every new layer table, upload process, DAG, or other new ownership context, always ask the user to explicitly confirm `table.meta.team`, `dag.team`, `alerts.team`, alert severity, and on-call webhook before creating or editing files. Do this even when nearby tables appear to use `team:search`; do not silently default or infer these fields for new entities.
 - When there is a meaningful design choice, propose options before implementation. Common examples: add a column to an existing table vs create a new table; publish to ranking upload now vs leave as an internal gold table; use generated orders vs completed sales; include `{{ ds }}` vs use `[ds - N, ds - 1]`.
 - If uncertain after repository inspection, ask. It is better to pause for clarification than to create a plausible but wrong feature contract.
 - If repository files do not contain enough information about an upstream table, table schema, values, or data semantics, say that the repository does not answer the question and ask before querying the table through available MCP tools such as Trino or ClickHouse. Do not silently inspect production data sources.
@@ -217,6 +217,7 @@ Use this workflow:
 - If the requested source data is not in feature-platform, stop before scaffolding and propose the integration contract: external source table/path, source owner/team, upstream DAG or DQ sensor to wait for, schema/partition fields, freshness expectations, and whether a new silver adapter table should be created in feature-platform. Query Trino/ClickHouse/MCP for schema or sample values only after telling the user the repository lacks this information and getting confirmation.
 - Before scaffolding, present the viable implementation options when more than one is reasonable, especially whether to add a feature to an existing table or create a new table. Ask the user to choose unless the request already makes the choice explicit.
 - Ask clarifying questions for any unspecified or ambiguous contract: entity grain, source table, attribution space, date window boundaries, whether `{{ ds }}` is included, generated vs completed orders, null/zero denominator behavior, publication to ranking upload, schedule, owner team, and on-call settings.
+- For new entities, ownership and alerting are never considered safely inferred: explicitly confirm `table.meta.team`, `dag.team`, `alerts.team`, alert severity, and on-call webhook before scaffolding configs or DAGs.
 - After duplicate checks and clarification, summarize the selected contract back to the user before editing files: target table or existing table, grain, sources, window/date semantics, schedule, DQ dependencies, ownership/on-call, and whether ranking upload is included.
 - Choose the entity grain and primary key. Include `date` for scheduled snapshots.
 - Add or update migrations first. Use idempotent DDL and include comments for all columns.
@@ -414,6 +415,20 @@ Path: `layers/gold/sku_group_search_sales_7d/v1`
 - Source table: `iceberg.silver.feature_platform_sku_group_query_search_orders`.
 - Logic: sums `items_completed` by `sku_group_id` over `[{{ ds }} - 7, {{ ds }} - 1]`; Airflow `{{ ds }}` is excluded.
 - Feature: `search_sales_count_7d`.
+- Downstream usage: not published to ranking upload unless explicitly added to `upload/ranking_features/v1/config.yaml`.
+
+### Gold: SKU Group Cart Sales Features
+
+Path: `layers/gold/sku_group_cart_sales_features/v1`
+
+- Table: `iceberg.gold.feature_platform_sku_group_cart_sales_features`.
+- Primary key: `date,sku_group_id`.
+- DAG id: `feature_platform_sku_group_cart_sales_features_gold_dag`.
+- Schedule: `0 3 * * *`.
+- Source tables: `iceberg.silver.order_items_attribution`, `iceberg.silver.order_items`, `iceberg.silver.sku`.
+- Logic: filters attribution rows with `widget_space_name = 'CART'`, joins by `order_item_id`, keeps completed orders with `issued_at` inside the 28-day horizon, excludes items returned before `{{ next_ds }}`, and counts `COUNT(DISTINCT order_id)` by `sku_group_id`.
+- Windows include Airflow `{{ ds }}`: `7d = [{{ ds }} - 6, {{ ds }}]`, `14d = [{{ ds }} - 13, {{ ds }}]`, `28d = [{{ ds }} - 27, {{ ds }}]`.
+- Features: `cart_sales_count_7d`, `cart_sales_count_14d`, `cart_sales_count_28d`.
 - Downstream usage: not published to ranking upload unless explicitly added to `upload/ranking_features/v1/config.yaml`.
 
 ### Gold: SKU Group Home Recommendations Average Sales 7D
