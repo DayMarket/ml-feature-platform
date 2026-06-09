@@ -52,9 +52,18 @@ def main() -> int:
     base_branch = _base_branch(runtime.branch)
     target_branch = _checkout_branch(runtime, base_branch)
 
+    repo_slug = github_slug(runtime.repo_url)
+    pending_pr_tables: dict[tuple[str, str], str] = {}
+    if repo_slug:
+        pending_pr_tables = open_pr_tables(runtime, repo_slug)
+        print(f"open_pr_tables_count={len(pending_pr_tables)}")
+        for pending_table, pr_url in sorted(pending_pr_tables.items()):
+            print(f"open_pr_table={pending_table[0]}.{pending_table[1]} pr={pr_url}")
+
     changed_files = sync_maintenance_files(
         runtime.workspace,
         table_config,
+        pending_pr_tables,
     )
     if not changed_files:
         print("No Iceberg maintenance changes to publish")
@@ -112,8 +121,10 @@ def read_simple_nested_config(config_path: Path) -> dict[str, Any]:
 def sync_maintenance_files(
     maintenance_repo: Path,
     discovered_tables: dict[str, list[str]],
+    pending_pr_tables: Optional[dict[tuple[str, str], str]] = None,
 ) -> list[Path]:
     changed_files: list[Path] = []
+    pending_pr_tables = pending_pr_tables or {}
 
     config_path = maintenance_repo / MAINTENANCE_CONFIG_PATH
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,7 +133,16 @@ def sync_maintenance_files(
         if config_path.exists()
         else {}
     )
-    merged_tables = merge_schema_tables(existing_tables, discovered_tables)
+    missing_tables = missing_schema_tables(
+        discovered_tables,
+        existing_tables,
+        pending_pr_tables,
+    )
+    if not config_path.exists() and not any(missing_tables.values()):
+        print("No missing maintenance tables to add")
+        return changed_files
+
+    merged_tables = merge_schema_tables(existing_tables, missing_tables)
     rendered_config = render_feature_platform_config(merged_tables)
     if not config_path.exists() or config_path.read_text(encoding="utf-8") != rendered_config:
         config_path.write_text(rendered_config, encoding="utf-8")
@@ -138,6 +158,33 @@ def sync_maintenance_files(
         print(f"Updated maintenance DAG: {dag_path}")
 
     return changed_files
+
+
+def missing_schema_tables(
+    discovered_tables: dict[str, list[str]],
+    existing_tables: dict[str, list[str]],
+    pending_pr_tables: dict[tuple[str, str], str],
+) -> dict[str, list[str]]:
+    existing_keys = {
+        (schema, table)
+        for schema, tables in existing_tables.items()
+        for table in tables
+    }
+    missing: dict[str, list[str]] = {}
+    for schema, tables in sorted(discovered_tables.items()):
+        for table in sorted(dict.fromkeys(tables)):
+            table_key = (schema, table)
+            if table_key in existing_keys:
+                print(f"Skip existing maintenance table: {schema}.{table}")
+                continue
+            if table_key in pending_pr_tables:
+                print(
+                    f"Skip table already present in open maintenance PR: "
+                    f"{schema}.{table} pr={pending_pr_tables[table_key]}"
+                )
+                continue
+            missing.setdefault(schema, []).append(table)
+    return missing
 
 
 def merge_schema_tables(
@@ -183,6 +230,25 @@ def parse_schema_table_config(content: str) -> dict[str, list[str]]:
             schemas.setdefault(current_schema, []).append(stripped[2:].strip())
 
     return schemas
+
+
+def parse_schema_table_keys(
+    content: str,
+    strip_diff: bool = False,
+) -> set[tuple[str, str]]:
+    if strip_diff:
+        content = "\n".join(strip_diff_prefix(line) for line in content.splitlines())
+    return {
+        (schema, table)
+        for schema, tables in parse_schema_table_config(content).items()
+        for table in tables
+    }
+
+
+def strip_diff_prefix(line: str) -> str:
+    if line.startswith(("+", "-", " ")) and not line.startswith(("+++", "---")):
+        return line[1:]
+    return line
 
 
 def render_feature_platform_config(schema_tables: dict[str, list[str]]) -> str:
@@ -364,6 +430,103 @@ def find_open_pr_url(
     return pr_url
 
 
+def open_pr_tables(
+    runtime: RuntimeConfig,
+    repo_slug: str,
+) -> dict[tuple[str, str], str]:
+    result = _run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            repo_slug,
+            "--state",
+            "open",
+            "--limit",
+            "100",
+            "--json",
+            "number,url,title,headRefName",
+        ],
+        env={**os.environ, "GITHUB_TOKEN": runtime.git_token},
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        print("No open PR metadata returned")
+        return {}
+
+    try:
+        pull_requests = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        print(f"Cannot parse gh pr list output: {exc}")
+        return {}
+
+    pending_tables: dict[tuple[str, str], str] = {}
+    for pull_request in pull_requests:
+        pr_number = str(pull_request["number"])
+        pr_url = str(pull_request["url"])
+        print(
+            f"scan_open_pr=number:{pr_number} "
+            f"head:{pull_request.get('headRefName')} title:{pull_request.get('title')}"
+        )
+        branch_tables = open_pr_branch_tables(runtime, pr_number)
+        if branch_tables:
+            for table_key in branch_tables:
+                pending_tables[table_key] = pr_url
+            continue
+
+        diff_result = _run(
+            ["gh", "pr", "diff", pr_number, "--repo", repo_slug, "--patch"],
+            env={**os.environ, "GITHUB_TOKEN": runtime.git_token},
+            check=False,
+            capture_output=True,
+        )
+        if diff_result.returncode != 0:
+            print(f"Cannot read diff for open PR #{pr_number}")
+            continue
+
+        diff_tables = parse_schema_table_keys(
+            diff_result.stdout or "",
+            strip_diff=True,
+        )
+        for table_key in diff_tables:
+            pending_tables[table_key] = pr_url
+    return pending_tables
+
+
+def open_pr_branch_tables(
+    runtime: RuntimeConfig,
+    pr_number: str,
+) -> set[tuple[str, str]]:
+    pr_ref = f"refs/remotes/origin/pr/{pr_number}"
+    fetch_result = _run(
+        ["git", "fetch", "origin", f"+pull/{pr_number}/head:{pr_ref}"],
+        cwd=runtime.workspace,
+        check=False,
+        capture_output=True,
+        log_output=False,
+    )
+    if fetch_result.returncode != 0:
+        print(f"Cannot fetch head branch for open PR #{pr_number}, fallback to diff")
+        return set()
+
+    show_result = _run(
+        ["git", "show", f"{pr_ref}:{MAINTENANCE_CONFIG_PATH.as_posix()}"],
+        cwd=runtime.workspace,
+        check=False,
+        capture_output=True,
+        log_output=False,
+    )
+    if show_result.returncode != 0:
+        print(f"Cannot read maintenance config from open PR #{pr_number}, fallback to diff")
+        return set()
+
+    source_tables = parse_schema_table_keys(show_result.stdout or "")
+    print(f"open_pr_branch_tables_count={len(source_tables)} pr={pr_number}")
+    return source_tables
+
+
 def pr_body(runtime: RuntimeConfig) -> str:
     lines = [
         "Generated by ml-feature-platform CI.",
@@ -383,18 +546,19 @@ def write_created_pr_url(pr_url: str) -> None:
 
 
 def comment_source_pr_if_possible(runtime: RuntimeConfig, pr_url: str) -> None:
+    source_pr = os.getenv("DRONE_PULL_REQUEST")
     source_repo = os.getenv("DRONE_REPO")
     if not source_repo:
         print("No source repo context in Drone, skip source PR comment")
         return
 
-    source_pr = os.getenv("DRONE_PULL_REQUEST")
     if not source_pr:
-        source_pr = find_dev_to_master_pr(runtime, source_repo)
+        source_pr = find_merged_source_pr(runtime, source_repo)
     if not source_pr:
-        print("No source dev->master PR found, skip source PR comment")
+        print("No source PR number found, skip source PR comment")
         return
 
+    print(f"Comment source PR #{source_pr} in {source_repo}")
     _run(
         [
             "gh",
@@ -411,7 +575,13 @@ def comment_source_pr_if_possible(runtime: RuntimeConfig, pr_url: str) -> None:
     )
 
 
-def find_dev_to_master_pr(runtime: RuntimeConfig, source_repo: str) -> str:
+def find_merged_source_pr(runtime: RuntimeConfig, source_repo: str) -> str:
+    commit_sha = os.getenv("DRONE_COMMIT_SHA")
+    if not commit_sha:
+        print("No DRONE_COMMIT_SHA, cannot search merged source PR")
+        return ""
+
+    print(f"Search merged source PR by commit sha={commit_sha}")
     result = _run(
         [
             "gh",
@@ -420,13 +590,13 @@ def find_dev_to_master_pr(runtime: RuntimeConfig, source_repo: str) -> str:
             "--repo",
             source_repo,
             "--state",
-            "open",
-            "--head",
-            "dev",
-            "--base",
-            "master",
+            "merged",
+            "--search",
+            commit_sha,
             "--json",
             "number",
+            "--jq",
+            ".[0].number",
             "--limit",
             "1",
         ],
@@ -434,15 +604,10 @@ def find_dev_to_master_pr(runtime: RuntimeConfig, source_repo: str) -> str:
         check=False,
         capture_output=True,
     )
-    if result.returncode != 0 or not result.stdout.strip():
-        return ""
-    try:
-        pull_requests = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return ""
-    if not pull_requests:
-        return ""
-    return str(pull_requests[0].get("number", ""))
+    source_pr = (result.stdout or "").strip()
+    if source_pr:
+        print(f"found_source_pr={source_pr}")
+    return source_pr
 
 
 def _checkout_branch(runtime: RuntimeConfig, base_branch: str) -> str:
@@ -502,6 +667,7 @@ def _run(
     env: Optional[dict[str, str]] = None,
     check: bool = True,
     capture_output: bool = False,
+    log_output: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     print("$ " + " ".join(command))
     result = subprocess.run(
@@ -512,11 +678,10 @@ def _run(
         text=True,
         capture_output=capture_output,
     )
-    if not capture_output:
-        if result.stdout:
-            print(result.stdout, end="")
-        if result.stderr:
-            print(result.stderr, end="")
+    if log_output and result.stdout:
+        print(result.stdout, end="")
+    if log_output and result.stderr:
+        print(result.stderr, end="")
     if check and result.returncode != 0:
         raise subprocess.CalledProcessError(
             result.returncode,

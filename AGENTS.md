@@ -120,6 +120,23 @@ Final response checklist for new/changed tables:
 - Downstream usage: ranking upload group or note that there is no upload.
 - Post-master follow-up for new tables: check generated dbt-trino DQ PRs and `DayMarket/pyspark-etl` Iceberg maintenance PRs.
 
+## Removing Or Deprecating A Feature
+
+Do not treat feature removal as a single file deletion. A repository table may have ranking upload usage, other feature-platform jobs, external model consumers, dbt DQ sources, Iceberg maintenance registration, Airflow orchestration, and physical Iceberg data.
+
+Use this workflow:
+
+- First classify the requested action: deprecate only, stop producing new partitions, remove from repository ownership, remove from ranking upload, or physically drop/archive data.
+- Search downstream usage with `rg` across `layers/`, `upload/`, `scripts/`, `docs/`, README files, and ranking upload configs.
+- Inspect the table's `config.yaml`, migrations, README, PySpark job, and any downstream jobs that read it.
+- If repository files do not prove that there are no external consumers, ask the user to confirm the consumer contract or allow MCP/catalog inspection before removal.
+- If the feature is published to ranking, remove it from `upload/ranking_features/v1/config.yaml` and update `ranking_service_input.yaml` only after confirming serving compatibility and feature order changes.
+- Prefer a staged removal when consumer risk is unclear: mark the feature/table as deprecated in README or config, stop downstream upload first, then stop production after an agreed grace period.
+- Stopping production may mean pausing/removing the DAG or removing the layer from the repo, but physical Iceberg data should remain until an explicit drop/archive decision is approved.
+- Do not add destructive `DROP`, `DELETE`, or `TRUNCATE` migrations to ordinary repository migrations. CI rejects destructive statements, and physical table deletion must be a separate approved operational runbook.
+- Removing a layer config lets dbt source sync remove managed dbt source blocks, but Iceberg maintenance removals require manual review. Do not silently remove maintenance entries or external registrations.
+- In the final response, state exactly what was removed, what remains physically in storage, which downstream configs changed, and what follow-up PRs or manual operations are still required.
+
 ## Lineage Answers
 
 When asked for lineage, answer from final feature back to all sources. Include:
@@ -281,6 +298,7 @@ For migration behavior, CI runs Spark against the correct runtime. Local executi
 Update this file only when repository-wide instructions change:
 
 - Workflow for discovering, validating, creating, or publishing features.
+- Feature/table deprecation and removal workflow.
 - Repository structure or required files.
 - MCP/source-contract policy.
 - Deployment, CI, DQ, maintenance, or ranking-upload rules.
