@@ -25,6 +25,7 @@ Owner metadata:
 - When there is a meaningful design choice, propose options before implementation. Common examples: add a column to an existing table vs create a new table; publish to ranking upload now vs leave as an internal gold table; use generated orders vs completed sales; include `{{ ds }}` vs use `[ds - N, ds - 1]`.
 - If uncertain after repository inspection, ask. It is better to pause for clarification than to create a plausible but wrong feature contract.
 - If repository files do not contain enough information about an upstream table, table schema, values, or data semantics, say that the repository does not answer the question and ask before querying the table through available MCP tools such as Trino or ClickHouse. Do not silently inspect production data sources.
+- If a user asks to create a table from data that is not already produced by `ml-feature-platform`, do not invent the source or silently treat this repo as the owner of upstream ingestion. First explain that the data is outside feature-platform, identify what is missing from the repository, and ask the user to confirm the upstream table/path, owning team, source freshness/DQ contract, join keys, and whether feature-platform should only transform that existing source or whether a separate upstream ingestion task is needed.
 - Do not immediately start implementation after interpreting a request. First give the user a short summary of what you understood, mention the intended approach or options, and wait for clarification or agreement when the task changes code, configs, migrations, CI, deployment, or downstream contracts.
 - Before creating a new feature, search the repository for the requested feature name and close variants. If the feature or an equivalent feature already exists, stop and tell the user where it is produced, what table stores it, and how it is uploaded if applicable.
 - If a user asks for lineage of a feature from `feature_marketplace` or ranking/model context, answer from final feature back to all source tables, including formulas, windows, grain, date semantics, DAG/DQ dependencies, and upload feature group order.
@@ -213,6 +214,7 @@ Use this workflow:
 
 - Classify the requested output: reusable pre-aggregate goes to `silver`; final model feature goes to `gold`; downstream publication goes to `upload`.
 - Run the duplicate feature check before scaffolding anything.
+- If the requested source data is not in feature-platform, stop before scaffolding and propose the integration contract: external source table/path, source owner/team, upstream DAG or DQ sensor to wait for, schema/partition fields, freshness expectations, and whether a new silver adapter table should be created in feature-platform. Query Trino/ClickHouse/MCP for schema or sample values only after telling the user the repository lacks this information and getting confirmation.
 - Before scaffolding, present the viable implementation options when more than one is reasonable, especially whether to add a feature to an existing table or create a new table. Ask the user to choose unless the request already makes the choice explicit.
 - Ask clarifying questions for any unspecified or ambiguous contract: entity grain, source table, attribution space, date window boundaries, whether `{{ ds }}` is included, generated vs completed orders, null/zero denominator behavior, publication to ranking upload, schedule, owner team, and on-call settings.
 - After duplicate checks and clarification, summarize the selected contract back to the user before editing files: target table or existing table, grain, sources, window/date semantics, schedule, DQ dependencies, ownership/on-call, and whether ranking upload is included.
@@ -232,6 +234,7 @@ Post-master merge follow-up for new tables:
 
 - After the feature-platform PR that creates a new table is merged to `master`, remind the user to check and merge the generated dbt-trino PR for DQ tests: https://github.com/DayMarket/dbt-trino/pulls.
 - After the feature-platform PR that creates a new table is merged to `master`, remind the user to check and merge the generated `DayMarket/pyspark-etl` PR for Iceberg maintenance automation: https://github.com/DayMarket/pyspark-etl/pulls.
+- When reporting generated post-master PRs to the user, include both links: the dbt-trino DQ PR and the `DayMarket/pyspark-etl` Iceberg maintenance PR. Do not send only the dbt-trino PR when a maintenance PR is also created.
 - These follow-up PRs are created by master-side CI after the merge to `master`; the user should do this after the master merge, not during the feature-branch stage.
 
 Schema-change checklist:
