@@ -25,6 +25,7 @@ Owner metadata:
 - When there is a meaningful design choice, propose options before implementation. Common examples: add a column to an existing table vs create a new table; publish to ranking upload now vs leave as an internal gold table; use generated orders vs completed sales; include `{{ ds }}` vs use `[ds - N, ds - 1]`.
 - If uncertain after repository inspection, ask. It is better to pause for clarification than to create a plausible but wrong feature contract.
 - If repository files do not contain enough information about an upstream table, table schema, values, or data semantics, say that the repository does not answer the question and ask before querying the table through available MCP tools such as Trino or ClickHouse. Do not silently inspect production data sources.
+- Treat source enum/filter semantics as data semantics, not as obvious constants. For fields such as `widget_space_name`, `widget_section_name`, attribution space, source status values, recommendation placement names, or other business-coded values, do not assume meaning from the literal name alone. If the repository does not document the exact value contract, ask the user to confirm it or ask for permission to inspect the source through MCP tools before implementation.
 - If a user asks to create a table from data that is not already produced by `ml-feature-platform`, do not invent the source or silently treat this repo as the owner of upstream ingestion. First explain that the data is outside feature-platform, identify what is missing from the repository, and ask the user to confirm the upstream table/path, owning team, source freshness/DQ contract, join keys, and whether feature-platform should only transform that existing source or whether a separate upstream ingestion task is needed.
 - Do not immediately start implementation after interpreting a request. First give the user a short summary of what you understood, mention the intended approach or options, and wait for clarification or agreement when the task changes code, configs, migrations, CI, deployment, or downstream contracts.
 - Before creating a new feature, search the repository for the requested feature name and close variants. If the feature or an equivalent feature already exists, stop and tell the user where it is produced, what table stores it, and how it is uploaded if applicable.
@@ -159,7 +160,7 @@ Do not add expensive high-cardinality or source-wide relationship tests blindly.
 Drone currently does the following:
 
 - Runs `scripts/validate_ranking_upload_configs.py`.
-- Runs `scripts/run_pyspark_migrations.py --validation-mode` on `dev` and `master` pushes against a disposable local Spark/Iceberg warehouse.
+- Runs `scripts/run_pyspark_migrations.py --validation-mode` on pushes to `dev`/`master` and on pull requests targeting `dev`/`master` against a disposable local Spark/Iceberg warehouse.
 - Runs all repository SQL migrations through PySpark on `master` push after merge.
 - Runs `scripts/sync_dbt_sources.py` on `master` push to create/update dbt source entries for tables declared in layer configs.
 - Runs `scripts/sync_iceberg_maintenance.py` on `master` push to create/update a PR in `DayMarket/pyspark-etl`.
@@ -168,15 +169,16 @@ Drone currently does the following:
 
 Drone trigger policy:
 
-- The main Drone pipeline is intentionally triggered only on pushes to `dev` and `master`.
-- Feature branches are not expected to run in Drone; test feature-branch changes locally before merging.
+- The main Drone pipeline is triggered on pushes to `dev`/`master` and pull requests targeting `dev`/`master`. For pull requests, Drone evaluates the target branch in the `branch` trigger.
+- Feature branches are not expected to run standalone Drone builds unless they are opened as pull requests targeting `dev` or `master`; test feature-branch changes locally before opening/merging when needed.
+- Pull requests targeting `dev` or `master` should run validation-only Drone checks: ranking upload config validation and local PySpark migration validation. They must not apply real PySpark migrations to production Hive/S3, sync dbt source PRs, create or update Iceberg maintenance registration, or push Airflow submodule references.
 - A push/merge to `dev` should run validation-only Drone checks: ranking upload config validation and local PySpark migration validation. It must not apply real PySpark migrations to production Hive/S3, sync dbt source PRs, create or update Iceberg maintenance registration, or push Airflow submodule references.
 - A push/merge to `master` may run both validation and real side-effecting sync/apply steps.
 
 Migration CI:
 
 - Real migration execution runs only for `branch: master` and `event: push`.
-- Validation runs on both `dev` and `master` pipeline executions against a disposable local Spark/Iceberg warehouse, before real master-only migration execution.
+- Validation runs on pushes to `dev`/`master` and pull requests targeting `dev`/`master` against a disposable local Spark/Iceberg warehouse, before real master-only migration execution.
 - Validation uses the default Spark image and `spark-submit scripts/run_pyspark_migrations.py --repo-root . --validation-mode`; it does not require production Hive Metastore or S3 credentials.
 - Real migration execution uses the default Spark image and `spark-submit scripts/run_pyspark_migrations.py --repo-root .`.
 - Discovers every `layers/**/config.yaml` with SQL files under `migrations/`.
@@ -217,6 +219,7 @@ Use this workflow:
 - If the requested source data is not in feature-platform, stop before scaffolding and propose the integration contract: external source table/path, source owner/team, upstream DAG or DQ sensor to wait for, schema/partition fields, freshness expectations, and whether a new silver adapter table should be created in feature-platform. Query Trino/ClickHouse/MCP for schema or sample values only after telling the user the repository lacks this information and getting confirmation.
 - Before scaffolding, present the viable implementation options when more than one is reasonable, especially whether to add a feature to an existing table or create a new table. Ask the user to choose unless the request already makes the choice explicit.
 - Ask clarifying questions for any unspecified or ambiguous contract: entity grain, source table, attribution space, date window boundaries, whether `{{ ds }}` is included, generated vs completed orders, null/zero denominator behavior, publication to ranking upload, schedule, owner team, and on-call settings.
+- If a feature depends on source values whose semantics are not documented in the repository, explicitly ask whether to use MCP tools such as Trino or ClickHouse to inspect schema/sample values, or whether the user will provide the contract. Do not implement from a literal value name alone.
 - For new entities, ownership and alerting are never considered safely inferred: explicitly confirm `table.meta.team`, `dag.team`, `alerts.team`, alert severity, and on-call webhook before scaffolding configs or DAGs.
 - After duplicate checks and clarification, summarize the selected contract back to the user before editing files: target table or existing table, grain, sources, window/date semantics, schedule, DQ dependencies, ownership/on-call, and whether ranking upload is included.
 - Choose the entity grain and primary key. Include `date` for scheduled snapshots.
