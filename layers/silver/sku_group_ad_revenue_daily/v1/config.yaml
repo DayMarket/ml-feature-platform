@@ -1,0 +1,18 @@
+resources:
+  path: config/resources.yaml
+
+table:
+  key: sku_group_ad_revenue_daily
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_sku_group_ad_revenue_daily
+  primary_key: date,sku_group_id
+  meta:
+    team: team:search
+dag:
+  team: search
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
