@@ -6,6 +6,7 @@ trigger:
     - dev
   event:
     - push
+    - pull_request
 
 node:
   type: um-common
