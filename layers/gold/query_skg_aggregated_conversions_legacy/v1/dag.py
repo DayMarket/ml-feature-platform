@@ -39,7 +39,7 @@ default_args = {
     tags=["spark", "feature-platform", dag_settings["team_tag"], "gold", "legacy", "query-skg"],
     is_paused_upon_creation=True,
     schedule_interval="0 3 * * *",
-    start_date=datetime(2026, 6, 1, 0, 0, 0),
+    start_date=datetime(2026, 3, 1, 0, 0, 0),
     dag_id="feature_platform_query_skg_aggregated_conversions_legacy_gold_dag",
 )
 def collect_gold_query_skg_aggregated_conversions_legacy():
