@@ -23,8 +23,8 @@ Owner metadata:
 - Before creating or renaming a feature, run the duplicate feature check below.
 - If the request changes code, configs, migrations, CI, deployment, downstream contracts, or ownership, first summarize what you understood and the intended approach or options. Wait for agreement when the contract is not already explicit.
 - If the implementation contract is unclear, ask concise clarifying questions. It is better to pause than to create a plausible but wrong feature.
-- Do not silently inspect production data sources. If repository files do not answer a source schema, value contract, or business meaning question, say so and ask whether to use MCP tools such as Trino or ClickHouse.
-- Treat source enum/filter semantics as data semantics, not obvious constants. For fields such as `widget_space_name`, `widget_section_name`, attribution spaces, recommendation placement names, status values, and similar business-coded values, ask the user to confirm the contract or permit MCP inspection when the repository does not document it.
+- Do not silently inspect production data sources. If the user has not explicitly provided the source contract and repository files do not fully answer a source schema, value contract, or business meaning question, say so and ask whether to use MCP tools such as Trino or ClickHouse.
+- Treat source enum/filter semantics as data semantics, not obvious constants. Finding a table, column, or literal filter value in the repository does not by itself confirm that it is the right source contract for a new feature. For fields such as `widget_space_name`, `widget_section_name`, attribution spaces, recommendation placement names, status values, and similar business-coded values, ask the user to confirm the contract or permit MCP inspection unless the current request or an existing README/job contract explicitly removes the ambiguity.
 - If a requested source is not produced by this repo, do not invent ownership or ingestion. Ask for upstream table/path, owning team, source freshness/DQ contract, join keys, and whether feature-platform should transform an existing source or whether separate upstream ingestion is needed.
 - DAGs that depend on feature-platform tables must wait for the dependent table's dbt DQ DAG, not the Spark DAG that writes that table.
 - New layer jobs should use the shared Spark image plus `git-sync`. Add a custom image only when runtime dependencies cannot be delivered by `git-sync`.
@@ -70,8 +70,9 @@ Before adding or renaming any feature:
 
 Use this decision flow before implementation:
 
-- If the requested feature can be built from repository-managed feature-platform tables, inspect their configs, migrations, jobs, and README files first. Do not query production just to rediscover facts already encoded in the repo.
-- If the requested feature needs upstream external tables, source enum values, schemas, sample values, or business semantics that are not documented in the repo, pause and ask the user to provide the contract or allow MCP inspection.
+- If the requested feature appears buildable from repository-managed feature-platform tables, inspect their configs, migrations, jobs, and README files first. Do not query production just to rediscover facts already encoded in the repo.
+- Finding a plausible source table in the repository is not enough to proceed when the source choice, filter values, or business semantics are not explicit in the user's request or in a relevant existing feature contract. Pause and ask the user to confirm the source contract or allow MCP inspection through Trino or ClickHouse.
+- If the requested feature needs upstream external tables, source enum values, schemas, sample values, or business semantics that are not explicitly covered by the request or repository contract, pause and ask the user to provide the contract or allow MCP inspection.
 - If MCP inspection is approved, query only the minimum needed schema, sample, or distinct-value information. Summarize what came from repository files and what came from MCP.
 - Never silently treat a literal filter value, table name, or column name as proof of business meaning.
 - Never silently add a feature-platform table that owns upstream ingestion for data this repo does not already produce.
@@ -85,7 +86,7 @@ Use this workflow:
 - Present meaningful implementation options when more than one is reasonable, especially add-column vs new-table, internal table vs ranking upload, generated vs completed orders, and whether `{{ ds }}` is included.
 - Clarify entity grain, source tables, join keys, attribution/filter spaces, date boundaries, lookbacks, generated/completed/returned semantics, null/zero denominator behavior, ranking publication, ownership, alerts, and on-call settings.
 - For new entities, ownership and alerting are never safely inferred. Explicitly confirm `table.meta.team`, `dag.team`, `alerts.team`, alert severity, and on-call webhook before scaffolding configs or DAGs.
-- If a feature depends on undocumented source values, explicitly ask whether to use MCP tools such as Trino or ClickHouse or whether the user will provide the contract.
+- If a feature depends on source tables, source values, or business semantics that are not explicit in the current context, ask whether to use MCP tools such as Trino or ClickHouse or whether the user will provide the contract. Do this even when a plausible table or column was found in the repository.
 - After duplicate checks and clarification, summarize the selected contract back to the user before editing files.
 - Choose the entity grain and primary key. Include `date` for scheduled snapshots unless there is a deliberate exception documented in README and code.
 - Add or update migrations first. Use idempotent DDL and include comments for all output columns.
