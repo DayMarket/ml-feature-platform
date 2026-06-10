@@ -457,13 +457,15 @@ GROUP BY
 
 Когда код готов, путь до production выглядит так:
 
-1. Код готов в feature branch: создана или изменена структура слоя, миграции, PySpark job, config, DAG и README.
-2. PR мержится в `dev`: должны пройти CI-проверки. На этом этапе side-effecting шаги не должны создавать таблицы, менять dbt-trino, maintenance или Airflow submodule.
-3. PR мержится в `master`: CI применяет миграции и создает или обновляет Iceberg-таблицу. Для новых repository-managed таблиц также создаются два downstream PR: в `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`.
-4. После master merge надо проверить таблицу в Iceberg: схема, партиция, наличие данных за ожидаемый `ds`, ключи, базовые агрегаты и несколько sanity-check значений.
-5. Пока downstream PR не мержатся автоматически, нужно вручную сходить в оба репозитория: `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`. Для них надо запросить review, временно через DE, проверить diff и замержить.
-6. После merge downstream PR надо включить основной Airflow DAG и DQ DAG. Основной DAG пишет таблицу, DQ DAG проверяет source contract для downstream-потребителей.
-7. После первого успешного запуска надо проверить DQ, свежесть партиции и, если есть ranking upload, что upload DAG дождался DQ и отправил ожидаемый feature group.
+1. Feature branch создается от `dev`. Все фичи сначала идут через `dev`, а не напрямую от `master`.
+2. Код готов в feature branch: создана или изменена структура слоя, миграции, PySpark job, config, DAG и README.
+3. PR мержится в `dev`: должны пройти CI-проверки. На этом этапе side-effecting шаги не должны создавать таблицы, менять dbt-trino, maintenance или Airflow submodule.
+4. После попадания изменений в `dev` они проходят дальше в `master` по принятому release flow.
+5. Merge в `master`: CI применяет миграции и создает или обновляет Iceberg-таблицу. Для новых repository-managed таблиц также создаются два downstream PR: в `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`.
+6. После master merge надо проверить таблицу в Iceberg: схема, партиция, наличие данных за ожидаемый `ds`, ключи, базовые агрегаты и несколько sanity-check значений.
+7. Пока downstream PR не мержатся автоматически, нужно вручную сходить в оба репозитория: `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`. Для них надо запросить review, временно через DE, проверить diff и замержить.
+8. После merge downstream PR надо включить основной Airflow DAG и DQ DAG. Основной DAG пишет таблицу, DQ DAG проверяет source contract для downstream-потребителей.
+9. После первого успешного запуска надо проверить DQ, свежесть партиции и, если есть ranking upload, что upload DAG дождался DQ и отправил ожидаемый feature group.
 
 Важно: таблица в Iceberg создается не локально и не при merge в `dev`, а master-side CI при merge в `master`.
 
