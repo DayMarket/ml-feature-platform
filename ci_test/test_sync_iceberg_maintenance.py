@@ -31,6 +31,52 @@ schemas:
     - manually_added_silver_table
 """
     parsed = sync.parse_schema_table_config(existing_config)
+    diff_config = """diff --git a/dags_v3/maintenance_generator/feature_platform_config.yaml b/dags_v3/maintenance_generator/feature_platform_config.yaml
+@@ -1,4 +1,6 @@
++schemas:
++  gold:
++    - feature_platform_new_gold_table
+"""
+    assert sync.parse_schema_table_keys(diff_config, strip_diff=True) == {
+        ("gold", "feature_platform_new_gold_table")
+    }
+
+    missing = sync.missing_schema_tables(
+        {
+            "gold": [
+                "feature_platform_sku_group_price_features",
+                "feature_platform_pending_table",
+                "feature_platform_new_table",
+            ],
+        },
+        parsed,
+        {
+            (
+                "gold",
+                "feature_platform_pending_table",
+            ): "https://github.com/DayMarket/pyspark-etl/pull/1",
+        },
+    )
+    assert missing == {
+        "gold": ["feature_platform_new_table"],
+    }
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo = Path(temp_dir)
+        assert sync.sync_maintenance_files(
+            repo,
+            {
+                "gold": ["feature_platform_table_from_open_pr"],
+            },
+            {
+                (
+                    "gold",
+                    "feature_platform_table_from_open_pr",
+                ): "https://github.com/DayMarket/pyspark-etl/pull/2",
+            },
+        ) == []
+        assert not (repo / sync.MAINTENANCE_CONFIG_PATH).exists()
+
     merged = sync.merge_schema_tables(
         parsed,
         {
@@ -86,6 +132,23 @@ create_dag(config_name="dpa",     dag_suffix="_dpa")
             {
                 "gold": ["feature_platform_sku_group_price_features"],
                 "silver": ["feature_platform_sku_group_id_prices"],
+            },
+        ) == []
+
+        assert sync.sync_maintenance_files(
+            repo,
+            {
+                "gold": [
+                    "feature_platform_sku_group_price_features",
+                    "feature_platform_table_from_open_pr",
+                ],
+                "silver": ["feature_platform_sku_group_id_prices"],
+            },
+            {
+                (
+                    "gold",
+                    "feature_platform_table_from_open_pr",
+                ): "https://github.com/DayMarket/pyspark-etl/pull/2",
             },
         ) == []
 

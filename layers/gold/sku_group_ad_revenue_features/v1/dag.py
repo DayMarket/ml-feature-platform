@@ -36,42 +36,40 @@ default_args = {
 @dag(
     default_args=default_args,
     max_active_runs=1,
-    tags=["spark", "feature-platform", dag_settings["team_tag"], "gold", "legacy", "query-skg"],
+    tags=["spark", "feature-platform", dag_settings["team_tag"], "gold", "advertising"],
     is_paused_upon_creation=True,
     schedule_interval="0 3 * * *",
-    start_date=datetime(2026, 3, 1, 0, 0, 0),
-    dag_id="feature_platform_query_skg_aggregated_conversions_legacy_gold_dag",
+    start_date=datetime(2026, 6, 1, 0, 0, 0),
+    dag_id="feature_platform_sku_group_ad_revenue_features_gold_dag",
 )
-def collect_gold_query_skg_aggregated_conversions_legacy():
-    #wait_for_silver_daily_conversions = ExternalTaskSensor(
-    #    task_id="wait_for_silver_query_skg_daily_conversions_legacy",
-    #    external_dag_id=(
-    #        "dbt.source.trino.ml_feature_platform_silver."
-    #        "feature_platform_query_skg_daily_conversions_legacy.dq"
-    #    ),
-    #    allowed_states=["success"],
-    #    failed_states=["failed"],
-    #    mode="poke",
-    #    poke_interval=30,
-    #    timeout=6 * 60 * 60,
-    #    check_existence=True,
-    #    execution_delta=timedelta(hours=2),
-    #)
+def collect_gold_sku_group_ad_revenue_features():
+    wait_for_silver_ad_revenue = ExternalTaskSensor(
+        task_id="wait_for_silver_sku_group_ad_revenue_daily",
+        external_dag_id=(
+            "dbt.source.trino.ml_feature_platform_silver."
+            "feature_platform_sku_group_ad_revenue_daily.dq"
+        ),
+        allowed_states=["success"],
+        failed_states=["failed"],
+        mode="poke",
+        poke_interval=30,
+        timeout=6 * 60 * 60,
+        check_existence=True,
+        execution_delta=timedelta(hours=2),
+    )
 
     collect_features = SparkKubernetesOperator(
         execution_timeout=timedelta(hours=10),
-        task_id="getting_query_skg_aggregated_conversions_legacy",
+        task_id="getting_sku_group_ad_revenue_features",
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(
             ".",
-            "fetch_gold_query_skg_aggregated_conversions_legacy.yaml",
+            "fetch_gold_sku_group_ad_revenue_features.yaml",
         ),
         kubernetes_conn_id="spark_k8s",
     )
 
-    #wait_for_silver_daily_conversions >> 
-    collect_features
+    wait_for_silver_ad_revenue >> collect_features
 
 
-dag = collect_gold_query_skg_aggregated_conversions_legacy()
-
+dag = collect_gold_sku_group_ad_revenue_features()
