@@ -1,6 +1,10 @@
 # Руководство по ML Feature Platform
 
-Этот документ описывает, как работать с `ml-feature-platform`: создавать признаки, проверять существующие контракты, пользоваться MCP для неочевидных источников, менять схемы и публиковать признаки в сервис ранжирования.
+Этот документ описывает, как работать с `ml-feature-platform`: создавать признаки, проверять существующие контракты, выбирать источники, менять схемы и публиковать признаки в сервис ранжирования.
+
+Платформа не ограничена поиском. В ней можно собирать признаки для любых продуктовых ML-сценариев: поиск, рекомендации, открытие ПВЗ, матчинг, ранжирование, персонализация и другие задачи.
+
+Важное текущее ограничение: все источники должны быть доступны как Iceberg-таблицы. Если нужных данных еще нет в Feature Platform, источник подбирается среди Iceberg-таблиц через Trino или ClickHouse, затем в репозитории создается слой трансформации.
 
 Документ не является каталогом всех признаков. Актуальные факты по конкретной таблице всегда берутся из `layers/**`: `config.yaml`, `migrations/*.sql`, `job/*.py`, `dag.py` и `README.md`.
 
@@ -27,7 +31,7 @@ layers/<layer>/<entity_name>/v1
 
 `silver` - слой для переиспользуемых агрегатов и промежуточных таблиц. Сюда стоит класть результат, если он:
 
-- нормализует внешний источник;
+- нормализует Iceberg-источник;
 - переиспользуется несколькими `gold`-таблицами;
 - содержит дневные агрегаты, из которых потом строятся разные окна;
 - еще не является финальным feature contract для модели.
@@ -43,18 +47,47 @@ layers/<layer>/<entity_name>/v1
 
 ## 3. Как понять, какие признаки уже есть
 
-Перед созданием новой фичи надо сделать duplicate check.
+Перед созданием новой фичи надо сделать duplicate check. ML-инженеру не нужно вручную обходить репозиторий: можно просто спросить агента.
 
-Минимальный набор команд:
+Вопросы могут быть любого такого характера:
 
-```bash
-rg -n "<feature_name_or_close_variant>" layers upload scripts docs
-rg -n "<source_table_or_filter_value>" layers/**/job layers/**/README.md
-rg -n "<column_name>" layers/**/migrations upload/ranking_features/v1
-find layers -path '*/config.yaml' -print | sort
+```text
+Есть ли уже признаки продаж по `sku_group_id` за 7 дней?
 ```
 
-Что проверять:
+```text
+Проверь, нет ли уже фичи `product_rating` и где она используется.
+```
+
+```text
+Какие признаки сейчас собираются для отзывов и в какие таблицы они пишутся?
+```
+
+```text
+Как считается конкретная фича `query_skg_conv_imp2atc_30`: источник, окно, фильтры, null handling?
+```
+
+В ответе агент должен вернуть не список файлов, а понятный вывод:
+
+- нашлась ли такая же фича;
+- в какой таблице она лежит и какой у нее grain;
+- какие окна и date boundaries используются, включая включение/исключение `{{ ds }}`;
+- какие источники, join keys и фильтры участвуют в расчете;
+- как обрабатываются `NULL`, нулевые знаменатели и пустые окна;
+- публикуется ли фича в ranking upload;
+- есть ли похожие фичи и чем они отличаются.
+
+Пример ответа:
+
+```text
+Похожая фича уже есть: `product_rating` в `iceberg.gold.feature_platform_product_feedback_base_stats`.
+Grain: `date,product_id`.
+Источник: опубликованные отзывы из Iceberg-таблицы feedback и справочник sku.
+Семантика: рейтинг считается по истории отзывов до расчетной даты; отдельно считаются bucket counts по оценкам 1..5 и ratio good/bad.
+В ranking upload эта таблица используется, поэтому изменение колонки будет serving contract change.
+```
+
+При проверке агент смотрит:
 
 - есть ли уже колонка с таким или похожим названием;
 - совпадает ли grain;
@@ -66,30 +99,29 @@ find layers -path '*/config.yaml' -print | sort
 
 Если похожая фича уже есть, не надо делать дубль автоматически. Надо описать отличие и спросить, действительно ли нужна новая фича.
 
-## 4. Когда использовать MCP-коннектор
+## 4. Если нужного источника нет в Feature Platform
 
-Репозиторий - первый источник правды. Но он не всегда отвечает на вопросы о внешних таблицах и бизнес-кодах.
+Сначала стоит проверить, нет ли нужных данных уже внутри Feature Platform:
 
-MCP-коннектор Trino или ClickHouse нужен, если:
+- в `layers/silver` - переиспользуемые агрегаты и адаптеры источников;
+- в `layers/gold` - готовые модельные признаки.
 
-- таблица читается в job, но не объявлена в `layers/**/config.yaml`;
-- непонятна схема внешней таблицы;
-- нужно проверить допустимые значения поля вроде `widget_space_name`, `widget_section_name`, `status`, `source`, `space`;
-- пользователь просит использовать источник, которого нет в репозитории;
-- по коду нашлась похожая таблица, но не доказано, что она подходит для новой фичи.
+Если подходящей таблицы нет, источник выбирается среди Iceberg-таблиц. Для этого используется Trino или ClickHouse: можно посмотреть схему, партиции, свежесть данных, примеры строк и значения полей вроде `widget_space_name`, `widget_section_name`, `status`, `source`, `space`.
 
-Важно: найденная таблица, колонка или литерал в коде не являются доказательством source contract. Если в текущем контексте нет явного подтверждения, надо спросить:
+Пример запроса:
 
 ```text
-В репозитории есть похожий источник `iceberg.silver.order_items_attribution`, но контракт значения `widget_space_name = 'CART'` здесь не документирован. Подтверди, что это правильный источник, или разреши проверить значения и схему через MCP/Trino?
+В Feature Platform нет готовой таблицы для этого признака. Подбери Iceberg-источник через Trino: проверь схему, партиции и возможные значения `widget_space_name`.
 ```
 
-Если пользователь разрешил MCP, запрашивайте минимум:
+После выбора источника нужно зафиксировать:
 
-- schema/columns;
-- несколько sample rows;
-- distinct values для спорного enum/filter поля;
-- freshness/partition поле, если оно нужно для расписания.
+- полное имя Iceberg-таблицы;
+- владельца источника или команду, которая отвечает за данные;
+- freshness/DQ contract источника;
+- ключи join;
+- поля партиционирования и даты;
+- бизнес-смысл фильтров и enum values.
 
 ## 5. Пример: пользователь прислал SQL
 
@@ -113,7 +145,7 @@ GROUP BY sku_group_id
 1. Проверить, есть ли уже такой признак или близкий аналог.
 2. Уточнить grain: нужен ли `date,sku_group_id`.
 3. Уточнить семантику окна: `{{ ds }}` включен, потому что верхняя граница `< {{ next_ds }}`.
-4. Уточнить источник: `order_items` - внешний upstream или уже есть silver-адаптер в Feature Platform?
+4. Уточнить источник: есть ли уже silver-адаптер в Feature Platform или нужно выбрать Iceberg-источник через Trino/ClickHouse.
 5. Уточнить ownership и alerts для новой сущности.
 6. Предложить слой:
    - если это переиспользуемый дневной агрегат, возможно `silver`;
@@ -122,13 +154,7 @@ GROUP BY sku_group_id
 
 ## 6. Пример: создать на основе существующего silver/gold
 
-Если новая фича строится из существующей таблицы Feature Platform, сначала найдите ее владельца и контракт:
-
-```bash
-rg -n "feature_platform_sku_group_orders" layers
-```
-
-Потом проверьте:
+Если новая фича строится из существующей таблицы Feature Platform, попросите агента найти ее владельца и контракт. Он проверит:
 
 - `layers/**/config.yaml` - primary key и слой;
 - `migrations/create_table.sql` - есть ли нужные колонки;
@@ -143,17 +169,17 @@ rg -n "feature_platform_sku_group_orders" layers
 dbt.source.trino.ml_feature_platform_<schema>.<table_name>.dq
 ```
 
-## 7. Пример: создать с MCP-коннекшеном
+## 7. Пример: создать с Trino/ClickHouse-источником
 
-Сценарий: пользователь просит признак по placement, которого нет в README.
+Сценарий: пользователь просит признак по placement, которого нет в готовых Feature Platform таблицах.
 
-Правильный ход:
+Пример запроса:
 
 ```text
-Я нашел в коде таблицу `iceberg.silver.order_items_attribution`, но репозиторий не подтверждает, какие значения `widget_space_name` соответствуют нужному placement. Подтверди контракт или разреши проверить через MCP/Trino.
+Собери признак продаж из корзины. Если готового источника в Feature Platform нет, проверь через Trino, какая Iceberg-таблица содержит атрибуцию и какие значения есть в `widget_space_name`.
 ```
 
-После разрешения можно выполнить минимальную проверку:
+Пример SQL-проверки источника:
 
 ```sql
 SELECT widget_space_name, COUNT(*) AS rows_count
@@ -170,11 +196,13 @@ LIMIT 50
 DESCRIBE iceberg.silver.order_items_attribution
 ```
 
-После этого в финальном описании надо разделить:
+После проверки источник фиксируется в контракте новой таблицы:
 
-- что подтверждено репозиторием;
-- что подтверждено MCP;
-- какие assumptions остались.
+- source table: `iceberg.silver.order_items_attribution`;
+- join key: например `order_item_id`;
+- filter: например `widget_space_name = 'CART'`;
+- дата/партиция: например `generated_at`;
+- downstream DQ/freshness ожидания.
 
 ## 8. Пример вопрос/ответ: какие признаки собираются для отзывов?
 
@@ -231,7 +259,7 @@ DESCRIBE iceberg.silver.order_items_attribution
 
 Порядок feature groups и размеры в serving contract лежат в `upload/ranking_features/v1/ranking_service_input.yaml`. Порядок важен: в сервис отправляются значения, а не имена колонок.
 
-CI проверяет конфиг через `scripts/validate_ranking_upload_configs.py`: source table должна быть `gold`, все колонки должны существовать в migrations, primary key должен содержать `date`, а entity keys должны быть поддержаны upload job.
+CI проверяет, что source table для upload находится в `gold`, все перечисленные признаки существуют в migrations, primary key содержит `date`, а entity keys поддержаны upload job.
 ```
 
 ## 10. Правила именования таблиц и признаков
@@ -275,30 +303,33 @@ query_skg_conv_imp2atc_30
 
 ## 11. Как создать новую таблицу
 
-Пошагово:
+Пользователь может описать задачу обычным текстом. Чем больше контракта есть в первом сообщении, тем меньше уточнений потребуется.
 
-1. Сформулируйте контракт:
-   - зачем нужна таблица;
-   - layer: `silver` или `gold`;
-   - grain и primary key;
-   - источники и join keys;
-   - date/window boundaries;
-   - фильтры;
-   - null/zero behavior;
-   - ownership и alerts;
-   - нужен ли ranking upload.
+Пример хорошего запроса:
 
-2. Проведите duplicate check:
-
-```bash
-rg -n "<feature_or_close_variant>" layers upload scripts docs
-rg -n "<source_table_or_filter_value>" layers/**/job layers/**/README.md
-rg -n "<column_name>" layers/**/migrations upload/ranking_features/v1
+```text
+Создай gold-таблицу с признаками количества заказов по `sku_group_id` за 7, 14 и 28 дней.
+Grain: `date,sku_group_id`.
+`{{ ds }}` включаем, это Airflow macro за вчерашний день.
+Продажи считаем как `COUNT(DISTINCT order_id)`.
+Фильтр атрибуции: `widget_space_name = 'CART'`.
+Источник можно подобрать из Iceberg через Trino, если готовой Feature Platform таблицы нет.
 ```
 
-3. Если источник или значения фильтров не подтверждены, спросите пользователя или используйте MCP после разрешения.
+Обычно агент уточнит:
 
-4. Создайте структуру:
+- это финальная `gold`-фича или нужен переиспользуемый `silver`-агрегат;
+- какие source tables считать контрактными и нужно ли проверять их через Trino/ClickHouse;
+- какие join keys связывают источник продаж с целевой сущностью;
+- какие date boundaries у окон: включен ли `{{ ds }}`, какая верхняя граница, какие timestamp/date поля использовать;
+- какие статусы заказов считать продажей и как учитывать отмены/возвраты;
+- что делать с отсутствующими значениями: не писать строку, писать `0`, оставлять `NULL`;
+- нужна ли публикация в ranking upload;
+- какие `table.meta.team`, `dag.team`, `alerts.team`, severity и on-call webhook использовать.
+
+После согласования агент проводит duplicate check и кратко возвращает выбранный contract: слой, имя таблицы, primary key, источники, окна, фильтры, DQ и downstream-публикацию. Только после этого создаются файлы.
+
+Для новой таблицы обычно создаются:
 
 ```text
 layers/<silver_or_gold>/<entity_name>/v1/
@@ -315,9 +346,18 @@ layers/<silver_or_gold>/<entity_name>/v1/
   README.md
 ```
 
-5. Сначала добавьте `migrations/create_table.sql`.
+Что означает каждая сущность:
 
-Пример:
+- `config.yaml` задает имя Iceberg-таблицы, primary key и ownership metadata;
+- `migrations/create_table.sql` создает схему и комментарии колонок;
+- дополнительные migrations добавляют изменения для уже существующих окружений;
+- `job/getting_*.py` содержит PySpark-расчет;
+- `entrypoints/*.py` запускает job в Spark;
+- `dag.py` описывает Airflow orchestration и DQ dependencies;
+- `config/fetch_*.yaml`, `config/factory.py`, `config/resources.yaml` описывают SparkApplication и ресурсы;
+- `README.md` фиксирует человеческий contract: назначение, источники, grain, окна, формулы и caveats.
+
+Пример DDL для новой таблицы:
 
 ```sql
 CREATE TABLE IF NOT EXISTS {target_table} (
@@ -330,7 +370,7 @@ COMMENT 'Gold-признак количества заказов на уровн
 PARTITIONED BY (date)
 ```
 
-6. Реализуйте job. Простой SQL-вариант внутри PySpark:
+Пример расчета внутри PySpark job:
 
 ```python
 def build_features(spark, partition_start: str, partition_end: str):
@@ -360,59 +400,29 @@ GROUP BY
     )
 ```
 
-7. В `config.yaml` укажите table metadata и owner metadata.
-
-8. В `dag.py` добавьте DQ sensors для feature-platform зависимостей. Для внешних upstream источников используйте контракт команды-владельца источника.
-
-9. В `README.md` опишите:
-   - назначение;
-   - целевую таблицу;
-   - источники;
-   - grain;
-   - окна;
-   - формулы;
-   - caveats.
-
-10. Запустите локальные проверки.
+Финально агент запускает релевантные проверки и сообщает, что проверено локально, а что остается на CI.
 
 ## 12. Как удалить таблицу
 
 Удаление таблицы - это lifecycle, а не один `DROP TABLE`.
 
-Порядок:
+Пользователь должен написать, что именно хочется сделать с таблицей:
 
-1. Классифицируйте действие:
-   - deprecate only;
-   - stop producing;
-   - remove from ranking upload;
-   - remove from repo ownership;
-   - physical drop/archive.
-
-2. Найдите downstream:
-
-```bash
-rg -n "<table_name>|<feature_name>" layers upload scripts docs
+```text
+Таблица `iceberg.gold.feature_platform_example` больше не нужна. Проверь потребителей и предложи безопасный план удаления.
 ```
 
-3. Если repo не доказывает отсутствие внешних потребителей, спросите владельцев или предложите MCP/catalog inspection.
+Если уже известно, что нужно только убрать публикацию в сервис, лучше сказать это явно:
 
-4. Если таблица публикуется в ranking service, сначала согласуйте serving compatibility и удалите feature group или колонку из `upload/ranking_features/v1/config.yaml` и `ranking_service_input.yaml`.
-
-5. Для рискованных случаев сначала добавьте deprecation notice в README/config и договоритесь о grace period.
-
-6. Stop producing может означать удаление/паузу DAG или удаление layer directory из repo, но физические Iceberg-данные остаются до отдельного решения.
-
-7. Не добавляйте destructive migrations:
-
-```sql
-DROP TABLE ...
-DELETE FROM ...
-TRUNCATE TABLE ...
+```text
+Убери фичу из ranking upload, но саму gold-таблицу пока продолжай считать.
 ```
 
-Обычная migration CI такие операции отвергает. Physical drop/archive должен быть отдельным согласованным runbook.
+Агент сначала определит тип действия: только deprecate, остановить производство новых партиций, убрать из ranking upload, убрать ownership из репозитория или готовить отдельный physical drop/archive. Затем он проверит потребителей в Feature Platform, ranking upload, скриптах синхронизации и документации. Если по репозиторию нельзя доказать, что внешних потребителей нет, агент попросит подтвердить consumer contract или разрешить проверку через каталог/Trino/ClickHouse.
 
-8. После merge проверьте generated PR в `dbt-trino` и maintenance PR в `DayMarket/pyspark-etl`.
+Если таблица участвует в ranking service, сначала согласуется serving compatibility: можно ли удалить feature group или колонку, не ломает ли это порядок feature vector, нужен ли grace period. Для рискованных случаев правильнее сначала добавить deprecation notice, остановить downstream upload, дождаться подтверждения от потребителей и только потом прекращать производство таблицы.
+
+Важно: обычная миграция не должна физически удалять данные. `DROP`, `DELETE` и `TRUNCATE` не добавляются в repository migrations. Физический drop/archive Iceberg-данных должен быть отдельным согласованным runbook. После merge нужно проверить downstream PR в `dbt-trino` и maintenance PR в `DayMarket/pyspark-etl`, потому что удаление source/DQ/maintenance contract требует review.
 
 ## 13. Дефолтные DQ-тесты
 
@@ -455,43 +465,32 @@ TRUNCATE TABLE ...
 
 ## 15. Как добавить новую колонку в таблицу
 
-Сначала убедитесь, что изменение схемы безопасно.
+Пользователь может написать короткий запрос:
 
-Порядок:
-
-1. Найдите downstream:
-
-```bash
-rg -n "<table_name>|<old_column>|<new_column>" layers upload scripts docs
+```text
+Добавь колонку `orders_count_28d` в `feature_platform_sku_group_orders`.
+Окно 28 дней, `{{ ds }}` включен, считать как `COUNT(DISTINCT order_id)`.
 ```
 
-2. Если таблица используется downstream, проверьте:
-   - не ожидается ли фиксированный список колонок;
-   - не используется ли `select *`;
-   - не публикуется ли таблица в ranking upload;
-   - не сломает ли новая колонка порядок feature vector.
+Перед изменением агент проверит, безопасна ли схема:
 
-3. Если есть зависимые downstream таблицы или сервисы, сначала согласуйте контракт изменения. Не добавляйте колонку молча.
+- есть ли downstream-таблицы или сервисы, которые читают эту таблицу;
+- используется ли фиксированный список колонок;
+- есть ли места с `select *`, где новая колонка может неожиданно уехать дальше;
+- публикуется ли таблица в ranking upload;
+- изменится ли serving contract или порядок feature vector;
+- нет ли уже такой или очень похожей колонки.
 
-4. Обновите `migrations/create_table.sql`, чтобы новые окружения создавались сразу с новой колонкой.
+Если downstream-зависимости есть, изменение сначала согласуется как contract change. Новую колонку не стоит добавлять молча, если потребитель ожидает фиксированный набор колонок или таблица участвует в feature vector.
 
-5. Добавьте отдельную idempotent migration для существующих окружений:
+После согласования агент обновит `migrations/create_table.sql`, чтобы новые окружения сразу создавались с колонкой, и добавит отдельную idempotent migration для существующих окружений:
 
 ```sql
 ALTER TABLE {target_table}
 ADD COLUMN IF NOT EXISTS new_feature DOUBLE COMMENT 'Описание новой фичи'
 ```
 
-6. Обновите PySpark job: колонка должна попадать в финальный `select` и запись.
-
-7. Обновите README таблицы.
-
-8. Если колонка должна публиковаться в ranking service:
-   - добавьте ее в `upload/ranking_features/v1/config.yaml`;
-   - обновите `ranking_service_input.yaml`;
-   - сохраните правильный порядок values.
-
-9. Запустите проверки.
+Также обновляются PySpark job, README таблицы и, если колонка должна попасть в ranking service, `upload/ranking_features/v1/config.yaml` и `ranking_service_input.yaml`. В конце агент запускает проверки и отдельно сообщает, менялся ли ranking serving contract.
 
 ## 16. Как работать с ranking upload
 
@@ -518,31 +517,45 @@ Ranking upload находится в `upload/ranking_features/v1`.
 - `category_id,sku_group_id`;
 - `account_id,category_id`.
 
-Процесс добавления feature group:
+Чтобы добавить feature group, пользователь описывает, какую `gold`-таблицу и какие колонки нужно отдавать в ranking service. Агент проверяет, что таблица действительно repository-managed `gold`, что все колонки есть в migrations, что entity keys поддержаны upload job, что `source.dq_execution_delta_minutes` соответствует DQ DAG исходной таблицы, и что порядок колонок согласован с serving contract.
 
-1. Найдите `gold`-таблицу в `layers/**/config.yaml`.
-2. Проверьте, что нужные колонки есть в migrations.
-3. Добавьте блок в `upload/ranking_features/v1/config.yaml`.
-4. Обновите `upload/ranking_features/v1/ranking_service_input.yaml`: name, schema и size.
-5. Проверьте `source.dq_execution_delta_minutes`.
-6. Запустите:
-
-```bash
-python3 scripts/validate_ranking_upload_configs.py
-```
+После этого обновляются `upload/ranking_features/v1/config.yaml` и `upload/ranking_features/v1/ranking_service_input.yaml`. Проверка ranking upload подтверждает, что source table, schema, feature list, entity keys и размеры feature groups согласованы между конфигами и миграциями.
 
 ## 17. Другие важные особенности
 
-- `{{ ds }}` - это partition date, но включение или исключение `ds` зависит от конкретной фичи. Всегда проверяйте job и README.
+- `{{ ds }}` - это partition date, но включение или исключение `ds` зависит от конкретной фичи. Агент должен сверить это с job и README конкретной таблицы.
 - Для feature-platform зависимостей downstream DAG должен ждать dbt DQ DAG, а не Spark DAG.
 - Для внешних источников используйте DQ/source contract команды-владельца.
 - Не прячьте source table names в неочевидных константах: lineage должен читаться из job.
 - Не добавляйте custom Spark image для обычных code/config/SQL changes. Используйте default Spark image и `git-sync`.
-- Если нужна новая Python-библиотека, truststore или бинарь, сначала объясните, почему `git-sync` не подходит, и только потом меняйте image.
 - Не обновляйте `AGENTS.md` при добавлении каждой новой фичи. Детали фичи должны жить в README слоя, migration, config, DAG и job.
 - Перед финалом всегда упоминайте, какие проверки были запущены и что не удалось проверить локально.
 
-## 18. Минимальный шаблон финального ответа по новой таблице
+## 18. Если нужна нестандартная библиотека в Spark image
+
+Обычные изменения PySpark-кода, SQL, config, README и migrations не требуют сборки нового образа: код доставляется в Spark pod через `git-sync`.
+
+Custom Spark image нужен только когда runtime-зависимость должна быть внутри контейнера до старта job:
+
+- новая Python-библиотека, которой нет в default Spark image;
+- truststore, сертификат или системный бинарь;
+- runtime-файл, который нельзя безопасно доставить через `git-sync`;
+- зависимость нужна и driver, и executors.
+
+Процесс для новой Python-библиотеки:
+
+1. Добавить библиотеку в `requirements.txt` рядом с Dockerfile того образа, который действительно используется job.
+2. Обновить Dockerfile так, чтобы он устанавливал зависимости из этого `requirements.txt`. Версии должны быть зафиксированы.
+3. Если пакет внутренний, установка должна идти через Nexus с credentials из Drone secrets. Credentials нельзя коммитить в репозиторий.
+4. Обновить SparkApplication image в config, если меняется имя или tag образа.
+5. Сделать PR, дождаться проверок и влить изменения в `master`.
+6. После merge в `master` один раз создать tag для сборки образа. Для ranking upload сейчас используется формат `spark-feature-platform-ranking-upload-*`.
+7. Дождаться Drone build по tag: он соберет Docker image и опубликует его в registry.
+8. После публикации образа проверить, что DAG использует нужный image tag и job стартует с новой зависимостью.
+
+Важно: tag создается после merge, потому что Drone собирает образ из состояния `master` на момент tag. Повторно создавать tag нужно только при следующем изменении runtime-зависимостей или Dockerfile. Для обычных изменений job-кода новый tag не нужен.
+
+## 19. Минимальный шаблон финального ответа по новой таблице
 
 ```text
 Создана таблица `iceberg.gold.feature_platform_example`.
@@ -556,9 +569,9 @@ Runtime: default Spark image + git-sync.
 Downstream: ranking upload не добавлялся.
 
 Проверки:
-- python3 ci_test/test_script.py
-- python3 ci_test/test_sync_dbt_sources.py
-- python3 ci_test/test_sync_iceberg_maintenance.py
-- python3 scripts/validate_ranking_upload_configs.py
-- git diff --check
+- базовые repository contracts и layer configs читаются корректно;
+- dbt source sync видит новую таблицу и сможет создать DQ definitions;
+- Iceberg maintenance sync добавляет только repository-managed таблицы;
+- ranking upload config валиден, если он менялся;
+- whitespace-проверка прошла.
 ```
