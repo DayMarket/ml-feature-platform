@@ -329,7 +329,9 @@ Grain: `date,sku_group_id`.
 
 После согласования агент проводит duplicate check и кратко возвращает выбранный contract: слой, имя таблицы, primary key, источники, окна, фильтры, DQ и downstream-публикацию. Только после этого создаются файлы.
 
-Для новой таблицы обычно создаются:
+Если нужна похожая реализация, можно попросить агента использовать MCP-коннектор к Git: посмотреть старые PR, историю изменений или уже удаленные/измененные реализации и собрать новую сущность по проверенному шаблону. Это удобно, когда новая таблица похожа на старую по Airflow/Spark структуре, но отличается источником, grain или набором признаков. В таком случае агент должен явно сказать, какие части он взял из старого примера, а какие поменял под новый contract.
+
+Для новой таблицы обычно создается такая структура кода:
 
 ```text
 layers/<silver_or_gold>/<entity_name>/v1/
@@ -348,14 +350,17 @@ layers/<silver_or_gold>/<entity_name>/v1/
 
 Что означает каждая сущность:
 
-- `config.yaml` задает имя Iceberg-таблицы, primary key и ownership metadata;
-- `migrations/create_table.sql` создает схему и комментарии колонок;
-- дополнительные migrations добавляют изменения для уже существующих окружений;
-- `job/getting_*.py` содержит PySpark-расчет;
-- `entrypoints/*.py` запускает job в Spark;
-- `dag.py` описывает Airflow orchestration и DQ dependencies;
-- `config/fetch_*.yaml`, `config/factory.py`, `config/resources.yaml` описывают SparkApplication и ресурсы;
-- `README.md` фиксирует человеческий contract: назначение, источники, grain, окна, формулы и caveats.
+- `config.yaml` задает Iceberg catalog/schema/name, primary key и ownership metadata. По нему CI понимает, что таблица принадлежит Feature Platform.
+- `migrations/create_table.sql` создает Iceberg-таблицу и комментарии колонок. Эта миграция реально применяется CI после merge в `master`.
+- дополнительные migrations нужны для изменений уже существующих таблиц, например добавления новой колонки.
+- `job/arguments.py` и `job/entities.py` описывают runtime-аргументы, обычно `partition_start`, `partition_end` и `table_name`.
+- `job/getting_*.py` содержит основной PySpark-расчет: чтение источников, join, фильтры, окна, формулы и финальный `select`.
+- `entrypoints/*.py` создает `SparkSession`, читает аргументы, вызывает job и корректно закрывает Spark.
+- `dag.py` описывает Airflow DAG, расписание, Spark task и DQ/sensor dependencies.
+- `config/fetch_*.yaml` - SparkApplication template для запуска в Kubernetes.
+- `config/factory.py` подставляет в SparkApplication значения из config, resources, Airflow variables и macros.
+- `config/resources.yaml` задает ресурсы driver/executor.
+- `README.md` фиксирует человеческий contract: назначение, источники, grain, окна, формулы, caveats и downstream-использование.
 
 Пример DDL для новой таблицы:
 
@@ -448,7 +453,21 @@ GROUP BY
 
 Не добавляйте дорогие relationship tests по высококардинальным ключам без явного согласования.
 
-## 14. Какие PR создаются после merge
+## 14. Что происходит после готового кода
+
+Когда код готов, путь до production выглядит так:
+
+1. Код готов в feature branch: создана или изменена структура слоя, миграции, PySpark job, config, DAG и README.
+2. PR мержится в `dev`: должны пройти CI-проверки. На этом этапе side-effecting шаги не должны создавать таблицы, менять dbt-trino, maintenance или Airflow submodule.
+3. PR мержится в `master`: CI применяет миграции и создает или обновляет Iceberg-таблицу. Для новых repository-managed таблиц также создаются два downstream PR: в `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`.
+4. После master merge надо проверить таблицу в Iceberg: схема, партиция, наличие данных за ожидаемый `ds`, ключи, базовые агрегаты и несколько sanity-check значений.
+5. Пока downstream PR не мержатся автоматически, нужно вручную сходить в оба репозитория: `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`. Для них надо запросить review, временно через DE, проверить diff и замержить.
+6. После merge downstream PR надо включить основной Airflow DAG и DQ DAG. Основной DAG пишет таблицу, DQ DAG проверяет source contract для downstream-потребителей.
+7. После первого успешного запуска надо проверить DQ, свежесть партиции и, если есть ranking upload, что upload DAG дождался DQ и отправил ожидаемый feature group.
+
+Важно: таблица в Iceberg создается не локально и не при merge в `dev`, а master-side CI при merge в `master`.
+
+## 15. Какие PR создаются после merge
 
 После merge в `master` CI может создать downstream PR:
 
@@ -459,11 +478,12 @@ GROUP BY
 
 - эти PR создаются master-side CI, не во время feature-branch стадии;
 - ссылки на PR пишутся в CI logs и могут комментироваться в source PR;
+- эти PR пока надо открыть в соответствующих репозиториях и замержить вручную;
 - перед merge downstream PR надо проверить, что добавлены только таблицы, созданные `ml-feature-platform`;
 - maintenance sync не должен добавлять внешние dependency tables вроде `iceberg.silver.order_items`;
 - removal из maintenance требует ручного review.
 
-## 15. Как добавить новую колонку в таблицу
+## 16. Как добавить новую колонку в таблицу
 
 Пользователь может написать короткий запрос:
 
@@ -492,7 +512,7 @@ ADD COLUMN IF NOT EXISTS new_feature DOUBLE COMMENT 'Описание новой
 
 Также обновляются PySpark job, README таблицы и, если колонка должна попасть в ranking service, `upload/ranking_features/v1/config.yaml` и `ranking_service_input.yaml`. В конце агент запускает проверки и отдельно сообщает, менялся ли ranking serving contract.
 
-## 16. Как работать с ranking upload
+## 17. Как работать с ranking upload
 
 Ranking upload находится в `upload/ranking_features/v1`.
 
@@ -521,7 +541,7 @@ Ranking upload находится в `upload/ranking_features/v1`.
 
 После этого обновляются `upload/ranking_features/v1/config.yaml` и `upload/ranking_features/v1/ranking_service_input.yaml`. Проверка ranking upload подтверждает, что source table, schema, feature list, entity keys и размеры feature groups согласованы между конфигами и миграциями.
 
-## 17. Другие важные особенности
+## 18. Другие важные особенности
 
 - `{{ ds }}` - это partition date, но включение или исключение `ds` зависит от конкретной фичи. Агент должен сверить это с job и README конкретной таблицы.
 - Для feature-platform зависимостей downstream DAG должен ждать dbt DQ DAG, а не Spark DAG.
@@ -531,7 +551,7 @@ Ranking upload находится в `upload/ranking_features/v1`.
 - Не обновляйте `AGENTS.md` при добавлении каждой новой фичи. Детали фичи должны жить в README слоя, migration, config, DAG и job.
 - Перед финалом всегда упоминайте, какие проверки были запущены и что не удалось проверить локально.
 
-## 18. Если нужна нестандартная библиотека в Spark image
+## 19. Если нужна нестандартная библиотека в Spark image
 
 Обычные изменения PySpark-кода, SQL, config, README и migrations не требуют сборки нового образа: код доставляется в Spark pod через `git-sync`.
 
@@ -555,7 +575,7 @@ Custom Spark image нужен только когда runtime-зависимос
 
 Важно: tag создается после merge, потому что Drone собирает образ из состояния `master` на момент tag. Повторно создавать tag нужно только при следующем изменении runtime-зависимостей или Dockerfile. Для обычных изменений job-кода новый tag не нужен.
 
-## 19. Минимальный шаблон финального ответа по новой таблице
+## 20. Минимальный шаблон финального ответа по новой таблице
 
 ```text
 Создана таблица `iceberg.gold.feature_platform_example`.
