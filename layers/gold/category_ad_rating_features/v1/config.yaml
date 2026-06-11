@@ -1,0 +1,18 @@
+resources:
+  path: config/resources.yaml
+
+table:
+  key: category_ad_rating_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_category_ad_rating_features
+  primary_key: date,category_id
+  meta:
+    team: team:search
+dag:
+  team: search
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
