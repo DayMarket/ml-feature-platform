@@ -1,0 +1,18 @@
+resources:
+  path: config/resources.yaml
+
+table:
+  key: query_skg_daily_linear_score
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_query_skg_daily_linear_score
+  primary_key: date,query,sku_group_id
+  meta:
+    team: team:search
+dag:
+  team: search
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
