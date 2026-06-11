@@ -5,7 +5,7 @@
   "dag": {
     "id": "feature_platform_ranking_features_upload_dag",
     "schedule": "0 4 * * *",
-    "start_date": "2026-06-01",
+    "start_date": "2026-06-10",
     "team": "search"
   },
   "alerts": {
