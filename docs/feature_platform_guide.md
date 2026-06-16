@@ -23,8 +23,8 @@ layers/<layer>/<entity_name>/v1
 - `job/getting_*.py` - PySpark-логика расчета;
 - `entrypoints/*.py` - точка запуска Spark job;
 - `dag.py` - Airflow orchestration;
-- `config/fetch_*.yaml` - SparkApplication template;
-- `config/resources.yaml` - ресурсы Spark;
+- `config/factory.py` - локальная фабрика рендера SparkApplication;
+- `config.yaml` с блоком `spark` или `spark_applications` - привязка сущности к общему Spark template и resource profile;
 - `README.md` - описание назначения, источников, grain и формул.
 
 ## 2. Silver и gold
@@ -338,8 +338,6 @@ Grain: `date,sku_group_id`.
 layers/<silver_or_gold>/<entity_name>/v1/
   config.yaml
   dag.py
-  config/resources.yaml
-  config/fetch_*.yaml
   config/factory.py
   entrypoints/get_*.py
   job/arguments.py
@@ -358,10 +356,80 @@ layers/<silver_or_gold>/<entity_name>/v1/
 - `job/getting_*.py` содержит основной PySpark-расчет: чтение источников, join, фильтры, окна, формулы и финальный `select`.
 - `entrypoints/*.py` создает `SparkSession`, читает аргументы, вызывает job и корректно закрывает Spark.
 - `dag.py` описывает Airflow DAG, расписание, Spark task и DQ/sensor dependencies.
-- `config/fetch_*.yaml` - SparkApplication template для запуска в Kubernetes.
-- `config/factory.py` подставляет в SparkApplication значения из config, resources, Airflow variables и macros.
-- `config/resources.yaml` задает ресурсы driver/executor.
+- `config/factory.py` остается локальным для сущности и подставляет в SparkApplication значения из `config.yaml`, общего resource profile, Airflow connections и macros.
+- общий `config/spark/layer_spark_application.yaml` задает стандартный SparkApplication template для layer DAG-ов.
+- общий `config/spark/resources.yaml` задает именованные resource profiles для driver/executor.
 - `README.md` фиксирует человеческий contract: назначение, источники, grain, окна, формулы, caveats и downstream-использование.
+
+### Конфигурация SparkApplication и ресурсов
+
+Для обычных layer DAG-ов SparkApplication template и ресурсы не копируются в каждую сущность. Сущность хранит только короткую привязку в `config.yaml`, а общий template лежит в `config/spark/layer_spark_application.yaml`.
+
+Минимальный пример для одного DAG:
+
+```yaml
+resources:
+  path: ../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-gold-example-features
+  main_application_file: local:///git/repo/layers/gold/example_features/v1/entrypoints/get_example_features.py
+  resource_profile: small
+```
+
+Если у сущности несколько SparkApplication deployment-ов, например основной DAG и backfill DAG, используйте `spark_applications`. Ключ должен совпадать с именем deployment file, которое передается в `get_deployment(".", "...")` из `dag.py` или `dag_backfill.py`:
+
+```yaml
+resources:
+  path: ../../../../config/spark/resources.yaml
+
+spark_applications:
+  fetch_gold_example_features.yaml:
+    template_path: ../../../../config/spark/layer_spark_application.yaml
+    application_name: fetch-gold-example-features
+    main_application_file: local:///git/repo/layers/gold/example_features/v1/entrypoints/get_example_features.py
+    resource_profile: small
+  fetch_gold_example_features_backfill.yaml:
+    template_path: ../../../../config/spark/layer_spark_application.yaml
+    application_name: backfill-gold-example-features
+    main_application_file: local:///git/repo/layers/gold/example_features/v1/entrypoints/backfill_example_features.py
+    resource_profile: large
+```
+
+`application_name` становится базой Kubernetes `metadata.name`; фабрика добавляет к нему случайный suffix. `main_application_file` должен указывать на entrypoint внутри `/git/repo`. `resource_profile` выбирает профиль из общего `config/spark/resources.yaml`.
+
+Общий файл ресурсов содержит инфраструктурные значения и именованные профили:
+
+```json
+{
+  "app_type": "ml_spark_jobs",
+  "spark_event_log_bucket": "um-prod-spark-history",
+  "hive_metastore_uris": "thrift://hive-metastore.svc-data-hive-metastore.svc.cluster.local:9083",
+  "profiles": {
+    "small": {
+      "driver_cores": "1",
+      "driver_memory": "4g",
+      "executor_cores": "4",
+      "executor_instances": "3",
+      "executor_memory": "8g",
+      "maxExecutors": "3"
+    },
+    "large": {
+      "driver_cores": "1",
+      "driver_memory": "10g",
+      "executor_cores": "8",
+      "executor_instances": "5",
+      "executor_memory": "16g",
+      "maxExecutors": "5"
+    }
+  }
+}
+```
+
+Если нужны другие ресурсы, сначала уточните ожидаемый объем данных, окно backfill, SLA и допустимую стоимость. Затем добавьте новый именованный профиль в `profiles` и используйте его через `resource_profile`. Не заводите профиль на каждую сущность без необходимости: новый профиль нужен, когда ресурсов `small`/`large` недостаточно или хочется явно закрепить отдельный класс нагрузки.
+
+Для новых стандартных layer jobs используйте default Spark image и `git-sync` из общего template. Локальный `config/fetch_*.yaml` или `config/resources.yaml` нужен только для осознанного исключения, которое должно быть описано в README сущности.
 
 Пример DDL для новой таблицы:
 
@@ -550,7 +618,8 @@ Ranking upload находится в `upload/ranking_features/v1`.
 - Для feature-platform зависимостей downstream DAG должен ждать dbt DQ DAG, а не Spark DAG.
 - Для внешних источников используйте DQ/source contract команды-владельца.
 - Не прячьте source table names в неочевидных константах: lineage должен читаться из job.
-- Не добавляйте custom Spark image для обычных code/config/SQL changes. Используйте default Spark image и `git-sync`.
+- Не добавляйте custom Spark image для обычных code/config/SQL changes. Используйте общий `config/spark/layer_spark_application.yaml`, default Spark image и `git-sync`.
+- Ресурсы driver/executor задавайте через именованный профиль в `config/spark/resources.yaml` и ссылку `resource_profile` в `config.yaml` сущности.
 - Не обновляйте `AGENTS.md` при добавлении каждой новой фичи. Детали фичи должны жить в README слоя, migration, config, DAG и job.
 - Перед финалом всегда упоминайте, какие проверки были запущены и что не удалось проверить локально.
 
@@ -570,7 +639,7 @@ Custom Spark image нужен только когда runtime-зависимос
 1. Добавить библиотеку в `requirements.txt` рядом с Dockerfile того образа, который действительно используется job.
 2. Обновить Dockerfile так, чтобы он устанавливал зависимости из этого `requirements.txt`. Версии должны быть зафиксированы.
 3. Если пакет внутренний, установка должна идти через Nexus с credentials из Drone secrets. Credentials нельзя коммитить в репозиторий.
-4. Обновить SparkApplication image в config, если меняется имя или tag образа.
+4. Обновить SparkApplication image в общем template или в явно документированном локальном исключении, если меняется имя или tag образа.
 5. Сделать PR, дождаться проверок и влить изменения в `master`.
 6. После merge в `master` один раз создать tag для сборки образа. Для ranking upload сейчас используется формат `spark-feature-platform-ranking-upload-*`.
 7. Дождаться Drone build по tag: он соберет Docker image и опубликует его в registry.

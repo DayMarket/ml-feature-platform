@@ -14,6 +14,7 @@
 
 - `layers/silver/*/v1` - переиспользуемые агрегаты и промежуточные таблицы.
 - `layers/gold/*/v1` - финальные признаки для моделей или downstream-сервисов.
+- `config/spark` - общий SparkApplication template и resource profiles для layer DAG-ов.
 - `upload/ranking_features/v1` - загрузка feature groups в Kafka-топик сервиса ранжирования.
 - `scripts/` - CI-синхронизация миграций, dbt sources, Iceberg maintenance и валидации.
 - `ci_test/` - локальные regression-тесты для CI-логики.

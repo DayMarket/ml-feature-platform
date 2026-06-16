@@ -28,6 +28,7 @@ Owner metadata:
 - If a requested source is not produced by this repo, do not invent ownership or ingestion. Ask for upstream table/path, owning team, source freshness/DQ contract, join keys, and whether feature-platform should transform an existing source or whether separate upstream ingestion is needed.
 - DAGs that depend on feature-platform tables must wait for the dependent table's dbt DQ DAG, not the Spark DAG that writes that table.
 - When adding or changing DAG schedules, `start_date`, backfill ranges, or partition intervals, ask the user to confirm the launch time in UTC and propose UTC times by default. Keep Airflow `start_date`/`end_date` timezone-aware UTC, and generate Spark `partition_start`/`partition_end` from Airflow `data_interval_start`/`data_interval_end` converted to UTC.
+- When adding or changing layer DAGs, ask the user which Spark resource profile to use or what driver/executor resources are expected. Use `config/spark/resources.yaml` profiles and reference them from the entity `config.yaml`; add a new named profile only after the resource contract is confirmed.
 - New layer jobs should use the shared Spark image plus `git-sync`. Add a custom image only when runtime dependencies cannot be delivered by `git-sync`.
 - Migrations are executed by CI after merge to `master`; jobs may keep defensive table/column checks, but schema evolution belongs in migrations.
 - Be careful with dirty worktrees and generated files. Do not revert unrelated user changes.
@@ -40,8 +41,8 @@ Use repository files as the source of truth. Do not duplicate their contents in 
 - Output columns and comments: `layers/**/migrations/*.sql`.
 - Sources, joins, filters, formulas, windows, null handling, and write behavior: `layers/**/job/*.py`.
 - Human-readable feature contract and caveats: `layers/**/README.md`.
-- Orchestration, schedule, sensors, task names, and Airflow details: `layers/**/dag.py`, `layers/**/config/fetch_*.yaml`, and `layers/**/config/factory.py`.
-- Spark resources and runtime image: `layers/**/config/resources.yaml` and `config/fetch_*.yaml`.
+- Orchestration, schedule, sensors, task names, and Airflow details: `layers/**/dag.py`, each entity's `config.yaml` `spark` or `spark_applications` block, and `layers/**/config/factory.py`.
+- Spark runtime template and resource profiles: `config/spark/layer_spark_application.yaml`, `config/spark/resources.yaml`, and each entity's `config.yaml` `spark` or `spark_applications` block.
 - Ranking-service publication: `upload/ranking_features/v1/config.yaml` and `upload/ranking_features/v1/ranking_service_input.yaml`.
 - CI and generated downstream sync behavior: `.drone.yaml`, `scripts/`, and `ci_test/`.
 
@@ -85,7 +86,7 @@ Use this workflow:
 - Classify the requested output: reusable pre-aggregate goes to `silver`; final model feature goes to `gold`; downstream publication goes to `upload`.
 - Run the duplicate feature check before scaffolding anything.
 - Present meaningful implementation options when more than one is reasonable, especially add-column vs new-table, internal table vs ranking upload, generated vs completed orders, and whether `{{ ds }}` is included.
-- Clarify entity grain, source tables, join keys, attribution/filter spaces, date boundaries, lookbacks, DAG launch time in UTC, generated/completed/returned semantics, null/zero denominator behavior, ranking publication, ownership, alerts, and on-call settings.
+- Clarify entity grain, source tables, join keys, attribution/filter spaces, date boundaries, lookbacks, DAG launch time in UTC, Spark resource profile, generated/completed/returned semantics, null/zero denominator behavior, ranking publication, ownership, alerts, and on-call settings.
 - For new entities, ownership and alerting are never safely inferred. Explicitly confirm `table.meta.team`, `dag.team`, `alerts.team`, alert severity, and on-call webhook before scaffolding configs or DAGs.
 - If a feature depends on source tables, source values, or business semantics that are not explicit in the current context, ask whether to use MCP tools such as Trino or ClickHouse or whether the user will provide the contract. Do this even when a plausible table or column was found in the repository.
 - After duplicate checks and clarification, summarize the selected contract back to the user before editing files.
@@ -93,7 +94,7 @@ Use this workflow:
 - Add or update migrations first. Use idempotent DDL and include comments for all output columns.
 - Implement PySpark using existing local patterns. Prefer Spark functions/DataFrame API where it improves maintainability; Spark SQL is acceptable when it mirrors a validated analytical SQL clearly.
 - Keep source table names visible in transformation code or config; do not hide lineage behind opaque constants.
-- Update the full entity surface together: `config.yaml`, `dag.py`, resources, SparkApplication template, factory, entrypoint, job code, migrations, and README.
+- Update the full entity surface together: `config.yaml`, `dag.py`, Spark resource profile/template references, factory, entrypoint, job code, migrations, and README.
 - Add DQ sensor dependencies on DQ DAGs for feature-platform source tables. For external upstream tables, use the producing team's documented DAG/DQ contract.
 - Decide whether generated DQ is enough. Propose table-specific DQ tests only when they are part of the feature contract and are not likely to be noisy or expensive.
 - Add ranking upload config only if the model/service needs the feature now.
@@ -157,9 +158,10 @@ Implemented layer pipelines generally follow this shape:
 
 - `dag.py`: Airflow DAG definition using `SparkKubernetesOperator` and `config.factory.get_deployment`.
 - `config.yaml`: table metadata used by DAG factories, CI, dbt source sync, maintenance sync, and upload validation.
-- `config/resources.yaml`: JSON-formatted Spark driver/executor resources and infrastructure placeholders.
-- `config/fetch_*.yaml`: SparkApplication template populated by `config/factory.py`.
-- `config/factory.py`: fills placeholders using `config.yaml`, `resources.yaml`, Airflow connections, random suffixes, and Airflow date macros.
+- `config/factory.py`: fills placeholders using `config.yaml`, shared Spark resources, Airflow connections, random suffixes, and Airflow date macros.
+- `config.yaml` `spark` or `spark_applications`: points to the shared SparkApplication template, entrypoint, application name, and resource profile.
+- `config/spark/layer_spark_application.yaml`: shared SparkApplication template for standard layer jobs.
+- `config/spark/resources.yaml`: shared JSON resource profiles for Spark driver/executor resources and infrastructure placeholders.
 - `job/arguments.py`: parses `--partition_start`, `--partition_end`, and `--table_name`.
 - `job/entities.py`: dataclass for runtime arguments.
 - `job/getting_*.py`: main PySpark transformation and write logic.
@@ -178,6 +180,8 @@ Configuration constraints:
 - Layer table jobs use shared default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
 - Job code is delivered through a `git-sync` initContainer.
 - `mainApplicationFile` should point to `local:///git/repo/layers/.../entrypoints/*.py`.
+- Standard layer jobs should use `config/spark/layer_spark_application.yaml` and a named profile from `config/spark/resources.yaml`; choose the profile in the entity `config.yaml`.
+- Do not create per-entity Spark resource files for standard jobs. Add a new shared named profile only after confirming the expected driver/executor resources with the user.
 - Airflow variable `gitsync_branch` chooses the branch cloned into Spark pods.
 - Do not build a new image for ordinary PySpark code, SQL, config, README, migration, or resource changes.
 - Some older layer directories may contain inactive `Dockerfile`, `entrypoint.sh`, or `pyproject.toml`. Treat them as inactive unless the active SparkApplication template references them.
