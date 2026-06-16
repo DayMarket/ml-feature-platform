@@ -142,8 +142,8 @@ def _fill_arguments(deployment_content: str, deployment_name: Optional[str] = No
     ).lower()
 
     from_to_replacement = {
-        "<partition_start>": "{{ ds }} 00:00:00",
-        "<partition_end>": "{{ next_ds }} 00:00:00",
+        "<partition_start>": '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}',
+        "<partition_end>": '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}',
         "<random_string>": random_string,
         "<app_type>": str(resources_config["app_type"]),
         "<spark_event_log_bucket_name>": str(resources_config["spark_event_log_bucket"]),

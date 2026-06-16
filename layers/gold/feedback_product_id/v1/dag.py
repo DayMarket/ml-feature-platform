@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from airflow.decorators import dag
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
@@ -38,7 +38,7 @@ default_args = {
     tags=["spark", "feature-platform", dag_settings["team_tag"], "gold", "feedback"],
     is_paused_upon_creation=True,
     schedule_interval="0 3 * * *",
-    start_date=datetime(2026, 1, 1, 0, 0, 0),
+    start_date=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
     dag_id="feature_platform_product_feedback_base_stats_gold_dag",
 )
 def collect_gold_product_feedback_base_stats():

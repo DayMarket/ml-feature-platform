@@ -46,8 +46,20 @@ def get_deployment(folder_name: str, deployment_name: str) -> str:
 def _read_deployment(folder_name: str, deployment_name: str) -> str:
     deployment_folder = os.path.join(os.path.dirname(__file__), folder_name)
     deployment_path = os.path.join(deployment_folder, deployment_name)
+    if not os.path.exists(deployment_path):
+        deployment_path = _get_shared_deployment_path()
     with open(deployment_path, "r", encoding="utf-8") as deployment_file:
         return deployment_file.read()
+
+
+def _get_shared_deployment_path() -> str:
+    dag_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    config = _get_dag_config()
+    spark_config = config.get("spark", {})
+    template_path = spark_config.get("template_path")
+    if not template_path:
+        raise FileNotFoundError("Local deployment file is missing and spark.template_path is not configured")
+    return os.path.abspath(os.path.join(dag_root, template_path))
 
 
 def _read_json_like_yaml(path: str) -> Dict[str, Any]:
@@ -113,6 +125,12 @@ def _get_task_resources(
     resources_config: Dict[str, Any],
     deployment_name: Optional[str],
 ) -> Dict[str, Any]:
+    dag_config = _get_dag_config()
+    spark_config = dag_config.get("spark", {})
+    resource_profile = spark_config.get("resource_profile")
+    profiles = resources_config.get("profiles", {})
+    if resource_profile:
+        return profiles[resource_profile]
     if deployment_name and isinstance(resources_config.get(deployment_name), dict):
         return resources_config[deployment_name]
     return resources_config
@@ -142,9 +160,11 @@ def _fill_arguments(deployment_content: str, deployment_name: Optional[str] = No
     ).lower()
 
     from_to_replacement = {
-        "<partition_start>": "{{ ds }} 00:00:00",
-        "<partition_end>": "{{ next_ds }} 00:00:00",
+        "<partition_start>": '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}',
+        "<partition_end>": '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}',
         "<random_string>": random_string,
+        "<application_name>": str(dag_config.get("spark", {}).get("application_name", "")),
+        "<main_application_file>": str(dag_config.get("spark", {}).get("main_application_file", "")),
         "<app_type>": str(resources_config["app_type"]),
         "<spark_event_log_bucket_name>": str(resources_config["spark_event_log_bucket"]),
         "<hive_metastore_uris>": str(resources_config["hive_metastore_uris"]),

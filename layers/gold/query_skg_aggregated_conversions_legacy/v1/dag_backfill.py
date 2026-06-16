@@ -24,7 +24,7 @@ As of creation the gold table ended at 2026-04-13 and the source reached
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from airflow.decorators import dag
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
@@ -63,8 +63,8 @@ default_args = {
     ],
     is_paused_upon_creation=True,
     schedule_interval="@daily",
-    start_date=datetime(2026, 4, 14, 0, 0, 0),
-    end_date=datetime(2026, 6, 11, 0, 0, 0),
+    start_date=datetime(2026, 4, 14, 0, 0, 0, tzinfo=timezone.utc),
+    end_date=datetime(2026, 6, 11, 0, 0, 0, tzinfo=timezone.utc),
     dag_id="feature_platform_query_skg_aggregated_conversions_legacy_gold_backfill_dag",
 )
 def backfill_gold_query_skg_aggregated_conversions_legacy():

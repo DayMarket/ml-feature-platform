@@ -27,6 +27,7 @@ Owner metadata:
 - Treat source enum/filter semantics as data semantics, not obvious constants. Finding a table, column, or literal filter value in the repository does not by itself confirm that it is the right source contract for a new feature. For fields such as `widget_space_name`, `widget_section_name`, attribution spaces, recommendation placement names, status values, and similar business-coded values, ask the user to confirm the contract or permit MCP inspection unless the current request or an existing README/job contract explicitly removes the ambiguity.
 - If a requested source is not produced by this repo, do not invent ownership or ingestion. Ask for upstream table/path, owning team, source freshness/DQ contract, join keys, and whether feature-platform should transform an existing source or whether separate upstream ingestion is needed.
 - DAGs that depend on feature-platform tables must wait for the dependent table's dbt DQ DAG, not the Spark DAG that writes that table.
+- When adding or changing DAG schedules, `start_date`, backfill ranges, or partition intervals, ask the user to confirm the launch time in UTC and propose UTC times by default. Keep Airflow `start_date`/`end_date` timezone-aware UTC, and generate Spark `partition_start`/`partition_end` from Airflow `data_interval_start`/`data_interval_end` converted to UTC.
 - New layer jobs should use the shared Spark image plus `git-sync`. Add a custom image only when runtime dependencies cannot be delivered by `git-sync`.
 - Migrations are executed by CI after merge to `master`; jobs may keep defensive table/column checks, but schema evolution belongs in migrations.
 - Be careful with dirty worktrees and generated files. Do not revert unrelated user changes.
@@ -84,7 +85,7 @@ Use this workflow:
 - Classify the requested output: reusable pre-aggregate goes to `silver`; final model feature goes to `gold`; downstream publication goes to `upload`.
 - Run the duplicate feature check before scaffolding anything.
 - Present meaningful implementation options when more than one is reasonable, especially add-column vs new-table, internal table vs ranking upload, generated vs completed orders, and whether `{{ ds }}` is included.
-- Clarify entity grain, source tables, join keys, attribution/filter spaces, date boundaries, lookbacks, generated/completed/returned semantics, null/zero denominator behavior, ranking publication, ownership, alerts, and on-call settings.
+- Clarify entity grain, source tables, join keys, attribution/filter spaces, date boundaries, lookbacks, DAG launch time in UTC, generated/completed/returned semantics, null/zero denominator behavior, ranking publication, ownership, alerts, and on-call settings.
 - For new entities, ownership and alerting are never safely inferred. Explicitly confirm `table.meta.team`, `dag.team`, `alerts.team`, alert severity, and on-call webhook before scaffolding configs or DAGs.
 - If a feature depends on source tables, source values, or business semantics that are not explicit in the current context, ask whether to use MCP tools such as Trino or ClickHouse or whether the user will provide the contract. Do this even when a plausible table or column was found in the repository.
 - After duplicate checks and clarification, summarize the selected contract back to the user before editing files.

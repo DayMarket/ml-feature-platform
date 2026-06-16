@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from airflow.decorators import dag
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
@@ -18,6 +18,14 @@ dag_settings = get_dag_settings()
 
 logger = logging.getLogger("airflow.task")
 logger.setLevel("INFO")
+
+
+def _parse_utc_start_date(value: str) -> datetime:
+    start_date = datetime.fromisoformat(value)
+    if start_date.tzinfo is None:
+        return start_date.replace(tzinfo=timezone.utc)
+    return start_date.astimezone(timezone.utc)
+
 
 default_args = {
     "owner": dag_settings["owner"],
@@ -39,7 +47,7 @@ default_args = {
     tags=["spark", "feature-platform", dag_settings["team_tag"], "ranking", "upload"],
     is_paused_upon_creation=True,
     schedule_interval=dag_settings["schedule"],
-    start_date=datetime.fromisoformat(dag_settings["start_date"]),
+    start_date=_parse_utc_start_date(dag_settings["start_date"]),
     dag_id=dag_settings["dag_id"],
 )
 def upload_ranking_features():
