@@ -12,6 +12,7 @@ spark_applications:
     application_name: backfill-gold-query-skg-aggregated-conversions-legacy
     main_application_file: local:///git/repo/layers/gold/query_skg_aggregated_conversions_legacy/v1/entrypoints/backfill_query_skg_aggregated_conversions_legacy_from_feature_store.py
     resource_profile: large
+
 table:
   key: query_skg_aggregated_conversions_legacy
   catalog: iceberg
