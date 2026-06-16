@@ -1,6 +1,6 @@
 # ML Feature Platform
 
-`ml-feature-platform` - репозиторий для PySpark-пайплайнов, которые собирают признаки для продуктовых сценариев: поиск, рекомендации, открытие ПВЗ, матчинг, ранжирование и другие ML-задачи.
+`ml-feature-platform` - репозиторий для Airflow-managed пайплайнов, которые собирают признаки для продуктовых сценариев: поиск, рекомендации, открытие ПВЗ, матчинг, ранжирование и другие ML-задачи. Большинство текущих layer-пайплайнов написаны на PySpark, но новые пайплайны могут читать источники через Spark/Iceberg, Trino или ClickHouse.
 
 Платформа делает три основные вещи:
 
@@ -8,13 +8,13 @@
 - собирает финальные модельные признаки в слое `gold`;
 - при необходимости публикует `gold`-признаки в сервис ранжирования через `upload/ranking_features/v1`.
 
-Важное текущее ограничение: источники для пайплайнов должны быть доступны как Iceberg-таблицы. Если нужных данных еще нет в Feature Platform, источник подбирается среди Iceberg-таблиц через Trino или ClickHouse, а не подключается как произвольный внешний файл или API.
+Важное правило: все итоговые признаки и агрегаты Feature Platform сохраняются в Iceberg. Trino и ClickHouse можно использовать как source engines, если нужного источника нет в Spark/Iceberg, но результат `silver` или `gold` все равно должен быть repository-managed Iceberg-таблицей.
 
 ## Где что лежит
 
 - `layers/silver/*/v1` - переиспользуемые агрегаты и промежуточные таблицы.
 - `layers/gold/*/v1` - финальные признаки для моделей или downstream-сервисов.
-- `config/spark` - общий SparkApplication template и resource profiles для layer DAG-ов.
+- `config/spark` - общий SparkApplication template и resource profiles для Spark layer DAG-ов.
 - `upload/ranking_features/v1` - загрузка feature groups в Kafka-топик сервиса ранжирования.
 - `scripts/` - CI-синхронизация миграций, dbt sources, Iceberg maintenance и валидации.
 - `ci_test/` - локальные regression-тесты для CI-логики.
@@ -42,7 +42,9 @@
 
 Если нужные данные уже есть в `layers/silver` или `layers/gold`, лучше строить новую фичу от этих таблиц: там уже есть контракт, DQ и lineage.
 
-Если нужных данных в Feature Platform нет, источник выбирается среди Iceberg-таблиц. Для этого агент может использовать Trino или ClickHouse: посмотреть схему, доступные поля, значения бизнес-кодов, партиции и свежесть данных. После этого в Feature Platform создается слой, который трансформирует выбранный Iceberg-источник в нужный `silver` или `gold` contract.
+Если нужных данных в Feature Platform нет, источник может быть выбран из Spark/Iceberg, Trino или ClickHouse. Перед просмотром схем, примеров строк, партиций, freshness и значений бизнес-кодов агент должен спросить разрешение на MCP-инспекцию, если эти факты не ясны из задачи или репозитория. После выбора источника в Feature Platform создается слой, который сохраняет результат в нужный Iceberg `silver` или `gold` contract.
+
+Для Trino-source DAG-ов агент уточняет, использовать ли `trino_default` или другой Airflow connection. Для ClickHouse-source DAG-ов connection id всегда должен подтвердить пользователь, потому что доступ зависит от RBAC. Для Trino/ClickHouse-source DAG-ов базовый runtime image - `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`; если нужны отсутствующие сторонние библиотеки, агент предложит согласовать отдельный образ.
 
 ## Основные проверки
 

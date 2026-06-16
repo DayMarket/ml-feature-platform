@@ -4,7 +4,9 @@ This file is the repository handbook for coding agents and ML engineer assistant
 
 ## Repository Purpose
 
-`ml-feature-platform` contains Airflow-managed PySpark feature pipelines for search-related marketplace features. Pipelines are organized by data layer under `layers/`.
+`ml-feature-platform` contains Airflow-managed feature pipelines for search-related marketplace features. Pipelines are organized by data layer under `layers/`. Most existing layer jobs are PySpark/SparkApplication jobs, but new feature pipelines may also read from Trino or ClickHouse when the source is not available through Spark/Iceberg.
+
+All repository-managed feature and aggregate outputs must be stored as Iceberg tables. Trino and ClickHouse are allowed as source engines, not as final storage for `silver` or `gold` outputs.
 
 Layer semantics:
 
@@ -23,13 +25,17 @@ Owner metadata:
 - Before creating or renaming a feature, run the duplicate feature check below.
 - If the request changes code, configs, migrations, CI, deployment, downstream contracts, or ownership, first summarize what you understood and the intended approach or options. Wait for agreement when the contract is not already explicit.
 - If the implementation contract is unclear, ask concise clarifying questions. It is better to pause than to create a plausible but wrong feature.
-- Do not silently inspect production data sources. If the user has not explicitly provided the source contract and repository files do not fully answer a source schema, value contract, or business meaning question, say so and ask whether to use MCP tools such as Trino or ClickHouse.
+- Do not silently inspect production data sources. If the user has not explicitly provided the source contract and repository files do not fully answer a source schema, value contract, sample-row need, partition/freshness contract, enum/filter value, or business meaning question, say so and ask whether to use MCP tools such as Trino or ClickHouse.
 - Treat source enum/filter semantics as data semantics, not obvious constants. Finding a table, column, or literal filter value in the repository does not by itself confirm that it is the right source contract for a new feature. For fields such as `widget_space_name`, `widget_section_name`, attribution spaces, recommendation placement names, status values, and similar business-coded values, ask the user to confirm the contract or permit MCP inspection unless the current request or an existing README/job contract explicitly removes the ambiguity.
 - If a requested source is not produced by this repo, do not invent ownership or ingestion. Ask for upstream table/path, owning team, source freshness/DQ contract, join keys, and whether feature-platform should transform an existing source or whether separate upstream ingestion is needed.
 - DAGs that depend on feature-platform tables must wait for the dependent table's dbt DQ DAG, not the Spark DAG that writes that table.
-- When adding or changing DAG schedules, `start_date`, backfill ranges, or partition intervals, ask the user to confirm the launch time in UTC and propose UTC times by default. Keep Airflow `start_date`/`end_date` timezone-aware UTC, and generate Spark `partition_start`/`partition_end` from Airflow `data_interval_start`/`data_interval_end` converted to UTC.
-- When adding or changing layer DAGs, ask the user which Spark resource profile to use or what driver/executor resources are expected. Use `config/spark/resources.yaml` profiles and reference them from the entity `config.yaml`; add a new named profile only after the resource contract is confirmed.
-- New layer jobs should use the shared Spark image plus `git-sync`. Add a custom image only when runtime dependencies cannot be delivered by `git-sync`.
+- When adding or changing DAG schedules, `start_date`, backfill ranges, or partition intervals, ask the user to confirm the launch time in UTC and propose UTC times by default. Keep Airflow `start_date`/`end_date` timezone-aware UTC, and generate job partition boundaries from Airflow `data_interval_start`/`data_interval_end` converted to UTC.
+- When adding or changing Spark layer DAGs, ask the user which Spark resource profile to use or what driver/executor resources are expected. Use `config/spark/resources.yaml` profiles and reference them from the entity `config.yaml`; add a new named profile only after the resource contract is confirmed.
+- New Spark layer jobs should use the shared Spark image plus `git-sync`. Add a custom Spark image only when runtime dependencies cannot be delivered by `git-sync`.
+- For Trino-source DAGs, ask whether to use Airflow connection `trino_default` or another connection. You may propose `trino_default` as the default, but do not silently lock it in when the connection contract has not been confirmed.
+- For ClickHouse-source DAGs, always ask the user for the Airflow connection id before scaffolding or editing files, because ClickHouse access is RBAC-sensitive. Do not infer the connection from nearby DAGs.
+- For Trino/ClickHouse-source layer jobs, use a separate Airflow/Python pattern that reads through the confirmed source connection and writes the repository-managed output to Iceberg with `pyiceberg`. Do not model these jobs as SparkApplications unless the user explicitly chooses Spark execution.
+- For Trino/ClickHouse-source layer jobs, propose `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` as the default runtime image. If the job needs third-party libraries that are not available in the default image and cannot be safely delivered by repository code, ask the user whether to create or use a custom image before scaffolding runtime files.
 - Migrations are executed by CI after merge to `master`; jobs may keep defensive table/column checks, but schema evolution belongs in migrations.
 - Be careful with dirty worktrees and generated files. Do not revert unrelated user changes.
 
@@ -42,7 +48,7 @@ Use repository files as the source of truth. Do not duplicate their contents in 
 - Sources, joins, filters, formulas, windows, null handling, and write behavior: `layers/**/job/*.py`.
 - Human-readable feature contract and caveats: `layers/**/README.md`.
 - Orchestration, schedule, sensors, task names, and Airflow details: `layers/**/dag.py`, each entity's `config.yaml` `spark` or `spark_applications` block, and `layers/**/config/factory.py`.
-- Spark runtime template and resource profiles: `config/spark/layer_spark_application.yaml`, `config/spark/resources.yaml`, and each entity's `config.yaml` `spark` or `spark_applications` block.
+- Spark runtime template and resource profiles: `config/spark/layer_spark_application.yaml`, `config/spark/resources.yaml`, and each entity's `config.yaml` `spark` or `spark_applications` block. These are Spark-specific and should not be forced onto Trino/ClickHouse-source Airflow/Python jobs.
 - Ranking-service publication: `upload/ranking_features/v1/config.yaml` and `upload/ranking_features/v1/ranking_service_input.yaml`.
 - CI and generated downstream sync behavior: `.drone.yaml`, `scripts/`, and `ci_test/`.
 
@@ -74,7 +80,8 @@ Use this decision flow before implementation:
 
 - If the requested feature appears buildable from repository-managed feature-platform tables, inspect their configs, migrations, jobs, and README files first. Do not query production just to rediscover facts already encoded in the repo.
 - Finding a plausible source table in the repository is not enough to proceed when the source choice, filter values, or business semantics are not explicit in the user's request or in a relevant existing feature contract. Pause and ask the user to confirm the source contract or allow MCP inspection through Trino or ClickHouse.
-- If the requested feature needs upstream external tables, source enum values, schemas, sample values, or business semantics that are not explicitly covered by the request or repository contract, pause and ask the user to provide the contract or allow MCP inspection.
+- If the source engine is unclear from the request, existing README/job/config, or selected source contract, ask whether the source should be read through Spark/Iceberg, Trino, or ClickHouse. Do not ask when the engine is already explicit in context.
+- If the requested feature needs upstream external tables, source enum values, schemas, sample values, partition/freshness checks, or business semantics that are not explicitly covered by the request or repository contract, pause and ask the user to provide the contract or allow MCP inspection.
 - If MCP inspection is approved, query only the minimum needed schema, sample, or distinct-value information. Summarize what came from repository files and what came from MCP.
 - Never silently treat a literal filter value, table name, or column name as proof of business meaning.
 - Never silently add a feature-platform table that owns upstream ingestion for data this repo does not already produce.
@@ -86,15 +93,17 @@ Use this workflow:
 - Classify the requested output: reusable pre-aggregate goes to `silver`; final model feature goes to `gold`; downstream publication goes to `upload`.
 - Run the duplicate feature check before scaffolding anything.
 - Present meaningful implementation options when more than one is reasonable, especially add-column vs new-table, internal table vs ranking upload, generated vs completed orders, and whether `{{ ds }}` is included.
-- Clarify entity grain, source tables, join keys, attribution/filter spaces, date boundaries, lookbacks, DAG launch time in UTC, Spark resource profile, generated/completed/returned semantics, null/zero denominator behavior, ranking publication, ownership, alerts, and on-call settings.
+- Clarify entity grain, source tables, source engine when unclear, source connection, join keys, attribution/filter spaces, date boundaries, lookbacks, DAG launch time in UTC, generated/completed/returned semantics, null/zero denominator behavior, Iceberg write mode, upstream DQ/freshness contract, ranking publication, ownership, alerts, and on-call settings.
+- For Spark jobs, clarify the Spark resource profile or driver/executor resource expectations. For Trino/ClickHouse-source jobs, clarify the Airflow/Python runtime image and whether third-party libraries require a custom image.
 - For new entities, ownership and alerting are never safely inferred. Explicitly confirm `table.meta.team`, `dag.team`, `alerts.team`, alert severity, and on-call webhook before scaffolding configs or DAGs.
 - If a feature depends on source tables, source values, or business semantics that are not explicit in the current context, ask whether to use MCP tools such as Trino or ClickHouse or whether the user will provide the contract. Do this even when a plausible table or column was found in the repository.
 - After duplicate checks and clarification, summarize the selected contract back to the user before editing files.
 - Choose the entity grain and primary key. Include `date` for scheduled snapshots unless there is a deliberate exception documented in README and code.
 - Add or update migrations first. Use idempotent DDL and include comments for all output columns.
-- Implement PySpark using existing local patterns. Prefer Spark functions/DataFrame API where it improves maintainability; Spark SQL is acceptable when it mirrors a validated analytical SQL clearly.
+- Implement Spark jobs using existing local PySpark patterns. Prefer Spark functions/DataFrame API where it improves maintainability; Spark SQL is acceptable when it mirrors a validated analytical SQL clearly.
+- Implement Trino/ClickHouse-source jobs using an Airflow/Python pattern: read from the confirmed source connection, transform according to the approved SQL/source contract, and write the final result to Iceberg through `pyiceberg`.
 - Keep source table names visible in transformation code or config; do not hide lineage behind opaque constants.
-- Update the full entity surface together: `config.yaml`, `dag.py`, Spark resource profile/template references, factory, entrypoint, job code, migrations, and README.
+- Update the full entity surface together: `config.yaml`, `dag.py`, runtime configuration, factory or helper code when used, entrypoint/job code, migrations, and README.
 - Add DQ sensor dependencies on DQ DAGs for feature-platform source tables. For external upstream tables, use the producing team's documented DAG/DQ contract.
 - Decide whether generated DQ is enough. Propose table-specific DQ tests only when they are part of the feature contract and are not likely to be noisy or expensive.
 - Add ranking upload config only if the model/service needs the feature now.
@@ -118,7 +127,7 @@ Final response checklist for new/changed tables:
 - Collection semantics: windows, date boundaries, whether `{{ ds }}` is included, lookbacks, query normalization, denominator/null behavior, and non-obvious logic.
 - Output columns/features.
 - DQ behavior and whether table-specific DQ was added or intentionally left out.
-- Runtime/deployment: default Spark image with `git-sync` or custom image reason.
+- Runtime/deployment: Spark image with `git-sync`, or Airflow/Python image for Trino/ClickHouse-source jobs, plus any custom image reason.
 - Downstream usage: ranking upload group or note that there is no upload.
 - Post-master follow-up for new tables: check generated dbt-trino DQ PRs and `DayMarket/pyspark-etl` Iceberg maintenance PRs.
 
@@ -154,7 +163,7 @@ When asked for lineage, answer from final feature back to all sources. Include:
 
 ## Layer Layout
 
-Implemented layer pipelines generally follow this shape:
+Implemented Spark layer pipelines generally follow this shape:
 
 - `dag.py`: Airflow DAG definition using `SparkKubernetesOperator` and `config.factory.get_deployment`.
 - `config.yaml`: table metadata used by DAG factories, CI, dbt source sync, maintenance sync, and upload validation.
@@ -169,24 +178,42 @@ Implemented layer pipelines generally follow this shape:
 - `migrations/create_table.sql`: Iceberg DDL. Add extra migration files for schema changes.
 - `README.md`: Russian-language human summary of purpose, sources, grain, key formulas, and operational notes.
 
+Trino/ClickHouse-source layer pipelines may use a separate Airflow/Python shape instead of SparkApplication. They should still live under `layers/<layer>/<entity>/v1`, keep migrations and README alongside the code, read through explicitly confirmed Airflow connections, and write the output Iceberg table with `pyiceberg`. There may be no current examples in this repository; when generating one, keep the pattern explicit in README and do not reuse Spark-specific `spark`/`spark_applications` config unless Spark execution is actually used.
+
 Configuration constraints:
 
 - Existing CI parsers read `config.yaml` with a simple nested key parser. Keep layer configs simple: nested mappings are fine, but avoid YAML anchors, complex lists, and non-obvious syntax unless the CI parser is updated.
 - Required table fields are `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`.
+- Repository-managed output tables must keep `table.catalog: iceberg`. Current dbt source sync reads `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`; current Iceberg maintenance sync reads Iceberg `table.schema` and `table.name`. Additional source/runtime config must not break these simple parsers.
 - Primary keys should include `date` for daily/hourly feature tables unless there is a deliberate exception documented in README and code.
 
 ## Deployment Standard
 
-- Layer table jobs use shared default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
+- Spark layer table jobs use shared default Spark image `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`.
 - Job code is delivered through a `git-sync` initContainer.
 - `mainApplicationFile` should point to `local:///git/repo/layers/.../entrypoints/*.py`.
-- Standard layer jobs should use `config/spark/layer_spark_application.yaml` and a named profile from `config/spark/resources.yaml`; choose the profile in the entity `config.yaml`.
+- Standard Spark layer jobs should use `config/spark/layer_spark_application.yaml` and a named profile from `config/spark/resources.yaml`; choose the profile in the entity `config.yaml`.
 - Do not create per-entity Spark resource files for standard jobs. Add a new shared named profile only after confirming the expected driver/executor resources with the user.
 - Airflow variable `gitsync_branch` chooses the branch cloned into Spark pods.
 - Do not build a new image for ordinary PySpark code, SQL, config, README, migration, or resource changes.
 - Some older layer directories may contain inactive `Dockerfile`, `entrypoint.sh`, or `pyproject.toml`. Treat them as inactive unless the active SparkApplication template references them.
 - Use a custom Spark image only for Python libraries, truststores, binaries, or runtime files not available in the default image and not deliverable by `git-sync`.
-- If a custom image is required, add/update Dockerfile, Drone tag trigger, documentation, and SparkApplication image. Internal packages must be installed from Nexus using Drone-provided build args; never commit credentials.
+- If a custom image is required, add/update Dockerfile, pinned requirements, Drone tag trigger, documentation, and the DAG/runtime image reference. Internal packages must be installed from Nexus using Drone-provided build args; never commit credentials.
+- Trino/ClickHouse-source Airflow/Python jobs should use `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` by default and write to Iceberg with `pyiceberg`. If required third-party libraries are missing from that image and cannot be delivered through repository code, ask the user to confirm a new or existing custom image before editing runtime files.
+- Trino-source jobs should ask whether to use `trino_default` or another Airflow connection. ClickHouse-source jobs must ask for the exact Airflow connection id because RBAC is connection-specific.
+
+## Custom Image Workflow
+
+Use this workflow only after confirming that the default Spark image or default Airflow/Python image is insufficient for the job's runtime dependencies.
+
+- Create or update the Dockerfile for the image that the job actually uses. For Trino/ClickHouse-source Airflow/Python jobs, base it on `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`; for Spark jobs, base it on the active Spark image unless a different base is explicitly approved.
+- Add a nearby `requirements.txt` when Python packages are needed. Pin all package versions.
+- If a package is internal, install it through Nexus using Drone-provided build args/secrets such as Nexus username/password. Do not commit credentials, tokens, or private index URLs containing secrets.
+- Add or update a dedicated Drone image-build pipeline in `.drone.yaml`. The existing repository pipeline currently builds only the ranking upload custom image on tags matching `spark-feature-platform-ranking-upload-*`; new Airflow/Python or feature-specific images need their own registry repo, Dockerfile path, and tag trigger.
+- Use a descriptive tag pattern for the new pipeline, for example `feature-platform-airflow-<entity>-*` for an Airflow/Python image or another approved project-specific prefix. Drone builds the image from the state of `master` at the pushed tag.
+- Update the DAG/runtime config to reference the published image tag. For Spark jobs this may be the SparkApplication image; for Airflow/Python jobs it is the task/runtime image used by the DAG pattern.
+- Document why the custom image exists in the entity README or relevant docs: missing library/binary/truststore, why the default image was not enough, and which image tag the DAG uses.
+- Merge the code to `master`, then create and push one tag for the image build. Rebuild with a new tag only when Dockerfile or runtime dependencies change; ordinary job code, SQL, config, README, or migration changes should not require a new image.
 
 ## DQ And Source Sync
 
@@ -222,7 +249,7 @@ Drone currently:
 - Runs `scripts/run_pyspark_migrations.py --validation-mode` on pushes to `dev`/`master` and on pull requests targeting `dev`/`master` against a disposable local Spark/Iceberg warehouse.
 - Runs real SQL migrations only on `master` push.
 - Runs dbt source sync, Iceberg maintenance sync, and Airflow submodule sync only on `master` push.
-- Builds the ranking upload custom image only on tags matching `spark-feature-platform-ranking-upload-*`.
+- Builds the ranking upload custom image only on tags matching `spark-feature-platform-ranking-upload-*`. Any new custom image needs an explicit additional Drone pipeline with its own tag trigger, Dockerfile path, registry repo, and required build secrets.
 
 Trigger policy:
 
@@ -277,6 +304,7 @@ Configuration rules:
 
 - `{{ ds }}` usually means the partition date being written. Some business logic intentionally uses data strictly before `ds`; inspect the job and README before assuming inclusion/exclusion.
 - Trino table names such as `"dwh-iceberg".silver.table` map to Spark names such as `iceberg.silver.table`.
+- Trino and ClickHouse can be source engines for new jobs, but final `silver`/`gold` outputs remain Iceberg tables declared in `layers/**/config.yaml`.
 - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` support can differ by engine. Repository migrations run through PySpark, so validate syntax against Spark/Iceberg.
 - Spark worker imports must be available on executors. If a UDF imports project code, configure executor `PYTHONPATH` and `git-sync` for executors.
 - Do not coalesce null/zero denominators to `0.0` unless the feature contract says so.
