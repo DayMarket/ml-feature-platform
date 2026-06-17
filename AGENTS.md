@@ -105,6 +105,9 @@ Use this workflow:
 - Keep source table names visible in transformation code or config; do not hide lineage behind opaque constants.
 - Update the full entity surface together: `config.yaml`, `dag.py`, runtime configuration, factory or helper code when used, entrypoint/job code, migrations, and README.
 - Add DQ sensor dependencies on DQ DAGs for feature-platform source tables. For external upstream tables, use the producing team's documented DAG/DQ contract.
+- For new Airflow/Spark jobs, pass interval boundaries with `{{ data_interval_start }}` and `{{ data_interval_end }}`-based templates instead of `{{ ds }}` and `{{ next_ds }}`. Convert them to the business timezone explicitly when the feature contract is timezone-specific.
+- When a requested DAG schedule is expressed in a business timezone, confirm or derive the actual Airflow cron timezone before writing `schedule_interval`; if Airflow schedules in UTC, convert the cron expression explicitly and document the business-time equivalent in the README or DAG comments.
+- When deriving a partition date from an interval argument in Python, parse the timestamp explicitly with a documented format instead of using string slicing such as `partition_start[:10]`.
 - Decide whether generated DQ is enough. Propose table-specific DQ tests only when they are part of the feature contract and are not likely to be noisy or expensive.
 - Add ranking upload config only if the model/service needs the feature now.
 - Run local validation commands before finishing.
@@ -124,7 +127,7 @@ Final response checklist for new/changed tables:
 - Target table, layer, and repository path.
 - Grain and primary key.
 - Source tables or paths, join keys, important filters, and source-contract caveats.
-- Collection semantics: windows, date boundaries, whether `{{ ds }}` is included, lookbacks, query normalization, denominator/null behavior, and non-obvious logic.
+- Collection semantics: windows, date boundaries, `data_interval_start`/`data_interval_end` inclusion or exclusion, lookbacks, query normalization, denominator/null behavior, and non-obvious logic.
 - Output columns/features.
 - DQ behavior and whether table-specific DQ was added or intentionally left out.
 - Runtime/deployment: Spark image with `git-sync`, or Airflow/Python image for Trino/ClickHouse-source jobs, plus any custom image reason.
@@ -302,7 +305,7 @@ Configuration rules:
 
 ## Common Corner Cases
 
-- `{{ ds }}` usually means the partition date being written. Some business logic intentionally uses data strictly before `ds`; inspect the job and README before assuming inclusion/exclusion.
+- Legacy jobs may still use `{{ ds }}` as the partition date being written. Some business logic intentionally uses data strictly before that date; inspect the job and README before assuming inclusion/exclusion.
 - Trino table names such as `"dwh-iceberg".silver.table` map to Spark names such as `iceberg.silver.table`.
 - Trino and ClickHouse can be source engines for new jobs, but final `silver`/`gold` outputs remain Iceberg tables declared in `layers/**/config.yaml`.
 - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` support can differ by engine. Repository migrations run through PySpark, so validate syntax against Spark/Iceberg.

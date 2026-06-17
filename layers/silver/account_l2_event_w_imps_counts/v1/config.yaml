@@ -1,0 +1,19 @@
+resources:
+  path: config/resources.yaml
+
+table:
+  key: account_l2_event_w_imps_counts
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_account_l2_event_w_imps_counts
+  primary_key: date,account_id,category_id
+  meta:
+    team: team::recsys
+dag:
+  team: recsys
+
+alerts:
+  team: recsys
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_recsys
+
