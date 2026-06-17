@@ -4,7 +4,7 @@ import random
 import string
 from typing import Any, Dict, Optional
 
-from airflow.hooks.base import BaseHook
+from airflow.sdk import BaseHook
 
 
 def _normalize_team_name(team_value: Any) -> str:

@@ -3,9 +3,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-from airflow.decorators import dag
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
-from airflow.sensors.external_task import ExternalTaskSensor
 
 from airflow_commons.helpers.oncall import send_oncall_notification
 
@@ -13,6 +11,9 @@ DAG_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, DAG_DIR)
 
 from config.factory import get_dag_settings, get_deployment, get_source_dependencies
+from airflow.sdk import dag
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+from airflow.timetables.interval import CronDataIntervalTimetable
 
 dag_settings = get_dag_settings()
 
@@ -46,7 +47,7 @@ default_args = {
     max_active_runs=1,
     tags=["spark", "feature-platform", dag_settings["team_tag"], "ranking", "upload"],
     is_paused_upon_creation=True,
-    schedule_interval=dag_settings["schedule"],
+    schedule=CronDataIntervalTimetable(dag_settings["schedule"], 'UTC'),
     start_date=_parse_utc_start_date(dag_settings["start_date"]),
     dag_id=dag_settings["dag_id"],
 )
