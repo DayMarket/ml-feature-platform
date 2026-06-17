@@ -374,6 +374,8 @@ layers/<silver_or_gold>/<entity_name>/v1/
 - общий `config/spark/resources.yaml` задает именованные resource profiles для driver/executor.
 - `README.md` фиксирует человеческий contract: назначение, источники, grain, окна, формулы, caveats и downstream-использование.
 
+Если job выводит дату партиции из `partition_start`, не используйте срезы вроде `partition_start[:10]` и не закладывайтесь только на один формат `"%Y-%m-%d %H:%M:%S"`. Airflow/Pendulum может передать timestamp как ISO-строку с `T`, `Z` или timezone offset, например `2026-06-17T00:00:00+00:00`, `2026-06-17T00:00:00Z` или `2026-06-17 00:00:00+00:00`. Новый helper должен явно парсить ISO/Pendulum-форматы и формат общего Spark template `YYYY-MM-DD HH:MM:SS`, а при неизвестном формате падать с ошибкой, где показано исходное значение.
+
 Для Trino/ClickHouse-source DAG-ов структура может отличаться от SparkApplication-шаблона: Spark-specific `spark`/`spark_applications` блоки не нужны, если job не запускается в Spark. Но `config.yaml` итоговой таблицы должен оставаться совместимым с CI: `table.catalog: iceberg`, `table.schema`, `table.name`, `table.primary_key`, `table.meta.team`. Этих полей достаточно для генерации PR-ов в `dbt-trino` и Iceberg maintenance.
 
 ### Конфигурация SparkApplication и ресурсов
@@ -464,16 +466,42 @@ PARTITIONED BY (date)
 Пример расчета внутри PySpark job:
 
 ```python
+from datetime import datetime
+
+
+def partition_date(partition_start: str) -> str:
+    value = partition_start.strip()
+
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        pass
+
+    for date_format in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S%z", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, date_format).date().isoformat()
+        except ValueError:
+            continue
+
+    raise ValueError(
+        f"Unsupported partition_start format: {partition_start!r}. "
+        "Expected ISO datetime or YYYY-MM-DD HH:MM:SS."
+    )
+
+
 def build_features(spark, partition_start: str, partition_end: str):
+    run_date = partition_date(partition_start)
+
     return spark.sql(
         f"""
 WITH params AS (
     SELECT
+        DATE '{run_date}' AS run_date,
         TIMESTAMP '{partition_start}' AS ds,
         TIMESTAMP '{partition_end}' AS next_ds
 )
 SELECT
-    CAST(p.ds AS DATE) AS date,
+    p.run_date AS date,
     CAST(s.sku_group_id AS BIGINT) AS sku_group_id,
     CAST(COUNT(DISTINCT oi.order_id) AS BIGINT) AS orders_count_7d
 FROM iceberg.silver.order_items oi
@@ -485,7 +513,7 @@ WHERE
     AND oi.issued_at < p.next_ds
     AND oi.order_item_status = 'COMPLETED'
 GROUP BY
-    p.ds,
+    p.run_date,
     s.sku_group_id
 """
     )

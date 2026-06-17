@@ -15,7 +15,23 @@ def _load_migration_query(migration_name: str) -> str:
 
 
 def _parse_partition_date(partition_start: str) -> str:
-    return datetime.strptime(partition_start, "%Y-%m-%d %H:%M:%S").date().isoformat()
+    value = partition_start.strip()
+
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        pass
+
+    for date_format in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S%z", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, date_format).date().isoformat()
+        except ValueError:
+            continue
+
+    raise ValueError(
+        f"Unsupported partition_start format: {partition_start!r}. "
+        "Expected ISO datetime or YYYY-MM-DD HH:MM:SS."
+    )
 
 
 def build_sku_stock_daily(
