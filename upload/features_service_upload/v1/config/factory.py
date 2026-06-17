@@ -96,7 +96,7 @@ def get_deployment(folder_name: str, deployment_name: str) -> str:
     resources_path = os.path.join(_dag_root(), config["resources"]["path"])
     resources = _load_json(resources_path)
     s3_connection = json.loads(
-        BaseHook.get_connection("spark_ycs_connection").get_extra()
+        BaseHook.get_connection("spark_ycs_connection").extra
     )
     kafka_connection = BaseHook.get_connection(config["kafka"]["connection_id"])
     random_string = "".join(

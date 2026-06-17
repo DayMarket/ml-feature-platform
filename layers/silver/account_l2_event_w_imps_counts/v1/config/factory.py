@@ -124,10 +124,10 @@ def _fill_arguments(deployment_content: str, deployment_name: Optional[str] = No
     task_resources = _get_task_resources(resources_config, deployment_name)
 
     s3_connection = json.loads(
-        BaseHook.get_connection("spark_ycs_connection").get_extra()
+        BaseHook.get_connection("spark_ycs_connection").extra
     )
     s3_search_research_connection = json.loads(
-        BaseHook.get_connection("spark_search_research_connection").get_extra()
+        BaseHook.get_connection("spark_search_research_connection").extra
     )
 
     resources_values = {
