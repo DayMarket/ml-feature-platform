@@ -18,6 +18,9 @@
 - `smooth_conv_imp2order_3`;
 - `smooth_conv_imp2order_7`;
 - `smooth_conv_imp2order_14`;
+- `conv_imp2order_3`;
+- `conv_imp2order_7`;
+- `conv_imp2order_14`;
 - `imp2order_3_to_1`;
 - `imp2order_21_to_14`;
 - `imp2order_30_to_21`.
@@ -34,6 +37,13 @@ Raw ratio-признаки считаются как отношение обыч
 skg_conv_imp2order_d = skg_uniq_orders_d / skg_uniq_impressions_d
 ```
 
-Деление оставляет Spark-семантику `NULL` для нулевого или отсутствующего знаменателя. Это важно для совместимости признаков `smooth_conv_imp2order_3`, `smooth_conv_imp2order_7`, `smooth_conv_imp2order_14`, `imp2order_3_to_1`, `imp2order_21_to_14` и `imp2order_30_to_21` со старым feature-store пайплайном, где raw ratio не подменялись на `0.0`.
+Raw conversion-признаки `conv_imp2order_3`, `conv_imp2order_7`, `conv_imp2order_14` используют ту же формулу без сглаживания, но возвращают `0.0` при нулевом знаменателе:
+
+```text
+conv_imp2order_d = 0.0, если skg_uniq_impressions_d = 0
+conv_imp2order_d = skg_uniq_orders_d / skg_uniq_impressions_d иначе
+```
+
+Raw ratio-признаки `imp2order_*` сохраняют Spark-семантику `NULL` для нулевого или отсутствующего знаменателя. Это важно для совместимости признаков `imp2order_3_to_1`, `imp2order_21_to_14` и `imp2order_30_to_21` со старым feature-store пайплайном, где raw ratio не подменялись на `0.0`.
 
 Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_search_conversion_features/v1/entrypoints/get_sku_group_search_conversion_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
