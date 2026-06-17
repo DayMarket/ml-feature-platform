@@ -4,7 +4,7 @@
 
 Платформа не ограничена поиском. В ней можно собирать признаки для любых продуктовых ML-сценариев: поиск, рекомендации, открытие ПВЗ, матчинг, ранжирование, персонализация и другие задачи.
 
-Важное текущее ограничение: все источники должны быть доступны как Iceberg-таблицы. Если нужных данных еще нет в Feature Platform, источник подбирается среди Iceberg-таблиц через Trino или ClickHouse, затем в репозитории создается слой трансформации.
+Важное правило: все итоговые признаки и агрегаты Feature Platform сохраняются в Iceberg. Источник может читаться через Spark/Iceberg, Trino или ClickHouse, если это подтверждено контрактом задачи. Trino и ClickHouse являются source engines, а не финальным хранилищем для `silver` или `gold`.
 
 Документ не является каталогом всех признаков. Актуальные факты по конкретной таблице всегда берутся из `layers/**`: `config.yaml`, `migrations/*.sql`, `job/*.py`, `dag.py` и `README.md`.
 
@@ -20,18 +20,18 @@ layers/<layer>/<entity_name>/v1
 
 - `config.yaml` - имя таблицы, catalog/schema/name, primary key, owner metadata;
 - `migrations/create_table.sql` и дополнительные миграции - схема Iceberg-таблицы;
-- `job/getting_*.py` - PySpark-логика расчета;
-- `entrypoints/*.py` - точка запуска Spark job;
+- `job/getting_*.py` - логика расчета;
+- `entrypoints/*.py` - точка запуска Spark job, если используется Spark;
 - `dag.py` - Airflow orchestration;
-- `config/fetch_*.yaml` - SparkApplication template;
-- `config/resources.yaml` - ресурсы Spark;
+- `config/factory.py` - локальная фабрика рендера SparkApplication или runtime-конфигурации, если она нужна выбранному паттерну;
+- `config.yaml` с блоком `spark` или `spark_applications` - привязка сущности к общему Spark template и resource profile, если используется Spark;
 - `README.md` - описание назначения, источников, grain и формул.
 
 ## 2. Silver и gold
 
 `silver` - слой для переиспользуемых агрегатов и промежуточных таблиц. Сюда стоит класть результат, если он:
 
-- нормализует Iceberg-источник;
+- нормализует внешний или Iceberg-источник;
 - переиспользуется несколькими `gold`-таблицами;
 - содержит дневные агрегаты, из которых потом строятся разные окна;
 - еще не является финальным feature contract для модели.
@@ -106,22 +106,27 @@ Grain: `date,product_id`.
 - в `layers/silver` - переиспользуемые агрегаты и адаптеры источников;
 - в `layers/gold` - готовые модельные признаки.
 
-Если подходящей таблицы нет, источник выбирается среди Iceberg-таблиц. Для этого используется Trino или ClickHouse: можно посмотреть схему, партиции, свежесть данных, примеры строк и значения полей вроде `widget_space_name`, `widget_section_name`, `status`, `source`, `space`.
+Если подходящей таблицы нет, источник выбирается из доступных source engines: Spark/Iceberg, Trino или ClickHouse. Если engine не ясен из запроса, существующего README/job/config или уже выбранного source contract, агент должен уточнить его у пользователя.
+
+Для изучения неизвестного источника можно использовать MCP, но только после явного разрешения пользователя. Это касается схем, типов колонок, партиций, freshness, примеров строк и значений полей вроде `widget_space_name`, `widget_section_name`, `status`, `source`, `space`.
 
 Пример запроса:
 
 ```text
-В Feature Platform нет готовой таблицы для этого признака. Подбери Iceberg-источник через Trino: проверь схему, партиции и возможные значения `widget_space_name`.
+В Feature Platform нет готовой таблицы для этого признака. Подбери источник через Trino: проверь схему, партиции и возможные значения `widget_space_name`, если я разрешу MCP-инспекцию.
 ```
 
 После выбора источника нужно зафиксировать:
 
-- полное имя Iceberg-таблицы;
+- source engine и полное имя source table/path;
+- Airflow connection: для Trino уточнить `trino_default` или другой conn_id, для ClickHouse всегда получить conn_id от пользователя;
 - владельца источника или команду, которая отвечает за данные;
 - freshness/DQ contract источника;
 - ключи join;
 - поля партиционирования и даты;
 - бизнес-смысл фильтров и enum values.
+
+Независимо от source engine, результат новой `silver` или `gold` сущности должен быть Iceberg-таблицей, описанной в `layers/**/config.yaml` и migrations.
 
 ## 5. Пример: пользователь прислал SQL
 
@@ -145,12 +150,13 @@ GROUP BY sku_group_id
 1. Проверить, есть ли уже такой признак или близкий аналог.
 2. Уточнить grain: нужен ли `date,sku_group_id`.
 3. Уточнить семантику окна: `{{ ds }}` включен, потому что верхняя граница `< {{ next_ds }}`.
-4. Уточнить источник: есть ли уже silver-адаптер в Feature Platform или нужно выбрать Iceberg-источник через Trino/ClickHouse.
+4. Уточнить источник: есть ли уже silver-адаптер в Feature Platform или нужно выбрать source engine через Spark/Iceberg, Trino или ClickHouse.
 5. Уточнить ownership и alerts для новой сущности.
-6. Предложить слой:
+6. Уточнить время запуска DAG
+7. Предложить слой:
    - если это переиспользуемый дневной агрегат, возможно `silver`;
    - если это финальная модельная фича, `gold`.
-7. После подтверждения создать DDL, PySpark job, config, DAG, README и тестово прогнать локальные проверки.
+8. После подтверждения создать DDL, PySpark job, config, DAG, README и тестово прогнать локальные проверки.
 
 ## 6. Пример: создать на основе существующего silver/gold
 
@@ -176,7 +182,7 @@ dbt.source.trino.ml_feature_platform_<schema>.<table_name>.dq
 Пример запроса:
 
 ```text
-Собери признак продаж из корзины. Если готового источника в Feature Platform нет, проверь через Trino, какая Iceberg-таблица содержит атрибуцию и какие значения есть в `widget_space_name`.
+Собери признак продаж из корзины. Если готового источника в Feature Platform нет, проверь через Trino, какая таблица содержит атрибуцию и какие значения есть в `widget_space_name`. Перед MCP-инспекцией спроси подтверждение.
 ```
 
 Пример SQL-проверки источника:
@@ -196,6 +202,11 @@ LIMIT 50
 DESCRIBE iceberg.silver.order_items_attribution
 ```
 
+Перед генерацией DAG-а нужно подтвердить connection contract:
+
+- Trino: использовать `trino_default` или другой Airflow connection;
+- ClickHouse: пользователь должен явно назвать Airflow connection id, потому что доступ зависит от RBAC.
+
 После проверки источник фиксируется в контракте новой таблицы:
 
 - source table: `iceberg.silver.order_items_attribution`;
@@ -203,6 +214,8 @@ DESCRIBE iceberg.silver.order_items_attribution
 - filter: например `widget_space_name = 'CART'`;
 - дата/партиция: например `generated_at`;
 - downstream DQ/freshness ожидания.
+
+Если источник читается через Trino или ClickHouse без Spark, DAG должен использовать Airflow/Python runtime, читать через подтвержденный connection и писать результат в Iceberg через `pyiceberg`. Базовый image для такого паттерна - `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`. Если нужны сторонние библиотеки, которых нет в этом образе и которые нельзя доставить кодом репозитория, агент должен предложить создать или использовать отдельный образ и дождаться подтверждения.
 
 ## 8. Пример вопрос/ответ: какие признаки собираются для отзывов?
 
@@ -313,13 +326,14 @@ Grain: `date,sku_group_id`.
 `{{ ds }}` включаем, это Airflow macro за вчерашний день.
 Продажи считаем как `COUNT(DISTINCT order_id)`.
 Фильтр атрибуции: `widget_space_name = 'CART'`.
-Источник можно подобрать из Iceberg через Trino, если готовой Feature Platform таблицы нет.
+Источник можно подобрать через Spark/Iceberg, Trino или ClickHouse, если готовой Feature Platform таблицы нет.
 ```
 
 Обычно агент уточнит:
 
 - это финальная `gold`-фича или нужен переиспользуемый `silver`-агрегат;
-- какие source tables считать контрактными и нужно ли проверять их через Trino/ClickHouse;
+- какие source tables считать контрактными, какой source engine использовать, если это не ясно из контекста, и нужно ли проверять их через MCP;
+- какой Airflow connection использовать: для Trino `trino_default` или другой conn_id, для ClickHouse явно заданный пользователем conn_id;
 - какие join keys связывают источник продаж с целевой сущностью;
 - какие date boundaries у окон: включен ли `{{ ds }}`, какая верхняя граница, какие timestamp/date поля использовать;
 - какие статусы заказов считать продажей и как учитывать отмены/возвраты;
@@ -337,8 +351,6 @@ Grain: `date,sku_group_id`.
 layers/<silver_or_gold>/<entity_name>/v1/
   config.yaml
   dag.py
-  config/resources.yaml
-  config/fetch_*.yaml
   config/factory.py
   entrypoints/get_*.py
   job/arguments.py
@@ -354,13 +366,87 @@ layers/<silver_or_gold>/<entity_name>/v1/
 - `migrations/create_table.sql` создает Iceberg-таблицу и комментарии колонок. Эта миграция реально применяется CI после merge в `master`.
 - дополнительные migrations нужны для изменений уже существующих таблиц, например добавления новой колонки.
 - `job/arguments.py` и `job/entities.py` описывают runtime-аргументы, обычно `partition_start`, `partition_end` и `table_name`.
-- `job/getting_*.py` содержит основной PySpark-расчет: чтение источников, join, фильтры, окна, формулы и финальный `select`.
-- `entrypoints/*.py` создает `SparkSession`, читает аргументы, вызывает job и корректно закрывает Spark.
-- `dag.py` описывает Airflow DAG, расписание, Spark task и DQ/sensor dependencies.
-- `config/fetch_*.yaml` - SparkApplication template для запуска в Kubernetes.
-- `config/factory.py` подставляет в SparkApplication значения из config, resources, Airflow variables и macros.
-- `config/resources.yaml` задает ресурсы driver/executor.
+- `job/getting_*.py` содержит основной расчет: чтение источников, join, фильтры, окна, формулы и финальный output.
+- `entrypoints/*.py` создает `SparkSession`, читает аргументы, вызывает job и корректно закрывает Spark, если используется Spark.
+- `dag.py` описывает Airflow DAG, расписание, runtime task и DQ/sensor dependencies.
+- `config/factory.py` остается локальным для сущности и подставляет в SparkApplication или другой runtime template значения из `config.yaml`, Airflow connections и macros.
+- общий `config/spark/layer_spark_application.yaml` задает стандартный SparkApplication template для Spark layer DAG-ов.
+- общий `config/spark/resources.yaml` задает именованные resource profiles для driver/executor.
 - `README.md` фиксирует человеческий contract: назначение, источники, grain, окна, формулы, caveats и downstream-использование.
+
+Для Trino/ClickHouse-source DAG-ов структура может отличаться от SparkApplication-шаблона: Spark-specific `spark`/`spark_applications` блоки не нужны, если job не запускается в Spark. Но `config.yaml` итоговой таблицы должен оставаться совместимым с CI: `table.catalog: iceberg`, `table.schema`, `table.name`, `table.primary_key`, `table.meta.team`. Этих полей достаточно для генерации PR-ов в `dbt-trino` и Iceberg maintenance.
+
+### Конфигурация SparkApplication и ресурсов
+
+Для обычных Spark layer DAG-ов SparkApplication template и ресурсы не копируются в каждую сущность. Сущность хранит только короткую привязку в `config.yaml`, а общий template лежит в `config/spark/layer_spark_application.yaml`.
+
+Минимальный пример для одного DAG:
+
+```yaml
+resources:
+  path: ../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-gold-example-features
+  main_application_file: local:///git/repo/layers/gold/example_features/v1/entrypoints/get_example_features.py
+  resource_profile: small
+```
+
+Если у сущности несколько SparkApplication deployment-ов, например основной DAG и backfill DAG, используйте `spark_applications`. Ключ должен совпадать с именем deployment file, которое передается в `get_deployment(".", "...")` из `dag.py` или `dag_backfill.py`:
+
+```yaml
+resources:
+  path: ../../../../config/spark/resources.yaml
+
+spark_applications:
+  fetch_gold_example_features.yaml:
+    template_path: ../../../../config/spark/layer_spark_application.yaml
+    application_name: fetch-gold-example-features
+    main_application_file: local:///git/repo/layers/gold/example_features/v1/entrypoints/get_example_features.py
+    resource_profile: small
+  fetch_gold_example_features_backfill.yaml:
+    template_path: ../../../../config/spark/layer_spark_application.yaml
+    application_name: backfill-gold-example-features
+    main_application_file: local:///git/repo/layers/gold/example_features/v1/entrypoints/backfill_example_features.py
+    resource_profile: large
+```
+
+`application_name` становится базой Kubernetes `metadata.name`; фабрика добавляет к нему случайный suffix. `main_application_file` должен указывать на entrypoint внутри `/git/repo`. `resource_profile` выбирает профиль из общего `config/spark/resources.yaml`.
+
+Общий файл ресурсов содержит инфраструктурные значения и именованные профили:
+
+```json
+{
+  "app_type": "ml_spark_jobs",
+  "spark_event_log_bucket": "um-prod-spark-history",
+  "hive_metastore_uris": "thrift://hive-metastore.svc-data-hive-metastore.svc.cluster.local:9083",
+  "profiles": {
+    "small": {
+      "driver_cores": "1",
+      "driver_memory": "4g",
+      "executor_cores": "4",
+      "executor_instances": "3",
+      "executor_memory": "8g",
+      "maxExecutors": "3"
+    },
+    "large": {
+      "driver_cores": "1",
+      "driver_memory": "10g",
+      "executor_cores": "8",
+      "executor_instances": "5",
+      "executor_memory": "16g",
+      "maxExecutors": "5"
+    }
+  }
+}
+```
+
+Если нужны другие ресурсы, сначала уточните ожидаемый объем данных, окно backfill, SLA и допустимую стоимость. Затем добавьте новый именованный профиль в `profiles` и используйте его через `resource_profile`. Не заводите профиль на каждую сущность без необходимости: новый профиль нужен, когда ресурсов `small`/`large` недостаточно или хочется явно закрепить отдельный класс нагрузки.
+
+Для новых стандартных Spark layer jobs используйте default Spark image и `git-sync` из общего template. Локальный `config/fetch_*.yaml` или `config/resources.yaml` нужен только для осознанного исключения, которое должно быть описано в README сущности.
+
+Для Trino/ClickHouse-source Airflow/Python jobs используйте базовый image `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` и запись в Iceberg через `pyiceberg`. Если job требует стороннюю библиотеку, которой нет в этом image, сначала уточните у пользователя, создавать ли новый образ или использовать уже существующий custom image.
 
 Пример DDL для новой таблицы:
 
@@ -549,31 +635,48 @@ Ranking upload находится в `upload/ranking_features/v1`.
 - Для feature-platform зависимостей downstream DAG должен ждать dbt DQ DAG, а не Spark DAG.
 - Для внешних источников используйте DQ/source contract команды-владельца.
 - Не прячьте source table names в неочевидных константах: lineage должен читаться из job.
-- Не добавляйте custom Spark image для обычных code/config/SQL changes. Используйте default Spark image и `git-sync`.
+- Не добавляйте custom Spark image для обычных code/config/SQL changes. Используйте общий `config/spark/layer_spark_application.yaml`, default Spark image и `git-sync`.
+- Для Trino-source jobs уточняйте, использовать ли `trino_default` или другой Airflow connection. Для ClickHouse-source jobs всегда спрашивайте connection id у пользователя.
+- Trino и ClickHouse могут быть источниками, но итоговые признаки и агрегаты сохраняются в Iceberg.
+- Ресурсы driver/executor задавайте через именованный профиль в `config/spark/resources.yaml` и ссылку `resource_profile` в `config.yaml` сущности.
 - Не обновляйте `AGENTS.md` при добавлении каждой новой фичи. Детали фичи должны жить в README слоя, migration, config, DAG и job.
 - Перед финалом всегда упоминайте, какие проверки были запущены и что не удалось проверить локально.
 
-## 19. Если нужна нестандартная библиотека в Spark image
+## 19. Если нужен custom image
 
-Обычные изменения PySpark-кода, SQL, config, README и migrations не требуют сборки нового образа: код доставляется в Spark pod через `git-sync`.
+Обычные изменения job-кода, SQL, config, README и migrations не требуют сборки нового образа. Для Spark jobs код доставляется в pod через `git-sync`; для Trino/ClickHouse-source Airflow/Python jobs сначала используйте базовый image `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`.
 
-Custom Spark image нужен только когда runtime-зависимость должна быть внутри контейнера до старта job:
+Custom image нужен только когда runtime-зависимость должна быть внутри контейнера до старта job:
 
-- новая Python-библиотека, которой нет в default Spark image;
+- новая Python-библиотека, которой нет в default image;
 - truststore, сертификат или системный бинарь;
-- runtime-файл, который нельзя безопасно доставить через `git-sync`;
-- зависимость нужна и driver, и executors.
+- runtime-файл, который нельзя безопасно доставить через код репозитория;
+- для Spark: зависимость нужна и driver, и executors.
 
-Процесс для новой Python-библиотеки:
+Перед созданием образа агент должен предложить это пользователю и получить подтверждение. Если можно обойтись базовым image, новый образ не создается.
 
-1. Добавить библиотеку в `requirements.txt` рядом с Dockerfile того образа, который действительно используется job.
-2. Обновить Dockerfile так, чтобы он устанавливал зависимости из этого `requirements.txt`. Версии должны быть зафиксированы.
-3. Если пакет внутренний, установка должна идти через Nexus с credentials из Drone secrets. Credentials нельзя коммитить в репозиторий.
-4. Обновить SparkApplication image в config, если меняется имя или tag образа.
-5. Сделать PR, дождаться проверок и влить изменения в `master`.
-6. После merge в `master` один раз создать tag для сборки образа. Для ranking upload сейчас используется формат `spark-feature-platform-ranking-upload-*`.
-7. Дождаться Drone build по tag: он соберет Docker image и опубликует его в registry.
-8. После публикации образа проверить, что DAG использует нужный image tag и job стартует с новой зависимостью.
+Процесс:
+
+1. Создать или обновить Dockerfile для того runtime, который действительно использует job.
+2. Для Trino/ClickHouse-source Airflow/Python jobs брать за основу `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`.
+3. Для Spark jobs брать за основу активный Spark image, если другой base image не подтвержден отдельно.
+4. Добавить `requirements.txt` рядом с Dockerfile, если нужны Python-пакеты. Все версии должны быть зафиксированы.
+5. Обновить Dockerfile так, чтобы он устанавливал зависимости из `requirements.txt`.
+6. Если пакет внутренний, установка должна идти через Nexus с credentials из Drone secrets или build args. Credentials, tokens и приватные index URLs с секретами нельзя коммитить в репозиторий.
+7. Добавить или обновить отдельный Drone pipeline в `.drone.yaml` для сборки этого образа. Сейчас репозиторий уже умеет собирать только ranking upload image по tag `spark-feature-platform-ranking-upload-*`; для нового Airflow/Python или feature-specific image нужен отдельный pipeline.
+8. В новом pipeline указать registry repo, Dockerfile path, build args/secrets и отдельный tag trigger, например `feature-platform-airflow-<entity>-*`.
+9. Обновить DAG/runtime config, чтобы он ссылался на опубликованный image tag. Для Spark jobs это может быть SparkApplication image, для Airflow/Python jobs - image task/runtime pattern.
+10. В README сущности описать, зачем нужен custom image, какой зависимости не было в default image и какой tag использует DAG.
+11. Сделать PR, дождаться проверок и влить изменения в `master`.
+12. После merge в `master` создать и отправить tag для сборки образа, например:
+
+```bash
+git tag feature-platform-airflow-example-v0.1.0
+git push origin feature-platform-airflow-example-v0.1.0
+```
+
+13. Дождаться Drone build по tag: он соберет Docker image и опубликует его в registry.
+14. После публикации проверить, что DAG использует нужный image tag и job стартует с новой зависимостью.
 
 Важно: tag создается после merge, потому что Drone собирает образ из состояния `master` на момент tag. Повторно создавать tag нужно только при следующем изменении runtime-зависимостей или Dockerfile. Для обычных изменений job-кода новый tag не нужен.
 

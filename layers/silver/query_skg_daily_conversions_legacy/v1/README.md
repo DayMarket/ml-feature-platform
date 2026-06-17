@@ -6,7 +6,7 @@
 
 Основная логика:
 
-- читает события из `iceberg.silver_b2c_clickstream.events` за интервал `{{ ds }} 00:00:00` - `{{ next_ds }} 00:00:00`;
+- читает события из `iceberg.silver_b2c_clickstream.events` за UTC-интервал Airflow `data_interval_start` - `data_interval_end`;
 - использует `iceberg.silver.sku` для fallback-маппинга `sku_id` в `sku_group_id`;
 - повторяет старую query-нормализацию для событий: `lower(query)`, а затем `trim(query)` после джойна заказов;
 - считает `uniq_impressions` как `count(distinct session_id)` для `PRODUCT_IMPRESSION` в `SEARCH_RESULTS`;
@@ -16,4 +16,3 @@
 - фильтрует пустой query, query `0`, строки без показов и строки без `sku_group_id`/`platform`.
 
 Таблица является источником для gold-агрегации `iceberg.gold.feature_platform_query_skg_aggregated_conversions_legacy`.
-

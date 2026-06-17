@@ -1,7 +1,7 @@
 apiVersion: "sparkoperator.k8s.io/v1beta2"
 kind: SparkApplication
 metadata:
-  name: "fetch-gold-sku-group-feedback-base-stats-<random_string>"
+  name: "<application_name>-<random_string>"
   namespace: svc-data-spark-jobs
   labels:
     run-count: partition_start
@@ -11,7 +11,7 @@ spec:
   mode: cluster
   image: ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3
   imagePullPolicy: Always
-  mainApplicationFile: local:///git/repo/layers/gold/feedback_sku_group_id/v1/entrypoints/get_sku_group_feedback_base_stats.py
+  mainApplicationFile: <main_application_file>
   sparkVersion: "3.5.5"
   timeToLiveSeconds: 600
   nodeSelector:

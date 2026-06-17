@@ -19,4 +19,4 @@
 - `20260602_add_price_min_max_columns.sql` добавляет признаки `min_sell_price_eod`, `max_sell_price_eod`, `min_full_price_eod`, `max_full_price_eod` через `ALTER TABLE`;
 - job проверяет наличие новых колонок и применяет missing-column migration перед формированием датафрейма признаков.
 
-DAG запускается ежедневно в `01:00` и ждет DAG `dbt.models.dwh_trino.sku_eod`, который запускается в `00:00`.
+DAG запускается ежедневно в `01:00 UTC` и ждет DAG `dbt.models.dwh_trino.sku_eod`, который запускается в `00:00 UTC`.
