@@ -4,7 +4,7 @@ import random
 import string
 from typing import Any, Dict
 
-from airflow.hooks.base import BaseHook
+from airflow.sdk import BaseHook
 
 
 def _dag_root() -> str:
