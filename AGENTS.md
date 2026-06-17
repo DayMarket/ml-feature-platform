@@ -107,7 +107,7 @@ Use this workflow:
 - Add DQ sensor dependencies on DQ DAGs for feature-platform source tables. For external upstream tables, use the producing team's documented DAG/DQ contract.
 - For new Airflow/Spark jobs, pass interval boundaries with `{{ data_interval_start }}` and `{{ data_interval_end }}`-based templates instead of `{{ ds }}` and `{{ next_ds }}`. Convert them to the business timezone explicitly when the feature contract is timezone-specific.
 - When a requested DAG schedule is expressed in a business timezone, confirm or derive the actual Airflow cron timezone before writing `schedule_interval`; if Airflow schedules in UTC, convert the cron expression explicitly and document the business-time equivalent in the README or DAG comments.
-- When deriving a partition date from an interval argument in Python, parse the timestamp explicitly with a documented format instead of using string slicing such as `partition_start[:10]`.
+- When deriving a partition date from an interval argument in Python, parse the timestamp explicitly instead of using string slicing such as `partition_start[:10]`. New parsers must accept Airflow/Pendulum ISO timestamps with timezone (`2026-06-17T00:00:00+00:00`, `2026-06-17T00:00:00Z`, `2026-06-17 00:00:00+00:00`) as well as the shared-template format `YYYY-MM-DD HH:MM:SS`, and should raise a clear error that includes the unsupported value.
 - Decide whether generated DQ is enough. Propose table-specific DQ tests only when they are part of the feature contract and are not likely to be noisy or expensive.
 - Add ranking upload config only if the model/service needs the feature now.
 - Run local validation commands before finishing.
