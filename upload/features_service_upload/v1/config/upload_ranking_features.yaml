@@ -9,7 +9,7 @@ spec:
   mode: cluster
   image: cr.yandex/de-common/pyspark-feature-platform-ranking-upload:spark-feature-platform-ranking-upload-v0.1.0
   imagePullPolicy: Always
-  mainApplicationFile: local:///git/repo/upload/ranking_features/v1/entrypoints/upload_ranking_features.py
+  mainApplicationFile: local:///git/repo/upload/features_service_upload/v1/entrypoints/upload_ranking_features.py
   sparkVersion: "3.5.5"
   timeToLiveSeconds: 600
   nodeSelector:
@@ -39,7 +39,7 @@ spec:
     spark.sql.catalog.iceberg.s3.secret-access-key: <s3_secret_key>
     spark.sql.catalog.iceberg.s3.region: ru-central1
     spark.sql.catalog.iceberg.s3.path-style-access: "true"
-    spark.executorEnv.PYTHONPATH: /git/repo/upload/ranking_features/v1
+    spark.executorEnv.PYTHONPATH: /git/repo/upload/features_service_upload/v1
   arguments:
     - --run_date
     - <run_date>
@@ -47,6 +47,8 @@ spec:
     - <config_path>
     - --repo_root
     - /git/repo
+    - --feature_groups
+    - '<feature_groups>'
     - --kafka_topic
     - <kafka_topic>
     - --kafka_brokers

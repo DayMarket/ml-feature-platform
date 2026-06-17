@@ -517,19 +517,28 @@ GROUP BY
 
 ## 13. Дефолтные DQ-тесты
 
-Для repository-managed таблиц dbt source sync создает DQ tests в `dbt-trino`.
+Для каждой repository-managed таблицы набор DQ-тестов формируется автоматически — инженеру не нужно описывать их вручную. Логика заложена в генераторе `scripts/sync_dbt_sources.py` (см. `print_source_yaml`, строки ~280–334), а сами тесты создаются на стороне `dbt-trino` через source sync.
 
-По умолчанию:
+### Базовый набор — создаётся для любой таблицы
 
-- `dbt_utils.unique_combination_of_columns` по всем колонкам из `table.primary_key`;
-- `not_null` для каждой primary key колонки;
-- если в primary key есть `date`, добавляется freshness:
-  - `loaded_at_field = CAST(date AS timestamp) + INTERVAL '1' DAY`;
-  - `error_after: count: 2, period: day`;
-- если есть `date`, добавляется row-count test за предыдущий день с `min_rows: 0`;
-- если есть `date`, добавляется growth-limit test за предыдущий день с `max_growth_ratio: 0.2`.
+Основой служит первичный ключ таблицы. На его основе всегда генерируются два теста.
 
-Дополнительные DQ-тесты стоит предлагать только когда они являются частью feature contract:
+- `dbt_utils.unique_combination_of_columns` по всем колонкам из `table.primary_key` — гарантирует, что в таблице нет дублей на уровне ключа.
+- `not_null` для каждой колонки, входящей в первичный ключ — защищает от пропусков в полях, которые однозначно идентифицируют запись.
+
+### Расширенный набор — когда в ключе есть колонка `date`
+
+Если первичный ключ содержит колонку `date`, генератор понимает, что таблица партиционирована по дате, и добавляет ещё три проверки, отвечающие за свежесть и динамику данных.
+
+- Контроль свежести (freshness): `loaded_at_field = CAST(date AS timestamp) + INTERVAL '1' DAY`, порог тревоги `error_after: count: 2, period: day`. Если данные не обновлялись более двух дней, тест поднимает ошибку.
+- `row_count_greater_than_for_date` с `min_rows: 0` — проверяет, что за предыдущий день в таблице вообще появились строки. Имя теста: `<table>_previous_day_has_rows`.
+- `row_count_growth_within_limit` с `max_growth_ratio: 0.2` — ограничивает аномальный рост: объём данных за день не должен увеличиваться более чем на 20%. Имя теста: `<table>_previous_day_row_count_growth_within_20_percent`.
+
+Итог: «из коробки» каждая таблица получает контроль целостности ключа, а таблицы с датой — дополнительно полный набор проверок свежести и объёма данных.
+
+### Дополнительные DQ-тесты
+
+Поверх базового уровня дополнительные тесты стоит предлагать только когда они являются частью feature contract:
 
 - accepted values для enum/status;
 - range checks для ratio, probability, rating, price, count;

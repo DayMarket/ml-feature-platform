@@ -187,6 +187,138 @@ def validate_feature_group(
     return errors
 
 
+def validate_models(
+    config_path: Path,
+    config: dict[str, Any],
+    feature_groups_by_name: dict[str, dict[str, Any]],
+) -> list[str]:
+    errors = []
+    models = config.get("models")
+    if not isinstance(models, list) or not models:
+        return [f"{config_path}: models must not be empty"]
+
+    seen_model_names: set[str] = set()
+    referenced_group_names: set[str] = set()
+    for model in models:
+        model_name = str(model.get("name", ""))
+        if not model_name:
+            errors.append(f"{config_path}: model name must not be empty")
+            continue
+        if model_name in seen_model_names:
+            errors.append(f"{config_path}: duplicate model name {model_name}")
+        seen_model_names.add(model_name)
+
+        model_feature_groups = model.get("feature_groups")
+        if not isinstance(model_feature_groups, list) or not model_feature_groups:
+            errors.append(f"{config_path}: model {model_name} feature_groups must not be empty")
+            continue
+
+        model_group_names: set[str] = set()
+        for raw_group in model_feature_groups:
+            if not isinstance(raw_group, dict):
+                errors.append(
+                    f"{config_path}: model {model_name} feature_groups items "
+                    "must be objects with name and features"
+                )
+                continue
+
+            group_name = str(raw_group.get("name", ""))
+            if not group_name:
+                errors.append(f"{config_path}: model {model_name} has empty feature group name")
+                continue
+            if group_name in model_group_names:
+                errors.append(
+                    f"{config_path}: model {model_name} references feature group "
+                    f"{group_name} more than once"
+                )
+            model_group_names.add(group_name)
+            referenced_group_names.add(group_name)
+
+            feature_group = feature_groups_by_name.get(group_name)
+            if feature_group is None:
+                errors.append(
+                    f"{config_path}: model {model_name} references unknown "
+                    f"feature group {group_name}"
+                )
+                continue
+
+            features = raw_group.get("features")
+            if not isinstance(features, list) or not features:
+                errors.append(
+                    f"{config_path}: model {model_name} feature group "
+                    f"{group_name} features must not be empty"
+                )
+                continue
+            if len(features) != len(set(features)):
+                errors.append(
+                    f"{config_path}: model {model_name} feature group "
+                    f"{group_name} has duplicate features"
+                )
+
+            catalog_features = set(feature_group.get("features", []))
+            unknown_features = sorted(set(features) - catalog_features)
+            if unknown_features:
+                errors.append(
+                    f"{config_path}: model {model_name} feature group "
+                    f"{group_name} references unknown features {unknown_features}"
+                )
+
+    unused_group_names = sorted(set(feature_groups_by_name) - referenced_group_names)
+    if unused_group_names:
+        errors.append(
+            f"{config_path}: feature groups are not referenced by any model: "
+            f"{unused_group_names}"
+        )
+    return errors
+
+
+def print_model_components(config_path: Path, config: dict[str, Any]) -> None:
+    models = config["models"]
+    parent = {str(model["name"]): str(model["name"]) for model in models}
+
+    def find(model_name: str) -> str:
+        while parent[model_name] != model_name:
+            parent[model_name] = parent[parent[model_name]]
+            model_name = parent[model_name]
+        return model_name
+
+    def union(left: str, right: str) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    feature_group_models: dict[str, list[str]] = {}
+    for model in models:
+        model_name = str(model["name"])
+        group_names = [str(group["name"]) for group in model["feature_groups"]]
+        print(f"Ranking upload model: {model_name} feature_groups={group_names}")
+        for group_name in group_names:
+            feature_group_models.setdefault(group_name, []).append(model_name)
+
+    for sharing_models in feature_group_models.values():
+        first_model = sharing_models[0]
+        for model_name in sharing_models[1:]:
+            union(first_model, model_name)
+
+    components: dict[str, list[str]] = {}
+    for model in models:
+        model_name = str(model["name"])
+        components.setdefault(find(model_name), []).append(model_name)
+
+    for component_index, component_models in enumerate(components.values(), start=1):
+        component_groups = sorted(
+            group_name
+            for group_name, sharing_models in feature_group_models.items()
+            if set(sharing_models) & set(component_models)
+        )
+        print(
+            f"Ranking upload component {component_index} "
+            f"config={config_path} models={component_models} "
+            f"feature_groups={component_groups}"
+        )
+
+
 def main() -> int:
     repo_root = Path(".")
     tables = discover_tables(repo_root)
@@ -202,6 +334,11 @@ def main() -> int:
         feature_groups = config.get("feature_groups", [])
         if not feature_groups:
             errors.append(f"{config_path}: feature_groups must not be empty")
+        feature_groups_by_name = {
+            str(feature_group.get("name", "")): feature_group
+            for feature_group in feature_groups
+        }
+        errors.extend(validate_models(config_path, config, feature_groups_by_name))
         for feature_group in feature_groups:
             group_name = feature_group.get("name", "")
             if group_name in group_names:
@@ -210,6 +347,8 @@ def main() -> int:
                 )
             group_names.add(group_name)
             errors.extend(validate_feature_group(config_path, feature_group, tables))
+        if not errors:
+            print_model_components(config_path, config)
 
     if errors:
         print("Invalid ranking upload configs:")
