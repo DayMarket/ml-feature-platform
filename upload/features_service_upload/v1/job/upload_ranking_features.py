@@ -57,6 +57,42 @@ def _load_config(config_path: str) -> dict[str, Any]:
     return json.loads(Path(config_path).read_text(encoding="utf-8"))
 
 
+def _feature_group_catalog(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(feature_group["name"]): feature_group
+        for feature_group in config["feature_groups"]
+    }
+
+
+def _requested_feature_groups(
+    config: dict[str, Any],
+    feature_groups_argument: str | None,
+) -> list[dict[str, Any]]:
+    if not feature_groups_argument:
+        return config["feature_groups"]
+
+    requested_groups = json.loads(feature_groups_argument)
+    catalog = _feature_group_catalog(config)
+    selected_groups = []
+    for requested_group in requested_groups:
+        group_name = str(requested_group["name"])
+        if group_name not in catalog:
+            raise ValueError(f"Unknown requested feature group: {group_name}")
+
+        features = [str(feature) for feature in requested_group["features"]]
+        selected_group = dict(catalog[group_name])
+        selected_group["source"] = dict(catalog[group_name]["source"])
+        selected_group["features"] = features
+        if "log1p_features" in selected_group:
+            selected_group["log1p_features"] = [
+                feature
+                for feature in selected_group["log1p_features"]
+                if feature in features
+            ]
+        selected_groups.append(selected_group)
+    return selected_groups
+
+
 def _read_simple_nested_config(config_path: Path) -> dict[str, Any]:
     config: dict[str, Any] = {}
     stack: list[tuple[int, dict[str, Any]]] = [(-1, config)]
@@ -252,7 +288,12 @@ def _write_to_kafka(frame: DataFrame, arguments: Arguments) -> None:
 
 def run(spark: SparkSession, arguments: Arguments) -> None:
     config = _load_config(arguments.config_path)
-    for feature_group in config["feature_groups"]:
+    feature_groups = _requested_feature_groups(config, arguments.feature_groups)
+    print(
+        "Upload component feature groups: "
+        f"{[feature_group['name'] for feature_group in feature_groups]}"
+    )
+    for feature_group in feature_groups:
         metadata = _source_metadata(arguments.repo_root, feature_group)
         source_frame = _prepare_source_frame(
             spark,
