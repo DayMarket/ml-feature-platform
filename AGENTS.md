@@ -83,17 +83,22 @@ Use this workflow:
 
 - Classify the requested output: reusable pre-aggregate goes to `silver`; final model feature goes to `gold`; downstream publication goes to `upload`.
 - Run the duplicate feature check before scaffolding anything.
-- Present meaningful implementation options when more than one is reasonable, especially add-column vs new-table, internal table vs ranking upload, generated vs completed orders, and whether `{{ ds }}` is included.
+- Present meaningful implementation options when more than one is reasonable, especially add-column vs new-table, internal table vs ranking upload, generated vs completed orders, and whether interval boundaries are inclusive or exclusive.
 - Clarify entity grain, source tables, join keys, attribution/filter spaces, date boundaries, lookbacks, generated/completed/returned semantics, null/zero denominator behavior, ranking publication, ownership, alerts, and on-call settings.
+- When creating or changing a DAG, if the user did not explicitly provide the DAG start date and no existing contract determines it, ask the user to confirm `start_date` instead of choosing one silently.
 - For new entities, ownership and alerting are never safely inferred. Explicitly confirm `table.meta.team`, `dag.team`, `alerts.team`, alert severity, and on-call webhook before scaffolding configs or DAGs.
 - If a feature depends on source tables, source values, or business semantics that are not explicit in the current context, ask whether to use MCP tools such as Trino or ClickHouse or whether the user will provide the contract. Do this even when a plausible table or column was found in the repository.
 - After duplicate checks and clarification, summarize the selected contract back to the user before editing files.
 - Choose the entity grain and primary key. Include `date` for scheduled snapshots unless there is a deliberate exception documented in README and code.
 - Add or update migrations first. Use idempotent DDL and include comments for all output columns.
 - Implement PySpark using existing local patterns. Prefer Spark functions/DataFrame API where it improves maintainability; Spark SQL is acceptable when it mirrors a validated analytical SQL clearly.
+- In SQL code, avoid defensive or cosmetic type casts and other no-op transformations. Add `CAST`, `COALESCE`, `DISTINCT`, `MAX`, trimming, normalization, or similar operations only when the source contract requires them, the target schema cannot be written safely without them, or the business logic explicitly depends on them. Keep such operations close to the reason they are needed.
 - Keep source table names visible in transformation code or config; do not hide lineage behind opaque constants.
 - Update the full entity surface together: `config.yaml`, `dag.py`, resources, SparkApplication template, factory, entrypoint, job code, migrations, and README.
 - Add DQ sensor dependencies on DQ DAGs for feature-platform source tables. For external upstream tables, use the producing team's documented DAG/DQ contract.
+- For new Airflow/Spark jobs, pass interval boundaries with `{{ data_interval_start }}` and `{{ data_interval_end }}`-based templates instead of `{{ ds }}` and `{{ next_ds }}`. Convert them to the business timezone explicitly when the feature contract is timezone-specific.
+- When a requested DAG schedule is expressed in a business timezone, confirm or derive the actual Airflow cron timezone before writing `schedule_interval`; if Airflow schedules in UTC, convert the cron expression explicitly and document the business-time equivalent in the README or DAG comments.
+- When deriving a partition date from an interval argument in Python, parse the timestamp explicitly with a documented format instead of using string slicing such as `partition_start[:10]`.
 - Decide whether generated DQ is enough. Propose table-specific DQ tests only when they are part of the feature contract and are not likely to be noisy or expensive.
 - Add ranking upload config only if the model/service needs the feature now.
 - Run local validation commands before finishing.
@@ -113,7 +118,7 @@ Final response checklist for new/changed tables:
 - Target table, layer, and repository path.
 - Grain and primary key.
 - Source tables or paths, join keys, important filters, and source-contract caveats.
-- Collection semantics: windows, date boundaries, whether `{{ ds }}` is included, lookbacks, query normalization, denominator/null behavior, and non-obvious logic.
+- Collection semantics: windows, date boundaries, `data_interval_start`/`data_interval_end` inclusion or exclusion, lookbacks, query normalization, denominator/null behavior, and non-obvious logic.
 - Output columns/features.
 - DQ behavior and whether table-specific DQ was added or intentionally left out.
 - Runtime/deployment: default Spark image with `git-sync` or custom image reason.
@@ -270,7 +275,7 @@ Configuration rules:
 
 ## Common Corner Cases
 
-- `{{ ds }}` usually means the partition date being written. Some business logic intentionally uses data strictly before `ds`; inspect the job and README before assuming inclusion/exclusion.
+- Legacy jobs may still use `{{ ds }}` as the partition date being written. Some business logic intentionally uses data strictly before that date; inspect the job and README before assuming inclusion/exclusion.
 - Trino table names such as `"dwh-iceberg".silver.table` map to Spark names such as `iceberg.silver.table`.
 - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` support can differ by engine. Repository migrations run through PySpark, so validate syntax against Spark/Iceberg.
 - Spark worker imports must be available on executors. If a UDF imports project code, configure executor `PYTHONPATH` and `git-sync` for executors.
