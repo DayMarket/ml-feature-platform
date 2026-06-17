@@ -29,13 +29,14 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-from airflow.decorators import dag
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
 
 DAG_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, DAG_DIR)
 
 from config.factory import get_dag_settings, get_deployment
+from airflow.sdk import dag
+from airflow.timetables.interval import CronDataIntervalTimetable
 
 dag_settings = get_dag_settings()
 
@@ -65,7 +66,7 @@ default_args = {
         "backfill",
     ],
     is_paused_upon_creation=True,
-    schedule_interval="@daily",
+    schedule=CronDataIntervalTimetable('0 0 * * *', 'UTC'),
     start_date=datetime(2026, 4, 1, 0, 0, 0, tzinfo=timezone.utc),
     end_date=datetime(2026, 6, 11, 0, 0, 0, tzinfo=timezone.utc),
     dag_id="feature_platform_query_skg_pairwise_features_legacy_gold_backfill_dag",

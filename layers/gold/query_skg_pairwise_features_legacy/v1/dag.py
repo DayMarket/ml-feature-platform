@@ -3,7 +3,6 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-from airflow.decorators import dag
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
 from airflow.sensors.external_task import ExternalTaskSensor
 
@@ -13,6 +12,8 @@ DAG_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, DAG_DIR)
 
 from config.factory import get_dag_settings, get_deployment
+from airflow.sdk import dag
+from airflow.timetables.interval import CronDataIntervalTimetable
 
 dag_settings = get_dag_settings()
 
@@ -38,7 +39,7 @@ default_args = {
     max_active_runs=1,
     tags=["spark", "feature-platform", dag_settings["team_tag"], "gold", "legacy", "query-skg"],
     is_paused_upon_creation=True,
-    schedule_interval="30 3 * * *",
+    schedule=CronDataIntervalTimetable('30 3 * * *', 'UTC'),
     start_date=datetime(2026, 6, 10, 0, 0, 0, tzinfo=timezone.utc),
     dag_id="feature_platform_query_skg_pairwise_features_legacy_gold_dag",
 )

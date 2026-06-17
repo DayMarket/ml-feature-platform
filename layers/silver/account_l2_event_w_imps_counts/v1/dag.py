@@ -4,7 +4,6 @@ import sys
 from datetime import timedelta
 
 import pendulum
-from airflow.decorators import dag
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
 
 from airflow_commons.helpers.oncall import send_oncall_notification
@@ -13,6 +12,8 @@ DAG_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, DAG_DIR)
 
 from config.factory import get_dag_settings, get_deployment
+from airflow.sdk import dag
+from airflow.timetables.interval import CronDataIntervalTimetable
 
 dag_settings = get_dag_settings()
 
@@ -38,7 +39,7 @@ default_args = {
     max_active_runs=1,
     tags=["spark", "feature-platform", dag_settings["team_tag"], "silver", "account-category"],
     is_paused_upon_creation=True,
-    schedule_interval="0 19 * * *",
+    schedule=CronDataIntervalTimetable('0 19 * * *', 'UTC'),
     start_date=pendulum.datetime(2026, 6, 1, 0, 0, 0, tz="Asia/Tashkent"),
     dag_id="feature_platform_account_l2_event_w_imps_counts_silver_dag",
 )
