@@ -17,6 +17,9 @@ SELECTED_COLUMNS = (
     "smooth_conv_imp2order_3",
     "smooth_conv_imp2order_7",
     "smooth_conv_imp2order_14",
+    "conv_imp2order_3",
+    "conv_imp2order_7",
+    "conv_imp2order_14",
     "imp2order_3_to_1",
     "imp2order_21_to_14",
     "imp2order_30_to_21",
@@ -30,6 +33,10 @@ def _load_migration_query(migration_name: str) -> str:
 
 def _safe_div(num: Column, den: Column) -> Column:
     return num / den
+
+
+def _zero_div(num: Column, den: Column) -> Column:
+    return F.when(den == F.lit(0.0), F.lit(0.0)).otherwise(num / den)
 
 
 def _window_bounds(run_date: str) -> tuple[str, str, dict[int, str]]:
@@ -149,14 +156,23 @@ def build_sku_group_search_conversion_features(
         )
 
     for window in (3, 7, 14):
-        features = features.withColumn(
-            f"smooth_conv_imp2order_{window}",
-            (
-                F.lit(SMOOTH_ALPHA) + F.col(f"skg_uniq_orders_{window}")
-            ) / (
-                F.lit(SMOOTH_ALPHA + SMOOTH_BETA)
-                + F.col(f"skg_uniq_impressions_{window}")
-            ),
+        features = (
+            features.withColumn(
+                f"smooth_conv_imp2order_{window}",
+                (
+                    F.lit(SMOOTH_ALPHA) + F.col(f"skg_uniq_orders_{window}")
+                ) / (
+                    F.lit(SMOOTH_ALPHA + SMOOTH_BETA)
+                    + F.col(f"skg_uniq_impressions_{window}")
+                ),
+            )
+            .withColumn(
+                f"conv_imp2order_{window}",
+                _zero_div(
+                    F.col(f"skg_uniq_orders_{window}"),
+                    F.col(f"skg_uniq_impressions_{window}"),
+                ),
+            )
         )
 
     return (
