@@ -5,7 +5,8 @@
 ## Выход и оркестрация
 
 - Таблица: `iceberg.silver.feature_platform_dp_neighbor_order_features`.
-- DAG: `ml-feature-platform.layers.silver.dp_neighbor_order_features` (`layers/silver/dp_neighbor_order_features/v1/dag.py`).
+- DAG: `feature-platform.layers.silver.dp_neighbor_order_features` (`layers/silver/dp_neighbor_order_features/v1/dag.py`).
+- Групповой тег Airflow: `location-h3-forecast`.
 - Расписание: ежедневно в 00:00 UTC, `start_date=2026-06-19T00:00:00Z`.
 
 ## Грейн / ключ

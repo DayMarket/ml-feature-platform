@@ -6,7 +6,8 @@
 ## Выход и оркестрация
 
 - Таблица: `iceberg.gold.feature_platform_location_h3_forecast_features`.
-- DAG: `ml-feature-platform.layers.gold.location_h3_forecast_features` (`layers/gold/location_h3_forecast_features/v1/dag.py`).
+- DAG: `feature-platform.layers.gold.location_h3_forecast_features` (`layers/gold/location_h3_forecast_features/v1/dag.py`).
+- Групповой тег Airflow: `location-h3-forecast`.
 - Расписание: ежедневно в 00:00 UTC, `start_date=2026-06-19T00:00:00Z`.
 
 ## Грейн / ключ

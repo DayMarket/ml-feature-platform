@@ -22,7 +22,9 @@ Owner metadata:
 ## First Rules
 
 - Read this file first, then inspect the relevant repository files. Do not rely on memory or on this handbook as a feature inventory.
-- Layer DAG ids must encode the repository path using Airflow-safe dots: `ml-feature-platform.layers.<layer>.<entity>`, without the version suffix. For example, `layers/gold/location_h3_forecast_features/v1/dag.py` must use `ml-feature-platform.layers.gold.location_h3_forecast_features`. Airflow keys allow only alphanumeric characters, dashes, dots, and underscores, so never use path slashes in a DAG id. Do not invent shorter aliases such as `location_forecast_features_dag`.
+- The canonical Airflow namespace is `feature-platform`; `ml-feature-platform` is only the Git repository name. Do not mix these values in DAG ids or tags.
+- Layer DAG ids must encode the repository path using Airflow-safe dots: `feature-platform.layers.<layer>.<entity>`, without the version suffix. For example, `layers/gold/location_h3_forecast_features/v1/dag.py` must use `feature-platform.layers.gold.location_h3_forecast_features`. Airflow keys allow only alphanumeric characters, dashes, dots, and underscores, so never use path slashes in a DAG id. Do not invent shorter aliases such as `location_forecast_features_dag`.
+- Every related DAG group must have one repository-unique, human-readable Airflow group tag, stored as `dag.group_tag` in each member entity's `config.yaml` and added to each member DAG from config. All DAGs in the group must use the exact same tag, unrelated DAGs must not reuse it, and each entity README must state it. For example, the location forecast chain uses `location-h3-forecast`.
 - Every layer entity README must state the fully qualified output table (`<catalog>.<schema>.<name>`) and the exact DAG id. Keep both values consistent with `config.yaml` and `dag.py`.
 - `layers/` is an entity tree, not a shared-library root. Do not create `layers/_common`, `layers/_commons`, or another cross-entity utility package there. Keep an entity's runtime, query, write, and orchestration code inside its own `layers/<layer>/<entity>/vN/` directory. If reuse is genuinely needed, first identify an existing approved top-level shared location or ask the user to approve a repository-wide abstraction; do not introduce one implicitly.
 - One repository-managed layer table means one self-contained entity directory and orchestration contract. Do not declare several independent silver tables in separate configs while materializing them from a gold entity's DAG or code. Each silver entity owns its own DAG, source query/job, runtime configuration, migration, and README; the gold entity only reads completed silver outputs.
@@ -170,6 +172,19 @@ When asked for lineage, answer from final feature back to all sources. Include:
 - Migration, code, and README paths.
 - Ranking upload feature group and feature order if published.
 - Known caveats from the implementation.
+
+## Production Comments And Docstrings
+
+Comments and docstrings in production DAGs and jobs are part of the maintained contract. Keep them strict, short, and specific to the actual entity and values:
+
+- Prefer a one-line module docstring that states the current responsibility, for example `"""Write the daily geo activity snapshot to Iceberg."""`. Use a longer docstring only when a non-obvious input, output, invariant, or failure mode cannot be expressed clearly in one or two additional lines.
+- Do not add narrative module headers that describe repository history, announce that an implementation is the first of its kind, explain how the agent arrived at the design, or broadly introduce the platform. Phrases such as “This is the first non-Spark runtime” do not belong in production code.
+- Do not duplicate README, `AGENTS.md`, deployment, image, connection, warehouse, credential, or dependency documentation in code comments. Put the durable operational contract in the entity README and keep runtime values in `config.yaml` or the appropriate configuration source.
+- Comments must describe the concrete entity behavior or the reason for a non-obvious decision. Do not restate the following code, advertise implementation details, or use generic template prose such as “shared runtime for feature-platform jobs.”
+- Adapt every comment to the values actually used by that entity. Verify table layer/name, source engine, connection, partition field, interval boundary, schedule, and dependency names; never copy a comment from another DAG without reconciling those values.
+- Keep comments adjacent to the invariant they protect. If code or configuration makes a comment false or redundant, update or remove the comment in the same change.
+- Lazy imports may have a short reason such as `# Runtime-only dependency; unavailable in migration validation.` Do not use a multi-paragraph docstring to list packages, images, catalog wiring, or credential sources.
+- Treat oversized or stale explanatory headers as a production-readiness defect. Agents must shorten or remove them while editing the affected DAG/job, even when the functional code is otherwise correct.
 
 ## Layer Layout
 

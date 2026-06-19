@@ -104,7 +104,7 @@ def get_dag_default_args() -> dict:
     default_args=get_dag_default_args(),
     dag_id=CONFIG["dag"]["id"],
     max_active_runs=1,
-    tags=["feature-platform", "operations", "gold", "geo", "h3", "forecast"],
+    tags=["feature-platform", CONFIG["dag"]["group_tag"], "operations", "gold", "geo", "h3", "forecast"],
     dagrun_timeout=timedelta(hours=3),
     is_paused_upon_creation=True,
     schedule=CronDataIntervalTimetable(

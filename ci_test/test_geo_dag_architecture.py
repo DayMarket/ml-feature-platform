@@ -16,6 +16,7 @@ SILVER_ENTITIES = (
     "geo_yandex_poi_features",
 )
 GOLD_ENTITY = "location_h3_forecast_features"
+GROUP_TAG = "location-h3-forecast"
 
 
 def load_runtime(path: Path, name: str):
@@ -52,7 +53,7 @@ class GeoDagArchitectureTest(unittest.TestCase):
                 config = yaml.safe_load(
                     (entity_dir / "config.yaml").read_text(encoding="utf-8")
                 )
-                expected_dag_id = f"ml-feature-platform.layers.{layer}.{entity}"
+                expected_dag_id = f"feature-platform.layers.{layer}.{entity}"
                 expected_table = (
                     f"{config['table']['catalog']}."
                     f"{config['table']['schema']}."
@@ -63,12 +64,32 @@ class GeoDagArchitectureTest(unittest.TestCase):
                 self.assertTrue((entity_dir / "dag.py").is_file())
                 self.assertTrue((entity_dir / "job" / "runtime.py").is_file())
                 self.assertEqual(config["dag"]["id"], expected_dag_id)
+                self.assertEqual(config["dag"]["group_tag"], GROUP_TAG)
                 self.assertIsNotNone(
                     re.fullmatch(r"[A-Za-z0-9_.-]+", config["dag"]["id"]),
                     "DAG id must satisfy Airflow validate_key",
                 )
                 self.assertIn(expected_dag_id, readme)
                 self.assertIn(expected_table, readme)
+                self.assertIn(GROUP_TAG, readme)
+                dag_source = (entity_dir / "dag.py").read_text(encoding="utf-8")
+                self.assertIn('CONFIG["dag"]["group_tag"]', dag_source)
+
+    def test_group_tag_is_not_reused_outside_location_forecast_group(self):
+        expected_configs = {
+            ROOT / "layers" / "silver" / entity / "v1" / "config.yaml"
+            for entity in SILVER_ENTITIES
+        }
+        expected_configs.add(
+            ROOT / "layers" / "gold" / GOLD_ENTITY / "v1" / "config.yaml"
+        )
+        actual_configs = set()
+        for config_path in (ROOT / "layers").glob("**/config.yaml"):
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if config.get("dag", {}).get("group_tag") == GROUP_TAG:
+                actual_configs.add(config_path)
+
+        self.assertEqual(actual_configs, expected_configs)
 
     def test_forbidden_layers_common_is_not_tracked(self):
         tracked_common = [
