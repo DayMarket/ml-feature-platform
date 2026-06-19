@@ -17,7 +17,7 @@ runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
 
 dag:
-  id: ml-feature-platform/layers/gold/location_h3_forecast_features
+  id: ml-feature-platform.layers.gold.location_h3_forecast_features
   schedule: "0 0 * * *"
   start_date: "2026-06-19T00:00:00Z"
   team: operations

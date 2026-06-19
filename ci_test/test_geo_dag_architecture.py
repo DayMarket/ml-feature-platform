@@ -1,4 +1,5 @@
 import importlib.util
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -51,7 +52,7 @@ class GeoDagArchitectureTest(unittest.TestCase):
                 config = yaml.safe_load(
                     (entity_dir / "config.yaml").read_text(encoding="utf-8")
                 )
-                expected_dag_id = f"ml-feature-platform/layers/{layer}/{entity}"
+                expected_dag_id = f"ml-feature-platform.layers.{layer}.{entity}"
                 expected_table = (
                     f"{config['table']['catalog']}."
                     f"{config['table']['schema']}."
@@ -62,6 +63,10 @@ class GeoDagArchitectureTest(unittest.TestCase):
                 self.assertTrue((entity_dir / "dag.py").is_file())
                 self.assertTrue((entity_dir / "job" / "runtime.py").is_file())
                 self.assertEqual(config["dag"]["id"], expected_dag_id)
+                self.assertIsNotNone(
+                    re.fullmatch(r"[A-Za-z0-9_.-]+", config["dag"]["id"]),
+                    "DAG id must satisfy Airflow validate_key",
+                )
                 self.assertIn(expected_dag_id, readme)
                 self.assertIn(expected_table, readme)
 
@@ -146,4 +151,3 @@ class GeoDagArchitectureTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

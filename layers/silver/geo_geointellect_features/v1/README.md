@@ -5,7 +5,7 @@
 ## Выход и оркестрация
 
 - Таблица: `iceberg.silver.feature_platform_geo_geointellect_features`.
-- DAG: `ml-feature-platform/layers/silver/geo_geointellect_features` (`layers/silver/geo_geointellect_features/v1/dag.py`).
+- DAG: `ml-feature-platform.layers.silver.geo_geointellect_features` (`layers/silver/geo_geointellect_features/v1/dag.py`).
 - Расписание: ежедневно в 00:00 UTC, `start_date=2026-06-19T00:00:00Z`.
 
 ## Грейн / ключ
