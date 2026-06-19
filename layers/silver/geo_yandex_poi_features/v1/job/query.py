@@ -16,9 +16,6 @@ from __future__ import annotations
 
 from typing import Dict, Tuple
 
-TABLE_IDENTIFIER = "silver.feature_platform_geo_yandex_poi_features"
-CLICKHOUSE_CONN_ID = "clickhouse_dwh_team_logistics"
-
 RINGS = [0, 1, 2, 3, 4, 5]
 # (output prefix, source category_sub value)
 CATEGORIES = [

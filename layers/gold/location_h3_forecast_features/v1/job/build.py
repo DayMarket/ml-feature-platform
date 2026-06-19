@@ -12,16 +12,6 @@ from __future__ import annotations
 
 from datetime import date
 
-GOLD_IDENTIFIER = "gold.feature_platform_location_h3_forecast_features"
-
-SILVER = {
-    "geo": "silver.feature_platform_geo_geointellect_features",
-    "dp": "silver.feature_platform_dp_neighbor_order_features",
-    "act": "silver.feature_platform_geo_user_activity_features",
-    "loc": "silver.feature_platform_geo_user_location_features",
-    "poi": "silver.feature_platform_geo_yandex_poi_features",
-}
-
 _DP_COLUMNS = [
     "h3_index",
     "min_dist_to_dp_m",
@@ -67,12 +57,12 @@ _RENAMES = {
 
 
 def build_gold(read_partition, partition_date: date):
-    """``read_partition(identifier, partition_date) -> pandas.DataFrame``."""
-    geo = read_partition(SILVER["geo"], partition_date)
-    dp = read_partition(SILVER["dp"], partition_date)[_DP_COLUMNS]
-    act = read_partition(SILVER["act"], partition_date)[_ACT_COLUMNS]
-    loc = read_partition(SILVER["loc"], partition_date)[_LOC_COLUMNS]
-    poi = read_partition(SILVER["poi"], partition_date)[_POI_COLUMNS]
+    """Build gold from entity aliases resolved and preflighted by the DAG."""
+    geo = read_partition("geo", partition_date)
+    dp = read_partition("dp", partition_date)[_DP_COLUMNS]
+    act = read_partition("act", partition_date)[_ACT_COLUMNS]
+    loc = read_partition("loc", partition_date)[_LOC_COLUMNS]
+    poi = read_partition("poi", partition_date)[_POI_COLUMNS]
 
     # geointellect is the base grid (every candidate hex), others are left-joined.
     df = (
@@ -94,25 +84,3 @@ def build_gold(read_partition, partition_date: date):
     df["min_dist_to_inshop_m"] = df["min_dist_to_inshop_m"].fillna(10000)
     df = df.fillna(0)
     return df
-
-
-def run(catalog, partition_date: date) -> None:
-    import sys
-    import os
-
-    sys.path.insert(0, os.path.join(_repo_root(), "layers", "_common"))
-    from clickhouse_iceberg import read_iceberg_date, write_daily_snapshot
-
-    def read_partition(identifier, day):
-        return read_iceberg_date(catalog, identifier, day)
-
-    frame = build_gold(read_partition, partition_date)
-    write_daily_snapshot(catalog, GOLD_IDENTIFIER, frame, partition_date)
-
-
-def _repo_root() -> str:
-    import os
-
-    return os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..")
-    )

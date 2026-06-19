@@ -1,6 +1,12 @@
-# silver.feature_platform_dp_neighbor_order_features
+# iceberg.silver.feature_platform_dp_neighbor_order_features
 
 Соседские (конкурентные) заказные/GMV-агрегаты ПВЗ и дистанции до ближайших точек по гексагонам H3 (res 9).
+
+## Выход и оркестрация
+
+- Таблица: `iceberg.silver.feature_platform_dp_neighbor_order_features`.
+- DAG: `ml-feature-platform/layers/silver/dp_neighbor_order_features` (`layers/silver/dp_neighbor_order_features/v1/dag.py`).
+- Расписание: ежедневно в 00:00 UTC, `start_date=2026-06-19T00:00:00Z`.
 
 ## Грейн / ключ
 `date, h3_index`. `date` — дата расчёта (data_interval_end в UTC). `h3_index` — H3-индекс центрального гексагона.
@@ -19,13 +25,14 @@
 ## Рантайм
 
 ClickHouse-source пайплайн (Airflow/Python + `pyiceberg`), **не** Spark. Чтение из ClickHouse через
-connection `clickhouse_dwh_team_logistics`, запись в Iceberg через общий модуль
-`layers/_common/clickhouse_iceberg.py`. Образ задачи: `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`.
+connection `clickhouse_dwh_team_logistics`, запись выполняет entity-local модуль `job/runtime.py`.
+Образ задачи: `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`.
 Каталог Iceberg (Hive metastore, warehouse, YC S3) настроен идентично Spark-шаблону
 `config/spark/layer_spark_application.yaml`; ключи S3 берутся из connection `spark_ycs_connection`.
 
-Оркестрация — DAG `location_forecast_features_dag` (`layers/gold/location_h3_forecast_features/v1/dag.py`),
-ежедневно 00:00 UTC. Запись идемпотентна: партиция `date` перезаписывается целиком (`overwrite` по фильтру `date`).
+Перед запросом к ClickHouse DAG проверяет существование таблицы через PyIceberg с идентификатором
+`("silver", "feature_platform_dp_neighbor_order_features")`. Запись идемпотентна: партиция `date` перезаписывается целиком
+(`overwrite` по фильтру `date`).
 
 ## Владелец / алерты
 
