@@ -14,6 +14,7 @@ CREATE_TABLE_PATTERN = re.compile(
     r"CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+(?P<table>[^\s(]+)",
     re.IGNORECASE,
 )
+MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 PRIMARY_KEY_GROUP_EXCEPTIONS = {
     ("silver", "sku_group_install"): "sku_group_id_query_category",
@@ -40,6 +41,13 @@ def main() -> int:
     if layout_errors:
         print("Invalid layer layout:")
         for error in layout_errors:
+            print(f"- {error}")
+        return 1
+
+    readme_errors = validate_layer_readme_links(Path("."))
+    if readme_errors:
+        print("Invalid layer README navigation:")
+        for error in readme_errors:
             print(f"- {error}")
         return 1
 
@@ -206,6 +214,8 @@ def validate_layer_layout(repo_root: Path) -> list[str]:
         expected_dag_id = f"feature-platform.layers.{layer}.{actual_group}.{entity}"
         dag_path = config_path.parent / "dag.py"
         readme_path = config_path.parent / "README.md"
+        group_readme_path = repo_root / "layers" / layer / actual_group / "README.md"
+        layer_readme_path = repo_root / "layers" / layer / "README.md"
         dag_contract = config_path.read_text(encoding="utf-8")
         if dag_path.is_file():
             dag_contract += dag_path.read_text(encoding="utf-8")
@@ -215,6 +225,41 @@ def validate_layer_layout(repo_root: Path) -> list[str]:
             encoding="utf-8"
         ):
             errors.append(f"{config_path}: README must state DAG id {expected_dag_id!r}")
+        entity_link = f"{entity}/{version}/README.md"
+        if not group_readme_path.is_file() or entity_link not in group_readme_path.read_text(
+            encoding="utf-8"
+        ):
+            errors.append(
+                f"{config_path}: {group_readme_path} must link to {entity_link!r}"
+            )
+        group_link = f"{actual_group}/README.md"
+        if not layer_readme_path.is_file() or group_link not in layer_readme_path.read_text(
+            encoding="utf-8"
+        ):
+            errors.append(
+                f"{config_path}: {layer_readme_path} must link to {group_link!r}"
+            )
+
+    return errors
+
+
+def validate_layer_readme_links(repo_root: Path) -> list[str]:
+    errors = []
+    layers_root = repo_root / "layers"
+    root_readme = layers_root / "README.md"
+    if not root_readme.is_file():
+        errors.append(f"{root_readme}: missing layer navigation README")
+
+    for readme_path in sorted(layers_root.glob("**/README.md")):
+        for raw_target in MARKDOWN_LINK_PATTERN.findall(
+            readme_path.read_text(encoding="utf-8")
+        ):
+            target = raw_target.split("#", 1)[0]
+            if not target or "://" in target or target.startswith("mailto:"):
+                continue
+            resolved = (readme_path.parent / target).resolve()
+            if not resolved.exists():
+                errors.append(f"{readme_path}: broken link {raw_target!r}")
 
     return errors
 
