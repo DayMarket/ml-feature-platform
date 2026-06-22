@@ -5,7 +5,7 @@
 ## Выход и оркестрация
 
 - Таблица: `iceberg.silver.feature_platform_geo_yandex_poi_features`.
-- DAG: `feature-platform.layers.silver.geo_yandex_poi_features` (`layers/silver/geo_yandex_poi_features/v1/dag.py`).
+- DAG: `feature-platform.layers.silver.h3_index.geo_yandex_poi_features` (`layers/silver/h3_index/geo_yandex_poi_features/v1/dag.py`).
 - Групповой тег Airflow: `location-h3-forecast`.
 - Расписание: ежедневно в 00:00 UTC, `start_date=2026-06-19T00:00:00Z`.
 

@@ -1,5 +1,7 @@
 # Gold Pairwise Features Query/SKU Group Legacy
 
+DAG id: `feature-platform.layers.gold.query_sku_group_id.query_skg_pairwise_features_legacy`.
+
 Пайплайн восстанавливает legacy pairwise-слой для `fs_search_query_skg_v3`.
 
 Целевая таблица: `iceberg.gold.feature_platform_query_skg_pairwise_features_legacy`.

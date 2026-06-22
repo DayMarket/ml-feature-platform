@@ -1,5 +1,7 @@
 # Silver Daily Conversions Query/SKU Group Legacy
 
+DAG id: `feature-platform.layers.silver.query_platform_sku_group_id.query_skg_daily_conversions_legacy`.
+
 Пайплайн собирает дневные legacy-конверсии поиска на уровне `date`, `query`, `platform`, `sku_group_id`.
 
 Целевая таблица: `iceberg.silver.feature_platform_query_skg_daily_conversions_legacy`.

@@ -1,5 +1,7 @@
 # Gold Price Features по SKU Group ID
 
+DAG id: `feature-platform.layers.gold.sku_group_id.sku_group_price_features`.
+
 Пайплайн собирает дневные ценовые признаки на уровне `sku_group_id`.
 
 Целевая таблица: `iceberg.gold.feature_platform_sku_group_price_features`.

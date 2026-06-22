@@ -6,7 +6,7 @@
 
 ## Оркестрация
 
-DAG id: `feature_platform_sku_group_install_silver_stats_dag`.
+DAG id: `feature-platform.layers.silver.sku_group_id_query_category.sku_group_install`.
 
 Расписание: ежедневно в `01:00 UTC`.
 

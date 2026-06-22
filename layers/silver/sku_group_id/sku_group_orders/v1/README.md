@@ -1,5 +1,7 @@
 # Silver-заказы по SKU Group ID
 
+DAG id: `feature-platform.layers.silver.sku_group_id.sku_group_orders`.
+
 Пайплайн собирает дневную статистику заказов на уровне `sku_group_id`.
 
 Целевая таблица: `iceberg.silver.feature_platform_sku_group_orders`.

@@ -41,7 +41,7 @@ default_args = {
     is_paused_upon_creation=True,
     schedule=CronDataIntervalTimetable('0 19 * * *', 'UTC'),
     start_date=pendulum.datetime(2026, 6, 1, 0, 0, 0, tz="Asia/Tashkent"),
-    dag_id="feature_platform_account_l3_event_w_imps_counts_silver_dag",
+    dag_id="feature-platform.layers.silver.account_id_category_id.account_l3_event_w_imps_counts",
 )
 def collect_silver_account_l3_event_w_imps_counts():
     SparkKubernetesOperator(

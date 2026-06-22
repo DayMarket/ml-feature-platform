@@ -40,7 +40,7 @@ default_args = {
     is_paused_upon_creation=True,
     schedule=CronDataIntervalTimetable('0 1 * * *', 'UTC'),
     start_date=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-    dag_id="feature_platform_query_skg_daily_conversions_legacy_silver_dag",
+    dag_id="feature-platform.layers.silver.query_platform_sku_group_id.query_skg_daily_conversions_legacy",
 )
 def collect_silver_query_skg_daily_conversions_legacy():
     SparkKubernetesOperator(

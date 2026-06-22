@@ -41,7 +41,7 @@ default_args = {
     is_paused_upon_creation=True,
     schedule=CronDataIntervalTimetable('0 1 * * *', 'UTC'),
     start_date=datetime(2026, 2, 1, 0, 0, 0, tzinfo=timezone.utc),
-    dag_id="feature_platform_sku_group_install_silver_stats_dag",
+    dag_id="feature-platform.layers.silver.sku_group_id_query_category.sku_group_install",
 )
 def collect_silver_sku_group_query_install_stats():
 

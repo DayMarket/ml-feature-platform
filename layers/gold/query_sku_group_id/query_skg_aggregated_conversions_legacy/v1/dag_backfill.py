@@ -3,7 +3,7 @@ produced by the regular Spark pipeline, by copying the already-validated
 upstream feature_store snapshot date by date.
 
 This DAG is intentionally separate from the scheduled
-`feature_platform_query_skg_aggregated_conversions_legacy_gold_dag`:
+`feature-platform.layers.gold.query_sku_group_id.query_skg_aggregated_conversions_legacy`:
 
 - It runs the backfill entrypoint (copy from
   `iceberg.um_prod_feature_store_iceberg.query_query_skg_aggregated_conversions`),
@@ -66,7 +66,7 @@ default_args = {
     schedule=CronDataIntervalTimetable('0 0 * * *', 'UTC'),
     start_date=datetime(2026, 4, 14, 0, 0, 0, tzinfo=timezone.utc),
     end_date=datetime(2026, 6, 11, 0, 0, 0, tzinfo=timezone.utc),
-    dag_id="feature_platform_query_skg_aggregated_conversions_legacy_gold_backfill_dag",
+    dag_id="feature-platform.layers.gold.query_sku_group_id.query_skg_aggregated_conversions_legacy.backfill",
 )
 def backfill_gold_query_skg_aggregated_conversions_legacy():
     backfill_partition = SparkKubernetesOperator(

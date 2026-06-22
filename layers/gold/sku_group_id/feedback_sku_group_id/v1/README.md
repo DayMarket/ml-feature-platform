@@ -1,5 +1,7 @@
 # Gold-фичи отзывов по SKU Group ID
 
+DAG id: `feature-platform.layers.gold.sku_group_id.feedback_sku_group_id`.
+
 Пайплайн строит дневный снимок базовых фичей отзывов и рейтинга на уровне `sku_group_id`.
 
 Целевая таблица: `iceberg.gold.feature_platform_sku_group_feedback_base_stats`.

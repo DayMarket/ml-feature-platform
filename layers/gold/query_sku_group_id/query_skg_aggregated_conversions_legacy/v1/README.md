@@ -1,5 +1,7 @@
 # Gold Aggregated Conversions Query/SKU Group Legacy
 
+DAG id: `feature-platform.layers.gold.query_sku_group_id.query_skg_aggregated_conversions_legacy`.
+
 Пайплайн собирает legacy-агрегации query/SKU group conversions из дневной silver-таблицы.
 
 Целевая таблица: `iceberg.gold.feature_platform_query_skg_aggregated_conversions_legacy`.

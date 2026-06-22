@@ -7,7 +7,7 @@ import pytest
 
 MODULE_PATH = (
     Path(__file__).resolve().parents[1]
-    / "layers/silver/sku_group_install/v1/job/partition.py"
+    / "layers/silver/sku_group_id_query_category/sku_group_install/v1/job/partition.py"
 )
 SPEC = importlib.util.spec_from_file_location("sku_group_install_partition", MODULE_PATH)
 partition = importlib.util.module_from_spec(SPEC)

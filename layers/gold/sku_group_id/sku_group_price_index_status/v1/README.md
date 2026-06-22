@@ -1,5 +1,7 @@
 # Gold Price Index Status по SKU Group ID
 
+DAG id: `feature-platform.layers.gold.sku_group_id.sku_group_price_index_status`.
+
 Пайплайн собирает дневную таблицу `price_index_status` на уровне `sku_group_id`.
 
 Целевая таблица: `iceberg.gold.feature_platform_sku_group_price_index_status`.

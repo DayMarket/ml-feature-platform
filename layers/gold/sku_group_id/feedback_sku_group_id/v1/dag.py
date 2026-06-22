@@ -40,7 +40,7 @@ default_args = {
     is_paused_upon_creation=True,
     schedule=CronDataIntervalTimetable('10 3 * * *', 'UTC'),
     start_date=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-    dag_id="feature_platform_sku_group_feedback_base_stats_gold_dag",
+    dag_id="feature-platform.layers.gold.sku_group_id.feedback_sku_group_id",
 )
 def collect_gold_sku_group_feedback_base_stats():
     SparkKubernetesOperator(

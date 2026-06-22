@@ -1,16 +1,16 @@
 resources:
-  path: ../../../../config/spark/resources.yaml
+  path: ../../../../../config/spark/resources.yaml
 
 spark_applications:
   fetch_gold_query_skg_aggregated_conversions_legacy.yaml:
-    template_path: ../../../../config/spark/layer_spark_application.yaml
+    template_path: ../../../../../config/spark/layer_spark_application.yaml
     application_name: fetch-gold-query-skg-aggregated-conversions-legacy
-    main_application_file: local:///git/repo/layers/gold/query_skg_aggregated_conversions_legacy/v1/entrypoints/get_query_skg_aggregated_conversions_legacy.py
+    main_application_file: local:///git/repo/layers/gold/query_sku_group_id/query_skg_aggregated_conversions_legacy/v1/entrypoints/get_query_skg_aggregated_conversions_legacy.py
     resource_profile: large
   fetch_gold_query_skg_aggregated_conversions_legacy_backfill.yaml:
-    template_path: ../../../../config/spark/layer_spark_application.yaml
+    template_path: ../../../../../config/spark/layer_spark_application.yaml
     application_name: backfill-gold-query-skg-aggregated-conversions-legacy
-    main_application_file: local:///git/repo/layers/gold/query_skg_aggregated_conversions_legacy/v1/entrypoints/backfill_query_skg_aggregated_conversions_legacy_from_feature_store.py
+    main_application_file: local:///git/repo/layers/gold/query_sku_group_id/query_skg_aggregated_conversions_legacy/v1/entrypoints/backfill_query_skg_aggregated_conversions_legacy_from_feature_store.py
     resource_profile: large
 
 table:

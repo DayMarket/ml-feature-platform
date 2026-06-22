@@ -1,5 +1,7 @@
 # Gold-фичи отзывов по Product ID
 
+DAG id: `feature-platform.layers.gold.product_id.feedback_product_id`.
+
 Пайплайн строит дневный снимок базовых фичей отзывов и рейтинга на уровне `product_id`.
 
 Целевая таблица: `iceberg.gold.feature_platform_product_feedback_base_stats`.

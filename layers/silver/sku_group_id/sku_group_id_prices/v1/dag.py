@@ -41,7 +41,7 @@ default_args = {
     is_paused_upon_creation=True,
     schedule=CronDataIntervalTimetable('0 1 * * *', 'UTC'),
     start_date=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-    dag_id="feature_platform_sku_group_id_prices_silver_dag",
+    dag_id="feature-platform.layers.silver.sku_group_id.sku_group_id_prices",
 )
 def collect_silver_sku_group_id_prices():
     wait_for_sku_eod = ExternalTaskSensor(

@@ -6,14 +6,18 @@ from pathlib import Path
 REQUIRED_FILES = (
     ".drone.yaml",
     "ci_config.yaml",
-    "layers/silver/sku_group_install/v1/dag.py",
-    "layers/silver/sku_group_install/v1/config.yaml",
+    "layers/silver/sku_group_id_query_category/sku_group_install/v1/dag.py",
+    "layers/silver/sku_group_id_query_category/sku_group_install/v1/config.yaml",
 )
 
 CREATE_TABLE_PATTERN = re.compile(
     r"CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+(?P<table>[^\s(]+)",
     re.IGNORECASE,
 )
+
+PRIMARY_KEY_GROUP_EXCEPTIONS = {
+    ("silver", "sku_group_install"): "sku_group_id_query_category",
+}
 
 
 def main() -> int:
@@ -30,6 +34,13 @@ def main() -> int:
         print("Missing required files:")
         for file_path in missing_files:
             print(f"- {file_path}")
+        return 1
+
+    layout_errors = validate_layer_layout(Path("."))
+    if layout_errors:
+        print("Invalid layer layout:")
+        for error in layout_errors:
+            print(f"- {error}")
         return 1
 
     config_errors = validate_table_configs(Path("."))
@@ -155,6 +166,56 @@ def validate_table_configs(repo_root: Path) -> list[str]:
             f"{config_path} -> {table['catalog']}.{table['schema']}.{table['name']} "
             f"primary_key={table['primary_key']} team={meta['team']}"
         )
+    return errors
+
+
+def validate_layer_layout(repo_root: Path) -> list[str]:
+    errors = []
+    for config_path in sorted(repo_root.glob("layers/**/config.yaml")):
+        relative = config_path.relative_to(repo_root)
+        if len(relative.parts) != 6:
+            errors.append(
+                f"{config_path}: expected layers/<layer>/<primary_key_group>/"
+                "<entity>/vN/config.yaml"
+            )
+            continue
+
+        _, layer, actual_group, entity, version, _ = relative.parts
+        if not re.fullmatch(r"v[1-9][0-9]*", version):
+            errors.append(f"{config_path}: invalid version directory {version!r}")
+            continue
+
+        config = read_simple_nested_config(config_path)
+        table = config.get("table", {})
+        primary_key = [
+            column.strip()
+            for column in str(table.get("primary_key", "")).split(",")
+            if column.strip() and column.strip() != "date"
+        ]
+        expected_group = PRIMARY_KEY_GROUP_EXCEPTIONS.get(
+            (layer, entity), "_".join(primary_key)
+        )
+        if not expected_group:
+            errors.append(f"{config_path}: primary key has no non-date columns")
+            continue
+        if actual_group != expected_group:
+            errors.append(
+                f"{config_path}: group {actual_group!r} must be {expected_group!r}"
+            )
+
+        expected_dag_id = f"feature-platform.layers.{layer}.{actual_group}.{entity}"
+        dag_path = config_path.parent / "dag.py"
+        readme_path = config_path.parent / "README.md"
+        dag_contract = config_path.read_text(encoding="utf-8")
+        if dag_path.is_file():
+            dag_contract += dag_path.read_text(encoding="utf-8")
+        if expected_dag_id not in dag_contract:
+            errors.append(f"{config_path}: missing DAG id {expected_dag_id!r}")
+        if not readme_path.is_file() or expected_dag_id not in readme_path.read_text(
+            encoding="utf-8"
+        ):
+            errors.append(f"{config_path}: README must state DAG id {expected_dag_id!r}")
+
     return errors
 
 

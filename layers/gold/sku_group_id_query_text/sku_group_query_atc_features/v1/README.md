@@ -1,5 +1,7 @@
 # Gold-фичи ATC по Query и SKU Group
 
+DAG id: `feature-platform.layers.gold.sku_group_id_query_text.sku_group_query_atc_features`.
+
 Пайплайн строит дневные признаки конверсии из показа в добавление в корзину для пары `query_text` и `sku_group_id`.
 
 Целевая таблица: `iceberg.gold.feature_platform_search_sku_group_id_query_atc_features`.

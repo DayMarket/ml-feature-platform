@@ -1,5 +1,7 @@
 # Silver-заказы из поиска по Query и SKU Group ID
 
+DAG id: `feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders`.
+
 Пайплайн собирает дневную статистику заказов из поиска на уровне `query` и `sku_group_id`.
 
 Целевая таблица: `iceberg.silver.feature_platform_sku_group_query_search_orders`.
@@ -17,4 +19,4 @@
 
 Партиция результата соответствует Airflow `ds`.
 
-Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/silver/sku_group_query_search_orders/v1/entrypoints/get_sku_group_query_search_orders.py`, поэтому отдельный Docker image для этой сущности не собирается.
+Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/silver/query_sku_group_id/sku_group_query_search_orders/v1/entrypoints/get_sku_group_query_search_orders.py`, поэтому отдельный Docker image для этой сущности не собирается.

@@ -1,5 +1,7 @@
 # Gold Search Conversion Features по SKU Group ID
 
+DAG id: `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features`.
+
 Пайплайн собирает финальные daily-признаки поисковой конверсии на уровне `sku_group_id`.
 
 Целевая таблица: `iceberg.gold.feature_platform_sku_group_search_conversion_features`.
@@ -52,4 +54,4 @@ Raw ratio-признаки `imp2order_*` сохраняют Spark-семанти
 
 После применения миграции Spark job записывает новые признаки вместе с остальными колонками таблицы. Сама миграция меняет только схему и не пересчитывает ранее записанные партиции: для исторических строк новые колонки остаются `NULL` до явного перезапуска соответствующих дат.
 
-Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_search_conversion_features/v1/entrypoints/get_sku_group_search_conversion_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
+Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_id/sku_group_search_conversion_features/v1/entrypoints/get_sku_group_search_conversion_features.py`, поэтому отдельный Docker image для этой сущности не собирается.

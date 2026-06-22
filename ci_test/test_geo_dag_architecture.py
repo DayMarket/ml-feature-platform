@@ -16,6 +16,7 @@ SILVER_ENTITIES = (
     "geo_yandex_poi_features",
 )
 GOLD_ENTITY = "location_h3_forecast_features"
+PRIMARY_KEY_GROUP = "h3_index"
 GROUP_TAG = "location-h3-forecast"
 
 
@@ -49,11 +50,15 @@ class GeoDagArchitectureTest(unittest.TestCase):
 
         for layer, entity in entities:
             with self.subTest(layer=layer, entity=entity):
-                entity_dir = ROOT / "layers" / layer / entity / "v1"
+                entity_dir = (
+                    ROOT / "layers" / layer / PRIMARY_KEY_GROUP / entity / "v1"
+                )
                 config = yaml.safe_load(
                     (entity_dir / "config.yaml").read_text(encoding="utf-8")
                 )
-                expected_dag_id = f"feature-platform.layers.{layer}.{entity}"
+                expected_dag_id = (
+                    f"feature-platform.layers.{layer}.{PRIMARY_KEY_GROUP}.{entity}"
+                )
                 expected_table = (
                     f"{config['table']['catalog']}."
                     f"{config['table']['schema']}."
@@ -77,11 +82,23 @@ class GeoDagArchitectureTest(unittest.TestCase):
 
     def test_group_tag_is_not_reused_outside_location_forecast_group(self):
         expected_configs = {
-            ROOT / "layers" / "silver" / entity / "v1" / "config.yaml"
+            ROOT
+            / "layers"
+            / "silver"
+            / PRIMARY_KEY_GROUP
+            / entity
+            / "v1"
+            / "config.yaml"
             for entity in SILVER_ENTITIES
         }
         expected_configs.add(
-            ROOT / "layers" / "gold" / GOLD_ENTITY / "v1" / "config.yaml"
+            ROOT
+            / "layers"
+            / "gold"
+            / PRIMARY_KEY_GROUP
+            / GOLD_ENTITY
+            / "v1"
+            / "config.yaml"
         )
         actual_configs = set()
         for config_path in (ROOT / "layers").glob("**/config.yaml"):
@@ -106,7 +123,14 @@ class GeoDagArchitectureTest(unittest.TestCase):
         ]:
             with self.subTest(layer=layer, entity=entity):
                 runtime_path = (
-                    ROOT / "layers" / layer / entity / "v1" / "job" / "runtime.py"
+                    ROOT
+                    / "layers"
+                    / layer
+                    / PRIMARY_KEY_GROUP
+                    / entity
+                    / "v1"
+                    / "job"
+                    / "runtime.py"
                 )
                 runtime = load_runtime(
                     runtime_path,
@@ -138,6 +162,7 @@ class GeoDagArchitectureTest(unittest.TestCase):
             ROOT
             / "layers"
             / "silver"
+            / PRIMARY_KEY_GROUP
             / SILVER_ENTITIES[0]
             / "v1"
             / "job"
@@ -161,7 +186,9 @@ class GeoDagArchitectureTest(unittest.TestCase):
                     )
 
     def test_gold_has_one_dq_sensor_per_silver_entity(self):
-        gold_dir = ROOT / "layers" / "gold" / GOLD_ENTITY / "v1"
+        gold_dir = (
+            ROOT / "layers" / "gold" / PRIMARY_KEY_GROUP / GOLD_ENTITY / "v1"
+        )
         dag_source = (gold_dir / "dag.py").read_text(encoding="utf-8")
         config = yaml.safe_load(
             (gold_dir / "config.yaml").read_text(encoding="utf-8")

@@ -41,7 +41,7 @@ default_args = {
     is_paused_upon_creation=True,
     schedule=CronDataIntervalTimetable('0 2 * * *', 'UTC'),
     start_date=datetime(2026, 3, 10, 0, 0, 0, tzinfo=timezone.utc),
-    dag_id="feature_platform_sku_group_query_atc_features_gold_dag",
+    dag_id="feature-platform.layers.gold.sku_group_id_query_text.sku_group_query_atc_features",
 )
 def collect_gold_sku_group_query_atc_features():
     wait_for_silver_stats = ExternalTaskSensor(

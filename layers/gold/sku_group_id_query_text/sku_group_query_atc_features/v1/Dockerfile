@@ -3,7 +3,7 @@ FROM python:3.9.13 AS poetry
 WORKDIR /src
 COPY . .
 
-WORKDIR /src/layers/gold/sku_group_query_atc_features/v1
+WORKDIR /src/layers/gold/sku_group_id_query_text/sku_group_query_atc_features/v1
 RUN pip install poetry && poetry build -f wheel
 
 FROM python:3.9.13
@@ -70,7 +70,7 @@ RUN set -ex; \
 ENV SPARK_HOME=/opt/spark
 ENV JAVA_HOME=/opt/java
 
-COPY layers/gold/sku_group_query_atc_features/v1/entrypoint.sh /opt/
+COPY layers/gold/sku_group_id_query_text/sku_group_query_atc_features/v1/entrypoint.sh /opt/
 
 WORKDIR /opt/spark/work-dir
 RUN chmod g+w /opt/spark/work-dir
@@ -83,11 +83,11 @@ ENV NEXUS_PASSWORD=$NEXUS_PASSWORD
 RUN wget "https://storage.yandexcloud.net/cloud-certs/CA.pem" --output-document /opt/cert/YandexInternalRootCA.crt && \
     chmod 655 /opt/cert/YandexInternalRootCA.crt
 
-COPY --from=poetry /src/layers/gold/sku_group_query_atc_features/v1/dist/*.whl /tmp/
+COPY --from=poetry /src/layers/gold/sku_group_id_query_text/sku_group_query_atc_features/v1/dist/*.whl /tmp/
 RUN pip install /tmp/*.whl
 RUN rm -f /tmp/*.whl
 
-COPY layers/gold/sku_group_query_atc_features/v1/entrypoints/ /opt/spark/entrypoints
+COPY layers/gold/sku_group_id_query_text/sku_group_query_atc_features/v1/entrypoints/ /opt/spark/entrypoints
 
 RUN /opt/java/bin/keytool -importcert \
              -alias YandexCA \

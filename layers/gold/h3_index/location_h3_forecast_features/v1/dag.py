@@ -14,25 +14,27 @@ from airflow_commons.helpers.oncall import send_oncall_notification
 from kubernetes.client import models as k8s
 
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
-REPO_ROOT = os.path.abspath(os.path.join(ENTITY_DIR, "..", "..", "..", ".."))
+REPO_ROOT = os.path.abspath(
+    os.path.join(ENTITY_DIR, "..", "..", "..", "..", "..")
+)
 CONFIG_PATH = os.path.join(ENTITY_DIR, "config.yaml")
 JOB_DIR = os.path.join(ENTITY_DIR, "job")
 
 SILVER_CONFIG_PATHS = {
     "geo": os.path.join(
-        REPO_ROOT, "layers", "silver", "geo_geointellect_features", "v1", "config.yaml"
+        REPO_ROOT, "layers", "silver", "h3_index", "geo_geointellect_features", "v1", "config.yaml"
     ),
     "dp": os.path.join(
-        REPO_ROOT, "layers", "silver", "dp_neighbor_order_features", "v1", "config.yaml"
+        REPO_ROOT, "layers", "silver", "h3_index", "dp_neighbor_order_features", "v1", "config.yaml"
     ),
     "act": os.path.join(
-        REPO_ROOT, "layers", "silver", "geo_user_activity_features", "v1", "config.yaml"
+        REPO_ROOT, "layers", "silver", "h3_index", "geo_user_activity_features", "v1", "config.yaml"
     ),
     "loc": os.path.join(
-        REPO_ROOT, "layers", "silver", "geo_user_location_features", "v1", "config.yaml"
+        REPO_ROOT, "layers", "silver", "h3_index", "geo_user_location_features", "v1", "config.yaml"
     ),
     "poi": os.path.join(
-        REPO_ROOT, "layers", "silver", "geo_yandex_poi_features", "v1", "config.yaml"
+        REPO_ROOT, "layers", "silver", "h3_index", "geo_yandex_poi_features", "v1", "config.yaml"
     ),
 }
 

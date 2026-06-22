@@ -1,5 +1,7 @@
 # Silver Ad Revenue Daily по SKU Group ID
 
+DAG id: `feature-platform.layers.silver.sku_group_id.sku_group_ad_revenue_daily`.
+
 Пайплайн собирает дневной silver pre-aggregate рекламной выручки на уровне `sku_group_id`.
 
 Целевая таблица: `iceberg.silver.feature_platform_sku_group_ad_revenue_daily`.
@@ -33,5 +35,5 @@
 ## Runtime
 
 Дефолтный Spark image + `git-sync` initContainer. Код запускается из
-`/git/repo/layers/silver/sku_group_ad_revenue_daily/v1/entrypoints/get_sku_group_ad_revenue_daily.py`,
+`/git/repo/layers/silver/sku_group_id/sku_group_ad_revenue_daily/v1/entrypoints/get_sku_group_ad_revenue_daily.py`,
 отдельный Docker image не собирается.
