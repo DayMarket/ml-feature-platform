@@ -9,12 +9,12 @@ from pyspark.sql.functions import (
     lit,
     regexp_replace,
     sum as spark_sum,
-    to_date,
     trim,
     when,
 )
 
 from job.entities import Arguments
+from job.partition import parse_partition_date
 
 
 def _category_id_expr(
@@ -54,6 +54,8 @@ def build_search_results_stats(
     partition_start: str,
     partition_end: str,
 ) -> DataFrame:
+    partition_date = parse_partition_date(partition_start)
+
     df_sessions = (
         spark.table("iceberg.silver_b2c_clickstream.events")
         .filter(
@@ -136,7 +138,7 @@ def build_search_results_stats(
             )
         )
         .select(
-            to_date(col("received_at")).alias("date"),
+            lit(partition_date).alias("date"),
             "install_id",
             "session_id",
             "sku_group_id",
@@ -171,7 +173,7 @@ def build_search_results_stats(
             col("event_type").isin("PRODUCT_IMPRESSION", "PRODUCT_VIEW")
             & col("product_id").isNotNull()
         )
-        .withColumn("date", to_date(col("received_at")))
+        .withColumn("date", lit(partition_date))
         .withColumn("prev_event_type", lag("event_type").over(window))
         .withColumn("prev_sku_group_id", lag("sku_group_id").over(window))
         .withColumn("prev_is_full_catpred", lag("is_full_catpred").over(window))
@@ -227,7 +229,7 @@ def build_search_results_stats(
             col("event_type").isin("PRODUCT_IMPRESSION", "ADD_TO_CART")
             & col("product_id").isNotNull()
         )
-        .withColumn("date", to_date(col("received_at")))
+        .withColumn("date", lit(partition_date))
         .withColumn("prev_event_type", lag("event_type").over(window))
         .withColumn("prev_sku_group_id", lag("sku_group_id").over(window))
         .withColumn("prev_is_full_catpred", lag("is_full_catpred").over(window))

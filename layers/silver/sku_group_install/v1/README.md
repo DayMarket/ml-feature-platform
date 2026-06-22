@@ -4,6 +4,12 @@
 
 Целевая таблица: `iceberg.silver.feature_platform_search_sku_group_id_install_query`.
 
+## Оркестрация
+
+DAG id: `feature_platform_sku_group_install_silver_stats_dag`.
+
+Расписание: ежедневно в `01:00 UTC`.
+
 Основная логика:
 
 - читает события из `iceberg.silver_b2c_clickstream.events` за партиционный интервал;
@@ -12,4 +18,6 @@
 - считает показы, клики и добавления в корзину;
 - пишет результат в Iceberg через `overwritePartitions()`.
 
-Партиция расчета задается аргументами Airflow `partition_start` и `partition_end`.
+События фильтруются полуинтервалом Airflow `[partition_start, partition_end)`. Поле `date`
+для всех строк результата равно логической дате `partition_start` и не зависит от
+календарной даты `received_at` или часового пояса Spark-сессии.
