@@ -161,11 +161,16 @@ class GeoDagArchitectureTest(unittest.TestCase):
                     )
 
     def test_gold_has_one_dq_sensor_per_silver_entity(self):
-        dag_source = (
-            ROOT / "layers" / "gold" / GOLD_ENTITY / "v1" / "dag.py"
-        ).read_text(encoding="utf-8")
+        gold_dir = ROOT / "layers" / "gold" / GOLD_ENTITY / "v1"
+        dag_source = (gold_dir / "dag.py").read_text(encoding="utf-8")
+        config = yaml.safe_load(
+            (gold_dir / "config.yaml").read_text(encoding="utf-8")
+        )
+
         self.assertIn("ExternalTaskSensor", dag_source)
         self.assertIn("silver_dq_sensors >> gold_task", dag_source)
+        self.assertEqual(config["dag"]["schedule"], "0 2 * * *")
+        self.assertIn("execution_delta=timedelta(hours=1)", dag_source)
         for entity in SILVER_ENTITIES:
             self.assertIn(entity, dag_source)
 

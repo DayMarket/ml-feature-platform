@@ -19,7 +19,7 @@ runtime:
 dag:
   id: feature-platform.layers.gold.location_h3_forecast_features
   group_tag: location-h3-forecast
-  schedule: "0 0 * * *"
+  schedule: "0 2 * * *"
   start_date: "2026-06-19T00:00:00Z"
   team: operations
   owner: team:operations

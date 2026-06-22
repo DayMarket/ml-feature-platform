@@ -8,7 +8,7 @@
 - Таблица: `iceberg.gold.feature_platform_location_h3_forecast_features`.
 - DAG: `feature-platform.layers.gold.location_h3_forecast_features` (`layers/gold/location_h3_forecast_features/v1/dag.py`).
 - Групповой тег Airflow: `location-h3-forecast`.
-- Расписание: ежедневно в 00:00 UTC, `start_date=2026-06-19T00:00:00Z`.
+- Расписание: ежедневно в 02:00 UTC, `start_date=2026-06-19T00:00:00Z`.
 
 ## Грейн / ключ
 `date, h3_index`.
@@ -21,7 +21,8 @@
 `iceberg.silver.feature_platform_geo_user_location_features` и
 `iceberg.silver.feature_platform_geo_yandex_poi_features`.
 
-Gold DAG ждёт отдельный dbt DQ DAG каждой из пяти silver-таблиц с тем же logical date. Только после
+Gold DAG ждёт отдельный dbt DQ DAG каждой из пяти silver-таблиц. DQ DAG стартуют в
+01:00 UTC, поэтому gold в 02:00 UTC ищет их logical date с `execution_delta=1 hour`. Только после
 успеха всех пяти сенсоров он проверяет входные и выходную таблицы через PyIceberg и собирает gold.
 
 ## Логика

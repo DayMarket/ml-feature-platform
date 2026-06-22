@@ -122,7 +122,7 @@ def location_h3_forecast_features_dag() -> None:
             allowed_states=["success"],
             failed_states=["failed"],
             check_existence=True,
-            execution_delta=timedelta(0),
+            execution_delta=timedelta(hours=1),
             mode="reschedule",
             poke_interval=60,
             timeout=3 * 60 * 60,
