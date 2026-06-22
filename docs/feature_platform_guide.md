@@ -147,7 +147,7 @@ Grain: `date,product_id`.
 После выбора источника нужно зафиксировать:
 
 - source engine и полное имя source table/path;
-- Airflow connection: для Trino уточнить `trino_default` или другой conn_id, для ClickHouse всегда получить conn_id от пользователя;
+- Airflow connection: для Trino предложить `trino_search` для поискового домена или `trino_recsys` для рекомендательного и при неоднозначности использовать финальный выбор пользователя; для ClickHouse всегда получить conn_id от пользователя;
 - владельца источника или команду, которая отвечает за данные;
 - freshness/DQ contract источника;
 - ключи join;
@@ -232,7 +232,7 @@ DESCRIBE iceberg.silver.order_items_attribution
 
 Перед генерацией DAG-а нужно подтвердить connection contract:
 
-- Trino: использовать `trino_default` или другой Airflow connection;
+- Trino: использовать `trino_search` для поискового домена или `trino_recsys` для рекомендательного; при неоднозначности показать оба варианта и использовать финальный выбор пользователя;
 - ClickHouse: пользователь должен явно назвать Airflow connection id, потому что доступ зависит от RBAC.
 
 После проверки источник фиксируется в контракте новой таблицы:
@@ -361,7 +361,7 @@ Grain: `date,sku_group_id`.
 
 - это финальная `gold`-фича или нужен переиспользуемый `silver`-агрегат;
 - какие source tables считать контрактными, какой source engine использовать, если это не ясно из контекста, и нужно ли проверять их через MCP;
-- какой Airflow connection использовать: для Trino `trino_default` или другой conn_id, для ClickHouse явно заданный пользователем conn_id;
+- какой Airflow connection использовать: для Trino `trino_search` в поисковом контексте или `trino_recsys` в рекомендательном, а при неоднозначности — финальный выбор пользователя; для ClickHouse — явно заданный пользователем conn_id;
 - какие join keys связывают источник продаж с целевой сущностью;
 - какие date boundaries у окон: включен ли `{{ ds }}`, какая верхняя граница, какие timestamp/date поля использовать;
 - какие статусы заказов считать продажей и как учитывать отмены/возвраты;
@@ -701,7 +701,7 @@ Ranking upload находится в `upload/ranking_features/v1`.
 - Для внешних источников используйте DQ/source contract команды-владельца.
 - Не прячьте source table names в неочевидных константах: lineage должен читаться из job.
 - Не добавляйте custom Spark image для обычных code/config/SQL changes. Используйте общий `config/spark/layer_spark_application.yaml`, default Spark image и `git-sync`.
-- Для Trino-source jobs уточняйте, использовать ли `trino_default` или другой Airflow connection. Для ClickHouse-source jobs всегда спрашивайте connection id у пользователя.
+- Для Trino-source jobs предлагайте `trino_search` для поискового домена или `trino_recsys` для рекомендательного. Если контекст не дает однозначного выбора, покажите оба варианта и используйте финальный выбор пользователя. Для ClickHouse-source jobs всегда спрашивайте connection id у пользователя.
 - Trino и ClickHouse могут быть источниками, но итоговые признаки и агрегаты сохраняются в Iceberg.
 - Ресурсы driver/executor задавайте через именованный профиль в `config/spark/resources.yaml` и ссылку `resource_profile` в `config.yaml` сущности.
 - Не обновляйте `AGENTS.md` при добавлении каждой новой фичи. Детали фичи должны жить в README слоя, migration, config, DAG и job.
