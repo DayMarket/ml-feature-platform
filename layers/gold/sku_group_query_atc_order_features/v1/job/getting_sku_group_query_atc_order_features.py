@@ -9,21 +9,28 @@ from job.entities import Arguments
 
 
 WINDOWS = (1, 3, 7, 14, 21, 30, 60, 90)
+SMOOTHED_ATC_COEF = 100.0
 SELECTED_COLUMNS = (
     "date",
     "query",
     "sku_group_id",
+    "query_skg_smooth_conv_imp2atc_1",
+    "query_skg_smooth_conv_imp2atc_3",
     "query_skg_uniq_orders_7",
     "query_skg_conv_imp2atc_7",
+    "query_skg_smooth_conv_imp2atc_7",
     "query_skg_conv_imp2order_7",
     "query_skg_uniq_orders_14",
     "query_skg_conv_imp2atc_14",
+    "query_skg_smooth_conv_imp2atc_14",
     "query_skg_conv_imp2order_14",
     "query_skg_uniq_orders_21",
     "query_skg_conv_imp2atc_21",
+    "query_skg_smooth_conv_imp2atc_21",
     "query_skg_conv_imp2order_21",
     "query_skg_uniq_orders_30",
     "query_skg_conv_imp2atc_30",
+    "query_skg_smooth_conv_imp2atc_30",
     "query_skg_conv_imp2order_30",
     "query_skg_imp2atc_3_to_1",
     "query_skg_imp2atc_7_to_3",
@@ -33,10 +40,12 @@ SELECTED_COLUMNS = (
     "query_skg_uniq_atcs_60",
     "query_skg_uniq_orders_60",
     "query_skg_conv_imp2atc_60",
+    "query_skg_smooth_conv_imp2atc_60",
     "query_skg_conv_imp2order_60",
     "query_skg_uniq_atcs_90",
     "query_skg_uniq_orders_90",
     "query_skg_conv_imp2atc_90",
+    "query_skg_smooth_conv_imp2atc_90",
     "query_skg_conv_imp2order_90",
     "query_skg_imp2atc_60_to_30",
     "query_skg_imp2order_60_to_30",
@@ -78,6 +87,20 @@ def _sum_since(column_name: str, start_date: str) -> F.Column:
     )
 
 
+def _sum_between(
+    column_name: str,
+    start_date: str,
+    finish_date_exclusive: str,
+) -> Column:
+    return F.sum(
+        F.when(
+            (F.col("date") >= F.lit(start_date).cast("date"))
+            & (F.col("date") < F.lit(finish_date_exclusive).cast("date")),
+            F.col(column_name),
+        ).otherwise(0.0)
+    )
+
+
 def _build_events_agg(events: DataFrame, window_dates: dict[int, str]) -> DataFrame:
     aggregations = []
     for window in WINDOWS:
@@ -92,6 +115,64 @@ def _build_events_agg(events: DataFrame, window_dates: dict[int, str]) -> DataFr
             )
         )
     return events.groupBy("query", "sku_group_id").agg(*aggregations)
+
+
+def _build_smoothed_pair_events_agg(
+    events: DataFrame,
+    window_dates: dict[int, str],
+    run_date: str,
+) -> DataFrame:
+    aggregations = []
+    for window in WINDOWS:
+        aggregations.extend(
+            (
+                _sum_between("sum_atc", window_dates[window], run_date).alias(
+                    f"query_skg_smooth_atcs_{window}"
+                ),
+                _sum_between("sum_impressions", window_dates[window], run_date).alias(
+                    f"query_skg_smooth_impressions_{window}"
+                ),
+            )
+        )
+    return events.groupBy("query", "sku_group_id").agg(*aggregations)
+
+
+def _build_smoothed_skg_events_agg(
+    spark: SparkSession,
+    start_date: str,
+    run_date: str,
+    window_dates: dict[int, str],
+) -> DataFrame:
+    daily_events = (
+        spark.table("iceberg.silver.feature_platform_search_sku_group_id_install_query")
+        .filter(
+            (F.col("date") >= F.lit(start_date).cast("date"))
+            & (F.col("date") < F.lit(run_date).cast("date"))
+        )
+        .filter(F.col("space") == F.lit("SEARCH_RESULTS"))
+        .filter(F.col("sku_group_id").isNotNull())
+        .select(
+            F.col("date"),
+            F.col("sku_group_id").cast("long").alias("sku_group_id"),
+            F.col("sum_atc").cast("double").alias("sum_atc"),
+            F.col("sum_impressions").cast("double").alias("sum_impressions"),
+        )
+    )
+
+    aggregations = []
+    for window in WINDOWS:
+        aggregations.extend(
+            (
+                _sum_between("sum_atc", window_dates[window], run_date).alias(
+                    f"skg_smooth_atcs_{window}"
+                ),
+                _sum_between("sum_impressions", window_dates[window], run_date).alias(
+                    f"skg_smooth_impressions_{window}"
+                ),
+            )
+        )
+
+    return daily_events.groupBy("sku_group_id").agg(*aggregations)
 
 
 def _build_orders_agg(orders: DataFrame, window_dates: dict[int, str]) -> DataFrame:
@@ -137,9 +218,30 @@ def build_sku_group_query_atc_order_features(
     )
 
     events_agg = _build_events_agg(events, window_dates)
+    smoothed_pair_events_agg = _build_smoothed_pair_events_agg(
+        events,
+        window_dates,
+        run_date,
+    )
+    smoothed_skg_events_agg = _build_smoothed_skg_events_agg(
+        spark,
+        window_dates[max(WINDOWS)],
+        run_date,
+        window_dates,
+    )
     orders_agg = _build_orders_agg(orders, window_dates)
 
     features = events_agg.join(orders_agg, on=["query", "sku_group_id"], how="left")
+    features = features.join(
+        smoothed_pair_events_agg,
+        on=["query", "sku_group_id"],
+        how="left",
+    )
+    features = features.join(
+        smoothed_skg_events_agg,
+        on=["sku_group_id"],
+        how="left",
+    )
     for column_name in features.columns:
         if column_name not in ("query", "sku_group_id"):
             features = features.withColumn(column_name, F.coalesce(F.col(column_name), F.lit(0.0)))
@@ -156,6 +258,23 @@ def build_sku_group_query_atc_order_features(
             _safe_div(
                 F.col(f"query_skg_uniq_atcs_{window}"),
                 F.col(f"query_skg_uniq_impressions_{window}"),
+            ),
+        )
+
+    for window in WINDOWS:
+        skg_conv = _safe_div(
+            F.col(f"skg_smooth_atcs_{window}"),
+            F.col(f"skg_smooth_impressions_{window}"),
+        )
+        features = features.withColumn(
+            f"query_skg_smooth_conv_imp2atc_{window}",
+            (
+                F.col(f"query_skg_smooth_atcs_{window}")
+                + F.lit(SMOOTHED_ATC_COEF) * skg_conv
+            )
+            / (
+                F.col(f"query_skg_smooth_impressions_{window}")
+                + F.lit(SMOOTHED_ATC_COEF)
             ),
         )
 
