@@ -14,20 +14,28 @@ SELECTED_COLUMNS = (
     "query",
     "query_uniq_impressions_1",
     "query_uniq_atcs_1",
+    "query_orders_1",
     "query_uniq_impressions_3",
     "query_uniq_atcs_3",
+    "query_orders_3",
     "query_uniq_impressions_7",
     "query_uniq_atcs_7",
+    "query_orders_7",
     "query_uniq_impressions_14",
     "query_uniq_atcs_14",
+    "query_orders_14",
     "query_uniq_impressions_21",
     "query_uniq_atcs_21",
+    "query_orders_21",
     "query_uniq_impressions_30",
     "query_uniq_atcs_30",
+    "query_orders_30",
     "query_uniq_impressions_60",
     "query_uniq_atcs_60",
+    "query_orders_60",
     "query_uniq_impressions_90",
     "query_uniq_atcs_90",
+    "query_orders_90",
 )
 
 
@@ -116,6 +124,21 @@ def _build_window_features(
     return events.groupBy("query").agg(*aggregations)
 
 
+def _build_order_window_features(
+    orders: DataFrame,
+    window_dates: dict[int, str],
+    run_date: str,
+) -> DataFrame:
+    return orders.groupBy("query").agg(
+        *[
+            _sum_between("orders_generated", window_dates[window], run_date).alias(
+                f"query_orders_{window}"
+            )
+            for window in WINDOWS
+        ]
+    )
+
+
 def build_search_query_atc_features(
     spark: SparkSession,
     run_date: str,
@@ -138,8 +161,33 @@ def build_search_query_atc_features(
         )
     )
 
+    orders = _normalize_query_frame(
+        spark.table("iceberg.silver.feature_platform_sku_group_query_search_orders")
+        .filter(
+            (F.col("date") >= F.lit(start_date).cast("date"))
+            & (F.col("date") < F.lit(run_date).cast("date"))
+        )
+        .select(
+            F.col("date"),
+            F.col("query"),
+            F.col("orders_generated").cast("double").alias("orders_generated"),
+        )
+    )
+
+    features = _build_window_features(events, window_dates, run_date).join(
+        _build_order_window_features(orders, window_dates, run_date),
+        on="query",
+        how="left",
+    )
+
+    for window in WINDOWS:
+        features = features.withColumn(
+            f"query_orders_{window}",
+            F.coalesce(F.col(f"query_orders_{window}"), F.lit(0.0)),
+        )
+
     return (
-        _build_window_features(events, window_dates, run_date)
+        features
         .withColumn("date", F.lit(run_date).cast("date"))
         .select(*SELECTED_COLUMNS)
     )

@@ -9,28 +9,34 @@ from job.entities import Arguments
 
 
 WINDOWS = (1, 3, 7, 14, 21, 30, 60, 90)
-SMOOTHED_ATC_COEF = 100.0
+SMOOTHING_COEF = 100.0
 SELECTED_COLUMNS = (
     "date",
     "query",
     "sku_group_id",
     "query_skg_smooth_conv_imp2atc_1",
+    "query_skg_smooth_conv_imp2order_1",
     "query_skg_smooth_conv_imp2atc_3",
+    "query_skg_smooth_conv_imp2order_3",
     "query_skg_uniq_orders_7",
     "query_skg_conv_imp2atc_7",
     "query_skg_smooth_conv_imp2atc_7",
+    "query_skg_smooth_conv_imp2order_7",
     "query_skg_conv_imp2order_7",
     "query_skg_uniq_orders_14",
     "query_skg_conv_imp2atc_14",
     "query_skg_smooth_conv_imp2atc_14",
+    "query_skg_smooth_conv_imp2order_14",
     "query_skg_conv_imp2order_14",
     "query_skg_uniq_orders_21",
     "query_skg_conv_imp2atc_21",
     "query_skg_smooth_conv_imp2atc_21",
+    "query_skg_smooth_conv_imp2order_21",
     "query_skg_conv_imp2order_21",
     "query_skg_uniq_orders_30",
     "query_skg_conv_imp2atc_30",
     "query_skg_smooth_conv_imp2atc_30",
+    "query_skg_smooth_conv_imp2order_30",
     "query_skg_conv_imp2order_30",
     "query_skg_imp2atc_3_to_1",
     "query_skg_imp2atc_7_to_3",
@@ -41,11 +47,13 @@ SELECTED_COLUMNS = (
     "query_skg_uniq_orders_60",
     "query_skg_conv_imp2atc_60",
     "query_skg_smooth_conv_imp2atc_60",
+    "query_skg_smooth_conv_imp2order_60",
     "query_skg_conv_imp2order_60",
     "query_skg_uniq_atcs_90",
     "query_skg_uniq_orders_90",
     "query_skg_conv_imp2atc_90",
     "query_skg_smooth_conv_imp2atc_90",
+    "query_skg_smooth_conv_imp2order_90",
     "query_skg_conv_imp2order_90",
     "query_skg_imp2atc_60_to_30",
     "query_skg_imp2order_60_to_30",
@@ -137,6 +145,21 @@ def _build_smoothed_pair_events_agg(
     return events.groupBy("query", "sku_group_id").agg(*aggregations)
 
 
+def _build_smoothed_pair_orders_agg(
+    orders: DataFrame,
+    window_dates: dict[int, str],
+    run_date: str,
+) -> DataFrame:
+    return orders.groupBy("query", "sku_group_id").agg(
+        *[
+            _sum_between("orders_generated", window_dates[window], run_date).alias(
+                f"query_skg_smooth_orders_{window}"
+            )
+            for window in WINDOWS
+        ]
+    )
+
+
 def _build_smoothed_skg_events_agg(
     spark: SparkSession,
     start_date: str,
@@ -173,6 +196,21 @@ def _build_smoothed_skg_events_agg(
         )
 
     return daily_events.groupBy("sku_group_id").agg(*aggregations)
+
+
+def _build_smoothed_skg_orders_agg(
+    orders: DataFrame,
+    window_dates: dict[int, str],
+    run_date: str,
+) -> DataFrame:
+    return orders.groupBy("sku_group_id").agg(
+        *[
+            _sum_between("orders_generated", window_dates[window], run_date).alias(
+                f"skg_smooth_orders_{window}"
+            )
+            for window in WINDOWS
+        ]
+    )
 
 
 def _build_orders_agg(orders: DataFrame, window_dates: dict[int, str]) -> DataFrame:
@@ -223,11 +261,21 @@ def build_sku_group_query_atc_order_features(
         window_dates,
         run_date,
     )
+    smoothed_pair_orders_agg = _build_smoothed_pair_orders_agg(
+        orders,
+        window_dates,
+        run_date,
+    )
     smoothed_skg_events_agg = _build_smoothed_skg_events_agg(
         spark,
         window_dates[max(WINDOWS)],
         run_date,
         window_dates,
+    )
+    smoothed_skg_orders_agg = _build_smoothed_skg_orders_agg(
+        orders,
+        window_dates,
+        run_date,
     )
     orders_agg = _build_orders_agg(orders, window_dates)
 
@@ -238,7 +286,17 @@ def build_sku_group_query_atc_order_features(
         how="left",
     )
     features = features.join(
+        smoothed_pair_orders_agg,
+        on=["query", "sku_group_id"],
+        how="left",
+    )
+    features = features.join(
         smoothed_skg_events_agg,
+        on=["sku_group_id"],
+        how="left",
+    )
+    features = features.join(
+        smoothed_skg_orders_agg,
         on=["sku_group_id"],
         how="left",
     )
@@ -270,11 +328,28 @@ def build_sku_group_query_atc_order_features(
             f"query_skg_smooth_conv_imp2atc_{window}",
             (
                 F.col(f"query_skg_smooth_atcs_{window}")
-                + F.lit(SMOOTHED_ATC_COEF) * skg_conv
+                + F.lit(SMOOTHING_COEF) * skg_conv
             )
             / (
                 F.col(f"query_skg_smooth_impressions_{window}")
-                + F.lit(SMOOTHED_ATC_COEF)
+                + F.lit(SMOOTHING_COEF)
+            ),
+        )
+
+    for window in WINDOWS:
+        skg_conv = _safe_div(
+            F.col(f"skg_smooth_orders_{window}"),
+            F.col(f"skg_smooth_impressions_{window}"),
+        )
+        features = features.withColumn(
+            f"query_skg_smooth_conv_imp2order_{window}",
+            (
+                F.col(f"query_skg_smooth_orders_{window}")
+                + F.lit(SMOOTHING_COEF) * skg_conv
+            )
+            / (
+                F.col(f"query_skg_smooth_impressions_{window}")
+                + F.lit(SMOOTHING_COEF)
             ),
         )
 

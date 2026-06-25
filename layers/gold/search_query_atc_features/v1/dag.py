@@ -59,6 +59,21 @@ def collect_gold_search_query_atc_features():
         execution_delta=timedelta(hours=2),
     )
 
+    wait_for_silver_search_orders = ExternalTaskSensor(
+        task_id="wait_for_silver_search_orders",
+        external_dag_id=(
+            "dbt.source.trino.ml_feature_platform_silver."
+            "feature_platform_sku_group_query_search_orders.dq"
+        ),
+        allowed_states=["success"],
+        failed_states=["failed"],
+        mode="poke",
+        poke_interval=30,
+        timeout=6 * 60 * 60,
+        check_existence=True,
+        execution_delta=timedelta(hours=2),
+    )
+
     collect_features = SparkKubernetesOperator(
         execution_timeout=timedelta(hours=10),
         task_id="getting_search_query_atc_features",
@@ -70,7 +85,7 @@ def collect_gold_search_query_atc_features():
         kubernetes_conn_id="spark_k8s",
     )
 
-    wait_for_silver_install_stats >> collect_features
+    [wait_for_silver_install_stats, wait_for_silver_search_orders] >> collect_features
 
 
 dag = collect_gold_search_query_atc_features()
