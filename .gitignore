@@ -4,3 +4,6 @@
 # Python bytecode
 __pycache__/
 *.py[cod]
+
+# Local analysis snippets
+docs/new_search_features_pyspark_reference.py
