@@ -2,7 +2,7 @@
 
 Пайплайн собирает финальные daily-признаки поисковой конверсии на уровне `sku_group_id`.
 
-Целевая таблица: `iceberg.gold.feature_platform_sku_group_search_conversion_features`.
+Целевая таблица: `iceberg.gold.feature_platform_sku_group_search_conversion_features_v2`.
 
 Задача слоя - обеспечить обратную совместимость с предыдущей моделью, где признаки строились из `query_skg_aggregated_conversions`, но на уровне `sku_group_id` без разреза по query.
 
@@ -107,24 +107,6 @@ skg_days_since_last_atc = ds - max(date), где sum_atc > 0
 
 Если соответствующего события в 90-дневном окне нет, значение остается `NULL`. Recency-признаки присоединяются к существующему набору `sku_group_id` этой витрины через `LEFT JOIN`, чтобы не расширять row-set таблицы, которая уже используется в ranking upload для существующих conversion-фичей.
 
-## Изменение схемы от 2026-06-17
+Версия `v2` создается как новая Iceberg-таблица. Вся схема, включая старые conversion-признаки и новые recency, atc2order, return-rate, increment-rate и category-признаки, описана в `migrations/create_table.sql`; отдельных schema-change миграций для добавления фичей в этой версии нет.
 
-Миграция `migrations/20260617_add_raw_conv_imp2order.sql` идемпотентно добавляет в существующую таблицу колонки `conv_imp2order_3`, `conv_imp2order_7` и `conv_imp2order_14`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
-
-После применения миграции Spark job записывает новые признаки вместе с остальными колонками таблицы. Сама миграция меняет только схему и не пересчитывает ранее записанные партиции: для исторических строк новые колонки остаются `NULL` до явного перезапуска соответствующих дат.
-
-## Изменение схемы от 2026-06-25
-
-Миграция `migrations/20260625_add_search_recency_features.sql` идемпотентно добавляет в существующую таблицу колонки `skg_days_since_last_impression` и `skg_days_since_last_atc`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
-
-Миграция `migrations/20260625_add_atc2order_features.sql` идемпотентно добавляет в существующую таблицу колонки `skg_conv_atc2order_{1,3,7,14,21,30,60,90}`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
-
-Миграция `migrations/20260625_add_return_rate_features.sql` идемпотентно добавляет в существующую таблицу колонки `skg_return_rate_{1,3,7,14,21,30,60,90}`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
-
-## Изменение схемы от 2026-06-26
-
-Миграция `migrations/20260626_add_increment_rate_features.sql` идемпотентно добавляет в существующую таблицу колонки `skg_incr_rate_orders_1_to_{3,7,14,21,30,60,90}` и `skg_incr_rate_atc_1_to_{3,7,14,21,30,60,90}`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
-
-Миграция `migrations/20260626_add_category_sku_group_features.sql` идемпотентно добавляет в существующую таблицу колонку `category_id`, category-level count-фичи `category_skg_orders_*`, `category_orders_*`, `category_skg_atc_*`, `category_atc_*` и доли `category_skg_orders_frac_category_orders_*`, `category_skg_atc_frac_category_atc_*`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
-
-Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_search_conversion_features/v1/entrypoints/get_sku_group_search_conversion_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
+Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_search_conversion_features/v2/entrypoints/get_sku_group_search_conversion_features.py`, поэтому отдельный Docker image для этой сущности не собирается.

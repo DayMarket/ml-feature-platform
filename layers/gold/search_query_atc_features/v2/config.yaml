@@ -3,15 +3,15 @@ resources:
 
 spark:
   template_path: ../../../../config/spark/layer_spark_application.yaml
-  application_name: fetch-gold-search-query-atc-features
-  main_application_file: local:///git/repo/layers/gold/search_query_atc_features/v1/entrypoints/get_search_query_atc_features.py
+  application_name: fetch-gold-search-query-atc-features-v2
+  main_application_file: local:///git/repo/layers/gold/search_query_atc_features/v2/entrypoints/get_search_query_atc_features.py
   resource_profile: small
 
 table:
-  key: search_query_atc_features
+  key: search_query_atc_features_v2
   catalog: iceberg
   schema: gold
-  name: feature_platform_search_query_atc_features
+  name: feature_platform_search_query_atc_features_v2
   primary_key: date,query
   meta:
     team: team:search

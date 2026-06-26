@@ -2,7 +2,7 @@
 
 Пайплайн строит дневные признаки активного EOD-остатка на уровне `sku_group_id`.
 
-Целевая таблица: `iceberg.gold.feature_platform_sku_group_stock_features`.
+Целевая таблица: `iceberg.gold.feature_platform_sku_group_stock_features_v2`.
 
 Grain и primary key: `date, sku_group_id`.
 
@@ -35,6 +35,6 @@ DAG ждет DQ DAG silver-источника:
 
 `iceberg.silver.sku` используется как справочник маппинга `sku_id -> sku_group_id`; отдельный DQ sensor для него в этом DAG не настроен, как и в соседних feature-platform jobs, которые используют этот справочник.
 
-Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_stock_features/v1/entrypoints/get_sku_group_stock_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
+Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_stock_features/v2/entrypoints/get_sku_group_stock_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
 
 Ranking upload для этой таблицы не настроен.

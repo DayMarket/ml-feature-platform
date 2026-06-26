@@ -41,9 +41,9 @@ default_args = {
     is_paused_upon_creation=True,
     schedule=CronDataIntervalTimetable('0 3 * * *', 'UTC'),
     start_date=datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
-    dag_id="feature_platform_sku_group_search_conversion_features_gold_dag",
+    dag_id="feature_platform_sku_group_search_conversion_features_v2_gold_dag",
 )
-def collect_gold_sku_group_search_conversion_features():
+def collect_gold_sku_group_search_conversion_features_v2():
     wait_for_silver_install_stats = ExternalTaskSensor(
         task_id="wait_for_silver_sku_group_install_stats",
         external_dag_id=(
@@ -80,7 +80,7 @@ def collect_gold_sku_group_search_conversion_features():
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(
             ".",
-            "fetch_gold_sku_group_search_conversion_features.yaml",
+            "fetch_gold_sku_group_search_conversion_features_v2.yaml",
         ),
         kubernetes_conn_id="spark_k8s",
     )
@@ -88,4 +88,4 @@ def collect_gold_sku_group_search_conversion_features():
     [wait_for_silver_install_stats, wait_for_silver_search_orders] >> collect_features
 
 
-dag = collect_gold_sku_group_search_conversion_features()
+dag = collect_gold_sku_group_search_conversion_features_v2()

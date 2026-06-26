@@ -124,7 +124,7 @@
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_sku_group_search_conversion_features",
+        "table": "feature_platform_sku_group_search_conversion_features_v2",
         "dq_execution_delta_minutes": 180
       },
       "name": "fs_search_skg_conversion_features_v1",

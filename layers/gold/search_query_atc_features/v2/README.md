@@ -2,7 +2,7 @@
 
 Пайплайн строит дневные query-only признаки количества поисковых показов, добавлений в корзину и заказов.
 
-Целевая таблица: `iceberg.gold.feature_platform_search_query_atc_features`.
+Целевая таблица: `iceberg.gold.feature_platform_search_query_atc_features_v2`.
 
 Grain: одна строка на `date` и нормализованный `query`. Primary key: `date, query`.
 
@@ -33,10 +33,8 @@ DAG ждет DQ DAG silver-источников:
 - `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`.
 - `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq`.
 
-## Изменение схемы от 2026-06-25
+Версия `v2` создается как новая Iceberg-таблица. Вся схема, включая `query_orders_*`, описана в `migrations/create_table.sql`; отдельных schema-change миграций для добавления фичей в этой версии нет.
 
-Миграция `migrations/20260625_add_query_orders.sql` идемпотентно добавляет в существующую таблицу колонки `query_orders_{1,3,7,14,21,30,60,90}`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
-
-Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/search_query_atc_features/v1/entrypoints/get_search_query_atc_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
+Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/search_query_atc_features/v2/entrypoints/get_search_query_atc_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
 
 Ranking upload для этой таблицы не настроен.
