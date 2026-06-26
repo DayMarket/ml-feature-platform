@@ -3,6 +3,7 @@
 Переиспользуемые предагрегаты и промежуточные Iceberg-таблицы.
 
 - [`account_id_category_id`](account_id_category_id/README.md) — события account/category;
+- [`calculated_at_sku_id_promotion_id`](calculated_at_sku_id_promotion_id/README.md) — timestamp snapshots SKU/promotion;
 - [`h3_index`](h3_index/README.md) — географические и локационные предагрегаты;
 - [`query_platform_sku_group_id`](query_platform_sku_group_id/README.md) — дневные query/platform/SKU group conversions;
 - [`query_sku_group_id`](query_sku_group_id/README.md) — заказы и другие агрегаты пары query/SKU group;
