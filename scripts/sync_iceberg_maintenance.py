@@ -80,16 +80,17 @@ def main() -> int:
 
 def discover_iceberg_tables(repo_root: Path) -> dict[str, list[str]]:
     schemas: dict[str, set[str]] = {}
-    for config_path in sorted(repo_root.glob("layers/**/config.yaml")):
-        config = read_simple_nested_config(config_path)
-        table = config.get("table", {})
-        if table.get("catalog") != "iceberg":
-            continue
-        schema = str(table.get("schema", "")).strip()
-        table_name = str(table.get("name", "")).strip()
-        if not schema or not table_name:
-            raise ValueError(f"{config_path}: table.schema and table.name are required")
-        schemas.setdefault(schema, set()).add(table_name)
+    for config_root in ("layers", "datasets"):
+        for config_path in sorted(repo_root.glob(f"{config_root}/**/config.yaml")):
+            config = read_simple_nested_config(config_path)
+            table = config.get("table", {})
+            if table.get("catalog") != "iceberg":
+                continue
+            schema = str(table.get("schema", "")).strip()
+            table_name = str(table.get("name", "")).strip()
+            if not schema or not table_name:
+                raise ValueError(f"{config_path}: table.schema and table.name are required")
+            schemas.setdefault(schema, set()).add(table_name)
     return {
         schema: sorted(tables)
         for schema, tables in sorted(schemas.items())

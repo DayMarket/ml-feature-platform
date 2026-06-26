@@ -167,28 +167,29 @@ def main() -> int:
 
 def discover_table_configs(repo_root: Path) -> list[dict[str, Any]]:
     table_configs = []
-    for config_path in sorted(repo_root.glob("layers/**/config.yaml")):
-        local_config = _read_simple_config(config_path)
-        table = local_config.get("table", {})
-        if not table:
-            continue
-        validate_table_config(table, config_path)
+    for config_root in ("layers", "datasets"):
+        for config_path in sorted(repo_root.glob(f"{config_root}/**/config.yaml")):
+            local_config = _read_simple_config(config_path)
+            table = local_config.get("table", {})
+            if not table:
+                continue
+            validate_table_config(table, config_path)
 
-        primary_key = _parse_primary_key(str(table["primary_key"]))
-        if not primary_key:
-            raise ValueError(f"table.primary_key must not be empty in {config_path}")
+            primary_key = _parse_primary_key(str(table["primary_key"]))
+            if not primary_key:
+                raise ValueError(f"table.primary_key must not be empty in {config_path}")
 
-        meta = table["meta"]
-        table_configs.append(
-            {
-                "catalog": table["catalog"],
-                "schema": table["schema"],
-                "name": table["name"],
-                "primary_key": primary_key,
-                "team": meta["team"],
-                "config_path": config_path.relative_to(repo_root).as_posix(),
-            }
-        )
+            meta = table["meta"]
+            table_configs.append(
+                {
+                    "catalog": table["catalog"],
+                    "schema": table["schema"],
+                    "name": table["name"],
+                    "primary_key": primary_key,
+                    "team": meta["team"],
+                    "config_path": config_path.relative_to(repo_root).as_posix(),
+                }
+            )
     return table_configs
 
 
