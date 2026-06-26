@@ -19,7 +19,7 @@ dag:
   team: search
   group_tag: search-ranking-dataset
   schedule: "0 2 * * *"
-  start_date: "2026-06-09T00:00:00Z"
+  start_date: "2026-04-01T00:00:00Z"
 
 alerts:
   team: search
