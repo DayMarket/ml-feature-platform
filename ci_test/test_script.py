@@ -44,6 +44,13 @@ def main() -> int:
             print(f"- {error}")
         return 1
 
+    dataset_layout_errors = validate_dataset_layout(Path("."))
+    if dataset_layout_errors:
+        print("Invalid dataset layout:")
+        for error in dataset_layout_errors:
+            print(f"- {error}")
+        return 1
+
     readme_errors = validate_layer_readme_links(Path("."))
     if readme_errors:
         print("Invalid layer README navigation:")
@@ -91,37 +98,39 @@ def print_created_tables() -> None:
 
 def find_created_tables(repo_root: Path) -> list[tuple[str, str]]:
     created_tables = []
-    for migration_path in sorted(repo_root.glob("layers/**/migrations/*.sql")):
-        sql = migration_path.read_text(encoding="utf-8")
-        for match in CREATE_TABLE_PATTERN.finditer(sql):
-            created_tables.append(
-                (
-                    migration_path.as_posix(),
-                    normalize_table_name(match.group("table")),
+    for migration_root in ("layers", "datasets"):
+        for migration_path in sorted(repo_root.glob(f"{migration_root}/**/migrations/*.sql")):
+            sql = migration_path.read_text(encoding="utf-8")
+            for match in CREATE_TABLE_PATTERN.finditer(sql):
+                created_tables.append(
+                    (
+                        migration_path.as_posix(),
+                        normalize_table_name(match.group("table")),
+                    )
                 )
-            )
     return created_tables
 
 
 def validate_migrations_are_idempotent(repo_root: Path) -> list[str]:
     errors = []
-    for migration_path in sorted(repo_root.glob("layers/**/migrations/*.sql")):
-        statements = split_sql(migration_path.read_text(encoding="utf-8"))
-        for statement in statements:
-            normalized = " ".join(statement.split()).upper()
-            if normalized.startswith("CREATE TABLE") and not normalized.startswith(
-                "CREATE TABLE IF NOT EXISTS"
-            ):
-                errors.append(
-                    f"{migration_path}: CREATE TABLE must use IF NOT EXISTS"
-                )
-            if normalized.startswith("ALTER TABLE") and " ADD COLUMN " in normalized:
-                if " ADD COLUMN IF NOT EXISTS " not in normalized:
+    for migration_root in ("layers", "datasets"):
+        for migration_path in sorted(repo_root.glob(f"{migration_root}/**/migrations/*.sql")):
+            statements = split_sql(migration_path.read_text(encoding="utf-8"))
+            for statement in statements:
+                normalized = " ".join(statement.split()).upper()
+                if normalized.startswith("CREATE TABLE") and not normalized.startswith(
+                    "CREATE TABLE IF NOT EXISTS"
+                ):
                     errors.append(
-                        f"{migration_path}: ADD COLUMN must use IF NOT EXISTS"
+                        f"{migration_path}: CREATE TABLE must use IF NOT EXISTS"
                     )
-            if normalized.startswith(("DROP ", "DELETE ", "TRUNCATE ")):
-                errors.append(f"{migration_path}: destructive statement is not allowed")
+                if normalized.startswith("ALTER TABLE") and " ADD COLUMN " in normalized:
+                    if " ADD COLUMN IF NOT EXISTS " not in normalized:
+                        errors.append(
+                            f"{migration_path}: ADD COLUMN must use IF NOT EXISTS"
+                        )
+                if normalized.startswith(("DROP ", "DELETE ", "TRUNCATE ")):
+                    errors.append(f"{migration_path}: destructive statement is not allowed")
     return errors
 
 
@@ -150,30 +159,31 @@ def normalize_table_name(table_name: str) -> str:
 
 def validate_table_configs(repo_root: Path) -> list[str]:
     errors = []
-    for config_path in sorted(repo_root.glob("layers/**/config.yaml")):
-        config = read_simple_nested_config(config_path)
-        table = config.get("table")
-        if not table:
-            continue
+    for config_root in ("layers", "datasets"):
+        for config_path in sorted(repo_root.glob(f"{config_root}/**/config.yaml")):
+            config = read_simple_nested_config(config_path)
+            table = config.get("table")
+            if not table:
+                continue
 
-        missing_fields = []
-        for field_name in ("catalog", "schema", "name", "primary_key"):
-            if not table.get(field_name):
-                missing_fields.append(f"table.{field_name}")
+            missing_fields = []
+            for field_name in ("catalog", "schema", "name", "primary_key"):
+                if not table.get(field_name):
+                    missing_fields.append(f"table.{field_name}")
 
-        meta = table.get("meta")
-        if not isinstance(meta, dict) or not meta.get("team"):
-            missing_fields.append("table.meta.team")
+            meta = table.get("meta")
+            if not isinstance(meta, dict) or not meta.get("team"):
+                missing_fields.append("table.meta.team")
 
-        if missing_fields:
-            errors.append(f"{config_path}: missing {', '.join(missing_fields)}")
-            continue
+            if missing_fields:
+                errors.append(f"{config_path}: missing {', '.join(missing_fields)}")
+                continue
 
-        print(
-            "Valid table config: "
-            f"{config_path} -> {table['catalog']}.{table['schema']}.{table['name']} "
-            f"primary_key={table['primary_key']} team={meta['team']}"
-        )
+            print(
+                "Valid table config: "
+                f"{config_path} -> {table['catalog']}.{table['schema']}.{table['name']} "
+                f"primary_key={table['primary_key']} team={meta['team']}"
+            )
     return errors
 
 
@@ -239,6 +249,37 @@ def validate_layer_layout(repo_root: Path) -> list[str]:
             errors.append(
                 f"{config_path}: {layer_readme_path} must link to {group_link!r}"
             )
+
+    return errors
+
+
+def validate_dataset_layout(repo_root: Path) -> list[str]:
+    errors = []
+    for config_path in sorted(repo_root.glob("datasets/**/config.yaml")):
+        relative = config_path.relative_to(repo_root)
+        if len(relative.parts) != 5:
+            errors.append(
+                f"{config_path}: expected datasets/<team>/<domain>/vN/config.yaml"
+            )
+            continue
+
+        _, team, domain, version, _ = relative.parts
+        if not re.fullmatch(r"v[1-9][0-9]*", version):
+            errors.append(f"{config_path}: invalid version directory {version!r}")
+            continue
+
+        expected_dag_id = f"feature-platform.datasets.{team}.{domain}.{version}"
+        dag_path = config_path.parent / "dag.py"
+        readme_path = config_path.parent / "README.md"
+        dag_contract = config_path.read_text(encoding="utf-8")
+        if dag_path.is_file():
+            dag_contract += dag_path.read_text(encoding="utf-8")
+        if expected_dag_id not in dag_contract:
+            errors.append(f"{config_path}: missing DAG id {expected_dag_id!r}")
+        if not readme_path.is_file() or expected_dag_id not in readme_path.read_text(
+            encoding="utf-8"
+        ):
+            errors.append(f"{config_path}: README must state DAG id {expected_dag_id!r}")
 
     return errors
 
