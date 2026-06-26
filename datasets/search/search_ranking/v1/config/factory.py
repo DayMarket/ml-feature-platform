@@ -69,6 +69,12 @@ def _read_json_like_yaml(path: str) -> Dict[str, Any]:
         return json.load(config_file)
 
 
+def _unquote_scalar(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
 def _read_simple_config(path: str) -> Dict[str, Any]:
     config: Dict[str, Any] = {}
     stack = [(-1, config)]
@@ -93,7 +99,7 @@ def _read_simple_config(path: str) -> Dict[str, Any]:
             key = key.strip()
             value = value.strip()
             if value:
-                parent[key] = value
+                parent[key] = _unquote_scalar(value)
             else:
                 nested: Dict[str, Any] = {}
                 parent[key] = nested

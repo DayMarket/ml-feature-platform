@@ -1,9 +1,9 @@
-from datetime import datetime
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
 
 from job.entities import Arguments
+from job.partition import parse_partition_date
 
 
 CATEGORY_LEVEL = 2
@@ -15,7 +15,7 @@ def _load_migration_query(migration_name: str) -> str:
 
 
 def _partition_date(partition_start: str) -> str:
-    return datetime.strptime(partition_start, "%Y-%m-%d %H:%M:%S").date().isoformat()
+    return parse_partition_date(partition_start).isoformat()
 
 
 def build_account_l2_event_w_imps_counts(
