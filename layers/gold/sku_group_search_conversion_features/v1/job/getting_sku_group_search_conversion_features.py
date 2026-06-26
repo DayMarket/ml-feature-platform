@@ -9,12 +9,14 @@ from job.entities import Arguments
 
 
 WINDOWS = (1, 3, 7, 14, 21, 30, 60, 90)
+INCREMENT_RATE_WINDOWS = (3, 7, 14, 21, 30, 60, 90)
 RECENCY_LOOKBACK_DAYS = 90
 SMOOTH_ALPHA = 0.003384
 SMOOTH_BETA = 1.402240
 SELECTED_COLUMNS = (
     "date",
     "sku_group_id",
+    "category_id",
     "smooth_conv_imp2order_3",
     "smooth_conv_imp2order_7",
     "smooth_conv_imp2order_14",
@@ -39,6 +41,68 @@ SELECTED_COLUMNS = (
     "skg_return_rate_30",
     "skg_return_rate_60",
     "skg_return_rate_90",
+    "skg_incr_rate_orders_1_to_3",
+    "skg_incr_rate_orders_1_to_7",
+    "skg_incr_rate_orders_1_to_14",
+    "skg_incr_rate_orders_1_to_21",
+    "skg_incr_rate_orders_1_to_30",
+    "skg_incr_rate_orders_1_to_60",
+    "skg_incr_rate_orders_1_to_90",
+    "skg_incr_rate_atc_1_to_3",
+    "skg_incr_rate_atc_1_to_7",
+    "skg_incr_rate_atc_1_to_14",
+    "skg_incr_rate_atc_1_to_21",
+    "skg_incr_rate_atc_1_to_30",
+    "skg_incr_rate_atc_1_to_60",
+    "skg_incr_rate_atc_1_to_90",
+    "category_skg_orders_1",
+    "category_skg_orders_3",
+    "category_skg_orders_7",
+    "category_skg_orders_14",
+    "category_skg_orders_21",
+    "category_skg_orders_30",
+    "category_skg_orders_60",
+    "category_skg_orders_90",
+    "category_orders_1",
+    "category_orders_3",
+    "category_orders_7",
+    "category_orders_14",
+    "category_orders_21",
+    "category_orders_30",
+    "category_orders_60",
+    "category_orders_90",
+    "category_skg_atc_1",
+    "category_skg_atc_3",
+    "category_skg_atc_7",
+    "category_skg_atc_14",
+    "category_skg_atc_21",
+    "category_skg_atc_30",
+    "category_skg_atc_60",
+    "category_skg_atc_90",
+    "category_atc_1",
+    "category_atc_3",
+    "category_atc_7",
+    "category_atc_14",
+    "category_atc_21",
+    "category_atc_30",
+    "category_atc_60",
+    "category_atc_90",
+    "category_skg_orders_frac_category_orders_1",
+    "category_skg_orders_frac_category_orders_3",
+    "category_skg_orders_frac_category_orders_7",
+    "category_skg_orders_frac_category_orders_14",
+    "category_skg_orders_frac_category_orders_21",
+    "category_skg_orders_frac_category_orders_30",
+    "category_skg_orders_frac_category_orders_60",
+    "category_skg_orders_frac_category_orders_90",
+    "category_skg_atc_frac_category_atc_1",
+    "category_skg_atc_frac_category_atc_3",
+    "category_skg_atc_frac_category_atc_7",
+    "category_skg_atc_frac_category_atc_14",
+    "category_skg_atc_frac_category_atc_21",
+    "category_skg_atc_frac_category_atc_30",
+    "category_skg_atc_frac_category_atc_60",
+    "category_skg_atc_frac_category_atc_90",
     "imp2order_3_to_1",
     "imp2order_21_to_14",
     "imp2order_30_to_21",
@@ -130,6 +194,20 @@ def _build_daily_orders(
     )
 
 
+def _build_sku_categories(spark: SparkSession) -> DataFrame:
+    return (
+        spark.table("iceberg.silver.sku")
+        .select(
+            F.col("sku_group_id").cast("long").alias("sku_group_id"),
+            F.col("category_id").cast("long").alias("category_id"),
+        )
+        .filter(F.col("sku_group_id").isNotNull())
+        .filter(F.col("category_id").isNotNull())
+        .groupBy("sku_group_id")
+        .agg(F.max("category_id").alias("category_id"))
+    )
+
+
 def _build_event_recency(
     spark: SparkSession,
     start_date: str,
@@ -187,7 +265,7 @@ def _build_window_sums(
     daily_stats: DataFrame,
     window_dates: dict[int, str],
 ) -> DataFrame:
-    aggregations = []
+    aggregations = [F.max("category_id").alias("category_id")]
     for window in WINDOWS:
         aggregations.extend(
             (
@@ -209,6 +287,30 @@ def _build_window_sums(
     return daily_stats.groupBy("sku_group_id").agg(*aggregations)
 
 
+def _build_category_window_sums(
+    daily_stats: DataFrame,
+    window_dates: dict[int, str],
+) -> DataFrame:
+    aggregations = []
+    for window in WINDOWS:
+        aggregations.extend(
+            (
+                _sum_since("uniq_orders", window_dates[window]).alias(
+                    f"category_orders_{window}"
+                ),
+                _sum_since("uniq_atcs", window_dates[window]).alias(
+                    f"category_atc_{window}"
+                ),
+            )
+        )
+
+    return (
+        daily_stats.filter(F.col("category_id").isNotNull())
+        .groupBy("category_id")
+        .agg(*aggregations)
+    )
+
+
 def build_sku_group_search_conversion_features(
     spark: SparkSession,
     run_date: str,
@@ -221,6 +323,7 @@ def build_sku_group_search_conversion_features(
 
     daily_search_events = _build_daily_search_events(spark, start_date, finish_date)
     daily_orders = _build_daily_orders(spark, start_date, finish_date)
+    sku_categories = _build_sku_categories(spark)
     event_recency = _build_event_recency(spark, recency_start_date, run_date)
 
     daily_stats = daily_search_events.join(
@@ -235,9 +338,16 @@ def build_sku_group_search_conversion_features(
             F.coalesce(F.col(column_name), F.lit(0.0)),
         )
 
+    daily_stats = daily_stats.join(sku_categories, on="sku_group_id", how="left")
+    category_window_sums = _build_category_window_sums(daily_stats, window_dates)
+
     features = _build_window_sums(daily_stats, window_dates).join(
         event_recency,
         on="sku_group_id",
+        how="left",
+    ).join(
+        category_window_sums,
+        on="category_id",
         how="left",
     )
 
@@ -261,6 +371,46 @@ def build_sku_group_search_conversion_features(
             _safe_div(
                 F.col(f"skg_returned_orders_{window}"),
                 F.col(f"skg_uniq_orders_{window}"),
+            ),
+        )
+
+    for window in INCREMENT_RATE_WINDOWS:
+        features = features.withColumn(
+            f"skg_incr_rate_orders_1_to_{window}",
+            _safe_div(
+                F.col("skg_uniq_orders_1"),
+                F.col(f"skg_uniq_orders_{window}"),
+            ),
+        )
+        features = features.withColumn(
+            f"skg_incr_rate_atc_1_to_{window}",
+            _safe_div(
+                F.col("skg_uniq_atcs_1"),
+                F.col(f"skg_uniq_atcs_{window}"),
+            ),
+        )
+
+    for window in WINDOWS:
+        features = features.withColumn(
+            f"category_skg_orders_{window}",
+            F.col(f"skg_uniq_orders_{window}"),
+        )
+        features = features.withColumn(
+            f"category_skg_atc_{window}",
+            F.col(f"skg_uniq_atcs_{window}"),
+        )
+        features = features.withColumn(
+            f"category_skg_orders_frac_category_orders_{window}",
+            _safe_div(
+                F.col(f"category_skg_orders_{window}"),
+                F.col(f"category_orders_{window}"),
+            ),
+        )
+        features = features.withColumn(
+            f"category_skg_atc_frac_category_atc_{window}",
+            _safe_div(
+                F.col(f"category_skg_atc_{window}"),
+                F.col(f"category_atc_{window}"),
             ),
         )
 

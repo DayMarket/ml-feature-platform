@@ -9,7 +9,8 @@
 Источники:
 
 - `iceberg.silver.feature_platform_search_sku_group_id_install_query` - поисковые показы из daily search pre-aggregate;
-- `iceberg.silver.feature_platform_sku_group_query_search_orders` - поисковые заказы по query и `sku_group_id`.
+- `iceberg.silver.feature_platform_sku_group_query_search_orders` - поисковые заказы по query и `sku_group_id`;
+- `iceberg.silver.sku` - маппинг `sku_group_id` в `category_id`.
 
 Окна считаются строго до даты расчета: для `ds = 2026-06-02` окно `3` использует даты `[2026-05-30, 2026-06-01]`. Сам `ds` не входит в расчет, как в старом SKU-level пайплайне.
 
@@ -25,6 +26,15 @@
 - `skg_days_since_last_atc`;
 - `skg_conv_atc2order_{1,3,7,14,21,30,60,90}`;
 - `skg_return_rate_{1,3,7,14,21,30,60,90}`;
+- `skg_incr_rate_orders_1_to_{3,7,14,21,30,60,90}`;
+- `skg_incr_rate_atc_1_to_{3,7,14,21,30,60,90}`;
+- `category_id`;
+- `category_skg_orders_{1,3,7,14,21,30,60,90}`;
+- `category_orders_{1,3,7,14,21,30,60,90}`;
+- `category_skg_atc_{1,3,7,14,21,30,60,90}`;
+- `category_atc_{1,3,7,14,21,30,60,90}`;
+- `category_skg_orders_frac_category_orders_{1,3,7,14,21,30,60,90}`;
+- `category_skg_atc_frac_category_atc_{1,3,7,14,21,30,60,90}`;
 - `imp2order_3_to_1`;
 - `imp2order_21_to_14`;
 - `imp2order_30_to_21`.
@@ -64,6 +74,28 @@ skg_return_rate_d = skg_returned_orders_d / skg_uniq_orders_d
 
 где `skg_returned_orders_d` строится из `returned_orders`, а `skg_uniq_orders_d` — из `orders_generated` в `iceberg.silver.feature_platform_sku_group_query_search_orders`. При нулевом или отсутствующем знаменателе сохраняется Spark-семантика `NULL`.
 
+Increment rate признаки показывают долю вчерашней активности в накопленном окне и считаются для окон 3, 7, 14, 21, 30, 60 и 90 дней:
+
+```text
+skg_incr_rate_orders_1_to_d = skg_uniq_orders_1 / skg_uniq_orders_d
+skg_incr_rate_atc_1_to_d = skg_uniq_atcs_1 / skg_uniq_atcs_d
+```
+
+Окно `1_to_1` не выводится, так как оно сводится к `x / x`. При нулевом или отсутствующем знаменателе сохраняется Spark-семантика `NULL`.
+
+Category-признаки используют `category_id` из `iceberg.silver.sku`. Если для одного `sku_group_id` найдено несколько `category_id`, job выбирает максимальный `category_id`, чтобы сохранить grain таблицы `date, sku_group_id` и не размножать строки.
+
+```text
+category_skg_orders_d = skg_uniq_orders_d
+category_skg_atc_d = skg_uniq_atcs_d
+category_orders_d = sum(category_skg_orders_d) по всем sku_group_id этой category_id
+category_atc_d = sum(category_skg_atc_d) по всем sku_group_id этой category_id
+category_skg_orders_frac_category_orders_d = category_skg_orders_d / category_orders_d
+category_skg_atc_frac_category_atc_d = category_skg_atc_d / category_atc_d
+```
+
+При отсутствующем `category_id` category-level признаки остаются `NULL`. При нулевом или отсутствующем знаменателе в долях сохраняется Spark-семантика `NULL`.
+
 Внутренние raw ratio-признаки `skg_conv_imp2order_*` сохраняют Spark-семантику `NULL` для нулевого или отсутствующего знаменателя. В финальный select они не выводятся напрямую, но используются для расчета признаков `imp2order_3_to_1`, `imp2order_21_to_14` и `imp2order_30_to_21`. Это важно для совместимости со старым feature-store пайплайном, где raw ratio не подменялись на `0.0`.
 
 Recency-признаки считаются по поисковым событиям `space = 'SEARCH_RESULTS'` из `iceberg.silver.feature_platform_search_sku_group_id_install_query` в окне `[ds - 90, ds - 1]`:
@@ -88,5 +120,11 @@ skg_days_since_last_atc = ds - max(date), где sum_atc > 0
 Миграция `migrations/20260625_add_atc2order_features.sql` идемпотентно добавляет в существующую таблицу колонки `skg_conv_atc2order_{1,3,7,14,21,30,60,90}`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
 
 Миграция `migrations/20260625_add_return_rate_features.sql` идемпотентно добавляет в существующую таблицу колонки `skg_return_rate_{1,3,7,14,21,30,60,90}`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
+
+## Изменение схемы от 2026-06-26
+
+Миграция `migrations/20260626_add_increment_rate_features.sql` идемпотентно добавляет в существующую таблицу колонки `skg_incr_rate_orders_1_to_{3,7,14,21,30,60,90}` и `skg_incr_rate_atc_1_to_{3,7,14,21,30,60,90}`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
+
+Миграция `migrations/20260626_add_category_sku_group_features.sql` идемпотентно добавляет в существующую таблицу колонку `category_id`, category-level count-фичи `category_skg_orders_*`, `category_orders_*`, `category_skg_atc_*`, `category_atc_*` и доли `category_skg_orders_frac_category_orders_*`, `category_skg_atc_frac_category_atc_*`. Для новых окружений эти колонки также включены в `migrations/create_table.sql`.
 
 Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_search_conversion_features/v1/entrypoints/get_sku_group_search_conversion_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
