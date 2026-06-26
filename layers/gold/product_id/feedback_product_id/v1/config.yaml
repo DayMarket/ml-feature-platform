@@ -1,0 +1,24 @@
+resources:
+  path: ../../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-gold-product-feedback-base-stats
+  main_application_file: local:///git/repo/layers/gold/product_id/feedback_product_id/v1/entrypoints/get_product_feedback_base_stats.py
+  resource_profile: small
+
+table:
+  key: product_feedback_base_stats
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_product_feedback_base_stats
+  primary_key: date,product_id
+  meta:
+    team: team:search
+dag:
+  team: search
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search

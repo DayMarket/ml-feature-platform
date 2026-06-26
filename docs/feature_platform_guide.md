@@ -36,8 +36,13 @@ MCP-доступ не означает автоматического разре
 Сущность платформы - это версия пайплайна, обычно каталог вида:
 
 ```text
-layers/<layer>/<entity_name>/v1
+layers/<layer>/<primary_key_group>/<entity_name>/v1
 ```
+
+`primary_key_group` строится из `table.primary_key`: `date` исключается, порядок
+остальных колонок сохраняется, а имена соединяются через `_`. Например,
+`date,query,sku_group_id` дает группу `query_sku_group_id`. Для `sku_group_install`
+зафиксировано семантическое исключение `sku_group_id_query_category`.
 
 Внутри лежит полный контракт:
 
@@ -142,7 +147,7 @@ Grain: `date,product_id`.
 После выбора источника нужно зафиксировать:
 
 - source engine и полное имя source table/path;
-- Airflow connection: для Trino уточнить `trino_default` или другой conn_id, для ClickHouse всегда получить conn_id от пользователя;
+- Airflow connection: для Trino предложить `trino_search` для поискового домена или `trino_recsys` для рекомендательного и при неоднозначности использовать финальный выбор пользователя; для ClickHouse всегда получить conn_id от пользователя;
 - владельца источника или команду, которая отвечает за данные;
 - freshness/DQ contract источника;
 - ключи join;
@@ -227,7 +232,7 @@ DESCRIBE iceberg.silver.order_items_attribution
 
 Перед генерацией DAG-а нужно подтвердить connection contract:
 
-- Trino: использовать `trino_default` или другой Airflow connection;
+- Trino: использовать `trino_search` для поискового домена или `trino_recsys` для рекомендательного; при неоднозначности показать оба варианта и использовать финальный выбор пользователя;
 - ClickHouse: пользователь должен явно назвать Airflow connection id, потому что доступ зависит от RBAC.
 
 После проверки источник фиксируется в контракте новой таблицы:
@@ -248,7 +253,7 @@ DESCRIBE iceberg.silver.order_items_attribution
 Какие признаки сейчас собираются для отзывов?
 ```
 
-Ответ строится из файлов `layers/gold/feedback_product_id/v1` и `layers/gold/feedback_sku_group_id/v1`.
+Ответ строится из файлов `layers/gold/product_id/feedback_product_id/v1` и `layers/gold/sku_group_id/feedback_sku_group_id/v1`.
 
 Пример ответа:
 
@@ -356,7 +361,7 @@ Grain: `date,sku_group_id`.
 
 - это финальная `gold`-фича или нужен переиспользуемый `silver`-агрегат;
 - какие source tables считать контрактными, какой source engine использовать, если это не ясно из контекста, и нужно ли проверять их через MCP;
-- какой Airflow connection использовать: для Trino `trino_default` или другой conn_id, для ClickHouse явно заданный пользователем conn_id;
+- какой Airflow connection использовать: для Trino `trino_search` в поисковом контексте или `trino_recsys` в рекомендательном, а при неоднозначности — финальный выбор пользователя; для ClickHouse — явно заданный пользователем conn_id;
 - какие join keys связывают источник продаж с целевой сущностью;
 - какие date boundaries у окон: включен ли `{{ ds }}`, какая верхняя граница, какие timestamp/date поля использовать;
 - какие статусы заказов считать продажей и как учитывать отмены/возвраты;
@@ -371,7 +376,7 @@ Grain: `date,sku_group_id`.
 Для новой таблицы обычно создается такая структура кода:
 
 ```text
-layers/<silver_or_gold>/<entity_name>/v1/
+layers/<silver_or_gold>/<primary_key_group>/<entity_name>/v1/
   config.yaml
   dag.py
   config/factory.py
@@ -409,12 +414,12 @@ layers/<silver_or_gold>/<entity_name>/v1/
 
 ```yaml
 resources:
-  path: ../../../../config/spark/resources.yaml
+  path: ../../../../../config/spark/resources.yaml
 
 spark:
-  template_path: ../../../../config/spark/layer_spark_application.yaml
+  template_path: ../../../../../config/spark/layer_spark_application.yaml
   application_name: fetch-gold-example-features
-  main_application_file: local:///git/repo/layers/gold/example_features/v1/entrypoints/get_example_features.py
+  main_application_file: local:///git/repo/layers/gold/sku_group_id/example_features/v1/entrypoints/get_example_features.py
   resource_profile: small
 ```
 
@@ -422,18 +427,18 @@ spark:
 
 ```yaml
 resources:
-  path: ../../../../config/spark/resources.yaml
+  path: ../../../../../config/spark/resources.yaml
 
 spark_applications:
   fetch_gold_example_features.yaml:
-    template_path: ../../../../config/spark/layer_spark_application.yaml
+    template_path: ../../../../../config/spark/layer_spark_application.yaml
     application_name: fetch-gold-example-features
-    main_application_file: local:///git/repo/layers/gold/example_features/v1/entrypoints/get_example_features.py
+    main_application_file: local:///git/repo/layers/gold/sku_group_id/example_features/v1/entrypoints/get_example_features.py
     resource_profile: small
   fetch_gold_example_features_backfill.yaml:
-    template_path: ../../../../config/spark/layer_spark_application.yaml
+    template_path: ../../../../../config/spark/layer_spark_application.yaml
     application_name: backfill-gold-example-features
-    main_application_file: local:///git/repo/layers/gold/example_features/v1/entrypoints/backfill_example_features.py
+    main_application_file: local:///git/repo/layers/gold/sku_group_id/example_features/v1/entrypoints/backfill_example_features.py
     resource_profile: large
 ```
 
@@ -696,7 +701,7 @@ Ranking upload находится в `upload/ranking_features/v1`.
 - Для внешних источников используйте DQ/source contract команды-владельца.
 - Не прячьте source table names в неочевидных константах: lineage должен читаться из job.
 - Не добавляйте custom Spark image для обычных code/config/SQL changes. Используйте общий `config/spark/layer_spark_application.yaml`, default Spark image и `git-sync`.
-- Для Trino-source jobs уточняйте, использовать ли `trino_default` или другой Airflow connection. Для ClickHouse-source jobs всегда спрашивайте connection id у пользователя.
+- Для Trino-source jobs предлагайте `trino_search` для поискового домена или `trino_recsys` для рекомендательного. Если контекст не дает однозначного выбора, покажите оба варианта и используйте финальный выбор пользователя. Для ClickHouse-source jobs всегда спрашивайте connection id у пользователя.
 - Trino и ClickHouse могут быть источниками, но итоговые признаки и агрегаты сохраняются в Iceberg.
 - Ресурсы driver/executor задавайте через именованный профиль в `config/spark/resources.yaml` и ссылку `resource_profile` в `config.yaml` сущности.
 - Не обновляйте `AGENTS.md` при добавлении каждой новой фичи. Детали фичи должны жить в README слоя, migration, config, DAG и job.

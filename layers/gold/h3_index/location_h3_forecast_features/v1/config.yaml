@@ -1,0 +1,30 @@
+# ClickHouse-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+# Runtime/source contract is documented here; the Spark `spark`/`resources`
+# blocks are intentionally absent (see AGENTS.md Trino/ClickHouse-source pattern).
+table:
+  key: location_h3_forecast_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_location_h3_forecast_features
+  primary_key: date,h3_index
+  meta:
+    team: team:operations
+
+source:
+  engine: iceberg
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.gold.h3_index.location_h3_forecast_features
+  group_tag: location-h3-forecast
+  schedule: "0 2 * * *"
+  start_date: "2026-06-19T00:00:00Z"
+  team: operations
+  owner: team:operations
+
+alerts:
+  team: operations-analytics
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_operations

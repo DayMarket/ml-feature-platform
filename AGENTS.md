@@ -22,6 +22,12 @@ Owner metadata:
 ## First Rules
 
 - Read this file first, then inspect the relevant repository files. Do not rely on memory or on this handbook as a feature inventory.
+- The canonical Airflow namespace is `feature-platform`; `ml-feature-platform` is only the Git repository name. Do not mix these values in DAG ids or tags.
+- Layer DAG ids must encode the repository path using Airflow-safe dots: `feature-platform.layers.<layer>.<primary_key_group>.<entity>`, without the version suffix. For example, `layers/gold/h3_index/location_h3_forecast_features/v1/dag.py` must use `feature-platform.layers.gold.h3_index.location_h3_forecast_features`. Airflow keys allow only alphanumeric characters, dashes, dots, and underscores, so never use path slashes in a DAG id. Do not invent shorter aliases such as `location_forecast_features_dag`.
+- Every related DAG group must have one repository-unique, human-readable Airflow group tag, stored as `dag.group_tag` in each member entity's `config.yaml` and added to each member DAG from config. All DAGs in the group must use the exact same tag, unrelated DAGs must not reuse it, and each entity README must state it. For example, the location forecast chain uses `location-h3-forecast`.
+- Every layer entity README must state the fully qualified output table (`<catalog>.<schema>.<name>`) and the exact DAG id. Keep both values consistent with `config.yaml` and `dag.py`.
+- `layers/` is an entity tree grouped by primary key, not a shared-library root. Keep an entity's runtime, query, write, and orchestration code inside `layers/<layer>/<primary_key_group>/<entity>/vN/`. Derive `primary_key_group` by removing `date` from `table.primary_key`, preserving the remaining column order, and joining the names with underscores. The `sku_group_install` entity is the sole semantic exception and uses `sku_group_id_query_category`. Do not create `layers/_common`, `layers/_commons`, or another cross-entity utility package there. If reuse is genuinely needed, first identify an existing approved top-level shared location or ask the user to approve a repository-wide abstraction; do not introduce one implicitly.
+- One repository-managed layer table means one self-contained entity directory and orchestration contract. Do not declare several independent silver tables in separate configs while materializing them from a gold entity's DAG or code. Each silver entity owns its own DAG, source query/job, runtime configuration, migration, and README; the gold entity only reads completed silver outputs.
 - Before creating or renaming a feature, run the duplicate feature check below.
 - If the request changes code, configs, migrations, CI, deployment, downstream contracts, or ownership, first summarize what you understood and the intended approach or options. Wait for agreement when the contract is not already explicit.
 - If the implementation contract is unclear, ask concise clarifying questions. It is better to pause than to create a plausible but wrong feature.
@@ -29,14 +35,16 @@ Owner metadata:
 - Treat source enum/filter semantics as data semantics, not obvious constants. Finding a table, column, or literal filter value in the repository does not by itself confirm that it is the right source contract for a new feature. For fields such as `widget_space_name`, `widget_section_name`, attribution spaces, recommendation placement names, status values, and similar business-coded values, ask the user to confirm the contract or permit MCP inspection unless the current request or an existing README/job contract explicitly removes the ambiguity.
 - If a requested source is not produced by this repo, do not invent ownership or ingestion. Ask for upstream table/path, owning team, source freshness/DQ contract, join keys, and whether feature-platform should transform an existing source or whether separate upstream ingestion is needed.
 - DAGs that depend on feature-platform tables must wait for the dependent table's dbt DQ DAG, not the Spark DAG that writes that table.
+- A gold DAG that reads repository-managed silver tables must declare a sensor dependency for every such silver table's dbt DQ DAG. A Python import, task ordering inside one combined DAG, matching schedules, or the fact that the silver table already exists is not an acceptable substitute.
 - When adding or changing DAG schedules, `start_date`, backfill ranges, or partition intervals, ask the user to confirm the launch time in UTC and propose UTC times by default. Keep Airflow `start_date`/`end_date` timezone-aware UTC, and generate job partition boundaries from Airflow `data_interval_start`/`data_interval_end` converted to UTC.
 - When adding or changing Spark layer DAGs, ask the user which Spark resource profile to use or what driver/executor resources are expected. Use `config/spark/resources.yaml` profiles and reference them from the entity `config.yaml`; add a new named profile only after the resource contract is confirmed.
 - New Spark layer jobs should use the shared Spark image plus `git-sync`. Add a custom Spark image only when runtime dependencies cannot be delivered by `git-sync`.
-- For Trino-source DAGs, ask whether to use Airflow connection `trino_default` or another connection. You may propose `trino_default` as the default, but do not silently lock it in when the connection contract has not been confirmed.
+- Trino-source DAGs have two supported Airflow connections: `trino_search` for search-domain workloads and `trino_recsys` for recommendation-system workloads. Propose the connection that matches the source and workload context; if the context does not determine it unambiguously, present both options and use the user's final choice. Do not silently lock in a connection when the contract has not been confirmed.
 - For ClickHouse-source DAGs, always ask the user for the Airflow connection id before scaffolding or editing files, because ClickHouse access is RBAC-sensitive. Do not infer the connection from nearby DAGs.
 - For Trino/ClickHouse-source layer jobs, use a separate Airflow/Python pattern that reads through the confirmed source connection and writes the repository-managed output to Iceberg with `pyiceberg`. Do not model these jobs as SparkApplications unless the user explicitly chooses Spark execution.
 - For Trino/ClickHouse-source layer jobs, propose `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` as the default runtime image. If the job needs third-party libraries that are not available in the default image and cannot be safely delivered by repository code, ask the user whether to create or use a custom image before scaffolding runtime files.
 - Migrations are executed by CI after merge to `master`; jobs may keep defensive table/column checks, but schema evolution belongs in migrations.
+- Treat `config.yaml` as the single source of truth for repository-managed table identifiers. Do not duplicate values in constants such as `GOLD_IDENTIFIER`, `TABLE_IDENTIFIER`, or hard-coded `"schema.table"` strings. DAGs and jobs must load `table.catalog`, `table.schema`, and `table.name` from the owning entity config and pass them explicitly.
 - Be careful with dirty worktrees and generated files. Do not revert unrelated user changes.
 
 ## Where To Find Facts
@@ -104,6 +112,7 @@ Use this workflow:
 - Implement Trino/ClickHouse-source jobs using an Airflow/Python pattern: read from the confirmed source connection, transform according to the approved SQL/source contract, and write the final result to Iceberg through `pyiceberg`.
 - Keep source table names visible in transformation code or config; do not hide lineage behind opaque constants.
 - Update the full entity surface together: `config.yaml`, `dag.py`, runtime configuration, factory or helper code when used, entrypoint/job code, migrations, and README.
+- In every changed entity README, include an explicit orchestration section with the exact DAG id and an explicit output section with the fully qualified table name. Do not make readers infer either value from a path or prose.
 - Add DQ sensor dependencies on DQ DAGs for feature-platform source tables. For external upstream tables, use the producing team's documented DAG/DQ contract.
 - For new Airflow/Spark jobs, pass interval boundaries with `{{ data_interval_start }}` and `{{ data_interval_end }}`-based templates instead of `{{ ds }}` and `{{ next_ds }}`. Convert them to the business timezone explicitly when the feature contract is timezone-specific.
 - When a requested DAG schedule is expressed in a business timezone, confirm or derive the actual Airflow cron timezone before writing `schedule_interval`; if Airflow schedules in UTC, convert the cron expression explicitly and document the business-time equivalent in the README or DAG comments.
@@ -164,6 +173,19 @@ When asked for lineage, answer from final feature back to all sources. Include:
 - Ranking upload feature group and feature order if published.
 - Known caveats from the implementation.
 
+## Production Comments And Docstrings
+
+Comments and docstrings in production DAGs and jobs are part of the maintained contract. Keep them strict, short, and specific to the actual entity and values:
+
+- Prefer a one-line module docstring that states the current responsibility, for example `"""Write the daily geo activity snapshot to Iceberg."""`. Use a longer docstring only when a non-obvious input, output, invariant, or failure mode cannot be expressed clearly in one or two additional lines.
+- Do not add narrative module headers that describe repository history, announce that an implementation is the first of its kind, explain how the agent arrived at the design, or broadly introduce the platform. Phrases such as “This is the first non-Spark runtime” do not belong in production code.
+- Do not duplicate README, `AGENTS.md`, deployment, image, connection, warehouse, credential, or dependency documentation in code comments. Put the durable operational contract in the entity README and keep runtime values in `config.yaml` or the appropriate configuration source.
+- Comments must describe the concrete entity behavior or the reason for a non-obvious decision. Do not restate the following code, advertise implementation details, or use generic template prose such as “shared runtime for feature-platform jobs.”
+- Adapt every comment to the values actually used by that entity. Verify table layer/name, source engine, connection, partition field, interval boundary, schedule, and dependency names; never copy a comment from another DAG without reconciling those values.
+- Keep comments adjacent to the invariant they protect. If code or configuration makes a comment false or redundant, update or remove the comment in the same change.
+- Lazy imports may have a short reason such as `# Runtime-only dependency; unavailable in migration validation.` Do not use a multi-paragraph docstring to list packages, images, catalog wiring, or credential sources.
+- Treat oversized or stale explanatory headers as a production-readiness defect. Agents must shorten or remove them while editing the affected DAG/job, even when the functional code is otherwise correct.
+
 ## Layer Layout
 
 Implemented Spark layer pipelines generally follow this shape:
@@ -181,7 +203,9 @@ Implemented Spark layer pipelines generally follow this shape:
 - `migrations/create_table.sql`: Iceberg DDL. Add extra migration files for schema changes.
 - `README.md`: Russian-language human summary of purpose, sources, grain, key formulas, and operational notes.
 
-Trino/ClickHouse-source layer pipelines may use a separate Airflow/Python shape instead of SparkApplication. They should still live under `layers/<layer>/<entity>/v1`, keep migrations and README alongside the code, read through explicitly confirmed Airflow connections, and write the output Iceberg table with `pyiceberg`. There may be no current examples in this repository; when generating one, keep the pattern explicit in README and do not reuse Spark-specific `spark`/`spark_applications` config unless Spark execution is actually used.
+Trino/ClickHouse-source layer pipelines may use a separate Airflow/Python shape instead of SparkApplication. They should still live under `layers/<layer>/<primary_key_group>/<entity>/v1`, keep migrations and README alongside the code, read through explicitly confirmed Airflow connections, and write the output Iceberg table with `pyiceberg`. There may be no current examples in this repository; when generating one, keep the pattern explicit in README and do not reuse Spark-specific `spark`/`spark_applications` config unless Spark execution is actually used.
+
+For Trino/ClickHouse-source pipelines, the same entity boundary applies to runtime code: each output table is materialized by code and a DAG in its own entity directory. A gold DAG must not execute the source queries or writes belonging to silver entities. Coordinate gold through silver dbt DQ sensors instead.
 
 Configuration constraints:
 
@@ -189,6 +213,21 @@ Configuration constraints:
 - Required table fields are `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`.
 - Repository-managed output tables must keep `table.catalog: iceberg`. Current dbt source sync reads `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`; current Iceberg maintenance sync reads Iceberg `table.schema` and `table.name`. Additional source/runtime config must not break these simple parsers.
 - Primary keys should include `date` for daily/hourly feature tables unless there is a deliberate exception documented in README and code.
+
+## PyIceberg Catalog And Identifier Contract
+
+Use these rules for every Airflow/Python job that reads or writes Iceberg with `pyiceberg`:
+
+- SQL/Trino/Spark names and PyIceberg catalog identifiers are different contracts. A fully qualified repository table is `<catalog>.<schema>.<name>`, for example `iceberg.silver.feature_platform_geo_geointellect_features`. After `load_catalog(<catalog>, ...)` has selected the catalog, pass the table to catalog APIs as the two-part tuple `(<schema>, <name>)`, for example `("silver", "feature_platform_geo_geointellect_features")`.
+- Do not pass the catalog name to `catalog.load_table`, `catalog.table_exists`, or other table APIs. Do not pass a one-part table name. For Hive Catalog, require exactly one namespace component and one table component; hierarchical namespaces such as `("iceberg", "silver", "table")` are unsupported.
+- Never derive a PyIceberg identifier with `split`, `rsplit`, prefix removal, or ad hoc string concatenation. In particular, converting `silver.table` to `table` drops the namespace and can produce misleading `NoSuchTableError` or `Invalid path, hierarchical namespaces are not supported` failures. Build `(config["table"]["schema"], config["table"]["name"])` directly from the owning `config.yaml`.
+- Add one strict identifier helper per entity/runtime boundary if needed. It must validate that catalog, schema, and name are non-empty, verify that the configured catalog matches the loaded catalog, and return a two-element tuple. Fail before querying a source or writing data when the identifier is malformed.
+- Migrations own table creation and schema evolution. A runtime job must not silently create a missing table. Before the first read/write, use `table_exists((schema, name))` or catch `NoSuchTableError` from `load_table`, then raise a diagnostic error containing the configured fully qualified name, catalog implementation, namespace, and the fact that migrations must have completed. Do not report every identifier-shape failure as a missing migration.
+- Run a preflight for every configured input and output table before expensive source extraction. For a gold job, preflight all silver inputs and the gold output. This catches wrong namespaces, catalog wiring, and unapplied migrations before ClickHouse/Trino work begins.
+- Keep catalog configuration consistent with the migration/Spark environment: catalog type, Hive Metastore URI, warehouse, object-store endpoint, region, path-style setting, and credentials source must refer to the same environment. Log non-secret catalog type/URI, warehouse, namespace, and table name; never log access keys or connection extras.
+- Read and write through the schema returned by the loaded Iceberg table. Select and order Arrow columns explicitly, reject missing required columns and unexpected incompatible types, and preserve the table's field names. Do not use DataFrame column order as an implicit schema contract.
+- For partition replacement, validate that the partition field exists and that every outgoing row has the intended partition value. Use an explicit Iceberg expression such as `EqualTo("date", partition_date)` and keep the overwrite idempotent. Do not broaden an overwrite filter to compensate for identifier or schema errors.
+- Add unit tests for identifier construction and malformed inputs, including accidental values `table`, `schema.table`, and `catalog.schema.table`. Mock the catalog to assert that calls receive exactly `(schema, table)`. Where runtime dependencies are unavailable locally, these contract tests must still run without connecting to production.
 
 ## Deployment Standard
 
@@ -203,7 +242,7 @@ Configuration constraints:
 - Use a custom Spark image only for Python libraries, truststores, binaries, or runtime files not available in the default image and not deliverable by `git-sync`.
 - If a custom image is required, add/update Dockerfile, pinned requirements, Drone tag trigger, documentation, and the DAG/runtime image reference. Internal packages must be installed from Nexus using Drone-provided build args; never commit credentials.
 - Trino/ClickHouse-source Airflow/Python jobs should use `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` by default and write to Iceberg with `pyiceberg`. If required third-party libraries are missing from that image and cannot be delivered through repository code, ask the user to confirm a new or existing custom image before editing runtime files.
-- Trino-source jobs should ask whether to use `trino_default` or another Airflow connection. ClickHouse-source jobs must ask for the exact Airflow connection id because RBAC is connection-specific.
+- Trino-source jobs should use `trino_search` for search-domain workloads or `trino_recsys` for recommendation-system workloads. Propose the context-appropriate connection; when the context is ambiguous, present both and use the user's final choice. ClickHouse-source jobs must ask for the exact Airflow connection id because RBAC is connection-specific.
 
 ## Custom Image Workflow
 

@@ -18,8 +18,8 @@
 
 ## Где что лежит
 
-- `layers/silver/*/v1` - переиспользуемые агрегаты и промежуточные таблицы.
-- `layers/gold/*/v1` - финальные признаки для моделей или downstream-сервисов.
+- `layers/silver/<primary_key_group>/*/v1` - переиспользуемые агрегаты и промежуточные таблицы.
+- `layers/gold/<primary_key_group>/*/v1` - финальные признаки для моделей или downstream-сервисов.
 - `config/spark` - общий SparkApplication template и resource profiles для Spark layer DAG-ов.
 - `upload/ranking_features/v1` - загрузка feature groups в Kafka-топик сервиса ранжирования.
 - `scripts/` - CI-синхронизация миграций, dbt sources, Iceberg maintenance и валидации.
@@ -50,7 +50,7 @@
 
 Если нужных данных в Feature Platform нет, источник может быть выбран из Spark/Iceberg, Trino или ClickHouse. Перед просмотром схем, примеров строк, партиций, freshness и значений бизнес-кодов агент должен спросить разрешение на MCP-инспекцию, если эти факты не ясны из задачи или репозитория. После выбора источника в Feature Platform создается слой, который сохраняет результат в нужный Iceberg `silver` или `gold` contract.
 
-Для Trino-source DAG-ов агент уточняет, использовать ли `trino_default` или другой Airflow connection. Для ClickHouse-source DAG-ов connection id всегда должен подтвердить пользователь, потому что доступ зависит от RBAC. Для Trino/ClickHouse-source DAG-ов базовый runtime image - `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`; если нужны отсутствующие сторонние библиотеки, агент предложит согласовать отдельный образ.
+Для Trino-source DAG-ов доступны два Airflow connection: `trino_search` для задач поискового домена и `trino_recsys` для рекомендательных задач. Агент предлагает подходящий по контексту connection; если контекст неоднозначен, показывает оба варианта и использует финальный выбор пользователя. Для ClickHouse-source DAG-ов connection id всегда должен подтвердить пользователь, потому что доступ зависит от RBAC. Для Trino/ClickHouse-source DAG-ов базовый runtime image - `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`; если нужны отсутствующие сторонние библиотеки, агент предложит согласовать отдельный образ.
 
 ## Основные проверки
 
