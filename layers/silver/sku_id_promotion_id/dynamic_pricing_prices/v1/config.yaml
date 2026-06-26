@@ -1,0 +1,34 @@
+# Trino-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+table:
+  key: dynamic_pricing_prices
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_dynamic_pricing_prices
+  primary_key: calculated_at,sku_id,promotion_id
+  meta:
+    team: team:search
+
+source:
+  engine: trino
+  trino_conn_id: trino_search
+  promotion_ids:
+    - model_3008_sku_ext_no_filter_budget_34_with_cb_v2_sku_card_0526
+    - model_3008_sku_ext_internal_matching_soft_budget_29_with_cb_v2_sku_card_internal_matching_soft_0526
+    - model_3008_sku_ext_internal_matching_hard_budget_29_with_cb_v2_sku_card_internal_matching_hard_0526
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.silver.calculated_at_sku_id_promotion_id.dynamic_pricing_prices
+  group_tag: dynamic-pricing-prices
+  schedule: "0 */3 * * *"
+  start_date: "2026-06-26T00:00:00Z"
+  team: search
+  owner: team:search
+  upstream_dag_id: merge_center_solution_to_kafka_gurobi_mvp_dag
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
