@@ -1,0 +1,27 @@
+resources:
+  path: ../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-dataset-search-ranking-v1
+  main_application_file: local:///git/repo/datasets/search/search_ranking/v1/entrypoints/get_search_ranking_dataset.py
+  resource_profile: large
+
+table:
+  key: dataset_search_ranking_v1
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_dataset_search_ranking_v1
+  primary_key: collection_date,event_date,install_id,session_id,query,position
+  meta:
+    team: team:search
+dag:
+  team: search
+  group_tag: search-ranking-dataset
+  schedule: "0 2 * * *"
+  start_date: "2026-06-09T00:00:00Z"
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search

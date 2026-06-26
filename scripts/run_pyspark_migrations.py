@@ -107,10 +107,11 @@ def validate_idempotent_statement(statement: str, migration_path: Path) -> None:
 
 def get_layer_migration_targets(repo_root: Path) -> list[tuple[Path, Path]]:
     targets = []
-    for config_path in sorted(repo_root.glob("layers/**/config.yaml")):
-        migrations_path = config_path.parent / "migrations"
-        if migrations_path.is_dir() and list(migrations_path.glob("*.sql")):
-            targets.append((config_path, migrations_path))
+    for config_root in ("layers", "datasets"):
+        for config_path in sorted(repo_root.glob(f"{config_root}/**/config.yaml")):
+            migrations_path = config_path.parent / "migrations"
+            if migrations_path.is_dir() and list(migrations_path.glob("*.sql")):
+                targets.append((config_path, migrations_path))
     return targets
 
 
