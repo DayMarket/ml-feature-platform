@@ -11,6 +11,7 @@ from typing import Any, Optional
 NAME_LINE_PATTERN = re.compile(r"^-\s+name:\s+['\"]?(?P<name>[A-Za-z0-9_]+)['\"]?\s*$")
 SCHEMA_LINE_PATTERN = re.compile(r"^schema:\s+['\"]?(?P<schema>[A-Za-z0-9_]+)['\"]?\s*$")
 SOURCES_FILE_NAME = "sources.yaml"
+TABLE_CONFIG_ROOTS = ("layers", "datasets")
 
 
 @dataclass(frozen=True)
@@ -167,7 +168,7 @@ def main() -> int:
 
 def discover_table_configs(repo_root: Path) -> list[dict[str, Any]]:
     table_configs = []
-    for config_root in ("layers", "datasets"):
+    for config_root in TABLE_CONFIG_ROOTS:
         for config_path in sorted(repo_root.glob(f"{config_root}/**/config.yaml")):
             local_config = _read_simple_config(config_path)
             table = local_config.get("table", {})
@@ -398,7 +399,8 @@ def _remove_misplaced_tables(
         else:
             print(
                 f"Removed stale dbt source table: {source_schema}.{table_name} "
-                f"table is no longer declared in layers/**/config.yaml file={sources_path}"
+                f"table is no longer declared in layers/**/config.yaml "
+                f"or datasets/**/config.yaml file={sources_path}"
             )
     return changed_files
 

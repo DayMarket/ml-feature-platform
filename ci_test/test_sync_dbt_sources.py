@@ -20,6 +20,14 @@ def main() -> int:
         "schema_overrides": {"dev": "staging"},
     }
     table_configs = sync.discover_table_configs(Path("."))
+    dataset_table = next(
+        table_config
+        for table_config in table_configs
+        if table_config["config_path"]
+        == "datasets/search/search_ranking/v1/config.yaml"
+    )
+    assert dataset_table["name"] == "feature_platform_dataset_search_ranking_v1"
+    assert dataset_table["schema"] == "silver"
     expected_schemas = {
         str(table_config["schema"])
         for table_config in table_configs
@@ -128,11 +136,25 @@ sources:
             silver_table_yaml,
         )
 
+        dataset_table_yaml = sync.render_source_yaml(
+            dbt_config,
+            dataset_table,
+            "master",
+            include_document_header=False,
+            include_source_header=False,
+        )
+        sync._append_table_to_source_block(
+            sources_path,
+            "silver",
+            dataset_table_yaml,
+        )
+
         final_yaml = sources_path.read_text(encoding="utf-8")
         assert sync._extract_source_tables(final_yaml) == {
             ("silver", "feature_platform_sku_group_orders"),
             ("silver", "external_removed_table"),
             ("silver", "feature_platform_sku_group_id_prices"),
+            ("silver", "feature_platform_dataset_search_ranking_v1"),
             ("gold", "feature_platform_sku_group_price_features"),
         }
         assert (

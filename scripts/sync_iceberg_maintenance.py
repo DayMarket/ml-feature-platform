@@ -13,6 +13,7 @@ MAINTENANCE_CONFIG_PATH = Path(
     "dags_v3/maintenance_generator/feature_platform_config.yaml"
 )
 MAINTENANCE_DAG_PATH = Path("dags_v3/maintenance_generator/dag.py")
+TABLE_CONFIG_ROOTS = ("layers", "datasets")
 
 
 @dataclass(frozen=True)
@@ -80,7 +81,7 @@ def main() -> int:
 
 def discover_iceberg_tables(repo_root: Path) -> dict[str, list[str]]:
     schemas: dict[str, set[str]] = {}
-    for config_root in ("layers", "datasets"):
+    for config_root in TABLE_CONFIG_ROOTS:
         for config_path in sorted(repo_root.glob(f"{config_root}/**/config.yaml")):
             config = read_simple_nested_config(config_path)
             table = config.get("table", {})

@@ -21,6 +21,7 @@ def main() -> int:
     assert "silver" in discovered_tables
     assert "feature_platform_sku_group_price_features" in discovered_tables["gold"]
     assert "feature_platform_sku_group_id_prices" in discovered_tables["silver"]
+    assert "feature_platform_dataset_search_ranking_v1" in discovered_tables["silver"]
 
     existing_config = """# Manual file
 schemas:
@@ -81,13 +82,17 @@ schemas:
         parsed,
         {
             "gold": ["feature_platform_sku_group_price_features"],
-            "silver": ["feature_platform_sku_group_id_prices"],
+            "silver": [
+                "feature_platform_dataset_search_ranking_v1",
+                "feature_platform_sku_group_id_prices",
+            ],
         },
     )
     rendered = sync.render_feature_platform_config(merged)
     assert rendered.count("feature_platform_sku_group_price_features") == 1
     assert "manually_added_gold_table" in rendered
     assert "manually_added_silver_table" in rendered
+    assert "feature_platform_dataset_search_ranking_v1" in rendered
     assert "feature_platform_sku_group_id_prices" in rendered
 
     dag_content = '''
