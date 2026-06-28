@@ -19,6 +19,7 @@ dag_settings = get_dag_settings()
 logger = logging.getLogger("airflow.task")
 logger.setLevel("INFO")
 
+#DAG for uploading search ranking dataset
 default_args = {
     "owner": dag_settings["owner"],
     "depends_on_past": False,
@@ -28,7 +29,7 @@ default_args = {
     "on_failure_callback": send_oncall_notification(
         severity=dag_settings["alert_severity"],
         team=dag_settings["alert_team"],
-        oncall_webhook_conn_id=dag_settings["alert_oncall_webhook_conn_id"],
+        oncall_webhook_conn_id=dag_settings["alert_oncall_webhook_conn_id"], 
     ),
 }
 
