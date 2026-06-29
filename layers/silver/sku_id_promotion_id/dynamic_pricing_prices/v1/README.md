@@ -1,10 +1,10 @@
-# iceberg.silver.feature_platform_dynamic_pricing_prices
+# iceberg.silver.feature_platform_dynamic_pricing_daily_prices
 
 Дневной latest `dynamic_discount` на уровне SKU и promotion.
 
 ## Выход и оркестрация
 
-- Таблица: `iceberg.silver.feature_platform_dynamic_pricing_prices`.
+- Таблица: `iceberg.silver.feature_platform_dynamic_pricing_daily_prices`.
 - DAG: `feature-platform.layers.silver.sku_id_promotion_id.dynamic_pricing_prices` (`layers/silver/sku_id_promotion_id/dynamic_pricing_prices/v1/dag.py`).
 - Групповой тег Airflow: `dynamic-pricing-prices`.
 - Расписание: ежедневно в 01:00 UTC, `0 1 * * *`.
