@@ -14,6 +14,7 @@ MAINTENANCE_CONFIG_PATH = Path(
 )
 MAINTENANCE_DAG_PATH = Path("dags_v3/maintenance_generator/dag.py")
 TABLE_CONFIG_ROOTS = ("layers", "datasets")
+CREATE_MAINTENANCE_PR_FLAG = "create_maintenance_pr"
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,16 @@ def discover_iceberg_tables(repo_root: Path) -> dict[str, list[str]]:
             table = config.get("table", {})
             if table.get("catalog") != "iceberg":
                 continue
+            meta = table.get("meta", {})
+            if not _parse_bool_flag(meta, CREATE_MAINTENANCE_PR_FLAG, config_path):
+                table_name = str(table.get("name", "")).strip()
+                schema = str(table.get("schema", "")).strip()
+                print(
+                    f"Skip maintenance table because "
+                    f"table.meta.{CREATE_MAINTENANCE_PR_FLAG}=false: "
+                    f"{schema}.{table_name} config={config_path}"
+                )
+                continue
             schema = str(table.get("schema", "")).strip()
             table_name = str(table.get("name", "")).strip()
             if not schema or not table_name:
@@ -118,6 +129,26 @@ def read_simple_nested_config(config_path: Path) -> dict[str, Any]:
             parent[key.strip()] = nested
             stack.append((indent, nested))
     return config
+
+
+def _parse_bool_flag(
+    config: dict[str, Any],
+    field_name: str,
+    config_path: Path,
+    default: bool = True,
+) -> bool:
+    raw_value = config.get(field_name, default)
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip().strip('"').strip("'").lower()
+        if normalized in {"true", "yes", "1"}:
+            return True
+        if normalized in {"false", "no", "0"}:
+            return False
+    raise ValueError(
+        f"{config_path}: table.meta.{field_name} must be a boolean value"
+    )
 
 
 def sync_maintenance_files(

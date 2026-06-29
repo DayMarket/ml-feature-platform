@@ -22,6 +22,30 @@ def main() -> int:
     assert "feature_platform_sku_group_price_features" in discovered_tables["gold"]
     assert "feature_platform_sku_group_id_prices" in discovered_tables["silver"]
     assert "feature_platform_dataset_search_ranking_v1" in discovered_tables["silver"]
+    assert "feature_platform_product_search_queries" in discovered_tables["silver"]
+    assert sync._parse_bool_flag(
+        {"create_maintenance_pr": "false"},
+        "create_maintenance_pr",
+        Path("config.yaml"),
+    ) is False
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo = Path(temp_dir)
+        config_path = repo / "layers/silver/product_id/skipped_table/v1/config.yaml"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            """table:
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_skipped_maintenance
+  primary_key: date,product_id
+  meta:
+    team: team:search
+    create_maintenance_pr: false
+""",
+            encoding="utf-8",
+        )
+        assert sync.discover_iceberg_tables(repo) == {}
 
     existing_config = """# Manual file
 schemas:
