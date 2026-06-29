@@ -62,6 +62,13 @@
 - что ranking upload config ссылается на существующие `gold`-таблицы и реальные колонки из migrations;
 - что в измененных файлах нет лишних пробелов и других whitespace-проблем.
 
+Автосоздание downstream PR управляется флагами в `table.meta`:
+
+- `create_dbt_pr` контролирует PR в `DayMarket/dbt-trino` с source definitions и DQ-тестами;
+- `create_maintenance_pr` контролирует PR в `DayMarket/pyspark-etl` для Iceberg maintenance;
+- если флаг отсутствует или равен `true`, CI считает таблицу eligible для создания missing PR entry;
+- если флаг равен `false`, CI пропускает создание соответствующей downstream-записи для этой таблицы и не удаляет уже существующие записи.
+
 Локальная проверка Spark-миграций может требовать PySpark и инфраструктурные credentials. В CI миграции проверяются в Spark runtime.
 
 ## Подробная инструкция
