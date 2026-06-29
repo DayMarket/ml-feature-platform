@@ -128,18 +128,6 @@ def dynamic_pricing_price_features_dag() -> None:
         check_existence=True,
     )
 
-    wait_for_silver_dynamic_pricing_dq = ExternalTaskSensor(
-        task_id="wait_for_silver_dynamic_pricing_dq",
-        external_dag_id=_dq_dag_id(SILVER_CONFIG),
-        allowed_states=["success"],
-        failed_states=["failed"],
-        mode="reschedule",
-        poke_interval=60,
-        timeout=3 * 60 * 60,
-        check_existence=False,
-        execution_date_fn=_silver_dq_logical_date,
-    )
-
     @task(executor_config=_executor_config())
     def materialize(calculated_at_value: str) -> None:
         runtime = _load_job_module("runtime.py", "dynamic_pricing_price_runtime")
@@ -172,7 +160,7 @@ def dynamic_pricing_price_features_dag() -> None:
         '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
     )
 
-    [wait_for_dynamic_pricing_solution, wait_for_silver_dynamic_pricing_dq] >> gold_task
+    [wait_for_dynamic_pricing_solution] >> gold_task
 
 
 dag = dynamic_pricing_price_features_dag()
