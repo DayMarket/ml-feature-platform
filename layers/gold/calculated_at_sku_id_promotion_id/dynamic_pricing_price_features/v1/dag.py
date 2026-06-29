@@ -144,17 +144,24 @@ def dynamic_pricing_price_features_dag() -> None:
         calculated_at = runtime.parse_snapshot_timestamp(calculated_at_value)
         history_days = int(output_config["source"]["history_days"])
         promotion_ids = output_config["source"]["promotion_ids"]
+        silver_table = runtime.trino_table_name(silver_ref)
 
-        frame = runtime.query_trino(
-            output_config["source"]["trino_conn_id"],
-            query.build_gold_query(
-                calculated_at=calculated_at,
-                promotion_ids=promotion_ids,
-                silver_table=runtime.trino_table_name(silver_ref),
-                history_days=history_days,
-            ),
-        )
-        runtime.write_timestamp_snapshot(output_table, frame, calculated_at)
+        for promotion_id in promotion_ids:
+            frame = runtime.query_trino(
+                output_config["source"]["trino_conn_id"],
+                query.build_gold_query(
+                    calculated_at=calculated_at,
+                    promotion_ids=[promotion_id],
+                    silver_table=silver_table,
+                    history_days=history_days,
+                ),
+            )
+            runtime.write_timestamp_promotion_snapshot(
+                output_table,
+                frame,
+                calculated_at,
+                promotion_id,
+            )
 
     gold_task = materialize(
         '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
