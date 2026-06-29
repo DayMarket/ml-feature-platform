@@ -20,6 +20,11 @@ from ranking_python_client import (
 
 from job.entities import Arguments
 
+try:
+    from ranking_python_client import SkuGroupToPromotionFeatureSet
+except ImportError:
+    SkuGroupToPromotionFeatureSet = None
+
 
 ENTITY_TYPES = {
     ("account_id",): ("accountFeatureSet", AccountFeatureSet),
@@ -37,11 +42,16 @@ ENTITY_TYPES = {
         "skuGroupToQueryFeatureSet",
         SkuGroupToQueryFeatureSet,
     ),
+    ("promotion_id", "sku_group_id"): (
+        "skuGroupToPromotionFeatureSet",
+        SkuGroupToPromotionFeatureSet,
+    ),
 }
 
 PROTO_KEY_ARGUMENTS = {
     "account_id": "accountId",
     "category_id": "categoryId",
+    "promotion_id": "promotionId",
     "query": "query",
     "sku_group_id": "skuGroupId",
 }
@@ -136,16 +146,31 @@ def _source_metadata(
                     f"Ranking upload source must be gold, got "
                     f"{table['schema']}.{table['name']}"
                 )
-            if "date" not in primary_key:
+            timestamp_column = source.get("timestamp_column")
+            if "date" in primary_key:
+                date_column = "date"
+                entity_keys = [column for column in primary_key if column != "date"]
+            elif timestamp_column in primary_key:
+                if source.get("read_mode") != "latest_timestamp":
+                    raise ValueError(
+                        f"Ranking upload source {table['schema']}.{table['name']} "
+                        "with timestamp primary key must use read_mode=latest_timestamp"
+                    )
+                date_column = None
+                entity_keys = [
+                    column for column in primary_key if column != timestamp_column
+                ]
+            else:
                 raise ValueError(
                     f"Ranking upload source {table['schema']}.{table['name']} "
-                    "primary_key must contain date"
+                    "primary_key must contain date or configured timestamp_column"
                 )
             return {
                 "catalog": table["catalog"],
                 "primary_key": primary_key,
-                "date_column": "date",
-                "entity_keys": [column for column in primary_key if column != "date"],
+                "date_column": date_column,
+                "timestamp_column": timestamp_column,
+                "entity_keys": entity_keys,
             }
     raise ValueError(
         f"Source table {source['schema']}.{source['table']} is not declared "
@@ -173,6 +198,24 @@ def _prepare_source_frame(
         frame = frame.filter(
             F.col(metadata["date_column"]) == F.lit(run_date).cast("date")
         )
+    elif feature_group["source"].get("read_mode") == "latest_timestamp":
+        timestamp_column = metadata["timestamp_column"]
+        latest_row = frame.agg(
+            F.max(F.col(timestamp_column)).alias("_latest")
+        ).collect()[0]
+        latest_timestamp = latest_row["_latest"]
+        if latest_timestamp is None:
+            print(
+                f"Source {_source_table(feature_group, metadata)} has no "
+                f"{timestamp_column} values"
+            )
+            frame = frame.filter(F.lit(False))
+        else:
+            print(
+                f"Use latest {timestamp_column}={latest_timestamp} "
+                f"from {_source_table(feature_group, metadata)}"
+            )
+            frame = frame.filter(F.col(timestamp_column) == F.lit(latest_timestamp))
     if feature_group["source"].get("limit") is not None:
         frame = frame.limit(int(feature_group["source"]["limit"]))
 
@@ -211,6 +254,11 @@ def _row_to_proto(
 ) -> bytes:
     entity_keys = _entity_keys(metadata)
     update_field, message_class = ENTITY_TYPES[entity_keys]
+    if message_class is None:
+        raise RuntimeError(
+            f"ranking_python_client does not support entity keys {entity_keys}. "
+            "Update the ranking upload image/client before enabling this feature group."
+        )
     key_arguments = {
         PROTO_KEY_ARGUMENTS[key]: row[key]
         for key in metadata["entity_keys"]

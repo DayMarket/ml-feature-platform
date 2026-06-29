@@ -20,6 +20,7 @@ SUPPORTED_ENTITY_KEYS = {
     ("sku_group_id",),
     ("account_id", "category_id"),
     ("category_id", "sku_group_id"),
+    ("promotion_id", "sku_group_id"),
     ("query", "sku_group_id"),
 }
 
@@ -111,11 +112,11 @@ def validate_feature_group(
     if source_delta is not None and (
         isinstance(source_delta, bool)
         or not isinstance(source_delta, int)
-        or source_delta <= 0
+        or source_delta < 0
     ):
         errors.append(
             f"{config_path}: feature group {group_name} "
-            "source.dq_execution_delta_minutes must be a positive integer"
+            "source.dq_execution_delta_minutes must be a non-negative integer"
         )
     table = tables.get(source_key)
     if not table:
@@ -137,15 +138,27 @@ def validate_feature_group(
         )
 
     primary_key = table["primary_key"]
+    timestamp_column = source.get("timestamp_column")
     date_column = "date" if "date" in primary_key else None
-    if not date_column:
+    if date_column:
+        expected_entity_keys = [
+            column for column in primary_key if column != date_column
+        ]
+    elif timestamp_column in primary_key:
+        if source.get("read_mode") != "latest_timestamp":
+            errors.append(
+                f"{config_path}: feature group {group_name} source with "
+                "timestamp_column must use read_mode=latest_timestamp"
+            )
+        expected_entity_keys = [
+            column for column in primary_key if column != timestamp_column
+        ]
+    else:
         errors.append(
             f"{config_path}: feature group {group_name} source table primary_key "
-            "must contain date"
+            "must contain date or configured timestamp_column"
         )
-    expected_entity_keys = [
-        column for column in primary_key if column != date_column
-    ]
+        expected_entity_keys = []
     if tuple(sorted(expected_entity_keys)) not in SUPPORTED_ENTITY_KEYS:
         errors.append(
             f"{config_path}: feature group {group_name} has unsupported entity keys "
@@ -163,6 +176,8 @@ def validate_feature_group(
     required_columns.update(features)
     if date_column:
         required_columns.add(date_column)
+    if timestamp_column:
+        required_columns.add(str(timestamp_column))
     missing_columns = sorted(required_columns - table["columns"])
     if missing_columns:
         errors.append(

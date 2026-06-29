@@ -1,4 +1,4 @@
-"""Materialize dynamic-pricing final SKU prices to Iceberg."""
+"""Aggregate dynamic-pricing SKU prices to SKU group/promotion."""
 
 import importlib.util
 import os
@@ -17,12 +17,12 @@ ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(ENTITY_DIR, "..", "..", "..", "..", ".."))
 CONFIG_PATH = os.path.join(ENTITY_DIR, "config.yaml")
 JOB_DIR = os.path.join(ENTITY_DIR, "job")
-SILVER_CONFIG_PATH = os.path.join(
+SKU_PRICE_CONFIG_PATH = os.path.join(
     REPO_ROOT,
     "layers",
-    "silver",
-    "sku_id_promotion_id",
-    "dynamic_pricing_prices",
+    "gold",
+    "calculated_at_sku_id_promotion_id",
+    "dynamic_pricing_price_features",
     "v1",
     "config.yaml",
 )
@@ -34,7 +34,7 @@ def _read_config(path: str) -> dict:
 
 
 CONFIG = _read_config(CONFIG_PATH)
-SILVER_CONFIG = _read_config(SILVER_CONFIG_PATH)
+SKU_PRICE_CONFIG = _read_config(SKU_PRICE_CONFIG_PATH)
 
 
 def _load_job_module(filename: str, module_name: str):
@@ -56,8 +56,8 @@ def _executor_config() -> dict:
                         image_pull_policy="Always",
                         image=CONFIG["runtime"]["image"],
                         resources=k8s.V1ResourceRequirements(
-                            requests={"memory": "12Gi", "cpu": "3"},
-                            limits={"memory": "12Gi"},
+                            requests={"memory": "8Gi", "cpu": "2"},
+                            limits={"memory": "8Gi"},
                         ),
                     )
                 ]
@@ -72,11 +72,6 @@ def _dq_dag_id(config: dict) -> str:
         f"dbt.source.trino.ml_feature_platform_{table['schema']}."
         f"{table['name']}.dq"
     )
-
-
-def _silver_dq_logical_date(logical_date, **_):
-    logical_date = pendulum.instance(logical_date).in_timezone("UTC")
-    return logical_date.start_of("day").add(hours=1)
 
 
 def get_dag_default_args() -> dict:
@@ -103,7 +98,7 @@ def get_dag_default_args() -> dict:
         CONFIG["dag"]["group_tag"],
         CONFIG["dag"]["team"],
         "gold",
-        "sku",
+        "sku-group",
         "dynamic-pricing",
         "prices",
     ],
@@ -116,81 +111,45 @@ def get_dag_default_args() -> dict:
     start_date=pendulum.parse(CONFIG["dag"]["start_date"]).in_timezone("UTC"),
     catchup=False,
 )
-def dynamic_pricing_price_features_dag() -> None:
-    wait_for_dynamic_pricing_solution = ExternalTaskSensor(
-        task_id="wait_for_dynamic_pricing_solution",
-        external_dag_id=CONFIG["dag"]["upstream_dag_id"],
-        allowed_states=["success"],
-        failed_states=["failed"],
-        mode="reschedule",
-        poke_interval=60,
-        timeout=3 * 60 * 60,
-        check_existence=True,
-    )
-
-    wait_for_silver_dynamic_pricing_dq = ExternalTaskSensor(
-        task_id="wait_for_silver_dynamic_pricing_dq",
-        external_dag_id=_dq_dag_id(SILVER_CONFIG),
+def dynamic_pricing_sku_group_price_features_dag() -> None:
+    wait_for_sku_price_dq = ExternalTaskSensor(
+        task_id="wait_for_sku_dynamic_pricing_price_features_dq",
+        external_dag_id=_dq_dag_id(SKU_PRICE_CONFIG),
         allowed_states=["success"],
         failed_states=["failed"],
         mode="reschedule",
         poke_interval=60,
         timeout=3 * 60 * 60,
         check_existence=False,
-        execution_date_fn=_silver_dq_logical_date,
     )
 
     @task(executor_config=_executor_config())
     def materialize(calculated_at_value: str) -> None:
-        runtime = _load_job_module("runtime.py", "dynamic_pricing_price_runtime")
-        build = _load_job_module("build.py", "dynamic_pricing_price_build")
-        query = _load_job_module("query.py", "dynamic_pricing_price_query")
+        runtime = _load_job_module("runtime.py", "dynamic_pricing_skg_price_runtime")
+        query = _load_job_module("query.py", "dynamic_pricing_skg_price_query")
 
         output_config = runtime.load_config(CONFIG_PATH)
-        silver_config = runtime.load_config(SILVER_CONFIG_PATH)
+        source_config = runtime.load_config(SKU_PRICE_CONFIG_PATH)
         output_ref = runtime.table_ref(output_config)
-        silver_ref = runtime.table_ref(silver_config)
-        if output_ref.catalog != silver_ref.catalog:
-            raise ValueError(
-                "Gold and silver configs must use one Iceberg catalog; "
-                f"gold={output_ref.catalog!r}, silver={silver_ref.catalog!r}"
-            )
-
+        source_ref = runtime.table_ref(source_config)
         catalog = runtime.get_iceberg_catalog(output_ref)
         output_table = runtime.preflight_table(catalog, output_ref)
-        silver_table = runtime.preflight_table(catalog, silver_ref)
 
         calculated_at = runtime.parse_snapshot_timestamp(calculated_at_value)
-        history_days = int(output_config["source"]["history_days"])
-        promotion_ids = output_config["source"]["promotion_ids"]
-
-        history = runtime.read_iceberg_date_range(
-            silver_table,
-            runtime.history_start_date(calculated_at, history_days),
-            runtime.history_end_date(calculated_at),
-        )
-        today_discounts = runtime.query_trino(
+        frame = runtime.query_trino(
             output_config["source"]["trino_conn_id"],
-            query.build_today_discounts_query(calculated_at, promotion_ids),
-        )
-        actual_sku = runtime.query_trino(
-            output_config["source"]["trino_conn_id"],
-            query.build_actual_sku_query(),
-        )
-        frame = build.build_gold(
-            actual_sku=actual_sku,
-            historical_discounts=history,
-            today_discounts=today_discounts,
-            promotion_ids=promotion_ids,
-            calculated_at=calculated_at,
+            query.build_aggregate_query(
+                calculated_at=calculated_at,
+                source_table=runtime.trino_table_name(source_ref),
+            ),
         )
         runtime.write_timestamp_snapshot(output_table, frame, calculated_at)
 
-    gold_task = materialize(
+    aggregate_task = materialize(
         '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
     )
 
-    [wait_for_dynamic_pricing_solution, wait_for_silver_dynamic_pricing_dq] >> gold_task
+    wait_for_sku_price_dq >> aggregate_task
 
 
-dag = dynamic_pricing_price_features_dag()
+dag = dynamic_pricing_sku_group_price_features_dag()
