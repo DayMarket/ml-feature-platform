@@ -68,9 +68,15 @@ def build_product_search_queries(
         F.countDistinct("install_id").cast("long").alias("uniq_installs")
     )
 
-    candidates = events.select(
-        F.col("search_query"),
-        F.explode(F.col("ranking_candidates")).cast("long").alias("sku_group_id"),
+    candidates = (
+        events.select(
+            F.col("search_query"),
+            F.explode(F.col("ranking_candidates")).alias("sku_group_id_raw"),
+        )
+        .select(
+            F.col("search_query"),
+            F.col("sku_group_id_raw").cast("long").alias("sku_group_id"),
+        )
     )
 
     product_candidates = candidates.join(_sku_product_mapping(spark), on="sku_group_id", how="inner")
