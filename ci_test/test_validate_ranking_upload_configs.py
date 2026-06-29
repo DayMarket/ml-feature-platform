@@ -75,6 +75,55 @@ def main() -> int:
     )
     assert any("unknown_feature" in error for error in errors)
 
+    timestamp_tables = {
+        (
+            "gold",
+            "feature_platform_dynamic_pricing_sku_group_price_features",
+        ): {
+            "catalog": "iceberg",
+            "schema": "gold",
+            "table": "feature_platform_dynamic_pricing_sku_group_price_features",
+            "primary_key": ["calculated_at", "sku_group_id", "promotion_id"],
+            "columns": {
+                "calculated_at",
+                "sku_group_id",
+                "promotion_id",
+                "avg_sell_price",
+            },
+        }
+    }
+    timestamp_feature_group = {
+        "source": {
+            "schema": "gold",
+            "table": "feature_platform_dynamic_pricing_sku_group_price_features",
+            "timestamp_column": "calculated_at",
+            "read_mode": "latest_timestamp",
+            "dq_execution_delta_minutes": 0,
+        },
+        "name": "fs_dynamic_pricing",
+        "features": ["avg_sell_price"],
+    }
+    assert validator.validate_feature_group(
+        config_path,
+        timestamp_feature_group,
+        timestamp_tables,
+    ) == []
+
+    invalid_timestamp_feature_group = {
+        **timestamp_feature_group,
+        "source": {
+            "schema": "gold",
+            "table": "feature_platform_dynamic_pricing_sku_group_price_features",
+            "timestamp_column": "calculated_at",
+        },
+    }
+    errors = validator.validate_feature_group(
+        config_path,
+        invalid_timestamp_feature_group,
+        timestamp_tables,
+    )
+    assert any("read_mode=latest_timestamp" in error for error in errors)
+
     print("Ranking upload model manifest validation tests completed successfully")
     return 0
 

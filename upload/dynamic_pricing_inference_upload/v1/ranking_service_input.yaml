@@ -1,0 +1,9 @@
+output-label: output
+input-labels:
+  - label: dynamic_pricing_features
+    type: OFFLINE
+    missing-feature-value: 0.0
+    feature-sets:
+      - name: fs_dynamic_pricing_skg_promotion_price_features_v1
+        schema: SKU_GROUP_TO_PROMOTION
+        size: 9

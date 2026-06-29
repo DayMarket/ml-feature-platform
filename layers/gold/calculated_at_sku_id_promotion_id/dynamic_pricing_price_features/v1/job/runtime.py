@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -90,14 +90,9 @@ def parse_snapshot_timestamp(value: str) -> datetime:
     return parsed
 
 
-def history_start_date(calculated_at: datetime, history_days: int) -> date:
-    if history_days < 2:
-        raise ValueError("history_days must be at least 2")
-    return calculated_at.date() - timedelta(days=history_days - 1)
-
-
-def history_end_date(calculated_at: datetime) -> date:
-    return calculated_at.date() - timedelta(days=1)
+def trino_table_name(ref: TableRef) -> str:
+    catalog = "dwh-iceberg" if ref.catalog == "iceberg" else ref.catalog
+    return f'"{catalog}".{ref.schema}.{ref.name}'
 
 
 def get_iceberg_catalog(ref: TableRef):
@@ -153,33 +148,6 @@ def query_trino(conn_id: str, sql: str):
     frame = hook.get_pandas_df(sql)
     logger.info("Trino query returned shape=%s (conn=%s)", frame.shape, conn_id)
     return frame
-
-
-def read_iceberg_date_range(table, start_date: date, end_date: date):
-    from pyiceberg.expressions import EqualTo
-
-    import pandas as pd
-
-    frames = []
-    current_date = start_date
-    while current_date <= end_date:
-        frame = table.scan(row_filter=EqualTo("date", current_date)).to_pandas()
-        if not frame.empty:
-            frames.append(frame)
-        current_date += timedelta(days=1)
-
-    if not frames:
-        return pd.DataFrame(
-            columns=[
-                "date",
-                "sku_id",
-                "promotion_id",
-                "discount_amount",
-                "calculated_for_price",
-                "created_at",
-            ]
-        )
-    return pd.concat(frames, ignore_index=True)
 
 
 def _to_arrow_for_table(table, frame):
