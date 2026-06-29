@@ -1,8 +1,9 @@
 import logging
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
+import pendulum
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
 
 from airflow_commons.helpers.oncall import send_oncall_notification
@@ -36,11 +37,19 @@ default_args = {
 @dag(
     default_args=default_args,
     max_active_runs=1,
-    tags=["spark", "feature-platform", dag_settings["team_tag"], "silver", "product", "search"],
+    tags=[
+        "spark",
+        "feature-platform",
+        dag_settings["team_tag"],
+        dag_settings["group_tag"],
+        "silver",
+        "product",
+        "search",
+    ],
     is_paused_upon_creation=True,
-    schedule=CronDataIntervalTimetable("0 3 * * *", "UTC"),
-    start_date=datetime(2026, 6, 29, 0, 0, 0, tzinfo=timezone.utc),
-    dag_id="feature-platform.layers.silver.product_id.product_search_queries",
+    schedule=CronDataIntervalTimetable(dag_settings["schedule"], "UTC"),
+    start_date=pendulum.parse(dag_settings["start_date"]).in_timezone("UTC"),
+    dag_id=dag_settings["dag_id"],
 )
 def collect_silver_product_search_queries():
     SparkKubernetesOperator(
