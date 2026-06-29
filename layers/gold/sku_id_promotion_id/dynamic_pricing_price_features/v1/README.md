@@ -18,14 +18,14 @@
 
 ## Источники
 
-- `iceberg.silver.feature_platform_dynamic_pricing_daily_prices` - закрытые дневные latest dynamic_discount snapshots.
+- `iceberg.silver.feature_platform_dynamic_pricing_prices` - закрытые дневные latest dynamic_discount snapshots.
 - `promotions.public.dynamic_discount` - today's raw dynamic_discount за текущий UTC-день до `calculated_at`.
 - `kazanexpress.public.sku` - текущие SKU, `sku_group_id`, `product_id` и текущая цена продажи.
 
 ## Зависимости
 
 - `merge_center_solution_to_kafka_gurobi_mvp_dag`;
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_dynamic_pricing_daily_prices.dq`.
+- `dbt.source.trino.ml_feature_platform_silver.feature_platform_dynamic_pricing_prices.dq`.
 
 ## Логика
 
