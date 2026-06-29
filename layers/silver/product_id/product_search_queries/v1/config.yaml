@@ -17,8 +17,20 @@ table:
     team: team:search
     create_dbt_pr: false
     create_maintenance_pr: true
+
+source:
+  engine: spark_iceberg
+  ranking_events_table: iceberg.silver.ranking_analytics_events
+  sku_table: iceberg.silver.sku
+  model_name: search_unified_model_v6
+  lookback_days: 14
 dag:
+  id: feature-platform.layers.silver.product_id.product_search_queries
+  group_tag: product-search-queries
+  schedule: "0 3 * * *"
+  start_date: "2026-06-29T00:00:00Z"
   team: search
+  owner: team:search
 
 alerts:
   team: search

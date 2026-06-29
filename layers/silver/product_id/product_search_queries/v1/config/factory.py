@@ -28,8 +28,17 @@ def get_dag_settings() -> Dict[str, str]:
     alert_team = _normalize_team_name(alerts_config.get("team", dag_team))
 
     return {
+        "dag_id": str(
+            dag_config.get(
+                "id",
+                "feature-platform.layers.silver.product_id.product_search_queries",
+            )
+        ),
         "owner": str(dag_config.get("owner", f"team:{dag_team}")),
         "team_tag": str(dag_config.get("team_tag", f"team::{dag_team}")),
+        "group_tag": str(dag_config.get("group_tag", "product-search-queries")),
+        "schedule": str(dag_config.get("schedule", "0 3 * * *")),
+        "start_date": str(dag_config.get("start_date", "2026-06-29T00:00:00Z")),
         "alert_severity": str(alerts_config.get("severity", "P3")),
         "alert_team": alert_team,
         "alert_oncall_webhook_conn_id": str(
@@ -66,6 +75,12 @@ def _read_json_like_yaml(path: str) -> Dict[str, Any]:
         return json.load(config_file)
 
 
+def _unquote_scalar(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
 def _read_simple_config(path: str) -> Dict[str, Any]:
     config: Dict[str, Any] = {}
     stack = [(-1, config)]
@@ -90,7 +105,7 @@ def _read_simple_config(path: str) -> Dict[str, Any]:
             key = key.strip()
             value = value.strip()
             if value:
-                parent[key] = value
+                parent[key] = _unquote_scalar(value)
             else:
                 nested: Dict[str, Any] = {}
                 parent[key] = nested
@@ -151,6 +166,9 @@ def _fill_arguments(deployment_content: str, deployment_name: Optional[str] = No
     s3_connection = json.loads(
         BaseHook.get_connection("spark_ycs_connection").extra
     )
+    s3_search_research_connection = json.loads(
+        BaseHook.get_connection("spark_search_research_connection").extra
+    )
 
     resources_values = {
         "<driver_cores>": str(task_resources["driver_cores"]),
@@ -175,6 +193,8 @@ def _fill_arguments(deployment_content: str, deployment_name: Optional[str] = No
         "<table_name>": _get_table_name(dag_config),
         "<s3_secret_key>": s3_connection["aws_secret_access_key"],
         "<s3_access_key>": s3_connection["aws_access_key_id"],
+        "<s3_search_research_secret_key>": s3_search_research_connection["aws_secret_access_key"],
+        "<s3_search_research_access_key>": s3_search_research_connection["aws_access_key_id"],
     }
     from_to_replacement.update(resources_values)
 
