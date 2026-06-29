@@ -406,6 +406,18 @@ layers/<silver_or_gold>/<primary_key_group>/<entity_name>/v1/
 
 Для Trino/ClickHouse-source DAG-ов структура может отличаться от SparkApplication-шаблона: Spark-specific `spark`/`spark_applications` блоки не нужны, если job не запускается в Spark. Но `config.yaml` итоговой таблицы должен оставаться совместимым с CI: `table.catalog: iceberg`, `table.schema`, `table.name`, `table.primary_key`, `table.meta.team`. Этих полей достаточно для генерации PR-ов в `dbt-trino` и Iceberg maintenance.
 
+Автосоздание downstream PR управляется двумя опциональными bool-флагами в `table.meta`:
+
+```yaml
+table:
+  meta:
+    team: team:search
+    create_dbt_pr: true
+    create_maintenance_pr: true
+```
+
+`create_dbt_pr` контролирует PR в `DayMarket/dbt-trino` с source definitions и DQ-тестами. `create_maintenance_pr` контролирует PR в `DayMarket/pyspark-etl` для Iceberg maintenance. Если флаг отсутствует или равен `true`, master-side CI считает таблицу eligible для автоматического добавления missing downstream entry. Если флаг равен `false`, CI пропускает создание соответствующей downstream-записи для этой таблицы. Значение `false` не означает удаление: существующие dbt-trino source/DQ records и maintenance records не должны удаляться только из-за этого флага.
+
 ### Конфигурация SparkApplication и ресурсов
 
 Для обычных Spark layer DAG-ов SparkApplication template и ресурсы не копируются в каждую сущность. Сущность хранит только короткую привязку в `config.yaml`, а общий template лежит в `config/spark/layer_spark_application.yaml`.
@@ -612,7 +624,7 @@ GROUP BY
 2. Код готов в feature branch: создана или изменена структура слоя, миграции, PySpark job, config, DAG и README.
 3. PR мержится в `dev`: должны пройти CI-проверки. На этом этапе side-effecting шаги не должны создавать таблицы, менять dbt-trino, maintenance или Airflow submodule.
 4. После попадания изменений в `dev` они проходят дальше в `master` по принятому release flow.
-5. Merge в `master`: CI применяет миграции и создает или обновляет Iceberg-таблицу. Для новых repository-managed таблиц также создаются два downstream PR: в `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`.
+5. Merge в `master`: CI применяет миграции и создает или обновляет Iceberg-таблицу. Для новых repository-managed таблиц также создаются downstream PR в `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`, если это не отключено флагами `table.meta.create_dbt_pr: false` или `table.meta.create_maintenance_pr: false`.
 6. После master merge надо проверить таблицу в Iceberg: схема, партиция, наличие данных за ожидаемый `ds`, ключи, базовые агрегаты и несколько sanity-check значений.
 7. Пока downstream PR не мержатся автоматически, нужно вручную сходить в оба репозитория: `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`. Для них надо запросить review, временно через DE, проверить diff и замержить.
 8. После merge downstream PR надо включить основной Airflow DAG и DQ DAG. Основной DAG пишет таблицу, DQ DAG проверяет source contract для downstream-потребителей.
@@ -626,6 +638,15 @@ GROUP BY
 
 - в `DayMarket/dbt-trino` - source definitions и DQ-тесты для новых/измененных repository-managed таблиц;
 - в `DayMarket/pyspark-etl` - регистрация Iceberg maintenance для таблиц из `layers/**/config.yaml`.
+
+Создание этих PR контролируется `table.meta`:
+
+- `create_dbt_pr: true` или отсутствие флага - можно создать missing PR entry в `DayMarket/dbt-trino`;
+- `create_dbt_pr: false` - не создавать missing dbt-trino source/DQ entry для этой таблицы;
+- `create_maintenance_pr: true` или отсутствие флага - можно создать missing PR entry в `DayMarket/pyspark-etl`;
+- `create_maintenance_pr: false` - не создавать missing Iceberg maintenance entry для этой таблицы.
+
+Флаги со значением `false` не удаляют уже существующие downstream-записи. Удаление dbt source/DQ или maintenance registration остается отдельным removal/deprecation процессом с ручным review.
 
 Что важно:
 

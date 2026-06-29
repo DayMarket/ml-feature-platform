@@ -56,8 +56,8 @@ def _executor_config() -> dict:
                         image_pull_policy="Always",
                         image=CONFIG["runtime"]["image"],
                         resources=k8s.V1ResourceRequirements(
-                            requests={"memory": "12Gi", "cpu": "3"},
-                            limits={"memory": "12Gi"},
+                            requests={"memory": "30Gi", "cpu": "3"},
+                            limits={"memory": "30Gi"},
                         ),
                     )
                 ]
