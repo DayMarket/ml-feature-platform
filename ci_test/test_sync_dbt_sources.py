@@ -28,6 +28,19 @@ def main() -> int:
     )
     assert dataset_table["name"] == "feature_platform_dataset_search_ranking_v1"
     assert dataset_table["schema"] == "silver"
+    assert dataset_table["create_dbt_pr"] is True
+    product_queries_table = next(
+        table_config
+        for table_config in table_configs
+        if table_config["config_path"]
+        == "layers/silver/product_id/product_search_queries/v1/config.yaml"
+    )
+    assert product_queries_table["create_dbt_pr"] is True
+    assert sync._parse_bool_flag(
+        {"create_dbt_pr": "false"},
+        "create_dbt_pr",
+        Path("config.yaml"),
+    ) is False
     expected_schemas = {
         str(table_config["schema"])
         for table_config in table_configs
@@ -57,6 +70,9 @@ sources:
       - name: feature_platform_removed_table
         columns:
           - name: sku_group_id
+      - name: feature_platform_disabled_table
+        columns:
+          - name: product_id
   - name: external_silver
     database: dwh-iceberg
     schema: silver
@@ -84,10 +100,25 @@ sources:
             "silver",
             "feature_platform_removed_table",
             None,
+        ),
+        (
+            "silver",
+            "feature_platform_disabled_table",
+            None,
         )
     ]
+    repaired_yaml, removed_tables = sync._remove_misplaced_tables_from_content(
+        source_yaml,
+        desired_schemas,
+        {"feature_platform_disabled_table"},
+    )
+    assert (
+        "feature_platform_disabled_table" in repaired_yaml
+    )
+    assert ("silver", "feature_platform_disabled_table", None) not in removed_tables
     assert sync._extract_source_tables(repaired_yaml) == {
         ("silver", "feature_platform_sku_group_orders"),
+        ("silver", "feature_platform_disabled_table"),
         ("silver", "external_removed_table"),
     }
 
@@ -122,6 +153,7 @@ sources:
             "name": "feature_platform_sku_group_id_prices",
             "primary_key": ["date", "sku_group_id"],
             "team": "team:search",
+            "create_dbt_pr": True,
         }
         silver_table_yaml = sync.render_source_yaml(
             dbt_config,
@@ -152,6 +184,7 @@ sources:
         final_yaml = sources_path.read_text(encoding="utf-8")
         assert sync._extract_source_tables(final_yaml) == {
             ("silver", "feature_platform_sku_group_orders"),
+            ("silver", "feature_platform_disabled_table"),
             ("silver", "external_removed_table"),
             ("silver", "feature_platform_sku_group_id_prices"),
             ("silver", "feature_platform_dataset_search_ranking_v1"),
