@@ -66,14 +66,6 @@ def _executor_config() -> dict:
     }
 
 
-def _dq_dag_id(config: dict) -> str:
-    table = config["table"]
-    return (
-        f"dbt.source.trino.ml_feature_platform_{table['schema']}."
-        f"{table['name']}.dq"
-    )
-
-
 def get_dag_default_args() -> dict:
     return {
         "owner": CONFIG["dag"]["owner"],
@@ -112,9 +104,9 @@ def get_dag_default_args() -> dict:
     catchup=False,
 )
 def dynamic_pricing_sku_group_price_features_dag() -> None:
-    wait_for_sku_price_dq = ExternalTaskSensor(
-        task_id="wait_for_sku_dynamic_pricing_price_features_dq",
-        external_dag_id=_dq_dag_id(SKU_PRICE_CONFIG),
+    wait_for_sku_price_dag = ExternalTaskSensor(
+        task_id="wait_for_sku_dynamic_pricing_price_features",
+        external_dag_id=SKU_PRICE_CONFIG["dag"]["id"],
         allowed_states=["success"],
         failed_states=["failed"],
         mode="reschedule",
@@ -149,7 +141,7 @@ def dynamic_pricing_sku_group_price_features_dag() -> None:
         '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
     )
 
-    wait_for_sku_price_dq >> aggregate_task
+    wait_for_sku_price_dag >> aggregate_task
 
 
 dag = dynamic_pricing_sku_group_price_features_dag()
