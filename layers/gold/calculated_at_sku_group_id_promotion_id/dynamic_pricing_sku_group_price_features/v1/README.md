@@ -25,7 +25,7 @@
 
 ## Зависимости
 
-- `dbt.source.trino.ml_feature_platform_gold.feature_platform_dynamic_pricing_price_features.dq`.
+- `feature-platform.layers.gold.calculated_at_sku_id_promotion_id.dynamic_pricing_price_features`.
 
 ## Рантайм
 
