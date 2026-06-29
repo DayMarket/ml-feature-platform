@@ -1,0 +1,10 @@
+{
+  "app_type": "memory_optimized",
+  "spark_event_log_bucket": "um-prod-spark-logs",
+  "hive_metastore_uris": "thrift://hive-metastore.svc-data-hive-metastore.svc.cluster.local:9083",
+  "driver_cores": 1,
+  "driver_memory": "2g",
+  "executor_cores": 2,
+  "executor_instances": 2,
+  "executor_memory": "8g"
+}

@@ -1,0 +1,66 @@
+{
+  "resources": {
+    "path": "config/resources.yaml"
+  },
+  "dag": {
+    "id": "feature-platform.upload.dynamic_pricing_inference_upload",
+    "schedule": "0 */3 * * *",
+    "start_date": "2026-06-29T00:00:00+00:00",
+    "team": "search",
+    "team_tag": "team::search",
+    "owner": "team:search"
+  },
+  "alerts": {
+    "team": "search",
+    "severity": "P3",
+    "oncall_webhook_conn_id": "oncall_webhook_search"
+  },
+  "kafka": {
+    "connection_id": "kafka_ranking",
+    "topic": "ranking.features.updates"
+  },
+  "models": [
+    {
+      "name": "dynamic_pricing_inference",
+      "feature_groups": [
+        {
+          "name": "fs_dynamic_pricing_skg_promotion_price_features_v1",
+          "features": [
+            "min_sell_price",
+            "max_sell_price",
+            "avg_sell_price",
+            "min_discount",
+            "max_discount",
+            "avg_discount",
+            "min_discount_fraction",
+            "max_discount_fraction",
+            "avg_discount_fraction"
+          ]
+        }
+      ]
+    }
+  ],
+  "feature_groups": [
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_dynamic_pricing_sku_group_price_features",
+        "timestamp_column": "calculated_at",
+        "read_mode": "latest_timestamp",
+        "dq_execution_delta_minutes": 0
+      },
+      "name": "fs_dynamic_pricing_skg_promotion_price_features_v1",
+      "features": [
+        "min_sell_price",
+        "max_sell_price",
+        "avg_sell_price",
+        "min_discount",
+        "max_discount",
+        "avg_discount",
+        "min_discount_fraction",
+        "max_discount_fraction",
+        "avg_discount_fraction"
+      ]
+    }
+  ]
+}

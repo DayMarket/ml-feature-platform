@@ -18,21 +18,22 @@
 
 ## Источники
 
-- `iceberg.silver.feature_platform_dynamic_pricing_prices` - закрытые дневные latest dynamic_discount snapshots.
-- `promotions.public.dynamic_discount` - today's raw dynamic_discount за текущий UTC-день до `calculated_at`.
+- `iceberg.silver.feature_platform_dynamic_pricing_daily_prices` - закрытые дневные latest dynamic_discount snapshots.
+- `promotions.public.dynamic_discount` - today's raw dynamic_discount за текущий UTC-день.
 - `kazanexpress.public.sku` - текущие SKU, `sku_group_id`, `product_id` и текущая цена продажи.
 
 ## Зависимости
 
 - `merge_center_solution_to_kafka_gurobi_mvp_dag`;
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_dynamic_pricing_prices.dq`.
+- `dbt.source.trino.ml_feature_platform_silver.feature_platform_dynamic_pricing_daily_prices.dq`.
 
 ## Логика
 
-Gold читает `history_days = 15`: today's raw dynamic_discount из Trino и предыдущие 14 закрытых
-дневных партиций из silver/Iceberg. Затем выбирает последнюю запись по `sku_id, promotion_id`
-через `created_at DESC`, разворачивает текущую таблицу SKU на все `promotion_id` из config и
-считает финальные цены.
+Gold выполняет один Trino-запрос: берет actual dynamic_discount за последний день из
+`promotions.public.dynamic_discount`, добавляет предыдущие `history_days - 1` дней из
+silver/Iceberg через `UNION ALL`, выбирает последнюю запись по `sku_id, promotion_id` через
+`created_at DESC`, разворачивает текущую таблицу SKU на все `promotion_id` из config и считает
+финальные цены.
 
 Если текущий `sell_price` SKU равен `calculated_for_price` из dynamic_discount, скидка считается
 примененной: `sell_price = sell_price - discount_amount`, `discount = discount_amount`. Иначе
