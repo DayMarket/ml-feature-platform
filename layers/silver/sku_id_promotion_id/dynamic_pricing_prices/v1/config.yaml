@@ -3,7 +3,7 @@ table:
   key: dynamic_pricing_prices
   catalog: iceberg
   schema: silver
-  name: feature_platform_dynamic_pricing_prices
+  name: feature_platform_dynamic_pricing_daily_prices
   primary_key: date,sku_id,promotion_id
   meta:
     team: team:search
