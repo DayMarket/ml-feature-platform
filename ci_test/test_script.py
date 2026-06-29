@@ -19,6 +19,7 @@ MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 PRIMARY_KEY_GROUP_EXCEPTIONS = {
     ("silver", "sku_group_install"): "sku_group_id_query_category",
 }
+OPTIONAL_TABLE_META_BOOL_FLAGS = ("create_dbt_pr", "create_maintenance_pr")
 
 
 def main() -> int:
@@ -178,6 +179,12 @@ def validate_table_configs(repo_root: Path) -> list[str]:
             if missing_fields:
                 errors.append(f"{config_path}: missing {', '.join(missing_fields)}")
                 continue
+            for field_name in OPTIONAL_TABLE_META_BOOL_FLAGS:
+                if field_name in meta and not is_bool_like(meta[field_name]):
+                    errors.append(
+                        f"{config_path}: table.meta.{field_name} must be a boolean value"
+                    )
+                    continue
 
             print(
                 "Valid table config: "
@@ -185,6 +192,21 @@ def validate_table_configs(repo_root: Path) -> list[str]:
                 f"primary_key={table['primary_key']} team={meta['team']}"
             )
     return errors
+
+
+def is_bool_like(value: object) -> bool:
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, str):
+        return value.strip().strip('"').strip("'").lower() in {
+            "true",
+            "false",
+            "yes",
+            "no",
+            "1",
+            "0",
+        }
+    return False
 
 
 def validate_layer_layout(repo_root: Path) -> list[str]:

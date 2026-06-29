@@ -12,6 +12,7 @@ NAME_LINE_PATTERN = re.compile(r"^-\s+name:\s+['\"]?(?P<name>[A-Za-z0-9_]+)['\"]
 SCHEMA_LINE_PATTERN = re.compile(r"^schema:\s+['\"]?(?P<schema>[A-Za-z0-9_]+)['\"]?\s*$")
 SOURCES_FILE_NAME = "sources.yaml"
 TABLE_CONFIG_ROOTS = ("layers", "datasets")
+CREATE_DBT_PR_FLAG = "create_dbt_pr"
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ def main() -> int:
             "discovered_table="
             f"{table_config['catalog']}.{table_config['schema']}.{table_config['name']} "
             f"team={table_config['team']} primary_key={table_config['primary_key']} "
+            f"create_dbt_pr={table_config['create_dbt_pr']} "
             f"config={table_config['config_path']}"
         )
 
@@ -70,7 +72,16 @@ def main() -> int:
 
     _log_section("repair misplaced dbt source tables")
     desired_schemas = _desired_schemas_by_table(dbt_config, table_configs, runtime.branch)
-    created_files = _remove_misplaced_tables(models_path, desired_schemas)
+    disabled_dbt_tables = {
+        str(table_config["name"])
+        for table_config in table_configs
+        if not table_config["create_dbt_pr"]
+    }
+    created_files = _remove_misplaced_tables(
+        models_path,
+        desired_schemas,
+        disabled_dbt_tables,
+    )
     sources_path = models_path / SOURCES_FILE_NAME
     if sources_path.exists():
         content = sources_path.read_text(encoding="utf-8")
@@ -110,6 +121,12 @@ def main() -> int:
             f"schema={source_schema} team={table_config['team']} "
             f"primary_key={table_config['primary_key']} sources_path={sources_path}"
         )
+        if not table_config["create_dbt_pr"]:
+            print(
+                f"Skip dbt source table because table.meta.{CREATE_DBT_PR_FLAG}=false: "
+                f"{source_schema}.{table_name}"
+            )
+            continue
         if table_key in existing_tables:
             print(f"Skip existing dbt source table: {source_schema}.{table_name}")
             continue
@@ -188,6 +205,11 @@ def discover_table_configs(repo_root: Path) -> list[dict[str, Any]]:
                     "name": table["name"],
                     "primary_key": primary_key,
                     "team": meta["team"],
+                    "create_dbt_pr": _parse_bool_flag(
+                        meta,
+                        CREATE_DBT_PR_FLAG,
+                        config_path,
+                    ),
                     "config_path": config_path.relative_to(repo_root).as_posix(),
                 }
             )
@@ -213,6 +235,26 @@ def validate_table_config(table: dict[str, Any], config_path: Path) -> None:
 
 def _parse_primary_key(primary_key: str) -> list[str]:
     return [column.strip() for column in primary_key.split(",") if column.strip()]
+
+
+def _parse_bool_flag(
+    config: dict[str, Any],
+    field_name: str,
+    config_path: Path,
+    default: bool = True,
+) -> bool:
+    raw_value = config.get(field_name, default)
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, str):
+        normalized = raw_value.strip().strip('"').strip("'").lower()
+        if normalized in {"true", "yes", "1"}:
+            return True
+        if normalized in {"false", "no", "0"}:
+            return False
+    raise ValueError(
+        f"{config_path}: table.meta.{field_name} must be a boolean value"
+    )
 
 
 def print_primary_key_tests(table_config: dict[str, Any]) -> None:
@@ -376,6 +418,7 @@ def _desired_schemas_by_table(
 def _remove_misplaced_tables(
     models_path: Path,
     desired_schemas: dict[str, str],
+    ignored_table_names: Optional[set[str]] = None,
 ) -> list[Path]:
     changed_files = []
     sources_path = models_path / SOURCES_FILE_NAME
@@ -385,6 +428,7 @@ def _remove_misplaced_tables(
     repaired_content, removed_tables = _remove_misplaced_tables_from_content(
         content,
         desired_schemas,
+        ignored_table_names,
     )
     if not removed_tables:
         return changed_files
@@ -408,10 +452,12 @@ def _remove_misplaced_tables(
 def _remove_misplaced_tables_from_content(
     content: str,
     desired_schemas: dict[str, str],
+    ignored_table_names: Optional[set[str]] = None,
 ) -> tuple[str, list[tuple[str, str, Optional[str]]]]:
     lines = content.splitlines()
     kept_lines: list[str] = []
     removed_tables: list[tuple[str, str, Optional[str]]] = []
+    ignored_table_names = ignored_table_names or set()
     current_schema = ""
     current_source_is_managed = False
     in_tables_block = False
@@ -449,6 +495,10 @@ def _remove_misplaced_tables_from_content(
             and current_source_is_managed
         ):
             table_name = table_match.group("name")
+            if table_name in ignored_table_names:
+                kept_lines.append(line)
+                index += 1
+                continue
             desired_schema = desired_schemas.get(table_name)
             if desired_schema != current_schema:
                 removed_tables.append((current_schema, table_name, desired_schema))
