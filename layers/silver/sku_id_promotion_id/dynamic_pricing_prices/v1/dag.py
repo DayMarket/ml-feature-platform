@@ -1,4 +1,4 @@
-"""Materialize dynamic-pricing SKU prices from Trino to Iceberg."""
+"""Materialize daily dynamic-pricing discounts from Trino to Iceberg."""
 
 import importlib.util
 import os
@@ -7,7 +7,6 @@ from datetime import timedelta
 
 import pendulum
 import yaml
-from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.sdk import dag, task
 from airflow.timetables.interval import CronDataIntervalTimetable
 from airflow_commons.helpers.oncall import send_oncall_notification
@@ -88,19 +87,8 @@ def get_dag_default_args() -> dict:
     catchup=False,
 )
 def dynamic_pricing_prices_dag() -> None:
-    wait_for_dynamic_pricing_solution = ExternalTaskSensor(
-        task_id="wait_for_dynamic_pricing_solution",
-        external_dag_id=CONFIG["dag"]["upstream_dag_id"],
-        allowed_states=["success"],
-        failed_states=["failed"],
-        mode="poke",
-        poke_interval=60,
-        timeout=3 * 60 * 60,
-        check_existence=True,
-    )
-
     @task(executor_config=_executor_config())
-    def materialize(calculated_at_value: str) -> None:
+    def materialize(interval_end_value: str) -> None:
         runtime = _load_module("runtime.py", "dynamic_pricing_prices_runtime")
         query = _load_module("query.py", "dynamic_pricing_prices_query")
         config = runtime.load_config(CONFIG_PATH)
@@ -108,16 +96,14 @@ def dynamic_pricing_prices_dag() -> None:
         catalog = runtime.get_iceberg_catalog(ref)
 
         table = runtime.preflight_table(catalog, ref)
-        calculated_at = runtime.parse_snapshot_timestamp(calculated_at_value)
-        sql = query.build_query(calculated_at, config["source"]["promotion_ids"])
+        partition_date = runtime.previous_utc_date(interval_end_value)
+        sql = query.build_query(partition_date, config["source"]["promotion_ids"])
         frame = runtime.query_trino(config["source"]["trino_conn_id"], sql)
-        runtime.write_timestamp_snapshot(table, frame, calculated_at)
+        runtime.write_daily_snapshot(table, frame, partition_date)
 
-    materialize_prices = materialize(
+    materialize(
         '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
     )
-
-    wait_for_dynamic_pricing_solution >> materialize_prices
 
 
 dag = dynamic_pricing_prices_dag()

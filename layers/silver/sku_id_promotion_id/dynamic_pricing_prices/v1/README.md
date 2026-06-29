@@ -1,28 +1,25 @@
 # iceberg.silver.feature_platform_dynamic_pricing_prices
 
-Snapshot цен SKU с учетом динамического ценообразования.
+Дневной latest `dynamic_discount` на уровне SKU и promotion.
 
 ## Выход и оркестрация
 
 - Таблица: `iceberg.silver.feature_platform_dynamic_pricing_prices`.
-- DAG: `feature-platform.layers.silver.calculated_at_sku_id_promotion_id.dynamic_pricing_prices` (`layers/silver/calculated_at_sku_id_promotion_id/dynamic_pricing_prices/v1/dag.py`).
+- DAG: `feature-platform.layers.silver.sku_id_promotion_id.dynamic_pricing_prices` (`layers/silver/sku_id_promotion_id/dynamic_pricing_prices/v1/dag.py`).
 - Групповой тег Airflow: `dynamic-pricing-prices`.
-- Расписание: каждые 3 часа, `0 */3 * * *` UTC.
-- `start_date=2026-06-26T00:00:00Z`, `catchup=False`.
-- DAG ждет `merge_center_solution_to_kafka_gurobi_mvp_dag` с тем же logical date.
+- Расписание: ежедневно в 01:00 UTC, `0 1 * * *`.
+- `start_date=2026-06-29T00:00:00Z`, `catchup=False`.
+- DAG не ждет solution DAG; эта зависимость находится в gold-витрине.
 
 ## Грейн / ключ
 
-`calculated_at, sku_id, promotion_id`.
+`date, sku_id, promotion_id`.
 
-`calculated_at` - timestamp расчета из `data_interval_end` в UTC. В этой таблице нет отдельной
-дневной snapshot-колонки, потому что пайплайн запускается каждые 3 часа и для потребителей важен
-timestamp расчета.
+`date` - закрытый UTC-день, равный `data_interval_end - 1 day`.
 
 ## Источники
 
-- `promotions.public.dynamic_discount` - последние расчеты динамической скидки за 14 дней.
-- `kazanexpress.public.sku` - текущие SKU, `sku_group_id`, `product_id` и текущая цена продажи.
+- `promotions.public.dynamic_discount` - расчеты динамической скидки за закрытый UTC-день.
 
 Список `promotion_id` хранится в `config.yaml` (`source.promotion_ids`):
 
@@ -32,18 +29,12 @@ timestamp расчета.
 
 ## Логика
 
-Для каждой пары `sku_id, promotion_id` берется последняя запись из
-`promotions.public.dynamic_discount` за последние 14 дней по `created_at DESC`. Все SKU из
-`kazanexpress.public.sku` разворачиваются на все `promotion_id` из config, чтобы ключ таблицы был
-заполнен для каждой строки.
+Для каждой пары `sku_id, promotion_id` берется последняя запись за `date` по `created_at DESC`.
+Фильтр окна строится от Airflow interval, а не от физического `now()`:
+`created_at >= date 00:00:00 UTC` и `created_at < date + 1 day 00:00:00 UTC`.
 
-Если текущий `sell_price` SKU равен `calculated_for_price` из dynamic_discount, скидка считается
-примененной: `sell_price = sell_price - discount_amount`, `discount = discount_amount`. Иначе
-итоговая цена остается равной текущему `sell_price`, а `discount = 0`. `discount_fraction` считается
-как `discount / sell_price` и равен `NULL` при нулевой итоговой цене.
-
-Колонка `dynamic_discount_created_at` хранит timestamp последней записи dynamic_discount,
-использованной в расчете. Для SKU без записи dynamic_discount по promotion_id колонка будет `NULL`.
+В silver нет join с `kazanexpress.public.sku` и нет расчета финальной цены. Эти операции выполняются
+в gold-витрине, чтобы raw Trino-скан оставался дневным и небольшим.
 
 ## Рантайм
 
@@ -51,8 +42,7 @@ Trino-source пайплайн (Airflow/Python + `pyiceberg`), не Spark. Чте
 `trino_search`, запись - через entity-local модуль `job/runtime.py`.
 Образ задачи: `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`.
 
-Запись идемпотентна: snapshot с точным `calculated_at` перезаписывается целиком через PyIceberg
-`overwrite` по фильтру `calculated_at`.
+Запись идемпотентна: партиция `date` перезаписывается целиком через PyIceberg `overwrite`.
 
 ## Владелец / алерты
 

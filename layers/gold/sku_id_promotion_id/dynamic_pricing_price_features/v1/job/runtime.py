@@ -1,4 +1,4 @@
-"""Entity-local Airflow/Python runtime for daily Trino-source Iceberg snapshots."""
+"""Entity-local Airflow/Python runtime for dynamic-pricing gold snapshots."""
 
 from __future__ import annotations
 
@@ -90,8 +90,14 @@ def parse_snapshot_timestamp(value: str) -> datetime:
     return parsed
 
 
-def previous_utc_date(value: str) -> date:
-    return parse_snapshot_timestamp(value).date() - timedelta(days=1)
+def history_start_date(calculated_at: datetime, history_days: int) -> date:
+    if history_days < 2:
+        raise ValueError("history_days must be at least 2")
+    return calculated_at.date() - timedelta(days=history_days - 1)
+
+
+def history_end_date(calculated_at: datetime) -> date:
+    return calculated_at.date() - timedelta(days=1)
 
 
 def get_iceberg_catalog(ref: TableRef):
@@ -149,6 +155,33 @@ def query_trino(conn_id: str, sql: str):
     return frame
 
 
+def read_iceberg_date_range(table, start_date: date, end_date: date):
+    from pyiceberg.expressions import EqualTo
+
+    import pandas as pd
+
+    frames = []
+    current_date = start_date
+    while current_date <= end_date:
+        frame = table.scan(row_filter=EqualTo("date", current_date)).to_pandas()
+        if not frame.empty:
+            frames.append(frame)
+        current_date += timedelta(days=1)
+
+    if not frames:
+        return pd.DataFrame(
+            columns=[
+                "date",
+                "sku_id",
+                "promotion_id",
+                "discount_amount",
+                "calculated_for_price",
+                "created_at",
+            ]
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
 def _to_arrow_for_table(table, frame):
     import pyarrow as pa
 
@@ -167,35 +200,39 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_daily_snapshot(table, frame, partition_date: date) -> None:
+def write_timestamp_snapshot(table, frame, calculated_at: datetime) -> None:
     from pyiceberg.expressions import EqualTo
 
     import pandas as pd
 
-    if "date" not in frame.columns:
+    if "calculated_at" not in frame.columns:
         frame = frame.copy()
-        frame["date"] = partition_date
+        frame["calculated_at"] = calculated_at
 
     frame = frame.copy()
-    frame["date"] = pd.to_datetime(frame["date"]).dt.date
-    invalid_dates = frame["date"].notna() & (frame["date"] != partition_date)
-    if invalid_dates.any():
-        raise ValueError(f"Outgoing rows contain a date other than {partition_date}")
+    frame["calculated_at"] = pd.to_datetime(frame["calculated_at"]).dt.tz_localize(None)
+    invalid_timestamp = frame["calculated_at"].notna() & (
+        frame["calculated_at"] != pd.Timestamp(calculated_at)
+    )
+    if invalid_timestamp.any():
+        raise ValueError(
+            f"Outgoing rows contain calculated_at other than {calculated_at}"
+        )
 
-    if "created_at" in frame.columns:
-        frame["created_at"] = pd.to_datetime(
-            frame["created_at"],
+    if "dynamic_discount_created_at" in frame.columns:
+        frame["dynamic_discount_created_at"] = pd.to_datetime(
+            frame["dynamic_discount_created_at"],
             errors="coerce",
         ).dt.tz_localize(None)
 
     arrow_table = _to_arrow_for_table(table, frame)
     table.overwrite(
         arrow_table,
-        overwrite_filter=EqualTo("date", partition_date),
+        overwrite_filter=EqualTo("calculated_at", calculated_at),
     )
     logger.info(
-        "Wrote %d rows to %s for date=%s",
+        "Wrote %d rows to %s for calculated_at=%s",
         arrow_table.num_rows,
         table.name(),
-        partition_date,
+        calculated_at,
     )
