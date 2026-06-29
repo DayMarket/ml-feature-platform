@@ -168,14 +168,15 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_timestamp_snapshot(table, frame, calculated_at: datetime) -> None:
-    from pyiceberg.expressions import EqualTo
+def write_timestamp_promotion_snapshot(
+    table,
+    frame,
+    calculated_at: datetime,
+    promotion_id: str,
+) -> None:
+    from pyiceberg.expressions import And, EqualTo
 
     import pandas as pd
-
-    if "calculated_at" not in frame.columns:
-        frame = frame.copy()
-        frame["calculated_at"] = calculated_at
 
     frame = frame.copy()
     frame["calculated_at"] = pd.to_datetime(frame["calculated_at"]).dt.tz_localize(None)
@@ -187,6 +188,14 @@ def write_timestamp_snapshot(table, frame, calculated_at: datetime) -> None:
             f"Outgoing rows contain calculated_at other than {calculated_at}"
         )
 
+    invalid_promotion = frame["promotion_id"].notna() & (
+        frame["promotion_id"] != promotion_id
+    )
+    if invalid_promotion.any():
+        raise ValueError(
+            f"Outgoing rows contain promotion_id other than {promotion_id}"
+        )
+
     if "dynamic_discount_created_at" in frame.columns:
         frame["dynamic_discount_created_at"] = pd.to_datetime(
             frame["dynamic_discount_created_at"],
@@ -196,11 +205,15 @@ def write_timestamp_snapshot(table, frame, calculated_at: datetime) -> None:
     arrow_table = _to_arrow_for_table(table, frame)
     table.overwrite(
         arrow_table,
-        overwrite_filter=EqualTo("calculated_at", calculated_at),
+        overwrite_filter=And(
+            EqualTo("calculated_at", calculated_at),
+            EqualTo("promotion_id", promotion_id),
+        ),
     )
     logger.info(
-        "Wrote %d rows to %s for calculated_at=%s",
+        "Wrote %d rows to %s for calculated_at=%s promotion_id=%s",
         arrow_table.num_rows,
         table.name(),
         calculated_at,
+        promotion_id,
     )
