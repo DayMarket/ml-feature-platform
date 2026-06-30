@@ -24,6 +24,7 @@ source:
   sku_table: iceberg.silver.sku
   model_name: search_unified_model_v6
   lookback_days: 14
+  top_queries_limit: 200
 dag:
   id: feature-platform.layers.silver.product_id.product_search_queries
   group_tag: product-search-queries

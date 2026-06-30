@@ -13,6 +13,12 @@ ADD_COLUMN_IF_NOT_EXISTS_PATTERN = re.compile(
     r"(?P<column>`?[\w]+`?)\s+(?P<definition>.+?)\s*$",
     re.IGNORECASE | re.DOTALL,
 )
+RENAME_COLUMN_IF_EXISTS_PATTERN = re.compile(
+    r"^\s*ALTER\s+TABLE\s+(?P<table>\S+)\s+RENAME\s+COLUMN\s+IF\s+EXISTS\s+"
+    r"(?P<column>`?[\w]+`?)\s+TO\s+(?P<new_column>`?[\w]+`?)"
+    r"(?:\s+WHEN\s+SOURCE\s+TYPE\s+IS\s+NOT\s+(?P<expected_type>.+?))?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -100,6 +106,11 @@ def validate_idempotent_statement(statement: str, migration_path: Path) -> None:
         if " ADD COLUMN IF NOT EXISTS " not in normalized:
             raise RuntimeError(
                 f"{migration_path}: ADD COLUMN migration must use IF NOT EXISTS"
+            )
+    if normalized.startswith("ALTER TABLE") and " RENAME COLUMN " in normalized:
+        if " RENAME COLUMN IF EXISTS " not in normalized:
+            raise RuntimeError(
+                f"{migration_path}: RENAME COLUMN migration must use IF EXISTS"
             )
     if normalized.startswith(("DROP ", "DELETE ", "TRUNCATE ")):
         raise RuntimeError(f"{migration_path}: destructive migrations are not allowed")
@@ -197,6 +208,10 @@ def normalize_identifier(identifier: str) -> str:
     return identifier.strip().strip("`").lower()
 
 
+def normalize_type(type_name: str) -> str:
+    return "".join(type_name.strip().strip(";").lower().split())
+
+
 def get_existing_columns(spark: SparkSession, table_name: str) -> set[str]:
     return {
         normalize_identifier(field.name)
@@ -204,7 +219,43 @@ def get_existing_columns(spark: SparkSession, table_name: str) -> set[str]:
     }
 
 
+def get_existing_column_types(spark: SparkSession, table_name: str) -> dict[str, str]:
+    return {
+        normalize_identifier(field.name): normalize_type(field.dataType.simpleString())
+        for field in spark.table(table_name).schema.fields
+    }
+
+
 def run_statement(spark: SparkSession, statement: str) -> None:
+    rename_column_match = RENAME_COLUMN_IF_EXISTS_PATTERN.match(statement)
+    if rename_column_match:
+        table_name = rename_column_match.group("table")
+        column_name = normalize_identifier(rename_column_match.group("column"))
+        new_column_name = normalize_identifier(rename_column_match.group("new_column"))
+        column_types = get_existing_column_types(spark, table_name)
+
+        if column_name not in column_types:
+            print(f"Skip missing column {table_name}.{column_name}")
+            return
+        if new_column_name in column_types:
+            print(f"Skip existing column {table_name}.{new_column_name}")
+            return
+
+        expected_type = rename_column_match.group("expected_type")
+        if expected_type and column_types[column_name] == normalize_type(expected_type):
+            print(
+                f"Skip column {table_name}.{column_name}: "
+                f"type already {column_types[column_name]}"
+            )
+            return
+
+        spark.sql(
+            f"ALTER TABLE {table_name} RENAME COLUMN "
+            f"{rename_column_match.group('column')} TO "
+            f"{rename_column_match.group('new_column')}"
+        )
+        return
+
     add_column_match = ADD_COLUMN_IF_NOT_EXISTS_PATTERN.match(statement)
     if not add_column_match:
         spark.sql(statement)

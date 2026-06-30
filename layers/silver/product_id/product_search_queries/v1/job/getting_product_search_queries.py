@@ -10,6 +10,7 @@ from job.partition import parse_airflow_timestamp
 
 LOOKBACK_DAYS = 14
 MODEL_NAME = "search_unified_model_v6"
+TOP_QUERIES_LIMIT = 200
 
 
 def _load_migration_query(migration_name: str) -> str:
@@ -112,11 +113,8 @@ def build_product_search_queries(
             F.lit(partition_date).cast("date").alias("date"),
             F.col("product_id").cast("long").alias("product_id"),
             F.transform(
-                F.col("sorted_queries"),
-                lambda query: F.struct(
-                    query["search_query"].alias("search_query"),
-                    query["uniq_installs"].alias("uniq_installs"),
-                ),
+                F.slice(F.col("sorted_queries"), 1, TOP_QUERIES_LIMIT),
+                lambda query: query["search_query"],
             ).alias("search_queries"),
         )
     )
@@ -132,7 +130,27 @@ def save_product_search_queries(
         spark.sql(migration_query.format(target_table=target_table))
 
     features = build_product_search_queries(spark, partition_end)
-    features.writeTo(target_table).overwritePartitions()
+    _align_to_target_schema(spark, features, target_table).writeTo(
+        target_table
+    ).overwritePartitions()
+
+
+def _align_to_target_schema(
+    spark: SparkSession,
+    frame: DataFrame,
+    target_table: str,
+) -> DataFrame:
+    target_schema = spark.table(target_table).schema
+    aligned_frame = frame
+
+    for field in target_schema.fields:
+        if field.name not in aligned_frame.columns:
+            aligned_frame = aligned_frame.withColumn(
+                field.name,
+                F.lit(None).cast(field.dataType),
+            )
+
+    return aligned_frame.select(*(F.col(field.name) for field in target_schema.fields))
 
 
 def run(spark: SparkSession, arguments: Arguments):
