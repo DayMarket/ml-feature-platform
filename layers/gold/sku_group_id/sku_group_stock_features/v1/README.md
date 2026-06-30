@@ -35,6 +35,8 @@ DAG ждет DQ DAG silver-источника:
 
 - `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_stock_daily.dq`.
 
+Gold DAG запускается в `03:00 UTC` и через `execution_delta=3h` ждет DQ run silver-источника с logical time `00:00 UTC` за ту же календарную дату партиции.
+
 `iceberg.silver.sku` используется как справочник маппинга `sku_id -> sku_group_id`; отдельный DQ sensor для него в этом DAG не настроен, как и в соседних feature-platform jobs, которые используют этот справочник.
 
 Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_id/sku_group_stock_features/v1/entrypoints/get_sku_group_stock_features.py`, поэтому отдельный Docker image для этой сущности не собирается.

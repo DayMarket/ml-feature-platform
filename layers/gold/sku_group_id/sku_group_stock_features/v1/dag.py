@@ -56,7 +56,7 @@ def collect_gold_sku_group_stock_features():
         poke_interval=30,
         timeout=6 * 60 * 60,
         check_existence=True,
-        execution_delta=timedelta(hours=2),
+        execution_delta=timedelta(hours=3),
     )
 
     collect_features = SparkKubernetesOperator(
