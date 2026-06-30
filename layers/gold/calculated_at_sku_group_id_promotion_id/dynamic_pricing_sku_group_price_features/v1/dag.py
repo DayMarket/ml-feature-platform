@@ -1,22 +1,21 @@
 """Aggregate dynamic-pricing SKU prices to SKU group/promotion."""
 
-import importlib.util
 import os
 import sys
 from datetime import timedelta
 
 import pendulum
 import yaml
+from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
 from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
-from airflow.sdk import dag, task
+from airflow.sdk import dag
 from airflow.timetables.interval import CronDataIntervalTimetable
 from airflow_commons.helpers.oncall import send_oncall_notification
-from kubernetes.client import models as k8s
 
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
+sys.path.insert(0, ENTITY_DIR)
 REPO_ROOT = os.path.abspath(os.path.join(ENTITY_DIR, "..", "..", "..", "..", ".."))
 CONFIG_PATH = os.path.join(ENTITY_DIR, "config.yaml")
-JOB_DIR = os.path.join(ENTITY_DIR, "job")
 SKU_PRICE_CONFIG_PATH = os.path.join(
     REPO_ROOT,
     "layers",
@@ -27,6 +26,8 @@ SKU_PRICE_CONFIG_PATH = os.path.join(
     "config.yaml",
 )
 
+from config.factory import get_deployment
+
 
 def _read_config(path: str) -> dict:
     with open(path, encoding="utf-8") as config_stream:
@@ -35,35 +36,6 @@ def _read_config(path: str) -> dict:
 
 CONFIG = _read_config(CONFIG_PATH)
 SKU_PRICE_CONFIG = _read_config(SKU_PRICE_CONFIG_PATH)
-
-
-def _load_job_module(filename: str, module_name: str):
-    path = os.path.join(JOB_DIR, filename)
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def _executor_config() -> dict:
-    return {
-        "pod_override": k8s.V1Pod(
-            spec=k8s.V1PodSpec(
-                containers=[
-                    k8s.V1Container(
-                        name="base",
-                        image_pull_policy="Always",
-                        image=CONFIG["runtime"]["image"],
-                        resources=k8s.V1ResourceRequirements(
-                            requests={"memory": "8Gi", "cpu": "2"},
-                            limits={"memory": "8Gi"},
-                        ),
-                    )
-                ]
-            )
-        )
-    }
 
 
 def get_dag_default_args() -> dict:
@@ -115,30 +87,15 @@ def dynamic_pricing_sku_group_price_features_dag() -> None:
         check_existence=False,
     )
 
-    @task(executor_config=_executor_config())
-    def materialize(calculated_at_value: str) -> None:
-        runtime = _load_job_module("runtime.py", "dynamic_pricing_skg_price_runtime")
-        query = _load_job_module("query.py", "dynamic_pricing_skg_price_query")
-
-        output_config = runtime.load_config(CONFIG_PATH)
-        source_config = runtime.load_config(SKU_PRICE_CONFIG_PATH)
-        output_ref = runtime.table_ref(output_config)
-        source_ref = runtime.table_ref(source_config)
-        catalog = runtime.get_iceberg_catalog(output_ref)
-        output_table = runtime.preflight_table(catalog, output_ref)
-
-        calculated_at = runtime.parse_snapshot_timestamp(calculated_at_value)
-        frame = runtime.query_trino(
-            output_config["source"]["trino_conn_id"],
-            query.build_aggregate_query(
-                calculated_at=calculated_at,
-                source_table=runtime.trino_table_name(source_ref),
-            ),
-        )
-        runtime.write_timestamp_snapshot(output_table, frame, calculated_at)
-
-    aggregate_task = materialize(
-        '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
+    aggregate_task = SparkKubernetesOperator(
+        execution_timeout=timedelta(hours=2),
+        task_id="getting_dynamic_pricing_sku_group_price_features",
+        namespace="svc-data-spark-jobs",
+        application_file=get_deployment(
+            ".",
+            "fetch_gold_dynamic_pricing_sku_group_price_features.yaml",
+        ),
+        kubernetes_conn_id="spark_k8s",
     )
 
     wait_for_sku_price_dag >> aggregate_task
