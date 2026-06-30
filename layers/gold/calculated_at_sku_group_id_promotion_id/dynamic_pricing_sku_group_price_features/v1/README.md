@@ -29,11 +29,11 @@
 
 ## Рантайм
 
-Trino/Iceberg-source пайплайн (Airflow/Python + `pyiceberg`), не Spark. Trino connection:
-`trino_search`. Образ задачи: `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`.
+Spark/Iceberg пайплайн на shared Spark image с `git-sync`. Resource profile: `large`.
 
-Запись идемпотентна: snapshot с точным `calculated_at` перезаписывается целиком через PyIceberg
-`overwrite` по фильтру `calculated_at`.
+Spark читает `iceberg.gold.feature_platform_dynamic_pricing_price_features`, фильтрует точный
+`calculated_at` из `data_interval_end`, агрегирует признаки и перезаписывает snapshot с этим
+`calculated_at` через Iceberg writer.
 
 ## Владелец / алерты
 
