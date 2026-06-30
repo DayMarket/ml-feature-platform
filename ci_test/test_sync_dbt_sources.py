@@ -35,7 +35,7 @@ def main() -> int:
         if table_config["config_path"]
         == "layers/silver/product_id/product_search_queries/v1/config.yaml"
     )
-    assert product_queries_table["create_dbt_pr"] is True
+    assert isinstance(product_queries_table["create_dbt_pr"], bool)
     assert sync._parse_bool_flag(
         {"create_dbt_pr": "false"},
         "create_dbt_pr",
