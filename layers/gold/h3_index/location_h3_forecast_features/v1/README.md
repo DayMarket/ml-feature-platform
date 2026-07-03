@@ -1,7 +1,10 @@
 # iceberg.gold.feature_platform_location_h3_forecast_features
 
-Итоговая h3-витрина признаков для модели `location_forecast` — стабильный контракт фич (имена совпадают
-с `features_to_use` модели, без per-prediction временных фич, которые модель добавляет на инференсе).
+Широкая h3-витрина признаков локаций — **единый источник всех фич** для моделей семейства
+`location_forecast`. Содержит полный набор сырых silver-колонок (feature store) **плюс** стабильный
+контракт фич модели `location_forecast` (имена совпадают с `features_to_use`, без per-prediction
+временных фич, которые модель добавляет на инференсе). Разные модели выбирают свой подмножество колонок
+на чтении; витрина не сужается под одну модель.
 
 ## Выход и оркестрация
 
@@ -14,22 +17,41 @@
 `date, h3_index`.
 
 ## Источник
-Джойн пяти silver-таблиц на `(date, h3_index)`:
-`iceberg.silver.feature_platform_geo_geointellect_features` (база),
+**Full-outer union** пяти silver-таблиц на `(date, h3_index)` — так в витрину попадает каждый гекс,
+у которого есть хотя бы одна фича, ни одна silver-строка не теряется:
+`iceberg.silver.feature_platform_geo_geointellect_features`,
 `iceberg.silver.feature_platform_dp_neighbor_order_features`,
 `iceberg.silver.feature_platform_geo_user_activity_features`,
 `iceberg.silver.feature_platform_geo_user_location_features` и
 `iceberg.silver.feature_platform_geo_yandex_poi_features`.
+`h3_string`/`region` берутся из geointellect (у `dp_neighbor` одноимённый `h3_string`
+отбрасывается перед джойном, чтобы не плодить `_x/_y`).
 
 Gold DAG ждёт отдельный dbt DQ DAG каждой из пяти silver-таблиц. DQ DAG стартуют в
 01:00 UTC, поэтому gold в 02:00 UTC ищет их logical date с `execution_delta=1 hour`. Только после
 успеха всех пяти сенсоров он проверяет входные и выходную таблицы через PyIceberg и собирает gold.
 
 ## Логика
-Переименования к контракту модели (`population_r0 -> population`, `views_r1_30d -> users_views_r1_30d`,
-`atms_r1 -> atms_rad_1` и т.д.), производные `traffic_ring_1_2 = ptr_r2 - ptr_r1` и
-`orders_per_dp_r5_h90 = orders_r5_h90 / (unique_dp_r5_h90 + 1e-5)`. Дефолты: `region` NULL -> `UNKNOWN`,
-дистанции NULL -> 10000, прочие числовые NULL -> 0. Это **iceberg-source** задача (читает silver, не ClickHouse).
+Колонки витрины делятся на три группы:
+
+1. **Сырые silver-колонки** — весь набор из пяти silver-таблиц без изменений имён (полная сетка
+   `orders_r{0..5}_h{30,60,90}`, `gmv_*`, `unique_dp_*`, `views_r{0..5}_{30,60,90}d`,
+   `orders_r{0..5}_{30,60,90}d`, `population_r{0..5}`/`_l{5..8}`, `pedestrian_traffic_index_*`,
+   `users_r{0..5}`, POI `*_r{0..5}`, `report_date`, `min_dist_*`).
+2. **Контрактные копии модели** — стабильные имена, продублированные из сырой колонки (сырьё
+   сохраняется рядом): `population` (= `population_r0`), `pedestrian_traffic_index` (= `..._r0`),
+   `users_views_r1_30d` (= `views_r1_30d`), `users_orders_30d` (= `orders_r0_30d`),
+   `users_orders_r3_90d` (= `orders_r3_90d`), `users_orders_r4_30d` (= `orders_r4_30d`),
+   `atms_rad_1` (= `atms_r1`), `banks_rad_2` (= `banks_r2`), `retail_points_rad_1`,
+   `car_dealers_services_rad_2`, `mixed_goods_rad_2`, `fast_food_coffee_rad_5`, `bakeries_rad_1`.
+3. **Производные**: `traffic_ring_1_2 = ptr_r2 - ptr_r1`,
+   `orders_per_dp_r5_h90 = orders_r5_h90 / (unique_dp_r5_h90 + 1e-5)`.
+
+Дефолты: `region` NULL -> `UNKNOWN`, дистанции NULL -> 10000, прочие **числовые** NULL -> 0;
+строковые/дата-колонки (`h3_string`, `report_date`) остаются NULL там, где источник не покрыл гекс.
+Витрина **не** применяет candidate-фильтр (`population_r1 > 0 OR pedestrian_traffic_index_r1 > 0`) —
+это делает потребитель на чтении, поэтому строк в gold заметно больше, чем в отфильтрованном
+инференс-датасете. Это **iceberg-source** задача (читает silver, не ClickHouse).
 
 ## Рантайм
 
