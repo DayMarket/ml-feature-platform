@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS {target_table} (
     calculated_at TIMESTAMP COMMENT 'Timestamp расчета snapshot из data_interval_end в UTC',
     sku_id BIGINT COMMENT 'ID SKU из kazanexpress.public.sku',
-    promotion_id STRING COMMENT 'ID promotion из config.yaml',
+    promotion_id STRING COMMENT 'ID promotion из config.yaml или дефолтный baseline promotion_id 0',
     sku_group_id BIGINT COMMENT 'ID sku group из kazanexpress.public.sku',
     product_id BIGINT COMMENT 'ID product из kazanexpress.public.sku',
     calculated_for_price DOUBLE COMMENT 'Цена, для которой был рассчитан discount_amount',

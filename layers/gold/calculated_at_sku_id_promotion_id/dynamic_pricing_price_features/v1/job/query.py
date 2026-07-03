@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Sequence
 
 PROMOTION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
+DEFAULT_PROMOTION_ID = "0"
 
 
 def _sql_string(value: str) -> str:
@@ -25,6 +26,20 @@ def _promotion_values(promotion_ids: Sequence[str]) -> str:
     return ",\n".join(rows)
 
 
+def output_promotion_ids(promotion_ids: Sequence[str]) -> list[str]:
+    values = list(promotion_ids) + [DEFAULT_PROMOTION_ID]
+    deduplicated = []
+    seen = set()
+    for promotion_id in values:
+        if promotion_id in seen:
+            continue
+        if not PROMOTION_ID_PATTERN.fullmatch(promotion_id):
+            raise ValueError(f"Unsupported promotion_id value: {promotion_id!r}")
+        deduplicated.append(promotion_id)
+        seen.add(promotion_id)
+    return deduplicated
+
+
 def build_today_discounts_query(
     calculated_at: datetime,
     promotion_ids: Sequence[str],
@@ -38,6 +53,11 @@ WITH
 promotion_filter(promotion_id) AS (
     VALUES
 {promotion_values}
+),
+source_promotion_filter AS (
+    SELECT promotion_id
+    FROM promotion_filter
+    WHERE promotion_id <> {DEFAULT_PROMOTION_ID!r}
 )
 SELECT
     CAST(created_at AS DATE) AS date,
@@ -48,7 +68,7 @@ SELECT
     created_at
 FROM promotions.public.dynamic_discount
 WHERE created_at >= CAST({start_sql} AS TIMESTAMP(6))
-  AND promotion_id IN (SELECT promotion_id FROM promotion_filter)
+  AND promotion_id IN (SELECT promotion_id FROM source_promotion_filter)
 """
 
 
@@ -70,6 +90,11 @@ promotion_filter(promotion_id) AS (
     VALUES
 {promotion_values}
 ),
+source_promotion_filter AS (
+    SELECT promotion_id
+    FROM promotion_filter
+    WHERE promotion_id <> {DEFAULT_PROMOTION_ID!r}
+),
 dyno_prices_actual AS (
     SELECT
         CAST(sku_id AS BIGINT) AS sku_id,
@@ -79,7 +104,7 @@ dyno_prices_actual AS (
         created_at
     FROM promotions.public.dynamic_discount
     WHERE created_at >= current_timestamp - INTERVAL '1' DAY
-      AND promotion_id IN (SELECT promotion_id FROM promotion_filter)
+      AND promotion_id IN (SELECT promotion_id FROM source_promotion_filter)
 
     UNION ALL
 
@@ -91,7 +116,7 @@ dyno_prices_actual AS (
         created_at
     FROM {silver_table}
     WHERE date > current_date - INTERVAL '{history_days - 1}' DAY
-      AND promotion_id IN (SELECT promotion_id FROM promotion_filter)
+      AND promotion_id IN (SELECT promotion_id FROM source_promotion_filter)
 ),
 rn_actual_prices AS (
     SELECT
