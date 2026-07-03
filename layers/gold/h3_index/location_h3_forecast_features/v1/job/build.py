@@ -1,78 +1,55 @@
 """Gold assembly for gold.feature_platform_location_h3_forecast_features.
 
-Joins the five silver feature tables on (date, h3_index) for one partition date
-and projects them onto the stable feature contract consumed by the
-``location_forecast`` model (the names in ``train_model_dag`` METADATA
-``features_to_use``, minus the per-prediction time features the model derives at
-scoring time). Source-side defaulting (region -> UNKNOWN, distance NULL -> 10000,
-remaining numeric NULL -> 0) is applied here so the model reads a clean matrix.
+Wide h3 feature mart: full-outer union of every silver feature table on
+(date, h3_index) so no hex carrying any feature is dropped, plus the stable
+model-contract columns the ``location_forecast`` model consumes (renamed copies
+and derived features). Raw silver columns are preserved alongside their
+contract copies so a single mart can back different model feature subsets.
+Source-side defaulting (region -> UNKNOWN, distance NULL -> 10000, remaining
+numeric NULL -> 0) is applied here; string/date metadata columns keep NULL.
 """
 
 from __future__ import annotations
 
 from datetime import date
 
-_DP_COLUMNS = [
-    "h3_index",
-    "min_dist_to_dp_m",
-    "min_dist_to_inshop_m",
-    "unique_dp_r5_h60",
-    "unique_dp_r3_h60",
-    "orders_r3_h90",
-    "orders_r3_h30",
-    "gmv_r2_h30",
-    "gmv_r2_h60",
-    "gmv_r3_h30",
-    "orders_r5_h90",
-    "unique_dp_r5_h90",
-]
-_ACT_COLUMNS = ["h3_index", "views_r1_30d", "orders_r0_30d", "orders_r3_90d", "orders_r4_30d"]
-_LOC_COLUMNS = ["h3_index", "users_r0", "users_r1", "users_r2", "users_r3", "users_r4", "users_r5"]
-_POI_COLUMNS = [
-    "h3_index",
-    "atms_r1",
-    "banks_r2",
-    "retail_points_r1",
-    "car_dealers_services_r2",
-    "mixed_goods_r2",
-    "fast_food_coffee_r5",
-    "bakeries_r1",
-]
+# Silver entity aliases whose full column sets are unioned into the wide mart.
+_SILVER_ALIASES = ("geo", "dp", "act", "loc", "poi")
 
-_RENAMES = {
-    "population_r0": "population",
-    "pedestrian_traffic_index_r0": "pedestrian_traffic_index",
-    "views_r1_30d": "users_views_r1_30d",
-    "orders_r0_30d": "users_orders_30d",
-    "orders_r3_90d": "users_orders_r3_90d",
-    "orders_r4_30d": "users_orders_r4_30d",
-    "atms_r1": "atms_rad_1",
-    "banks_r2": "banks_rad_2",
-    "retail_points_r1": "retail_points_rad_1",
-    "car_dealers_services_r2": "car_dealers_services_rad_2",
-    "mixed_goods_r2": "mixed_goods_rad_2",
-    "fast_food_coffee_r5": "fast_food_coffee_rad_5",
-    "bakeries_r1": "bakeries_rad_1",
+# Metadata columns present in more than one silver table; keep a single owner so
+# the outer join does not produce _x/_y duplicates. geo owns h3_string/region.
+_DROP_DUPLICATE_METADATA = {"dp": ["h3_string"]}
+
+# Model-contract copies: stable model feature name -> raw silver column. Copies
+# (not renames) so the raw silver column stays in the mart for other consumers.
+_CONTRACT_COPIES = {
+    "population": "population_r0",
+    "pedestrian_traffic_index": "pedestrian_traffic_index_r0",
+    "users_views_r1_30d": "views_r1_30d",
+    "users_orders_30d": "orders_r0_30d",
+    "users_orders_r3_90d": "orders_r3_90d",
+    "users_orders_r4_30d": "orders_r4_30d",
+    "atms_rad_1": "atms_r1",
+    "banks_rad_2": "banks_r2",
+    "retail_points_rad_1": "retail_points_r1",
+    "car_dealers_services_rad_2": "car_dealers_services_r2",
+    "mixed_goods_rad_2": "mixed_goods_r2",
+    "fast_food_coffee_rad_5": "fast_food_coffee_r5",
+    "bakeries_rad_1": "bakeries_r1",
 }
 
 
 def build_gold(read_partition, partition_date: date):
-    """Build gold from entity aliases resolved and preflighted by the DAG."""
-    geo = read_partition("geo", partition_date)
-    dp = read_partition("dp", partition_date)[_DP_COLUMNS]
-    act = read_partition("act", partition_date)[_ACT_COLUMNS]
-    loc = read_partition("loc", partition_date)[_LOC_COLUMNS]
-    poi = read_partition("poi", partition_date)[_POI_COLUMNS]
+    """Build the wide gold mart from silver aliases resolved by the DAG."""
+    df = None
+    for alias in _SILVER_ALIASES:
+        frame = read_partition(alias, partition_date).drop(columns=["date"], errors="ignore")
+        frame = frame.drop(columns=_DROP_DUPLICATE_METADATA.get(alias, []), errors="ignore")
+        df = frame if df is None else df.merge(frame, on="h3_index", how="outer")
 
-    # geointellect is the base grid (every candidate hex), others are left-joined.
-    df = (
-        geo.drop(columns=["date"], errors="ignore")
-        .merge(dp, on="h3_index", how="left")
-        .merge(act, on="h3_index", how="left")
-        .merge(loc, on="h3_index", how="left")
-        .merge(poi, on="h3_index", how="left")
-        .rename(columns=_RENAMES)
-    )
+    # Keep the raw silver column and expose the stable model-contract name.
+    for target, source in _CONTRACT_COPIES.items():
+        df[target] = df[source]
 
     df["traffic_ring_1_2"] = (
         df["pedestrian_traffic_index_r2"] - df["pedestrian_traffic_index_r1"]
@@ -82,5 +59,9 @@ def build_gold(read_partition, partition_date: date):
     df["region"] = df["region"].fillna("UNKNOWN")
     df["min_dist_to_dp_m"] = df["min_dist_to_dp_m"].fillna(10000)
     df["min_dist_to_inshop_m"] = df["min_dist_to_inshop_m"].fillna(10000)
-    df = df.fillna(0)
+
+    # Fill numeric features only; h3_string/report_date stay NULL for hexes a
+    # source did not cover (blanket fillna(0) would corrupt those dtypes).
+    numeric_cols = df.select_dtypes(include="number").columns
+    df[numeric_cols] = df[numeric_cols].fillna(0)
     return df

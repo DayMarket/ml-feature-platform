@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS {target_table} (
     calculated_at TIMESTAMP COMMENT 'Timestamp расчета snapshot из data_interval_end в UTC',
     sku_group_id BIGINT COMMENT 'ID SKU group',
-    promotion_id STRING COMMENT 'ID promotion из config.yaml',
+    promotion_id STRING COMMENT 'ID promotion из SKU-level витрины, включая дефолтный baseline promotion_id 0',
     min_sell_price DOUBLE COMMENT 'Минимальная итоговая цена SKU внутри sku_group_id/promotion_id',
     max_sell_price DOUBLE COMMENT 'Максимальная итоговая цена SKU внутри sku_group_id/promotion_id',
     avg_sell_price DOUBLE COMMENT 'Средняя итоговая цена SKU внутри sku_group_id/promotion_id',

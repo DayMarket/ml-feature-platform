@@ -23,6 +23,9 @@
 Для текущего `calculated_at` таблица агрегирует `sell_price`, `discount` и `discount_fraction` по
 `sku_group_id, promotion_id`: `min`, `max`, `avg`.
 
+Дефолтный `promotion_id = '0'` приходит из SKU-level источника как baseline-срез без dynamic
+discount: `discount = 0`, цена равна текущему `sell_price`.
+
 ## Зависимости
 
 - `feature-platform.layers.gold.calculated_at_sku_id_promotion_id.dynamic_pricing_price_features`.
