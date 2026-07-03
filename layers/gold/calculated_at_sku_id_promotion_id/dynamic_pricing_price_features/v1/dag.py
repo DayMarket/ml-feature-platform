@@ -143,7 +143,9 @@ def dynamic_pricing_price_features_dag() -> None:
 
         calculated_at = runtime.parse_snapshot_timestamp(calculated_at_value)
         history_days = int(output_config["source"]["history_days"])
-        promotion_ids = output_config["source"]["promotion_ids"]
+        promotion_ids = query.output_promotion_ids(
+            output_config["source"]["promotion_ids"]
+        )
         silver_table = runtime.trino_table_name(silver_ref)
 
         for promotion_id in promotion_ids:
