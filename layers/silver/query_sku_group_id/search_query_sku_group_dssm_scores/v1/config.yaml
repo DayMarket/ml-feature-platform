@@ -28,7 +28,7 @@ dag:
   id: feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_dssm_scores
   group_tag: search-query-sku-dssm
   schedule: "0 2 * * *"
-  start_date: "2026-03-01T00:00:00Z"
+  start_date: "2026-03-15T00:00:00Z"
   catchup: true
   team: search
   owner: team:search
