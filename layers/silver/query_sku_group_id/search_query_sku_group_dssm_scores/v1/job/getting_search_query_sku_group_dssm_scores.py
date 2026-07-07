@@ -157,15 +157,13 @@ def _latest_daily_source(scores: DataFrame, partition_start: datetime) -> DataFr
 def _latest_existing(
     spark: SparkSession,
     target_table: str,
-    partition_start: datetime,
 ) -> DataFrame:
-    partition_date = partition_start.date().isoformat()
-    window = Window.partitionBy("date", "query", "sku_group_id").orderBy(
-        F.col("collected_at").desc()
+    window = Window.partitionBy("query", "sku_group_id").orderBy(
+        F.col("collected_at").desc(),
+        F.col("date").desc(),
     )
     return (
         spark.table(target_table)
-        .filter(F.col("date") == F.lit(partition_date).cast("date"))
         .select(
             F.col("date"),
             F.col("query"),
@@ -175,7 +173,7 @@ def _latest_existing(
         )
         .withColumn("rn", F.row_number().over(window))
         .filter(F.col("rn") == F.lit(1))
-        .select("date", "query", "sku_group_id", "old_dssm_score")
+        .select("query", "sku_group_id", "old_dssm_score")
     )
 
 
@@ -186,7 +184,7 @@ def _changed_rows(
 ) -> DataFrame:
     joined = source_scores.join(
         existing_scores,
-        on=["date", "query", "sku_group_id"],
+        on=["query", "sku_group_id"],
         how="left",
     )
     old_score = F.col("old_dssm_score")
@@ -224,7 +222,7 @@ def build_search_query_sku_group_dssm_scores(
     day_start, day_end = utc_day_bounds_from_interval_start(partition_start)
     raw_events = _source_events(spark, config, day_start, day_end)
     source_scores = _latest_daily_source(_explode_dssm_scores(raw_events), day_start)
-    existing_scores = _latest_existing(spark, target_table, day_start)
+    existing_scores = _latest_existing(spark, target_table)
     return _changed_rows(
         source_scores,
         existing_scores,
