@@ -17,8 +17,8 @@ source:
     conn_id: elasticsearch_search
     endpoint_path: /_search
     size: 3000
-    parallel_jobs: 12
-    chunk_size: 12
+    parallel_jobs: 24
+    chunk_size: 3000
     request_timeout_seconds: 60
     retry_count: 3
     fields:
@@ -40,7 +40,7 @@ source:
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
-  cpu: "12"
+  cpu: "24"
   memory: 16Gi
 
 dag:
