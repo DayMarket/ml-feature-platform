@@ -1,0 +1,38 @@
+resources:
+  path: ../../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-silver-search-query-sku-group-dssm-scores
+  main_application_file: local:///git/repo/layers/silver/query_sku_group_id/search_query_sku_group_dssm_scores/v1/entrypoints/get_search_query_sku_group_dssm_scores.py
+  resource_profile: large
+
+table:
+  key: search_query_sku_group_dssm_scores
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_search_query_sku_group_dssm_scores
+  primary_key: date,query,sku_group_id,collected_at
+  meta:
+    team: team:search
+
+source:
+  engine: spark_iceberg
+  ranking_events_table: iceberg.silver.ranking_analytics_events
+  model_name_like: "%search_uni%"
+  dssm_json_path: "$.dssm_score"
+  change_threshold: "0.05"
+
+dag:
+  id: feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_dssm_scores
+  group_tag: search-query-sku-dssm
+  schedule: "0 2 * * *"
+  start_date: "2026-03-01T00:00:00Z"
+  catchup: true
+  team: search
+  owner: team:search
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
