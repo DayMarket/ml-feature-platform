@@ -73,7 +73,7 @@ contract и может меняться вместе с upstream DSSM расче
 ## Рантайм
 
 Spark/Iceberg pipeline через общий Spark image и `git-sync`, отдельный Docker image не собирается.
-Spark resource profile: `large`.
+Spark resource profile: `small`.
 
 ## Владелец / алерты
 

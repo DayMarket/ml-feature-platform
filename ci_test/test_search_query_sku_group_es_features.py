@@ -207,16 +207,23 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         self.assertEqual(row["bm25_product_title_ru_synonym"], [])
         self.assertEqual(row["total_score"], 7.0)
 
-    def test_query_uses_partition_date_for_dataset_event_date(self):
+    def test_query_uses_clickstream_sessions_for_partition_date(self):
         sql = self.query.build_query(
             partition_date=date(2026, 3, 13),
-            dataset_table='"dwh-iceberg".silver.feature_platform_dataset_search_ranking_v1',
+            clickstream_events_table='"dwh-iceberg".silver_b2c_clickstream.events',
             search_logs_table='"dwh-iceberg".silver.search_logs',
         )
 
-        self.assertIn("WHERE event_date = CAST('2026-03-13' AS DATE)", sql)
+        self.assertIn('FROM "dwh-iceberg".silver_b2c_clickstream.events', sql)
+        self.assertIn("event_type = 'PRODUCT_IMPRESSION'", sql)
+        self.assertIn("widget_space_name = 'SEARCH_RESULTS'", sql)
+        self.assertIn("received_at >= CAST('2026-03-13' AS TIMESTAMP(6))", sql)
+        self.assertIn("received_at < CAST('2026-03-14' AS TIMESTAMP(6))", sql)
+        self.assertIn("logged_at >= CAST('2026-03-10' AS TIMESTAMP(6))", sql)
+        self.assertIn("logged_at < CAST('2026-03-17' AS TIMESTAMP(6))", sql)
         self.assertIn("logged_at >= CAST('2026-03-12' AS TIMESTAMP(6))", sql)
         self.assertIn("logged_at < CAST('2026-03-14' AS TIMESTAMP(6))", sql)
+        self.assertIn("array_agg(DISTINCT cq.sku_group_id)", sql)
 
     def test_search_body_filters_sku_groups_and_enables_explain(self):
         body = self.search.build_search_body(
