@@ -11,26 +11,40 @@ def _sql_string(value: str) -> str:
 
 def build_query(
     partition_date: date,
-    dataset_table: str,
+    clickstream_events_table: str,
     search_logs_table: str,
 ) -> str:
     date_sql = _sql_string(partition_date.isoformat())
-    previous_date = partition_date - timedelta(days=1)
+    previous_log_date = partition_date - timedelta(days=1)
     next_date = partition_date + timedelta(days=1)
-    previous_date_sql = _sql_string(previous_date.isoformat())
+    previous_event_log_date = partition_date - timedelta(days=3)
+    next_event_log_date = partition_date + timedelta(days=4)
+    previous_log_date_sql = _sql_string(previous_log_date.isoformat())
     next_date_sql = _sql_string(next_date.isoformat())
+    previous_event_log_date_sql = _sql_string(previous_event_log_date.isoformat())
+    next_event_log_date_sql = _sql_string(next_event_log_date.isoformat())
 
     return f"""
 WITH
-dataset_queries AS (
-    SELECT DISTINCT
+clickstream_queries AS (
+    SELECT
         lower(trim(replace(query, 'ё', 'е'))) AS query,
         CAST(sku_group_id AS BIGINT) AS sku_group_id
-    FROM {dataset_table}
-    WHERE event_date = CAST({date_sql} AS DATE)
+    FROM {clickstream_events_table}
+    WHERE logged_at >= CAST({previous_event_log_date_sql} AS TIMESTAMP(6))
+      AND logged_at < CAST({next_event_log_date_sql} AS TIMESTAMP(6))
+      AND received_at >= CAST({date_sql} AS TIMESTAMP(6))
+      AND received_at < CAST({next_date_sql} AS TIMESTAMP(6))
+      AND event_type = 'PRODUCT_IMPRESSION'
+      AND widget_space_name = 'SEARCH_RESULTS'
+      AND widget_section_name = 'SEARCH_RESULTS'
       AND query IS NOT NULL
       AND trim(query) <> ''
+      AND COALESCE(is_full_catpred, false) = false
       AND sku_group_id IS NOT NULL
+    GROUP BY
+        lower(trim(replace(query, 'ё', 'е'))),
+        CAST(sku_group_id AS BIGINT)
 ),
 stats AS (
     SELECT
@@ -44,7 +58,7 @@ stats AS (
         result_query_text,
         install_id
     FROM {search_logs_table}
-    WHERE logged_at >= CAST({previous_date_sql} AS TIMESTAMP(6))
+    WHERE logged_at >= CAST({previous_log_date_sql} AS TIMESTAMP(6))
       AND logged_at < CAST({next_date_sql} AS TIMESTAMP(6))
       AND query_text != ''
 ),
@@ -61,10 +75,10 @@ final_stats AS (
 SELECT
     CAST({date_sql} AS DATE) AS date,
     fs.result_query_text AS query,
-    array_agg(DISTINCT dq.sku_group_id) AS sku_group_ids
-FROM dataset_queries dq
+    array_agg(DISTINCT cq.sku_group_id) AS sku_group_ids
+FROM clickstream_queries cq
 LEFT JOIN final_stats fs
-    ON dq.query = fs.search_query
+    ON cq.query = fs.search_query
 WHERE fs.result_query_text IS NOT NULL
   AND trim(fs.result_query_text) <> ''
 GROUP BY

@@ -15,21 +15,28 @@
 
 `date, query, sku_group_id`.
 
-`date` - закрытый UTC-день, равный `data_interval_end - 1 day`. Эта дата используется как
-`event_date` для dataset-таблицы и как `log_date` результата.
+`date` - закрытый UTC-день, равный `data_interval_end - 1 day`. Эта дата используется как дата clickstream
+событий и как `log_date` результата.
 
 ## Источники
 
-- `iceberg.silver.feature_platform_dataset_search_ranking_v1` - repository-managed dataset с парами
-  `query, sku_group_id`; DAG ждет сборочный DAG `feature-platform.datasets.search.search_ranking.v1`.
+- `iceberg.silver_b2c_clickstream.events` - события `PRODUCT_IMPRESSION` из search results, из которых берутся
+  пары `query, sku_group_id`; отдельный sensor не ставится.
 - `"dwh-iceberg".silver.search_logs` - внешний Trino-источник для `result_query_text`; отдельный sensor не
   ставится по подтвержденному контракту.
 - Elasticsearch endpoint из Airflow connection `elasticsearch_search`, path `/_search`.
 
 ## Логика
 
-Trino-шаг выбирает `query, sku_group_id` из dataset-таблицы за `event_date = date`, нормализуя запрос как
-`lower(trim(replace(query, 'ё', 'е')))`.
+Trino-шаг выбирает все возможные пары `query, sku_group_id` из clickstream за `received_at`-день `date`,
+нормализуя запрос как `lower(trim(replace(query, 'ё', 'е')))`. Используются только события:
+
+- `event_type = 'PRODUCT_IMPRESSION'`;
+- `widget_space_name = 'SEARCH_RESULTS'`;
+- `widget_section_name = 'SEARCH_RESULTS'`;
+- `COALESCE(is_full_catpred, false) = false`;
+- `received_at >= date` и `received_at < date + 1 day`;
+- защитное окно по `logged_at`: `date - 3 days <= logged_at < date + 4 days`.
 
 `search_logs` читается за окно:
 
