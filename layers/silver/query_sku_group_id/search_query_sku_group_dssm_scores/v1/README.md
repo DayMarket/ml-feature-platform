@@ -66,9 +66,9 @@ silver-слой сам по себе не меняет текущий `EXTERNAL 
 
 ## DQ
 
-Таблица полагается на стандартные dbt DQ-тесты по primary key
-`date, query, sku_group_id, collected_at`. Отдельные проверки распределения `dssm_score` не добавлены:
-значение приходит из внешнего ranking analytics contract и может меняться вместе с upstream DSSM расчетом.
+`table.meta.create_dbt_pr: false`, поэтому CI не создает dbt-trino source/DQ PR и dbt-тесты для этой витрины.
+Отдельные проверки распределения `dssm_score` не добавлены: значение приходит из внешнего ranking analytics
+contract и может меняться вместе с upstream DSSM расчетом.
 
 ## Рантайм
 
