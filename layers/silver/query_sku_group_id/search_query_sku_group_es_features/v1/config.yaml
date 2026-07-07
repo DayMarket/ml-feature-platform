@@ -1,0 +1,56 @@
+# Trino + Elasticsearch-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+table:
+  key: search_query_sku_group_es_features
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_search_query_sku_group_es_features
+  primary_key: date,query,sku_group_id
+  meta:
+    team: team:search
+
+source:
+  engine: trino_elasticsearch
+  trino_conn_id: trino_search
+  search_logs_table: '"dwh-iceberg".silver.search_logs'
+  elasticsearch:
+    conn_id: elasticsearch_search
+    endpoint_path: /_search
+    size: 3000
+    parallel_jobs: 12
+    chunk_size: 12
+    request_timeout_seconds: 60
+    retry_count: 3
+    fields:
+      - skus.title.synonym
+      - skus.title
+      - skus.discovery_filter_values.title.ru
+      - skus.discovery_filter_values.title.uz
+      - skus.filter_values.title.ru
+      - skus.filter_values.title.uz
+      - category.title.ru
+      - category.title.uz
+      - category.full_title.ru
+      - category.full_title.uz
+      - product.title.ru
+      - product.title.uz
+      - product.title.ru.synonym
+      - product.title.uz.synonym
+      - full_category_name
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  cpu: "12"
+  memory: 16Gi
+
+dag:
+  id: feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_es_features
+  group_tag: search-es-features
+  schedule: "0 4 * * *"
+  start_date: "2026-03-13T00:00:00Z"
+  team: search
+  owner: team:search
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search

@@ -1,0 +1,38 @@
+CREATE TABLE IF NOT EXISTS {target_table} (
+    date DATE COMMENT 'Дата закрытого UTC-дня расчета; используется как event_date/log_date',
+    query STRING COMMENT 'result_query_text из search_logs, по которому выполнялся Elasticsearch-запрос',
+    sku_group_id BIGINT COMMENT 'ID sku group из Elasticsearch hit',
+    product_id BIGINT COMMENT 'ID product из Elasticsearch _source.product.id',
+    sku_group_title STRING COMMENT 'Русское название product из Elasticsearch _source.product.title.ru',
+    sell_price DOUBLE COMMENT 'Цена продажи из Elasticsearch _source.sku_group.price.sell',
+    skg_rating_field DOUBLE COMMENT 'Вклад field value factor sku_group.rating из Elasticsearch explanation',
+    skg_orders_field DOUBLE COMMENT 'Вклад field value factor sku_group.orders_quantity из Elasticsearch explanation',
+    product_orders_field DOUBLE COMMENT 'Вклад field value factor product.orders_quantity из Elasticsearch explanation',
+    product_rating_field DOUBLE COMMENT 'Вклад field value factor product.rating из Elasticsearch explanation',
+    skg_orders DOUBLE COMMENT 'Сырое значение sku_group.orders_quantity из Elasticsearch _source',
+    product_orders DOUBLE COMMENT 'Сырое значение product.orders_quantity из Elasticsearch _source',
+    skg_rating DOUBLE COMMENT 'Сырое значение sku_group.rating из Elasticsearch _source',
+    product_rating DOUBLE COMMENT 'Сырое значение product.rating из Elasticsearch _source',
+    bms DOUBLE COMMENT 'Сумма BM25 original_score из Elasticsearch explanation по simple grouping',
+    total_score DOUBLE COMMENT 'Полный score из корня Elasticsearch explanation',
+    sku_group_emb ARRAY<DOUBLE> COMMENT 'Вектор query_encoder_v3 из Elasticsearch _source',
+    bm25_skus_title_synonym ARRAY<DOUBLE> COMMENT 'BM25 scores для поля skus.title.synonym из Elasticsearch explanation',
+    bm25_skus_title ARRAY<DOUBLE> COMMENT 'BM25 scores для поля skus.title из Elasticsearch explanation',
+    bm25_skus_discovery_filter_values_title_ru ARRAY<DOUBLE> COMMENT 'BM25 scores для поля skus.discovery_filter_values.title.ru из Elasticsearch explanation',
+    bm25_skus_discovery_filter_values_title_uz ARRAY<DOUBLE> COMMENT 'BM25 scores для поля skus.discovery_filter_values.title.uz из Elasticsearch explanation',
+    bm25_skus_filter_values_title_ru ARRAY<DOUBLE> COMMENT 'BM25 scores для поля skus.filter_values.title.ru из Elasticsearch explanation',
+    bm25_skus_filter_values_title_uz ARRAY<DOUBLE> COMMENT 'BM25 scores для поля skus.filter_values.title.uz из Elasticsearch explanation',
+    bm25_category_title_ru ARRAY<DOUBLE> COMMENT 'BM25 scores для поля category.title.ru из Elasticsearch explanation',
+    bm25_category_title_uz ARRAY<DOUBLE> COMMENT 'BM25 scores для поля category.title.uz из Elasticsearch explanation',
+    bm25_category_full_title_ru ARRAY<DOUBLE> COMMENT 'BM25 scores для поля category.full_title.ru из Elasticsearch explanation',
+    bm25_category_full_title_uz ARRAY<DOUBLE> COMMENT 'BM25 scores для поля category.full_title.uz из Elasticsearch explanation',
+    bm25_product_title_ru ARRAY<DOUBLE> COMMENT 'BM25 scores для поля product.title.ru из Elasticsearch explanation',
+    bm25_product_title_uz ARRAY<DOUBLE> COMMENT 'BM25 scores для поля product.title.uz из Elasticsearch explanation',
+    bm25_product_title_ru_synonym ARRAY<DOUBLE> COMMENT 'BM25 scores для поля product.title.ru.synonym из Elasticsearch explanation',
+    bm25_product_title_uz_synonym ARRAY<DOUBLE> COMMENT 'BM25 scores для поля product.title.uz.synonym из Elasticsearch explanation',
+    bm25_full_category_name ARRAY<DOUBLE> COMMENT 'BM25 scores для поля full_category_name из Elasticsearch explanation',
+    analysis STRING COMMENT 'JSON с разобранным Elasticsearch explanation: total_score, field factors и BM25 grouping'
+)
+USING iceberg
+COMMENT 'Silver: Elasticsearch explain features на уровне query и sku_group_id'
+PARTITIONED BY (date)

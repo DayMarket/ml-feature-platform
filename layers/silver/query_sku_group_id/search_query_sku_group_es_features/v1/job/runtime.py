@@ -1,0 +1,495 @@
+"""Entity-local Airflow/Python runtime for search ES feature snapshots."""
+
+from __future__ import annotations
+
+import logging
+import importlib.util
+import sys
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+from urllib.parse import urljoin
+
+logger = logging.getLogger("airflow.task")
+
+HIVE_METASTORE_URIS = (
+    "thrift://hive-metastore.svc-data-hive-metastore.svc.cluster.local:9083"
+)
+ICEBERG_WAREHOUSE = "s3a://um-prod-data-platform-landing-layer/"
+S3_ENDPOINT = "http://storage.yandexcloud.net"
+S3_REGION = "ru-central1"
+S3_CONNECTION_ID = "spark_ycs_connection"
+
+
+@dataclass(frozen=True)
+class TableRef:
+    catalog: str
+    schema: str
+    name: str
+
+    @property
+    def identifier(self) -> tuple[str, str]:
+        return self.schema, self.name
+
+    @property
+    def qualified_name(self) -> str:
+        return f"{self.catalog}.{self.schema}.{self.name}"
+
+
+@dataclass(frozen=True)
+class ElasticsearchConfig:
+    url: str
+    auth: tuple[str, str] | None
+    headers: dict[str, str]
+
+
+def load_config(path: str | Path) -> dict[str, Any]:
+    import yaml
+
+    with Path(path).open(encoding="utf-8") as stream:
+        config = yaml.safe_load(stream)
+    if not isinstance(config, dict):
+        raise ValueError(f"Expected mapping in config: {path}")
+    return config
+
+
+def table_ref(config: Mapping[str, Any]) -> TableRef:
+    table = config.get("table")
+    if not isinstance(table, Mapping):
+        raise ValueError("config.yaml must contain a table mapping")
+
+    values = {}
+    for field in ("catalog", "schema", "name"):
+        value = table.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"config table.{field} must be a non-empty string")
+        values[field] = value.strip()
+
+    if "." in values["schema"] or "." in values["name"]:
+        raise ValueError(
+            "PyIceberg Hive identifiers require separate schema and table name "
+            f"components, got schema={values['schema']!r}, name={values['name']!r}"
+        )
+    return TableRef(**values)
+
+
+def trino_table_name(ref: TableRef) -> str:
+    catalog = "dwh-iceberg" if ref.catalog == "iceberg" else ref.catalog
+    return f'"{catalog}".{ref.schema}.{ref.name}'
+
+
+def parse_snapshot_timestamp(value: str) -> datetime:
+    text = str(value).strip()
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        parsed = None
+
+    if parsed is None:
+        for timestamp_format in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S%z"):
+            try:
+                parsed = datetime.strptime(text, timestamp_format)
+                break
+            except ValueError:
+                continue
+
+    if parsed is None:
+        raise ValueError(
+            f"Unsupported snapshot timestamp: {value!r}. "
+            "Expected an ISO datetime with timezone or 'YYYY-MM-DD HH:MM:SS'."
+        )
+
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def previous_utc_date(value: str) -> date:
+    return parse_snapshot_timestamp(value).date() - timedelta(days=1)
+
+
+def get_iceberg_catalog(ref: TableRef):
+    from airflow.sdk import BaseHook
+    from pyiceberg.catalog import load_catalog
+
+    connection = BaseHook.get_connection(S3_CONNECTION_ID)
+    extra = connection.extra_dejson
+    return load_catalog(
+        ref.catalog,
+        **{
+            "type": "hive",
+            "uri": HIVE_METASTORE_URIS,
+            "warehouse": ICEBERG_WAREHOUSE,
+            "s3.endpoint": S3_ENDPOINT,
+            "s3.access-key-id": extra["aws_access_key_id"],
+            "s3.secret-access-key": extra["aws_secret_access_key"],
+            "s3.region": S3_REGION,
+            "s3.path-style-access": "true",
+        },
+    )
+
+
+def preflight_table(catalog, ref: TableRef):
+    try:
+        exists = catalog.table_exists(ref.identifier)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid PyIceberg identifier for {ref.qualified_name}: "
+            f"{ref.identifier!r}; Hive Catalog requires exactly (schema, table)"
+        ) from exc
+
+    if not exists:
+        raise RuntimeError(
+            f"Iceberg table {ref.qualified_name} was not found by "
+            f"{type(catalog).__name__} in namespace {ref.schema!r}. "
+            "Verify catalog wiring and that CI migrations completed."
+        )
+
+    try:
+        return catalog.load_table(ref.identifier)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to load {ref.qualified_name} with {type(catalog).__name__} "
+            f"using identifier {ref.identifier!r}"
+        ) from exc
+
+
+def query_trino(conn_id: str, sql: str):
+    from airflow.providers.trino.hooks.trino import TrinoHook
+
+    hook = TrinoHook(trino_conn_id=conn_id)
+    frame = hook.get_pandas_df(sql)
+    logger.info("Trino query returned shape=%s (conn=%s)", frame.shape, conn_id)
+    return frame
+
+
+def elasticsearch_config(config: Mapping[str, Any]) -> ElasticsearchConfig:
+    from airflow.sdk import BaseHook
+
+    conn_id = str(config["conn_id"])
+    endpoint_path = str(config.get("endpoint_path", "/_search"))
+    connection = BaseHook.get_connection(conn_id)
+    extra = connection.extra_dejson
+
+    host = connection.host or ""
+    if not host:
+        raise ValueError(f"Airflow connection {conn_id} must define host")
+    if not host.startswith(("http://", "https://")):
+        scheme = connection.schema or "https"
+        host = f"{scheme}://{host}"
+    if connection.port and f":{connection.port}" not in host:
+        host = f"{host}:{connection.port}"
+
+    headers = extra.get("headers", {})
+    if not isinstance(headers, dict):
+        raise ValueError(f"Airflow connection {conn_id} extra.headers must be a mapping")
+    auth = None
+    if connection.login:
+        auth = (connection.login, connection.password or "")
+
+    return ElasticsearchConfig(
+        url=urljoin(host.rstrip("/") + "/", endpoint_path.lstrip("/")),
+        auth=auth,
+        headers={str(key): str(value) for key, value in headers.items()},
+    )
+
+
+def _normalize_sku_group_ids(value: Any) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = value.strip("[]")
+        items = [item.strip() for item in value.split(",") if item.strip()]
+    elif isinstance(value, Sequence):
+        items = list(value)
+    else:
+        try:
+            import numpy as np
+
+            if isinstance(value, np.ndarray):
+                items = value.tolist()
+            else:
+                items = [value]
+        except ImportError:
+            items = [value]
+
+    ids = []
+    seen = set()
+    for item in items:
+        try:
+            sku_group_id = int(item)
+        except (TypeError, ValueError):
+            continue
+        if sku_group_id not in seen:
+            ids.append(sku_group_id)
+            seen.add(sku_group_id)
+    return ids
+
+
+def _load_analyze_module():
+    module_name = "search_es_features_analyze"
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+
+    path = Path(__file__).with_name("analyze.py")
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def collect_elasticsearch_features(
+    query_groups,
+    partition_date: date,
+    elastic: ElasticsearchConfig,
+    search_module,
+    fields: Sequence[str],
+    size: int,
+    parallel_jobs: int,
+    timeout_seconds: int,
+    retry_count: int,
+):
+    import pandas as pd
+
+    records = query_groups.to_dict("records")
+    rows = _collect_elasticsearch_rows(
+        records=records,
+        partition_date=partition_date,
+        elastic=elastic,
+        search_module=search_module,
+        fields=fields,
+        size=size,
+        parallel_jobs=parallel_jobs,
+        timeout_seconds=timeout_seconds,
+        retry_count=retry_count,
+    )
+    analyze = _load_analyze_module()
+    return pd.DataFrame(rows, columns=analyze.output_columns(fields))
+
+
+def _collect_elasticsearch_rows(
+    records: Sequence[Mapping[str, Any]],
+    partition_date: date,
+    elastic: ElasticsearchConfig,
+    search_module,
+    fields: Sequence[str],
+    size: int,
+    parallel_jobs: int,
+    timeout_seconds: int,
+    retry_count: int,
+) -> list[dict[str, Any]]:
+    from joblib import Parallel, delayed
+
+    analyze = _load_analyze_module()
+
+    if parallel_jobs < 1:
+        raise ValueError("parallel_jobs must be at least 1")
+
+    tasks = []
+    for source_row in records:
+        query = str(source_row.get("query") or "").strip()
+        sku_group_ids = _normalize_sku_group_ids(source_row.get("sku_group_ids"))
+        if not query or not sku_group_ids:
+            continue
+        tasks.append((query, sku_group_ids))
+
+    def fetch_query_rows(query: str, sku_group_ids: list[int]) -> list[dict[str, Any]]:
+        body = search_module.build_search_body(
+            query=query,
+            sku_group_ids=sku_group_ids,
+            fields=fields,
+            size=size,
+        )
+        data = search_module.execute_search(
+            url=elastic.url,
+            body=body,
+            auth=elastic.auth,
+            headers=elastic.headers,
+            timeout_seconds=timeout_seconds,
+            retry_count=retry_count,
+        )
+        hits = data.get("hits", {}).get("hits", [])
+        rows = []
+        for hit in hits:
+            row = analyze.hit_to_row(
+                hit,
+                query=query,
+                partition_date=partition_date,
+                fields=fields,
+            )
+            if row["sku_group_id"] == 0:
+                continue
+            rows.append(row)
+        return rows
+
+    logger.info(
+        "Fetching Elasticsearch features for %d query groups with parallel_jobs=%d",
+        len(tasks),
+        parallel_jobs,
+    )
+    result_batches = Parallel(n_jobs=parallel_jobs, backend="threading")(
+        delayed(fetch_query_rows)(query, sku_group_ids)
+        for query, sku_group_ids in tasks
+    )
+
+    rows = []
+    seen_keys = set()
+    for batch in result_batches:
+        for row in batch:
+            key = (row["query"], row["sku_group_id"])
+            if key in seen_keys:
+                continue
+            rows.append(row)
+            seen_keys.add(key)
+
+    logger.info(
+        "Collected %d ES feature rows from %d Trino query groups",
+        len(rows),
+        len(tasks),
+    )
+    return rows
+
+
+def _chunks(values: Sequence[Mapping[str, Any]], chunk_size: int):
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be at least 1")
+    for start in range(0, len(values), chunk_size):
+        yield values[start : start + chunk_size]
+
+
+def clear_daily_snapshot(table, partition_date: date) -> None:
+    from pyiceberg.expressions import EqualTo
+
+    import pyarrow as pa
+
+    empty_table = pa.Table.from_pylist([], schema=table.schema().as_arrow())
+    table.overwrite(empty_table, overwrite_filter=EqualTo("date", partition_date))
+    logger.info("Cleared %s for date=%s before chunked append", table.name(), partition_date)
+
+
+def append_daily_chunk(table, frame, partition_date: date) -> int:
+    if frame.empty:
+        return 0
+
+    frame = _prepare_daily_frame(frame, partition_date)
+    arrow_table = _to_arrow_for_table(table, frame)
+    table.append(arrow_table)
+    logger.info(
+        "Appended %d rows to %s for date=%s",
+        arrow_table.num_rows,
+        table.name(),
+        partition_date,
+    )
+    return arrow_table.num_rows
+
+
+def write_elasticsearch_features_by_chunks(
+    table,
+    query_groups,
+    partition_date: date,
+    elastic: ElasticsearchConfig,
+    search_module,
+    fields: Sequence[str],
+    size: int,
+    parallel_jobs: int,
+    chunk_size: int,
+    timeout_seconds: int,
+    retry_count: int,
+) -> None:
+    import pandas as pd
+
+    analyze = _load_analyze_module()
+    records = query_groups.to_dict("records")
+    seen_keys = set()
+    total_rows = 0
+    clear_daily_snapshot(table, partition_date)
+
+    for chunk_number, chunk_records in enumerate(_chunks(records, chunk_size), start=1):
+        rows = _collect_elasticsearch_rows(
+            records=chunk_records,
+            partition_date=partition_date,
+            elastic=elastic,
+            search_module=search_module,
+            fields=fields,
+            size=size,
+            parallel_jobs=parallel_jobs,
+            timeout_seconds=timeout_seconds,
+            retry_count=retry_count,
+        )
+
+        unique_rows = []
+        for row in rows:
+            key = (row["query"], row["sku_group_id"])
+            if key in seen_keys:
+                continue
+            unique_rows.append(row)
+            seen_keys.add(key)
+
+        frame = pd.DataFrame(unique_rows, columns=analyze.output_columns(fields))
+        written_rows = append_daily_chunk(table, frame, partition_date)
+        total_rows += written_rows
+        logger.info(
+            "Processed ES chunk %d: query_groups=%d rows=%d written=%d total_written=%d",
+            chunk_number,
+            len(chunk_records),
+            len(rows),
+            written_rows,
+            total_rows,
+        )
+
+    logger.info(
+        "Finished chunked ES collection for %s date=%s rows=%d",
+        table.name(),
+        partition_date,
+        total_rows,
+    )
+
+
+def _to_arrow_for_table(table, frame):
+    import pyarrow as pa
+
+    arrow_schema = table.schema().as_arrow()
+    expected = [field.name for field in arrow_schema]
+    missing = [name for name in expected if name not in frame.columns]
+    unexpected = [name for name in frame.columns if name not in expected]
+    if missing:
+        raise ValueError(f"DataFrame is missing columns required by {table.name()}: {missing}")
+    if unexpected:
+        logger.warning("Ignoring columns not present in %s: %s", table.name(), unexpected)
+    return pa.Table.from_pandas(
+        frame.loc[:, expected],
+        schema=arrow_schema,
+        preserve_index=False,
+    )
+
+
+def _prepare_daily_frame(frame, partition_date: date):
+    import pandas as pd
+
+    if "date" not in frame.columns:
+        frame = frame.copy()
+        frame["date"] = partition_date
+
+    frame = frame.copy()
+    frame["date"] = pd.to_datetime(frame["date"]).dt.date
+    invalid_dates = frame["date"].notna() & (frame["date"] != partition_date)
+    if invalid_dates.any():
+        raise ValueError(f"Outgoing rows contain a date other than {partition_date}")
+    return frame
+
+
+def write_daily_snapshot(table, frame, partition_date: date) -> None:
+    from pyiceberg.expressions import EqualTo
+
+    frame = _prepare_daily_frame(frame, partition_date)
+
+    arrow_table = _to_arrow_for_table(table, frame)
+    table.overwrite(arrow_table, overwrite_filter=EqualTo("date", partition_date))
+    logger.info(
+        "Wrote %d rows to %s for date=%s",
+        arrow_table.num_rows,
+        table.name(),
+        partition_date,
+    )
