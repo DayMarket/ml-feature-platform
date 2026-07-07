@@ -17,6 +17,7 @@ CREATE_TABLE_PATTERN = re.compile(
 MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 PRIMARY_KEY_GROUP_EXCEPTIONS = {
+    ("silver", "search_query_sku_group_dssm_scores"): "query_sku_group_id",
     ("silver", "sku_group_install"): "sku_group_id_query_category",
 }
 OPTIONAL_TABLE_META_BOOL_FLAGS = ("create_dbt_pr", "create_maintenance_pr")
