@@ -85,7 +85,7 @@ def get_dag_default_args() -> dict:
         "sku-group",
         "elasticsearch",
     ],
-    dagrun_timeout=timedelta(hours=6),
+    dagrun_timeout=timedelta(hours=24),
     is_paused_upon_creation=True,
     schedule=CronDataIntervalTimetable(
         cron=CONFIG["dag"]["schedule"],
