@@ -15,6 +15,7 @@ table:
   primary_key: date,query,sku_group_id,collected_at
   meta:
     team: team:search
+    create_dbt_pr: false
 
 source:
   engine: spark_iceberg
