@@ -66,7 +66,7 @@ def get_dag_default_args() -> dict:
         "dynamic-pricing",
         "prices",
     ],
-    dagrun_timeout=timedelta(hours=3),
+    dagrun_timeout=timedelta(hours=12),
     is_paused_upon_creation=True,
     schedule=CronDataIntervalTimetable(
         cron=CONFIG["dag"]["schedule"],
@@ -83,12 +83,12 @@ def dynamic_pricing_sku_group_price_features_dag() -> None:
         failed_states=["failed"],
         mode="reschedule",
         poke_interval=60,
-        timeout=3 * 60 * 60,
+        timeout=6 * 60 * 60,
         check_existence=False,
     )
 
     aggregate_task = SparkKubernetesOperator(
-        execution_timeout=timedelta(hours=2),
+        execution_timeout=timedelta(hours=10),
         task_id="getting_dynamic_pricing_sku_group_price_features",
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(
