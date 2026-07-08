@@ -1,3 +1,5 @@
+import base64
+import binascii
 import json
 import os
 import re
@@ -649,7 +651,7 @@ def _open_pr_tables(
             "--limit",
             "100",
             "--json",
-            "number,url,title,headRefName",
+            "number,url,title,headRefName,headRefOid",
         ],
         env={**os.environ, "GITHUB_TOKEN": runtime.git_token},
         check=False,
@@ -677,6 +679,18 @@ def _open_pr_tables(
         branch_tables = _open_pr_branch_tables(runtime, pr_number, models_path)
         if branch_tables:
             for table_key in branch_tables:
+                pending_tables[table_key] = pr_url
+            continue
+
+        head_tables = _open_pr_head_tables(
+            runtime,
+            repo_slug,
+            pr_number,
+            str(pull_request.get("headRefOid") or ""),
+            models_path,
+        )
+        if head_tables:
+            for table_key in head_tables:
                 pending_tables[table_key] = pr_url
             continue
 
@@ -708,7 +722,7 @@ def _open_pr_branch_tables(
         capture_output=True,
     )
     if fetch_result.returncode != 0:
-        print(f"Cannot fetch head branch for open PR #{pr_number}, fallback to diff")
+        print(f"Cannot fetch head branch for open PR #{pr_number}, fallback to API")
         return set()
 
     tree_result = _run(
@@ -719,7 +733,7 @@ def _open_pr_branch_tables(
         log_output=False,
     )
     if tree_result.returncode != 0:
-        print(f"Cannot list {models_path} from open PR #{pr_number}, fallback to diff")
+        print(f"Cannot list {models_path} from open PR #{pr_number}, fallback to API")
         return set()
 
     source_tables: set[tuple[str, str]] = set()
@@ -736,6 +750,55 @@ def _open_pr_branch_tables(
         if show_result.returncode == 0:
             source_tables.update(_extract_source_tables(show_result.stdout or ""))
     print(f"open_pr_branch_tables_count={len(source_tables)} pr={pr_number}")
+    return source_tables
+
+
+def _open_pr_head_tables(
+    runtime: RuntimeConfig,
+    repo_slug: str,
+    pr_number: str,
+    head_ref_oid: str,
+    models_path: str,
+) -> set[tuple[str, str]]:
+    if not head_ref_oid:
+        print(f"No head sha for open PR #{pr_number}, fallback to diff")
+        return set()
+
+    source_path = f"{models_path.rstrip('/')}/{SOURCES_FILE_NAME}"
+    api_result = _run(
+        ["gh", "api", f"repos/{repo_slug}/contents/{source_path}?ref={head_ref_oid}"],
+        env={**os.environ, "GITHUB_TOKEN": runtime.git_token},
+        check=False,
+        capture_output=True,
+        log_output=False,
+    )
+    if api_result.returncode != 0 or not api_result.stdout.strip():
+        print(f"Cannot read {source_path} from open PR #{pr_number}, fallback to diff")
+        return set()
+
+    try:
+        payload = json.loads(api_result.stdout)
+    except json.JSONDecodeError as exc:
+        print(f"Cannot parse {source_path} from open PR #{pr_number}: {exc}")
+        return set()
+
+    raw_content = str(payload.get("content") or "")
+    if not raw_content:
+        print(f"No {source_path} content returned for open PR #{pr_number}")
+        return set()
+
+    encoding = str(payload.get("encoding") or "")
+    if encoding == "base64":
+        try:
+            content = base64.b64decode(raw_content).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError) as exc:
+            print(f"Cannot decode {source_path} from open PR #{pr_number}: {exc}")
+            return set()
+    else:
+        content = raw_content
+
+    source_tables = _extract_source_tables(content)
+    print(f"open_pr_head_tables_count={len(source_tables)} pr={pr_number}")
     return source_tables
 
 
