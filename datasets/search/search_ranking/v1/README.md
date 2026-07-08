@@ -26,6 +26,7 @@
 - `iceberg.silver.order_items_attribution` - атрибуция заказов к поисковой сессии и запросу.
 - `iceberg.silver.order_items` - статусы и generated GMV товарных позиций заказа.
 - `iceberg.silver.sku` - маппинг `sku_id -> sku_group_id`.
+- `iceberg.silver.ranking_analytics_events` - ranking analytics logs со score-массивами по кандидатам.
 
 Эти источники не объявлены как repository-managed tables в `layers/**/config.yaml` или `datasets/**/config.yaml`, поэтому DAG не ставит feature-platform DQ sensors. Upstream freshness/DQ контракт должен подтверждаться отдельно у владельцев источников.
 
@@ -78,6 +79,22 @@
 
 Метка `is_generated_order` равна `1`, если для `install_id, session_id, query, sku_group_id` найден хотя бы один атрибутированный заказ, иначе `0`.
 
+Score-поля берутся из `iceberg.silver.ranking_analytics_events` за тот же `event_date`:
+
+- `fired_at >= event_date`;
+- `fired_at < event_date + 1 day`;
+- `model_name LIKE '%search_uni%'`;
+- `search_query IS NOT NULL`;
+- `trim(search_query) != ''`;
+- `ranking_candidates` непустой;
+- `external_features IS NOT NULL`.
+
+`search_query` нормализуется как `trim(lower(search_query))`, чтобы join совпадал с нормализацией `query` в
+показах. Из `external_features` читаются JSON-массивы `$.normalized_linear_score`, `$.linear_score` и
+`$.dssm_score`. Массивы сопоставляются с `ranking_candidates` по позиции через `arrays_zip`, затем scores
+усредняются до `query, sku_group_id` и `LEFT JOIN`-ятся к показам. Если score-массив отсутствует, не
+парсится или не содержит значения для позиции кандидата, соответствующая score-колонка остается `NULL`.
+
 ## Output columns
 
 - `collection_date` - логическая дата запуска DAG.
@@ -88,8 +105,11 @@
 - `deduplicate_rank` - порядковый номер показа внутри `event_date, install_id, session_id, query`.
 - `position_duplicate_count` - количество сырых кандидатов position key до дедупликации.
 - `widget_section_name`, `widget_space_name` - контекст виджета.
+- `normalized_linear_score` - средний `normalized_linear_score` по `query, sku_group_id` из ranking analytics за `event_date`.
+- `linear_score` - средний `linear_score` по `query, sku_group_id` из ranking analytics за `event_date`.
+- `dssm_score` - средний `dssm_score` по `query, sku_group_id` из ranking analytics за `event_date`.
 - `is_generated_order` - binary label.
 
 ## DQ
 
-Автогенерируемый dbt DQ должен проверить `not_null` и уникальность по primary key. Табличные DQ проверки для распределения label, полноты партиций или допустимых значений `is_generated_order` не добавлены в этой версии, чтобы сначала накопить статистику по объему и стабильности источников.
+Автогенерируемый dbt DQ должен проверить `not_null` и уникальность по primary key. Табличные DQ проверки для распределения label, полноты партиций, допустимых значений `is_generated_order` или score-диапазонов не добавлены в этой версии, чтобы сначала накопить статистику по объему и стабильности источников.
