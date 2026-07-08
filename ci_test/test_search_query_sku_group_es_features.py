@@ -281,6 +281,82 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
                 sleep_fn=lambda _: None,
             )
 
+    def test_chunked_writer_collects_elasticsearch_before_clearing_partition(self):
+        events = []
+
+        class FakeAnalyze:
+            @staticmethod
+            def output_columns(fields):
+                return ["query", "sku_group_id"]
+
+        class FakeQueryGroups:
+            def to_dict(self, orient):
+                assert orient == "records"
+                return [{"query": "bandana", "sku_group_ids": [948376]}]
+
+        class FakeTable:
+            def name(self):
+                return "silver.feature_platform_search_query_sku_group_es_features"
+
+        class FakeFrame:
+            def __init__(self, rows, columns):
+                self.rows = rows
+                self.columns = columns
+
+        class FakePandas:
+            DataFrame = FakeFrame
+
+        def fake_collect_elasticsearch_rows(**_):
+            events.append("collect")
+            return [{"query": "bandana", "sku_group_id": 948376}]
+
+        def fake_clear_daily_snapshot(*_):
+            events.append("clear")
+
+        def fake_append_daily_chunk(*_):
+            events.append("append")
+            return 1
+
+        previous_pandas = sys.modules.get("pandas")
+        previous_collect = self.runtime._collect_elasticsearch_rows
+        previous_clear = self.runtime.clear_daily_snapshot
+        previous_append = self.runtime.append_daily_chunk
+        previous_analyze = self.runtime._load_analyze_module
+        sys.modules["pandas"] = FakePandas
+        self.runtime._collect_elasticsearch_rows = fake_collect_elasticsearch_rows
+        self.runtime.clear_daily_snapshot = fake_clear_daily_snapshot
+        self.runtime.append_daily_chunk = fake_append_daily_chunk
+        self.runtime._load_analyze_module = lambda: FakeAnalyze
+        try:
+            self.runtime.write_elasticsearch_features_by_chunks(
+                table=FakeTable(),
+                query_groups=FakeQueryGroups(),
+                partition_date=date(2026, 3, 13),
+                elastic=self.runtime.ElasticsearchConfig(
+                    url="http://elasticsearch/_search",
+                    auth=None,
+                    headers={},
+                ),
+                search_module=object(),
+                fields=["skus.title"],
+                size=3000,
+                parallel_jobs=2,
+                chunk_size=1,
+                timeout_seconds=60,
+                retry_count=3,
+            )
+        finally:
+            if previous_pandas is None:
+                sys.modules.pop("pandas", None)
+            else:
+                sys.modules["pandas"] = previous_pandas
+            self.runtime._collect_elasticsearch_rows = previous_collect
+            self.runtime.clear_daily_snapshot = previous_clear
+            self.runtime.append_daily_chunk = previous_append
+            self.runtime._load_analyze_module = previous_analyze
+
+        self.assertEqual(events, ["collect", "clear", "append"])
+
     def test_collect_elasticsearch_features_uses_parallel_jobs_and_parent_dedup(self):
         class FakeSearch:
             calls = []

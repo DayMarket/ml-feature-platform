@@ -466,7 +466,7 @@ def write_elasticsearch_features_by_chunks(
     records = query_groups.to_dict("records")
     seen_keys = set()
     total_rows = 0
-    clear_daily_snapshot(table, partition_date)
+    partition_cleared = False
 
     for chunk_number, chunk_records in enumerate(_chunks(records, chunk_size), start=1):
         rows = _collect_elasticsearch_rows(
@@ -489,6 +489,10 @@ def write_elasticsearch_features_by_chunks(
             unique_rows.append(row)
             seen_keys.add(key)
 
+        if unique_rows and not partition_cleared:
+            clear_daily_snapshot(table, partition_date)
+            partition_cleared = True
+
         frame = pd.DataFrame(unique_rows, columns=analyze.output_columns(fields))
         written_rows = append_daily_chunk(table, frame, partition_date)
         total_rows += written_rows
@@ -500,6 +504,9 @@ def write_elasticsearch_features_by_chunks(
             written_rows,
             total_rows,
         )
+
+    if not partition_cleared:
+        clear_daily_snapshot(table, partition_date)
 
     logger.info(
         "Finished chunked ES collection for %s date=%s rows=%d",
