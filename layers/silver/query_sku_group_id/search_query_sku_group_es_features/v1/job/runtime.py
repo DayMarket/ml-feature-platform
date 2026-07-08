@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 import importlib.util
 import sys
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urljoin
 
 logger = logging.getLogger("airflow.task")
@@ -20,6 +21,9 @@ ICEBERG_WAREHOUSE = "s3a://um-prod-data-platform-landing-layer/"
 S3_ENDPOINT = "http://storage.yandexcloud.net"
 S3_REGION = "ru-central1"
 S3_CONNECTION_ID = "spark_ycs_connection"
+ICEBERG_COMMIT_RETRY_ATTEMPTS = 8
+ICEBERG_COMMIT_RETRY_INITIAL_SECONDS = 30
+ICEBERG_COMMIT_RETRY_MAX_SECONDS = 300
 
 
 @dataclass(frozen=True)
@@ -359,13 +363,68 @@ def _chunks(values: Sequence[Mapping[str, Any]], chunk_size: int):
         yield values[start : start + chunk_size]
 
 
+def _is_iceberg_lock_error(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        class_name = current.__class__.__name__
+        message = str(current)
+        if class_name == "WaitingForLockException":
+            return True
+        if class_name == "CommitFailedException" and "lock" in message.lower():
+            return True
+        if "Failed to acquire lock" in message or "Wait on lock" in message:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _run_iceberg_commit(
+    operation_name: str,
+    operation: Callable[[], Any],
+    *,
+    attempts: int = ICEBERG_COMMIT_RETRY_ATTEMPTS,
+    initial_sleep_seconds: int = ICEBERG_COMMIT_RETRY_INITIAL_SECONDS,
+    max_sleep_seconds: int = ICEBERG_COMMIT_RETRY_MAX_SECONDS,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> Any:
+    for attempt in range(1, attempts + 1):
+        try:
+            return operation()
+        except Exception as exc:
+            if not _is_iceberg_lock_error(exc) or attempt == attempts:
+                raise
+
+            delay = min(
+                max_sleep_seconds,
+                initial_sleep_seconds * (2 ** (attempt - 1)),
+            )
+            logger.warning(
+                "Iceberg commit lock during %s, attempt %d/%d; retrying in %d seconds",
+                operation_name,
+                attempt,
+                attempts,
+                delay,
+            )
+            sleep_fn(delay)
+
+    raise RuntimeError(f"Unexpected retry loop exit during {operation_name}")
+
+
 def clear_daily_snapshot(table, partition_date: date) -> None:
     from pyiceberg.expressions import EqualTo
 
     import pyarrow as pa
 
     empty_table = pa.Table.from_pylist([], schema=table.schema().as_arrow())
-    table.overwrite(empty_table, overwrite_filter=EqualTo("date", partition_date))
+    _run_iceberg_commit(
+        f"clear {table.name()} date={partition_date}",
+        lambda: table.overwrite(
+            empty_table,
+            overwrite_filter=EqualTo("date", partition_date),
+        ),
+    )
     logger.info("Cleared %s for date=%s before chunked append", table.name(), partition_date)
 
 
@@ -375,7 +434,10 @@ def append_daily_chunk(table, frame, partition_date: date) -> int:
 
     frame = _prepare_daily_frame(frame, partition_date)
     arrow_table = _to_arrow_for_table(table, frame)
-    table.append(arrow_table)
+    _run_iceberg_commit(
+        f"append {table.name()} date={partition_date}",
+        lambda: table.append(arrow_table),
+    )
     logger.info(
         "Appended %d rows to %s for date=%s",
         arrow_table.num_rows,
@@ -486,7 +548,13 @@ def write_daily_snapshot(table, frame, partition_date: date) -> None:
     frame = _prepare_daily_frame(frame, partition_date)
 
     arrow_table = _to_arrow_for_table(table, frame)
-    table.overwrite(arrow_table, overwrite_filter=EqualTo("date", partition_date))
+    _run_iceberg_commit(
+        f"overwrite {table.name()} date={partition_date}",
+        lambda: table.overwrite(
+            arrow_table,
+            overwrite_filter=EqualTo("date", partition_date),
+        ),
+    )
     logger.info(
         "Wrote %d rows to %s for date=%s",
         arrow_table.num_rows,
