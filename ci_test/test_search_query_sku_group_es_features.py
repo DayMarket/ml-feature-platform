@@ -244,6 +244,43 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         for function in functions:
             self.assertNotIn("modifier", function["field_value_factor"])
 
+    def test_iceberg_commit_retry_handles_lock_errors(self):
+        class WaitingForLockException(Exception):
+            pass
+
+        calls = []
+        sleeps = []
+
+        def flaky_commit():
+            calls.append("commit")
+            if len(calls) == 1:
+                raise WaitingForLockException(
+                    "Wait on lock for silver.feature_platform_search_query_sku_group_es_features"
+                )
+            return "ok"
+
+        result = self.runtime._run_iceberg_commit(
+            "test commit",
+            flaky_commit,
+            attempts=2,
+            initial_sleep_seconds=0,
+            sleep_fn=sleeps.append,
+        )
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(sleeps, [0])
+
+    def test_iceberg_commit_retry_does_not_swallow_non_lock_errors(self):
+        with self.assertRaisesRegex(ValueError, "schema mismatch"):
+            self.runtime._run_iceberg_commit(
+                "test commit",
+                lambda: (_ for _ in ()).throw(ValueError("schema mismatch")),
+                attempts=2,
+                initial_sleep_seconds=0,
+                sleep_fn=lambda _: None,
+            )
+
     def test_collect_elasticsearch_features_uses_parallel_jobs_and_parent_dedup(self):
         class FakeSearch:
             calls = []
