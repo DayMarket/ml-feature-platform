@@ -1,4 +1,7 @@
+import base64
 import importlib.util
+import json
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -50,6 +53,84 @@ def main() -> int:
         for table_config in table_configs
     }
     assert rendered_schemas == expected_schemas
+
+    open_pr_source_yaml = """version: 2
+
+sources:
+  - name: ml_feature_platform_gold
+    database: dwh-iceberg
+    schema: gold
+    tables:
+      - name: feature_platform_table_from_open_pr
+        columns:
+          - name: date
+"""
+    encoded_open_pr_source_yaml = base64.b64encode(
+        open_pr_source_yaml.encode("utf-8")
+    ).decode("ascii")
+    original_run = sync._run
+    original_open_pr_branch_tables = sync._open_pr_branch_tables
+    try:
+        sync._open_pr_branch_tables = lambda runtime, pr_number, models_path: set()
+
+        def fake_run(command, **kwargs):
+            if command[:3] == ["gh", "pr", "list"]:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=json.dumps(
+                        [
+                            {
+                                "number": 123,
+                                "url": "https://github.com/DayMarket/dbt-trino/pull/123",
+                                "title": "Add ml-feature-platform dbt sources",
+                                "headRefName": "automation/source-sync",
+                                "headRefOid": "abc123",
+                            }
+                        ]
+                    ),
+                    stderr="",
+                )
+            if command[:2] == ["gh", "api"]:
+                assert command[2] == (
+                    "repos/DayMarket/dbt-trino/contents/"
+                    "models/ml_feature_platform/sources.yaml?ref=abc123"
+                )
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=json.dumps(
+                        {
+                            "content": encoded_open_pr_source_yaml,
+                            "encoding": "base64",
+                        }
+                    ),
+                    stderr="",
+                )
+            raise AssertionError(f"unexpected command: {command}")
+
+        sync._run = fake_run
+        runtime = sync.RuntimeConfig(
+            branch="master",
+            dbt_repo_url="https://github.com/DayMarket/dbt-trino.git",
+            git_token="token",
+            workspace=Path("."),
+            dry_run=True,
+            build_url="",
+        )
+        assert sync._open_pr_tables(
+            runtime,
+            "DayMarket/dbt-trino",
+            {"models_path": "models/ml_feature_platform"},
+        ) == {
+            (
+                "gold",
+                "feature_platform_table_from_open_pr",
+            ): "https://github.com/DayMarket/dbt-trino/pull/123",
+        }
+    finally:
+        sync._run = original_run
+        sync._open_pr_branch_tables = original_open_pr_branch_tables
 
     source_yaml = """version: 2
 

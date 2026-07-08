@@ -7,7 +7,7 @@ USER 0
 
 RUN pip install --no-cache-dir \
     --extra-index-url "https://${NEXUS_USERNAME}:${NEXUS_PASSWORD}@nexus.infra.internal.daymarket.uz/repository/um-pypi/simple/" \
-    ranking-python-client==3.0.4
+    ranking-python-client==3.0.6
 
 RUN mkdir -p /opt/cert /opt/spark/work-dir && \
     curl -fsSL "https://storage.yandexcloud.net/cloud-certs/CA.pem" \
