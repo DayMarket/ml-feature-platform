@@ -24,6 +24,9 @@ S3_CONNECTION_ID = "spark_ycs_connection"
 ICEBERG_COMMIT_RETRY_ATTEMPTS = 8
 ICEBERG_COMMIT_RETRY_INITIAL_SECONDS = 30
 ICEBERG_COMMIT_RETRY_MAX_SECONDS = 300
+ICEBERG_LOCK_CHECK_MIN_WAIT_SECONDS = 2
+ICEBERG_LOCK_CHECK_MAX_WAIT_SECONDS = 60
+ICEBERG_LOCK_CHECK_RETRIES = 10
 
 
 @dataclass(frozen=True)
@@ -130,6 +133,9 @@ def get_iceberg_catalog(ref: TableRef):
             "s3.secret-access-key": extra["aws_secret_access_key"],
             "s3.region": S3_REGION,
             "s3.path-style-access": "true",
+            "lock-check-min-wait-time": str(ICEBERG_LOCK_CHECK_MIN_WAIT_SECONDS),
+            "lock-check-max-wait-time": str(ICEBERG_LOCK_CHECK_MAX_WAIT_SECONDS),
+            "lock-check-retries": str(ICEBERG_LOCK_CHECK_RETRIES),
         },
     )
 
@@ -412,34 +418,22 @@ def _run_iceberg_commit(
     raise RuntimeError(f"Unexpected retry loop exit during {operation_name}")
 
 
-def clear_daily_snapshot(table, partition_date: date) -> None:
+def stage_clear_daily_snapshot(transaction, table, partition_date: date) -> None:
     from pyiceberg.expressions import EqualTo
 
-    import pyarrow as pa
-
-    empty_table = pa.Table.from_pylist([], schema=table.schema().as_arrow())
-    _run_iceberg_commit(
-        f"clear {table.name()} date={partition_date}",
-        lambda: table.overwrite(
-            empty_table,
-            overwrite_filter=EqualTo("date", partition_date),
-        ),
-    )
-    logger.info("Cleared %s for date=%s before chunked append", table.name(), partition_date)
+    transaction.delete(delete_filter=EqualTo("date", partition_date))
+    logger.info("Staged clear for %s date=%s before chunked append", table.name(), partition_date)
 
 
-def append_daily_chunk(table, frame, partition_date: date) -> int:
+def append_daily_chunk(transaction, table, frame, partition_date: date) -> int:
     if frame.empty:
         return 0
 
     frame = _prepare_daily_frame(frame, partition_date)
     arrow_table = _to_arrow_for_table(table, frame)
-    _run_iceberg_commit(
-        f"append {table.name()} date={partition_date}",
-        lambda: table.append(arrow_table),
-    )
+    transaction.append(arrow_table)
     logger.info(
-        "Appended %d rows to %s for date=%s",
+        "Staged append of %d rows to %s for date=%s",
         arrow_table.num_rows,
         table.name(),
         partition_date,
@@ -466,7 +460,8 @@ def write_elasticsearch_features_by_chunks(
     records = query_groups.to_dict("records")
     seen_keys = set()
     total_rows = 0
-    partition_cleared = False
+    transaction = table.transaction()
+    partition_clear_staged = False
 
     for chunk_number, chunk_records in enumerate(_chunks(records, chunk_size), start=1):
         rows = _collect_elasticsearch_rows(
@@ -489,12 +484,12 @@ def write_elasticsearch_features_by_chunks(
             unique_rows.append(row)
             seen_keys.add(key)
 
-        if unique_rows and not partition_cleared:
-            clear_daily_snapshot(table, partition_date)
-            partition_cleared = True
+        if unique_rows and not partition_clear_staged:
+            stage_clear_daily_snapshot(transaction, table, partition_date)
+            partition_clear_staged = True
 
         frame = pd.DataFrame(unique_rows, columns=analyze.output_columns(fields))
-        written_rows = append_daily_chunk(table, frame, partition_date)
+        written_rows = append_daily_chunk(transaction, table, frame, partition_date)
         total_rows += written_rows
         logger.info(
             "Processed ES chunk %d: query_groups=%d rows=%d written=%d total_written=%d",
@@ -505,8 +500,13 @@ def write_elasticsearch_features_by_chunks(
             total_rows,
         )
 
-    if not partition_cleared:
-        clear_daily_snapshot(table, partition_date)
+    if not partition_clear_staged:
+        stage_clear_daily_snapshot(transaction, table, partition_date)
+
+    _run_iceberg_commit(
+        f"commit chunked write {table.name()} date={partition_date}",
+        transaction.commit_transaction,
+    )
 
     logger.info(
         "Finished chunked ES collection for %s date=%s rows=%d",

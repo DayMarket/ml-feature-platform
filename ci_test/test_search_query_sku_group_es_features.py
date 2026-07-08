@@ -281,7 +281,7 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
                 sleep_fn=lambda _: None,
             )
 
-    def test_chunked_writer_collects_elasticsearch_before_clearing_partition(self):
+    def test_chunked_writer_stages_chunks_and_commits_once_after_collection(self):
         events = []
 
         class FakeAnalyze:
@@ -292,11 +292,22 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         class FakeQueryGroups:
             def to_dict(self, orient):
                 assert orient == "records"
-                return [{"query": "bandana", "sku_group_ids": [948376]}]
+                return [
+                    {"query": "bandana", "sku_group_ids": [948376]},
+                    {"query": "t-shirt", "sku_group_ids": [111]},
+                ]
+
+        class FakeTransaction:
+            def commit_transaction(self):
+                events.append("commit_transaction")
 
         class FakeTable:
             def name(self):
                 return "silver.feature_platform_search_query_sku_group_es_features"
+
+            def transaction(self):
+                events.append("transaction")
+                return FakeTransaction()
 
         class FakeFrame:
             def __init__(self, rows, columns):
@@ -310,22 +321,28 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             events.append("collect")
             return [{"query": "bandana", "sku_group_id": 948376}]
 
-        def fake_clear_daily_snapshot(*_):
-            events.append("clear")
+        def fake_stage_clear_daily_snapshot(*_):
+            events.append("stage_clear")
 
         def fake_append_daily_chunk(*_):
-            events.append("append")
+            events.append("stage_append")
             return 1
+
+        def fake_run_iceberg_commit(_, operation, **__):
+            events.append("commit")
+            return operation()
 
         previous_pandas = sys.modules.get("pandas")
         previous_collect = self.runtime._collect_elasticsearch_rows
-        previous_clear = self.runtime.clear_daily_snapshot
+        previous_stage_clear = self.runtime.stage_clear_daily_snapshot
         previous_append = self.runtime.append_daily_chunk
+        previous_commit = self.runtime._run_iceberg_commit
         previous_analyze = self.runtime._load_analyze_module
         sys.modules["pandas"] = FakePandas
         self.runtime._collect_elasticsearch_rows = fake_collect_elasticsearch_rows
-        self.runtime.clear_daily_snapshot = fake_clear_daily_snapshot
+        self.runtime.stage_clear_daily_snapshot = fake_stage_clear_daily_snapshot
         self.runtime.append_daily_chunk = fake_append_daily_chunk
+        self.runtime._run_iceberg_commit = fake_run_iceberg_commit
         self.runtime._load_analyze_module = lambda: FakeAnalyze
         try:
             self.runtime.write_elasticsearch_features_by_chunks(
@@ -351,11 +368,24 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             else:
                 sys.modules["pandas"] = previous_pandas
             self.runtime._collect_elasticsearch_rows = previous_collect
-            self.runtime.clear_daily_snapshot = previous_clear
+            self.runtime.stage_clear_daily_snapshot = previous_stage_clear
             self.runtime.append_daily_chunk = previous_append
+            self.runtime._run_iceberg_commit = previous_commit
             self.runtime._load_analyze_module = previous_analyze
 
-        self.assertEqual(events, ["collect", "clear", "append"])
+        self.assertEqual(
+            events,
+            [
+                "transaction",
+                "collect",
+                "stage_clear",
+                "stage_append",
+                "collect",
+                "stage_append",
+                "commit",
+                "commit_transaction",
+            ],
+        )
 
     def test_collect_elasticsearch_features_uses_parallel_jobs_and_parent_dedup(self):
         class FakeSearch:
