@@ -65,7 +65,7 @@ Use repository files as the source of truth. Do not duplicate their contents in 
 - Human-readable feature or dataset contract and caveats: `layers/**/README.md` and `datasets/**/README.md`.
 - Orchestration, schedule, sensors, task names, and Airflow details: `layers/**/dag.py`, `datasets/**/dag.py`, each entity's `config.yaml` `spark` or `spark_applications` block, and any local `config/factory.py`.
 - Spark runtime template and resource profiles: `config/spark/layer_spark_application.yaml`, `config/spark/resources.yaml`, and each entity's `config.yaml` `spark` or `spark_applications` block. These are Spark-specific and should not be forced onto Trino/ClickHouse-source Airflow/Python jobs.
-- Ranking-service publication: `upload/ranking_features/v1/config.yaml` and `upload/ranking_features/v1/ranking_service_input.yaml`.
+- Ranking-service publication: `upload/features_service_upload/v1/config.yaml` and `upload/features_service_upload/v1/ranking_service_input.yaml`.
 - CI and generated downstream sync behavior: `.drone.yaml`, `scripts/`, and `ci_test/`.
 
 Useful discovery commands:
@@ -77,7 +77,7 @@ rg -n "<feature_or_column_or_table_name>" layers upload scripts docs
 rg -n "<feature_or_column_or_table_name>" datasets 2>/dev/null
 rg -n "<source_table_or_filter_value>" layers/**/job layers/**/README.md
 rg -n "<source_table_or_filter_value>" datasets/**/job datasets/**/README.md 2>/dev/null
-rg -n "<column_name>" layers/**/migrations upload/ranking_features/v1
+rg -n "<column_name>" layers/**/migrations upload/features_service_upload/v1
 rg -n "<column_name>" datasets/**/migrations 2>/dev/null
 ```
 
@@ -89,7 +89,7 @@ Before adding or renaming any feature or dataset:
 
 - Search feature names, dataset names, labels, and close variants with `rg` across `layers/`, `datasets/`, `upload/`, `scripts/`, `docs/`, and README files.
 - Inspect candidate target-table migrations under `layers/**/migrations/*.sql` and `datasets/**/migrations/*.sql`; upload validation checks ranking features against migration columns.
-- Inspect `upload/ranking_features/v1/config.yaml` and `upload/ranking_features/v1/ranking_service_input.yaml` for downstream usage and required feature order.
+- Inspect `upload/features_service_upload/v1/config.yaml` and `upload/features_service_upload/v1/ranking_service_input.yaml` for downstream usage and required feature order.
 - Inspect the PySpark or Airflow/Python transformation that writes the candidate source table. Similar column names can have different windows, grains, formulas, filters, label definitions, leakage boundaries, and null semantics.
 - If the requested feature already exists with the same grain and semantics, do not create a duplicate. Report where it is produced, what table stores it, and whether/how it is uploaded.
 - If a similar feature exists but differs in grain, window, formula, filter, or null handling, call out the difference and ask whether a new feature is still required.
@@ -164,7 +164,7 @@ Use this workflow for training sample tables under `datasets/`:
 - Confirm the dataset purpose, training/evaluation consumer, entity grain, primary key, label definition, sample inclusion/exclusion rules, leakage boundary, positive/negative sampling logic, source tables, source engine, source connection, date boundaries, lookbacks, freshness/DQ expectations, write mode, launch time in UTC, ownership, alerts, and on-call settings.
 - Confirm whether the dataset is a one-time/backfill artifact or a scheduled repository-managed table. Scheduled datasets should include `date` or another explicit snapshot/partition key in `table.primary_key` unless the user approves and documents a deliberate exception.
 - Dataset outputs are repository-managed Iceberg tables and must use `table.catalog: iceberg`. Keep `config.yaml` as the single source of truth for `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`.
-- Dataset tables must not be uploaded to ranking-service, inference services, or online serving systems from this repository. Do not edit `upload/ranking_features/v1/config.yaml` or `upload/ranking_features/v1/ranking_service_input.yaml` for a dataset output.
+- Dataset tables must not be uploaded to ranking-service, inference services, or online serving systems from this repository. Do not edit `upload/features_service_upload/v1/config.yaml` or `upload/features_service_upload/v1/ranking_service_input.yaml` for a dataset output.
 - Run the duplicate feature or dataset check before scaffolding. Existing feature tables or older dataset versions may already contain the same labels or samples with different windows, filters, grains, or leakage boundaries.
 - After duplicate checks and clarification, summarize the selected dataset contract back to the user before editing files.
 - Keep the full dataset surface together inside `datasets/<team>/<domain>/<version>/`: `config.yaml`, `dag.py`, runtime configuration, factory or helper code when used, entrypoint/job code, migrations, and README.
@@ -186,7 +186,7 @@ Use this workflow:
 - Search downstream usage with `rg` across `layers/`, `datasets/`, `upload/`, `scripts/`, `docs/`, README files, and ranking upload configs.
 - Inspect the table's `config.yaml`, migrations, README, PySpark job, and any downstream jobs that read it.
 - If repository files do not prove that there are no external consumers, ask the user to confirm the consumer contract or allow MCP/catalog inspection before removal.
-- If the feature is published to ranking, remove it from `upload/ranking_features/v1/config.yaml` and update `ranking_service_input.yaml` only after confirming serving compatibility and feature order changes.
+- If the feature is published to ranking, remove it from `upload/features_service_upload/v1/config.yaml` and update `ranking_service_input.yaml` only after confirming serving compatibility and feature order changes.
 - Prefer a staged removal when consumer risk is unclear: mark the feature, dataset, or table as deprecated in README or config, stop downstream upload first, then stop production after an agreed grace period.
 - Stopping production may mean pausing/removing the DAG or removing the layer or dataset from the repo, but physical Iceberg data should remain until an explicit drop/archive decision is approved.
 - Do not add destructive `DROP`, `DELETE`, or `TRUNCATE` migrations to ordinary repository migrations. CI rejects destructive statements, and physical table deletion must be a separate approved operational runbook.
@@ -373,7 +373,7 @@ Iceberg maintenance sync:
 
 ## Ranking Feature Upload
 
-Ranking upload lives in `upload/ranking_features/v1`.
+Ranking upload lives in `upload/features_service_upload/v1`.
 
 Configuration rules:
 
