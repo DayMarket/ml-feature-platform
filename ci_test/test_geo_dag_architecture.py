@@ -2,6 +2,7 @@ import importlib.util
 import re
 import sys
 import unittest
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -115,6 +116,60 @@ class GeoDagArchitectureTest(unittest.TestCase):
             if path.is_file()
         ]
         self.assertEqual(tracked_common, [])
+
+    def test_silver_materialize_functions_are_taskflow_tasks(self):
+        for entity in SILVER_ENTITIES:
+            with self.subTest(entity=entity):
+                dag_source = (
+                    ROOT
+                    / "layers"
+                    / "silver"
+                    / PRIMARY_KEY_GROUP
+                    / entity
+                    / "v1"
+                    / "dag.py"
+                ).read_text(encoding="utf-8")
+
+                self.assertIn(
+                    "@task(executor_config=_executor_config())\n"
+                    "    def materialize(partition_value: str) -> None:",
+                    dag_source,
+                )
+                self.assertNotIn(
+                    "# @task(executor_config=_executor_config())",
+                    dag_source,
+                )
+
+    def test_geo_runtime_partition_date_parser_accepts_airflow_formats(self):
+        values = (
+            "2026-06-17T00:00:00",
+            "2026-06-17T00:00:00+00:00",
+            "2026-06-17T00:00:00Z",
+            "2026-06-17 00:00:00+00:00",
+            "2026-06-17 00:00:00",
+        )
+        entities = [
+            ("silver", entity) for entity in SILVER_ENTITIES
+        ] + [("gold", GOLD_ENTITY)]
+
+        for layer, entity in entities:
+            runtime = load_runtime(
+                ROOT
+                / "layers"
+                / layer
+                / PRIMARY_KEY_GROUP
+                / entity
+                / "v1"
+                / "job"
+                / "runtime.py",
+                f"test_{layer}_{entity}_partition_runtime",
+            )
+            for value in values:
+                with self.subTest(layer=layer, entity=entity, value=value):
+                    self.assertEqual(
+                        runtime.parse_partition_date(value),
+                        date(2026, 6, 17),
+                    )
 
     def test_pyiceberg_identifier_is_two_part_tuple_from_config(self):
         for layer, entity in [
