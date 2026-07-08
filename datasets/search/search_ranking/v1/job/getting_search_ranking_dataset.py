@@ -162,6 +162,73 @@ sessions AS (
             ORDER BY `position` ASC, received_at ASC, logged_at ASC, sku_group_id ASC
         ) AS deduplicate_rank
     FROM sessions_deduplicated
+),
+ranking_score_events AS (
+    SELECT
+        trim(lower(search_query)) AS query,
+        ranking_candidates,
+        COALESCE(
+            from_json(
+                get_json_object(external_features, '$.normalized_linear_score'),
+                'ARRAY<DOUBLE>'
+            ),
+            array_repeat(CAST(NULL AS DOUBLE), size(ranking_candidates))
+        ) AS normalized_linear_scores,
+        COALESCE(
+            from_json(
+                get_json_object(external_features, '$.linear_score'),
+                'ARRAY<DOUBLE>'
+            ),
+            array_repeat(CAST(NULL AS DOUBLE), size(ranking_candidates))
+        ) AS linear_scores,
+        COALESCE(
+            from_json(
+                get_json_object(external_features, '$.dssm_score'),
+                'ARRAY<DOUBLE>'
+            ),
+            array_repeat(CAST(NULL AS DOUBLE), size(ranking_candidates))
+        ) AS dssm_scores
+    FROM iceberg.silver.ranking_analytics_events
+    CROSS JOIN params p
+    WHERE
+        fired_at >= p.event_date
+        AND fired_at < DATE_ADD(p.event_date, 1)
+        AND model_name LIKE '%search_uni%'
+        AND ranking_candidates IS NOT NULL
+        AND size(ranking_candidates) > 0
+        AND search_query IS NOT NULL
+        AND trim(search_query) != ''
+        AND external_features IS NOT NULL
+),
+ranking_scores_exploded AS (
+    SELECT
+        query,
+        CAST(score.ranking_candidates AS BIGINT) AS sku_group_id,
+        CAST(score.normalized_linear_scores AS DOUBLE) AS normalized_linear_score,
+        CAST(score.linear_scores AS DOUBLE) AS linear_score,
+        CAST(score.dssm_scores AS DOUBLE) AS dssm_score
+    FROM ranking_score_events
+    LATERAL VIEW explode(
+        arrays_zip(
+            ranking_candidates,
+            normalized_linear_scores,
+            linear_scores,
+            dssm_scores
+        )
+    ) exploded_scores AS score
+),
+ranking_scores AS (
+    SELECT
+        query,
+        sku_group_id,
+        AVG(normalized_linear_score) AS normalized_linear_score,
+        AVG(linear_score) AS linear_score,
+        AVG(dssm_score) AS dssm_score
+    FROM ranking_scores_exploded
+    WHERE sku_group_id IS NOT NULL
+    GROUP BY
+        query,
+        sku_group_id
 )
 SELECT
     s.collection_date,
@@ -177,6 +244,9 @@ SELECT
     CAST(s.position_duplicate_count AS BIGINT) AS position_duplicate_count,
     s.widget_section_name,
     s.widget_space_name,
+    rs.normalized_linear_score,
+    rs.linear_score,
+    rs.dssm_score,
     COALESCE(o.is_generated_order, 0) AS is_generated_order
 FROM sessions s
 LEFT JOIN orders o
@@ -184,6 +254,9 @@ LEFT JOIN orders o
     AND o.last_search_session_id = s.session_id
     AND o.sku_group_id = s.sku_group_id
     AND o.query = s.query
+LEFT JOIN ranking_scores rs
+    ON rs.query = s.query
+    AND rs.sku_group_id = s.sku_group_id
 """
     )
 
