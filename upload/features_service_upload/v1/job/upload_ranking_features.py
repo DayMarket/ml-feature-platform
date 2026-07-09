@@ -21,9 +21,9 @@ from ranking_python_client import (
 from job.entities import Arguments
 
 try:
-    from ranking_python_client import SkuGroupToPromotionFeatureSet
+    from ranking_python_client import SkuGroupToPromoFeatureSet
 except ImportError:
-    SkuGroupToPromotionFeatureSet = None
+    SkuGroupToPromoFeatureSet = None
 
 
 ENTITY_TYPES = {
@@ -43,15 +43,15 @@ ENTITY_TYPES = {
         SkuGroupToQueryFeatureSet,
     ),
     ("promotion_id", "sku_group_id"): (
-        "skuGroupToPromotionFeatureSet",
-        SkuGroupToPromotionFeatureSet,
+        "skuGroupToPromoFeatureSet",
+        SkuGroupToPromoFeatureSet,
     ),
 }
 
 PROTO_KEY_ARGUMENTS = {
     "account_id": "accountId",
     "category_id": "categoryId",
-    "promotion_id": "promotionId",
+    "promotion_id": "promoId",
     "query": "query",
     "sku_group_id": "skuGroupId",
 }

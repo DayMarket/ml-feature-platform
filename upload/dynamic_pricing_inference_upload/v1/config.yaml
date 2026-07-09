@@ -34,6 +34,12 @@
             "max_discount_fraction",
             "avg_discount_fraction"
           ]
+        },
+        {
+          "name": "fs_dynamic_pricing_skg_promotion_price_inference_v1",
+          "features": [
+            "avg_sell_price"
+          ]
         }
       ]
     }
