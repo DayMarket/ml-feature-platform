@@ -317,9 +317,16 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         class FakePandas:
             DataFrame = FakeFrame
 
+        collect_results = iter(
+            [
+                [{"query": "bandana", "sku_group_id": 948376}],
+                [{"query": "t-shirt", "sku_group_id": 111}],
+            ]
+        )
+
         def fake_collect_elasticsearch_rows(**_):
             events.append("collect")
-            return [{"query": "bandana", "sku_group_id": 948376}]
+            return next(collect_results)
 
         def fake_stage_clear_daily_snapshot(*_):
             events.append("stage_clear")
@@ -359,6 +366,7 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
                 size=3000,
                 parallel_jobs=2,
                 chunk_size=1,
+                write_chunk_size=1,
                 timeout_seconds=60,
                 retry_count=3,
             )

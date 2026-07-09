@@ -19,6 +19,7 @@ source:
     size: 3000
     parallel_jobs: 24
     chunk_size: 3000
+    write_chunk_size: 50000
     request_timeout_seconds: 60
     retry_count: 3
     fields:

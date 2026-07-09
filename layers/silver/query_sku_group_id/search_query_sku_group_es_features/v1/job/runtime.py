@@ -369,6 +369,19 @@ def _chunks(values: Sequence[Mapping[str, Any]], chunk_size: int):
         yield values[start : start + chunk_size]
 
 
+def _iter_query_group_chunks(query_groups, chunk_size: int):
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be at least 1")
+
+    if hasattr(query_groups, "iloc"):
+        for start in range(0, len(query_groups), chunk_size):
+            yield query_groups.iloc[start : start + chunk_size].to_dict("records")
+        return
+
+    records = query_groups.to_dict("records")
+    yield from _chunks(records, chunk_size)
+
+
 def _is_iceberg_lock_error(exc: BaseException) -> bool:
     current: BaseException | None = exc
     visited: set[int] = set()
@@ -441,6 +454,21 @@ def append_daily_chunk(transaction, table, frame, partition_date: date) -> int:
     return arrow_table.num_rows
 
 
+def _append_row_buffer(
+    transaction,
+    table,
+    rows: Sequence[Mapping[str, Any]],
+    partition_date: date,
+    columns: Sequence[str],
+) -> int:
+    import pandas as pd
+
+    if not rows:
+        return 0
+    frame = pd.DataFrame(rows, columns=columns)
+    return append_daily_chunk(transaction, table, frame, partition_date)
+
+
 def write_elasticsearch_features_by_chunks(
     table,
     query_groups,
@@ -451,19 +479,24 @@ def write_elasticsearch_features_by_chunks(
     size: int,
     parallel_jobs: int,
     chunk_size: int,
+    write_chunk_size: int,
     timeout_seconds: int,
     retry_count: int,
 ) -> None:
-    import pandas as pd
-
     analyze = _load_analyze_module()
-    records = query_groups.to_dict("records")
+    output_columns = analyze.output_columns(fields)
+    if write_chunk_size < 1:
+        raise ValueError("write_chunk_size must be at least 1")
+
     seen_keys = set()
     total_rows = 0
     transaction = table.transaction()
     partition_clear_staged = False
 
-    for chunk_number, chunk_records in enumerate(_chunks(records, chunk_size), start=1):
+    for chunk_number, chunk_records in enumerate(
+        _iter_query_group_chunks(query_groups, chunk_size),
+        start=1,
+    ):
         rows = _collect_elasticsearch_rows(
             records=chunk_records,
             partition_date=partition_date,
@@ -476,29 +509,47 @@ def write_elasticsearch_features_by_chunks(
             retry_count=retry_count,
         )
 
-        unique_rows = []
+        row_buffer = []
         for row in rows:
             key = (row["query"], row["sku_group_id"])
             if key in seen_keys:
                 continue
-            unique_rows.append(row)
             seen_keys.add(key)
+            row_buffer.append(row)
 
-        if unique_rows and not partition_clear_staged:
-            stage_clear_daily_snapshot(transaction, table, partition_date)
-            partition_clear_staged = True
+            if len(row_buffer) >= write_chunk_size:
+                if not partition_clear_staged:
+                    stage_clear_daily_snapshot(transaction, table, partition_date)
+                    partition_clear_staged = True
+                total_rows += _append_row_buffer(
+                    transaction,
+                    table,
+                    row_buffer,
+                    partition_date,
+                    output_columns,
+                )
+                row_buffer.clear()
 
-        frame = pd.DataFrame(unique_rows, columns=analyze.output_columns(fields))
-        written_rows = append_daily_chunk(transaction, table, frame, partition_date)
-        total_rows += written_rows
+        if row_buffer:
+            if not partition_clear_staged:
+                stage_clear_daily_snapshot(transaction, table, partition_date)
+                partition_clear_staged = True
+            total_rows += _append_row_buffer(
+                transaction,
+                table,
+                row_buffer,
+                partition_date,
+                output_columns,
+            )
+            row_buffer.clear()
         logger.info(
-            "Processed ES chunk %d: query_groups=%d rows=%d written=%d total_written=%d",
+            "Processed ES chunk %d: query_groups=%d rows=%d total_written=%d",
             chunk_number,
             len(chunk_records),
             len(rows),
-            written_rows,
             total_rows,
         )
+        del rows
 
     if not partition_clear_staged:
         stage_clear_daily_snapshot(transaction, table, partition_date)

@@ -125,6 +125,9 @@ def search_query_sku_group_es_features_dag() -> None:
             size=int(config["source"]["elasticsearch"]["size"]),
             parallel_jobs=int(config["source"]["elasticsearch"]["parallel_jobs"]),
             chunk_size=int(config["source"]["elasticsearch"]["chunk_size"]),
+            write_chunk_size=int(
+                config["source"]["elasticsearch"]["write_chunk_size"]
+            ),
             timeout_seconds=int(
                 config["source"]["elasticsearch"]["request_timeout_seconds"]
             ),

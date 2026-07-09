@@ -48,7 +48,8 @@ Trino-шаг выбирает все возможные пары `query, sku_gro
 `corrected_query_text`. В Elasticsearch отправляется `result_query_text`, сгруппированный с массивом
 `sku_group_id`.
 
-Elasticsearch-запрос использует `size=3000`, `parallel_jobs=24`, `chunk_size=3000`, `explain=true`, фильтр
+Elasticsearch-запрос использует `size=3000`, `parallel_jobs=24`, `chunk_size=3000`, `write_chunk_size=50000`,
+`explain=true`, фильтр
 `sku_group.id IN sku_group_ids`, multi-match по полям из `config.yaml` и raw field value factors для рейтингов/заказов.
 `size=3000` - верхний предел на запрос, фактический объем дополнительно ограничивается фильтром по
 `sku_group_ids`. Если production DSL отличается от текущего builder, менять нужно только `job/search.py`.
@@ -90,6 +91,9 @@ Elasticsearch-запросами и не на каждый chunk. При retry D
 поэтому partial append предыдущей попытки не накапливается. Финальный PyIceberg commit дополнительно обернут в retry
 на table-level lock Hive catalog: это защищает от временного lock со стороны DQ, maintenance или другого writer
 таблицы.
+
+ES chunk и Iceberg write chunk разделены: один ES chunk может вернуть сотни тысяч строк, поэтому pandas/Arrow
+таблицы для Iceberg создаются блоками не больше `write_chunk_size` строк внутри одной transaction.
 
 ## Владелец / алерты
 
