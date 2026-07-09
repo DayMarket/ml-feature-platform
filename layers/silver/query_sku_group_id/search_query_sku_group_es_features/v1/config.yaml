@@ -39,18 +39,31 @@ source:
       - product.title.uz.synonym
       - full_category_name
 
+raw_storage:
+  conn_id: search_research_bucket
+  prefix: airflow/2026/bm25_features
+  file_row_limit: 50000
+
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
   cpu: "10"
   memory: 16Gi
 
-dag:
-  id: feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_es_features
-  group_tag: search-es-features
+elasticsearch_collect_dag:
+  id: feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_es_features.elasticsearch_collect
   schedule: "0 4 * * *"
   start_date: "2026-03-13T00:00:00Z"
   team: search
   owner: team:search
+  dagrun_timeout_hours: 72
+
+dag:
+  id: feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_es_features
+  group_tag: search-es-features
+  start_date: "2026-03-13T00:00:00Z"
+  team: search
+  owner: team:search
+  dagrun_timeout_hours: 24
 
 alerts:
   team: search

@@ -5,8 +5,12 @@ from __future__ import annotations
 import logging
 import importlib.util
 import gc
+import gzip
+import json
+import os
 import sys
 import time
+import tempfile
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -50,6 +54,18 @@ class ElasticsearchConfig:
     url: str
     auth: tuple[str, str] | None
     headers: dict[str, str]
+
+
+@dataclass(frozen=True)
+class RawStorageConfig:
+    conn_id: str
+    bucket: str
+    prefix: str
+    endpoint_url: str | None
+    region_name: str | None
+    access_key_id: str | None
+    secret_access_key: str | None
+    session_token: str | None = None
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -115,6 +131,16 @@ def parse_snapshot_timestamp(value: str) -> datetime:
 
 def previous_utc_date(value: str) -> date:
     return parse_snapshot_timestamp(value).date() - timedelta(days=1)
+
+
+def parse_partition_date(value: str) -> date:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("partition_date must be provided as YYYY-MM-DD")
+    try:
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"Unsupported partition_date: {value!r}. Expected YYYY-MM-DD.") from exc
 
 
 def get_iceberg_catalog(ref: TableRef):
@@ -204,6 +230,165 @@ def elasticsearch_config(config: Mapping[str, Any]) -> ElasticsearchConfig:
         auth=auth,
         headers={str(key): str(value) for key, value in headers.items()},
     )
+
+
+def raw_storage_config(config: Mapping[str, Any]) -> RawStorageConfig:
+    from airflow.sdk import BaseHook
+
+    conn_id = str(config["conn_id"])
+    connection = BaseHook.get_connection(conn_id)
+    extra = connection.extra_dejson
+    bucket = (
+        config.get("bucket")
+        or extra.get("bucket")
+        or extra.get("bucket_name")
+        or connection.host
+    )
+    if not bucket:
+        raise ValueError(
+            f"Airflow connection {conn_id} must define bucket in host, "
+            "extra.bucket, or raw_storage.bucket"
+        )
+
+    endpoint_url = (
+        config.get("endpoint_url")
+        or extra.get("endpoint_url")
+        or extra.get("s3_endpoint")
+        or extra.get("host")
+    )
+    region_name = (
+        config.get("region_name")
+        or extra.get("region_name")
+        or extra.get("region")
+        or S3_REGION
+    )
+    return RawStorageConfig(
+        conn_id=conn_id,
+        bucket=str(bucket),
+        prefix=str(config["prefix"]).strip("/"),
+        endpoint_url=str(endpoint_url) if endpoint_url else None,
+        region_name=str(region_name) if region_name else None,
+        access_key_id=(
+            extra.get("aws_access_key_id")
+            or extra.get("access_key")
+            or connection.login
+        ),
+        secret_access_key=(
+            extra.get("aws_secret_access_key")
+            or extra.get("secret_key")
+            or connection.password
+        ),
+        session_token=extra.get("aws_session_token"),
+    )
+
+
+def get_s3_client(storage: RawStorageConfig):
+    try:
+        import boto3
+    except ImportError as exc:
+        raise RuntimeError(
+            "Raw S3 storage requires boto3 in the Airflow runtime image. "
+            f"Connection {storage.conn_id!r} cannot be used without an S3 client."
+        ) from exc
+
+    kwargs = {
+        "endpoint_url": storage.endpoint_url,
+        "region_name": storage.region_name,
+        "aws_access_key_id": storage.access_key_id,
+        "aws_secret_access_key": storage.secret_access_key,
+        "aws_session_token": storage.session_token,
+    }
+    return boto3.client(
+        "s3",
+        **{key: value for key, value in kwargs.items() if value},
+    )
+
+
+def _safe_key_part(value: str) -> str:
+    return "".join(
+        char if char.isalnum() or char in ("-", "_", ".", ":", "=") else "_"
+        for char in str(value)
+    )
+
+
+def raw_date_prefix(storage: RawStorageConfig, partition_date: date) -> str:
+    return f"{storage.prefix}/raw/date={partition_date.isoformat()}"
+
+
+def raw_run_prefix(storage: RawStorageConfig, partition_date: date, run_id: str) -> str:
+    return f"{raw_date_prefix(storage, partition_date)}/run_id={_safe_key_part(run_id)}"
+
+
+def raw_date_manifest_key(storage: RawStorageConfig, partition_date: date) -> str:
+    return f"{raw_date_prefix(storage, partition_date)}/manifest.json"
+
+
+def raw_date_success_key(storage: RawStorageConfig, partition_date: date) -> str:
+    return f"{raw_date_prefix(storage, partition_date)}/_SUCCESS"
+
+
+def _delete_s3_keys(client, bucket: str, keys: Sequence[str]) -> None:
+    for start in range(0, len(keys), 1000):
+        batch = [{"Key": key} for key in keys[start : start + 1000]]
+        if batch:
+            client.delete_objects(Bucket=bucket, Delete={"Objects": batch})
+
+
+def delete_s3_prefix(client, storage: RawStorageConfig, prefix: str) -> None:
+    paginator = client.get_paginator("list_objects_v2")
+    keys = []
+    for page in paginator.paginate(Bucket=storage.bucket, Prefix=prefix):
+        keys.extend(item["Key"] for item in page.get("Contents", []))
+        if len(keys) >= 1000:
+            _delete_s3_keys(client, storage.bucket, keys)
+            keys.clear()
+    _delete_s3_keys(client, storage.bucket, keys)
+
+
+def clear_raw_success_markers(client, storage: RawStorageConfig, partition_date: date) -> None:
+    _delete_s3_keys(
+        client,
+        storage.bucket,
+        [
+            raw_date_manifest_key(storage, partition_date),
+            raw_date_success_key(storage, partition_date),
+        ],
+    )
+
+
+def _put_json(client, storage: RawStorageConfig, key: str, payload: Mapping[str, Any]) -> None:
+    client.put_object(
+        Bucket=storage.bucket,
+        Key=key,
+        Body=json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"),
+        ContentType="application/json",
+    )
+
+
+def _put_text(client, storage: RawStorageConfig, key: str, payload: str) -> None:
+    client.put_object(
+        Bucket=storage.bucket,
+        Key=key,
+        Body=payload.encode("utf-8"),
+        ContentType="text/plain",
+    )
+
+
+def load_latest_raw_manifest(client, storage: RawStorageConfig, partition_date: date) -> dict[str, Any]:
+    key = raw_date_manifest_key(storage, partition_date)
+    response = client.get_object(Bucket=storage.bucket, Key=key)
+    response_body = response["Body"]
+    try:
+        body = response_body.read().decode("utf-8")
+    finally:
+        response_body.close()
+    manifest = json.loads(body)
+    if manifest.get("date") != partition_date.isoformat():
+        raise ValueError(
+            f"Raw manifest {key} has date={manifest.get('date')!r}, "
+            f"expected {partition_date.isoformat()!r}"
+        )
+    return manifest
 
 
 def _normalize_sku_group_ids(value: Any) -> list[int]:
@@ -317,9 +502,8 @@ def _collect_elasticsearch_rows(
     return rows
 
 
-def _iter_elasticsearch_rows(
+def _iter_elasticsearch_hit_records(
     records: Sequence[Mapping[str, Any]],
-    partition_date: date,
     elastic: ElasticsearchConfig,
     search_module,
     fields: Sequence[str],
@@ -329,8 +513,6 @@ def _iter_elasticsearch_rows(
     retry_count: int,
 ):
     from joblib import Parallel, delayed
-
-    analyze = _load_analyze_module()
 
     if parallel_jobs < 1:
         raise ValueError("parallel_jobs must be at least 1")
@@ -343,7 +525,7 @@ def _iter_elasticsearch_rows(
             continue
         tasks.append((query, sku_group_ids))
 
-    def fetch_query_rows(query: str, sku_group_ids: list[int]) -> list[dict[str, Any]]:
+    def fetch_query_hits(query: str, sku_group_ids: list[int]) -> list[dict[str, Any]]:
         body = search_module.build_search_body(
             query=query,
             sku_group_ids=sku_group_ids,
@@ -359,18 +541,7 @@ def _iter_elasticsearch_rows(
             retry_count=retry_count,
         )
         hits = data.get("hits", {}).get("hits", [])
-        rows = []
-        for hit in hits:
-            row = analyze.hit_to_row(
-                hit,
-                query=query,
-                partition_date=partition_date,
-                fields=fields,
-            )
-            if row["sku_group_id"] == 0:
-                continue
-            rows.append(row)
-        return rows
+        return [{"query": query, "hit": hit} for hit in hits]
 
     logger.info(
         "Fetching Elasticsearch features for %d query groups with parallel_jobs=%d",
@@ -384,12 +555,44 @@ def _iter_elasticsearch_rows(
         return_as="generator_unordered",
         pre_dispatch=parallel_jobs * 2,
     )(
-        delayed(fetch_query_rows)(query, sku_group_ids)
+        delayed(fetch_query_hits)(query, sku_group_ids)
         for query, sku_group_ids in tasks
     )
 
     for batch in result_batches:
-        for row in batch:
+        yield from batch
+
+
+def _iter_elasticsearch_rows(
+    records: Sequence[Mapping[str, Any]],
+    partition_date: date,
+    elastic: ElasticsearchConfig,
+    search_module,
+    fields: Sequence[str],
+    size: int,
+    parallel_jobs: int,
+    timeout_seconds: int,
+    retry_count: int,
+):
+    analyze = _load_analyze_module()
+
+    for record in _iter_elasticsearch_hit_records(
+        records=records,
+        elastic=elastic,
+        search_module=search_module,
+        fields=fields,
+        size=size,
+        parallel_jobs=parallel_jobs,
+        timeout_seconds=timeout_seconds,
+        retry_count=retry_count,
+    ):
+        row = analyze.hit_to_row(
+            record["hit"],
+            query=record["query"],
+            partition_date=partition_date,
+            fields=fields,
+        )
+        if row["sku_group_id"] != 0:
             yield row
 
 
@@ -411,6 +614,182 @@ def _iter_query_group_chunks(query_groups, chunk_size: int):
 
     records = query_groups.to_dict("records")
     yield from _chunks(records, chunk_size)
+
+
+class _JsonlGzipPartWriter:
+    def __init__(self, client, storage: RawStorageConfig, key: str):
+        self._client = client
+        self._storage = storage
+        self.key = key
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jsonl.gz")
+        self._path = temp_file.name
+        temp_file.close()
+        self._stream = gzip.open(self._path, mode="wt", encoding="utf-8")
+        self.rows = 0
+
+    def write(self, payload: Mapping[str, Any]) -> None:
+        self._stream.write(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        )
+        self._stream.write("\n")
+        self.rows += 1
+
+    def close_and_upload(self) -> dict[str, Any]:
+        self._stream.close()
+        size_bytes = os.path.getsize(self._path)
+        self._client.upload_file(
+            self._path,
+            self._storage.bucket,
+            self.key,
+            ExtraArgs={
+                "ContentType": "application/x-ndjson",
+                "ContentEncoding": "gzip",
+            },
+        )
+        os.unlink(self._path)
+        return {
+            "key": self.key,
+            "rows": self.rows,
+            "bytes": size_bytes,
+        }
+
+
+def _raw_part_key(run_prefix: str, chunk_number: int, part_number: int) -> str:
+    return (
+        f"{run_prefix}/chunk={chunk_number:06d}/"
+        f"part-{part_number:06d}.jsonl.gz"
+    )
+
+
+def write_elasticsearch_raw_to_s3(
+    query_groups,
+    partition_date: date,
+    run_id: str,
+    elastic: ElasticsearchConfig,
+    search_module,
+    fields: Sequence[str],
+    size: int,
+    parallel_jobs: int,
+    chunk_size: int,
+    raw_file_row_limit: int,
+    timeout_seconds: int,
+    retry_count: int,
+    storage: RawStorageConfig,
+) -> dict[str, Any]:
+    if raw_file_row_limit < 1:
+        raise ValueError("raw_file_row_limit must be at least 1")
+
+    client = get_s3_client(storage)
+    run_prefix = raw_run_prefix(storage, partition_date, run_id)
+    delete_s3_prefix(client, storage, run_prefix + "/")
+    clear_raw_success_markers(client, storage, partition_date)
+
+    manifest: dict[str, Any] = {
+        "date": partition_date.isoformat(),
+        "run_id": run_id,
+        "run_prefix": run_prefix,
+        "storage_conn_id": storage.conn_id,
+        "bucket": storage.bucket,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "chunk_size": chunk_size,
+        "raw_file_row_limit": raw_file_row_limit,
+        "parts": [],
+        "chunks": [],
+        "total_records": 0,
+        "total_query_groups": 0,
+    }
+
+    for chunk_number, chunk_records in enumerate(
+        _iter_query_group_chunks(query_groups, chunk_size),
+        start=1,
+    ):
+        part_number = 0
+        chunk_records_count = 0
+        writer: _JsonlGzipPartWriter | None = None
+
+        def close_part() -> None:
+            nonlocal writer
+            if writer is None:
+                return
+            part = writer.close_and_upload()
+            part["chunk_number"] = chunk_number
+            manifest["parts"].append(part)
+            logger.info(
+                "Uploaded raw ES part %s rows=%d bytes=%d",
+                part["key"],
+                part["rows"],
+                part["bytes"],
+            )
+            writer = None
+
+        def ensure_writer() -> _JsonlGzipPartWriter:
+            nonlocal part_number, writer
+            if writer is None or writer.rows >= raw_file_row_limit:
+                close_part()
+                part_number += 1
+                writer = _JsonlGzipPartWriter(
+                    client,
+                    storage,
+                    _raw_part_key(run_prefix, chunk_number, part_number),
+                )
+            return writer
+
+        try:
+            for record in _iter_elasticsearch_hit_records(
+                records=chunk_records,
+                elastic=elastic,
+                search_module=search_module,
+                fields=fields,
+                size=size,
+                parallel_jobs=parallel_jobs,
+                timeout_seconds=timeout_seconds,
+                retry_count=retry_count,
+            ):
+                ensure_writer().write(
+                    {
+                        "date": partition_date.isoformat(),
+                        "query": record["query"],
+                        "hit": record["hit"],
+                    }
+                )
+                chunk_records_count += 1
+        finally:
+            close_part()
+
+        manifest["chunks"].append(
+            {
+                "chunk_number": chunk_number,
+                "query_groups": len(chunk_records),
+                "records": chunk_records_count,
+            }
+        )
+        manifest["total_records"] += chunk_records_count
+        manifest["total_query_groups"] += len(chunk_records)
+        logger.info(
+            "Wrote raw ES chunk %d: query_groups=%d records=%d total_records=%d",
+            chunk_number,
+            len(chunk_records),
+            chunk_records_count,
+            manifest["total_records"],
+        )
+
+    manifest["finished_at_utc"] = datetime.now(timezone.utc).isoformat()
+    run_manifest_key = f"{run_prefix}/manifest.json"
+    date_manifest_key = raw_date_manifest_key(storage, partition_date)
+    success_key = raw_date_success_key(storage, partition_date)
+    manifest["run_manifest_key"] = run_manifest_key
+    manifest["date_manifest_key"] = date_manifest_key
+
+    _put_json(client, storage, run_manifest_key, manifest)
+    _put_json(client, storage, date_manifest_key, manifest)
+    _put_text(client, storage, success_key, run_manifest_key)
+    logger.info(
+        "Finished raw ES collection for date=%s records=%d manifest=%s",
+        partition_date,
+        manifest["total_records"],
+        date_manifest_key,
+    )
+    return manifest
 
 
 def _is_iceberg_lock_error(exc: BaseException) -> bool:
@@ -469,6 +848,22 @@ def stage_clear_daily_snapshot(transaction, table, partition_date: date) -> None
     logger.info("Staged clear for %s date=%s before chunked append", table.name(), partition_date)
 
 
+def clear_daily_snapshot(table, partition_date: date) -> None:
+    from pyiceberg.expressions import EqualTo
+
+    import pyarrow as pa
+
+    empty_table = pa.Table.from_pylist([], schema=table.schema().as_arrow())
+    _run_iceberg_commit(
+        f"clear {table.name()} date={partition_date}",
+        lambda: table.overwrite(
+            empty_table,
+            overwrite_filter=EqualTo("date", partition_date),
+        ),
+    )
+    logger.info("Cleared %s for date=%s before raw parse append", table.name(), partition_date)
+
+
 def append_daily_chunk(transaction, table, frame, partition_date: date) -> int:
     if frame.empty:
         return 0
@@ -489,6 +884,29 @@ def append_daily_chunk(transaction, table, frame, partition_date: date) -> int:
     return written_rows
 
 
+def append_committed_daily_chunk(table, frame, partition_date: date) -> int:
+    if frame.empty:
+        return 0
+
+    frame = _prepare_daily_frame(frame, partition_date)
+    arrow_table = _to_arrow_for_table(table, frame)
+    written_rows = arrow_table.num_rows
+    _run_iceberg_commit(
+        f"append {table.name()} date={partition_date}",
+        lambda: table.append(arrow_table),
+    )
+    del arrow_table
+    del frame
+    gc.collect()
+    logger.info(
+        "Committed append of %d rows to %s for date=%s",
+        written_rows,
+        table.name(),
+        partition_date,
+    )
+    return written_rows
+
+
 def _append_row_buffer(
     transaction,
     table,
@@ -502,6 +920,97 @@ def _append_row_buffer(
         return 0
     frame = pd.DataFrame(rows, columns=columns)
     return append_daily_chunk(transaction, table, frame, partition_date)
+
+
+def _append_committed_row_buffer(
+    table,
+    rows: Sequence[Mapping[str, Any]],
+    partition_date: date,
+    columns: Sequence[str],
+) -> int:
+    import pandas as pd
+
+    if not rows:
+        return 0
+    frame = pd.DataFrame(rows, columns=columns)
+    return append_committed_daily_chunk(table, frame, partition_date)
+
+
+def iter_raw_manifest_records(client, storage: RawStorageConfig, manifest: Mapping[str, Any]):
+    for part in manifest.get("parts", []):
+        key = part["key"]
+        response = client.get_object(Bucket=storage.bucket, Key=key)
+        body = response["Body"]
+        try:
+            with gzip.GzipFile(fileobj=body, mode="rb") as stream:
+                for line in stream:
+                    if line.strip():
+                        yield json.loads(line.decode("utf-8"))
+        finally:
+            body.close()
+
+
+def write_raw_features_to_iceberg(
+    table,
+    partition_date: date,
+    storage: RawStorageConfig,
+    fields: Sequence[str],
+    write_chunk_size: int,
+) -> None:
+    if write_chunk_size < 1:
+        raise ValueError("write_chunk_size must be at least 1")
+
+    client = get_s3_client(storage)
+    manifest = load_latest_raw_manifest(client, storage, partition_date)
+    analyze = _load_analyze_module()
+    output_columns = analyze.output_columns(fields)
+
+    clear_daily_snapshot(table, partition_date)
+
+    row_buffer = []
+    total_rows = 0
+    raw_records = 0
+    for raw_record in iter_raw_manifest_records(client, storage, manifest):
+        raw_records += 1
+        query = str(raw_record.get("query") or "").strip()
+        hit = raw_record.get("hit")
+        if not query or not isinstance(hit, Mapping):
+            continue
+        row = analyze.hit_to_row(
+            hit,
+            query=query,
+            partition_date=partition_date,
+            fields=fields,
+        )
+        if row["sku_group_id"] == 0:
+            continue
+        row_buffer.append(row)
+
+        if len(row_buffer) >= write_chunk_size:
+            total_rows += _append_committed_row_buffer(
+                table,
+                row_buffer,
+                partition_date,
+                output_columns,
+            )
+            row_buffer.clear()
+
+    if row_buffer:
+        total_rows += _append_committed_row_buffer(
+            table,
+            row_buffer,
+            partition_date,
+            output_columns,
+        )
+        row_buffer.clear()
+
+    logger.info(
+        "Finished raw parse to Iceberg for %s date=%s raw_records=%d rows=%d",
+        table.name(),
+        partition_date,
+        raw_records,
+        total_rows,
+    )
 
 
 def write_elasticsearch_features_by_chunks(

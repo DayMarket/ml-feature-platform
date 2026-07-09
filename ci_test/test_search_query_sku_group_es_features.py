@@ -1,4 +1,7 @@
+import gzip
+import io
 import importlib.util
+import json
 import sys
 import unittest
 from datetime import date
@@ -46,6 +49,78 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
                     self.runtime.previous_utc_date(value),
                     date(2026, 6, 16),
                 )
+        self.assertEqual(
+            self.runtime.parse_partition_date("2026-06-16"),
+            date(2026, 6, 16),
+        )
+
+    def test_raw_storage_paths_use_configured_prefix_and_safe_run_id(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        partition_date = date(2026, 7, 8)
+
+        self.assertEqual(
+            self.runtime.raw_date_prefix(storage, partition_date),
+            "airflow/2026/bm25_features/raw/date=2026-07-08",
+        )
+        self.assertEqual(
+            self.runtime.raw_run_prefix(
+                storage,
+                partition_date,
+                "manual__2026-07-08T10:40:23.147933+00:00",
+            ),
+            "airflow/2026/bm25_features/raw/date=2026-07-08/"
+            "run_id=manual__2026-07-08T10:40:23.147933_00:00",
+        )
+        self.assertEqual(
+            self.runtime.raw_date_manifest_key(storage, partition_date),
+            "airflow/2026/bm25_features/raw/date=2026-07-08/manifest.json",
+        )
+
+    def test_iter_raw_manifest_records_reads_jsonl_gzip_parts(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        payload = io.BytesIO()
+        with gzip.GzipFile(fileobj=payload, mode="wb") as stream:
+            for record in [
+                {"query": "bandana", "hit": {"_id": "1"}},
+                {"query": "t-shirt", "hit": {"_id": "2"}},
+            ]:
+                stream.write(json.dumps(record).encode("utf-8") + b"\n")
+        payload.seek(0)
+
+        class FakeClient:
+            def get_object(self, Bucket, Key):
+                self.bucket = Bucket
+                self.key = Key
+                return {"Body": payload}
+
+        client = FakeClient()
+        records = list(
+            self.runtime.iter_raw_manifest_records(
+                client,
+                storage,
+                {"parts": [{"key": "raw/date=2026-07-08/part.jsonl.gz"}]},
+            )
+        )
+
+        self.assertEqual(client.bucket, "bucket")
+        self.assertEqual(client.key, "raw/date=2026-07-08/part.jsonl.gz")
+        self.assertEqual([record["query"] for record in records], ["bandana", "t-shirt"])
 
     def test_explain_parser_keeps_root_total_score_and_field_bm25(self):
         explanation = {

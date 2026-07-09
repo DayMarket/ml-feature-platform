@@ -21,6 +21,7 @@ spec:
       - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2
       - org.apache.iceberg:iceberg-aws-bundle:1.5.2
   sparkConf:
+    spark.dynamicAllocation.enabled: "false"
     spark.hadoop.spark.sql.legacy.parquet.nanosAsLong: "false"
     spark.eventLog.enabled: "true"
     spark.eventLog.dir: s3a://<spark_event_log_bucket_name>/logs/
