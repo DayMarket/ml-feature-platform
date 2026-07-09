@@ -76,11 +76,24 @@ def get_dag_default_args() -> dict:
     }
 
 
-def _elasticsearch_collect_logical_date(_, **context):
+def _writer_partition_date(logical_date, context) -> object:
     dag_run = context.get("dag_run")
     partition_date = (dag_run.conf or {}).get("partition_date") if dag_run else None
-    if not partition_date:
-        raise ValueError("Writer DAG requires dag_run.conf['partition_date']")
+    if partition_date:
+        return pendulum.parse(partition_date).date()
+
+    if logical_date is None:
+        logical_date = context.get("logical_date")
+    if logical_date is None:
+        raise ValueError(
+            "Writer DAG requires dag_run.conf['partition_date'] or logical_date"
+        )
+
+    return pendulum.instance(logical_date).date() - timedelta(days=1)
+
+
+def _elasticsearch_collect_logical_date(logical_date, **context):
+    partition_date = _writer_partition_date(logical_date, context)
 
     schedule_parts = str(CONFIG["elasticsearch_collect_dag"]["schedule"]).split()
     if len(schedule_parts) < 2 or not schedule_parts[0].isdigit() or not schedule_parts[1].isdigit():
@@ -90,11 +103,10 @@ def _elasticsearch_collect_logical_date(_, **context):
             f"{CONFIG['elasticsearch_collect_dag']['schedule']!r}"
         )
 
-    day = pendulum.parse(partition_date).date()
     return pendulum.datetime(
-        day.year,
-        day.month,
-        day.day,
+        partition_date.year,
+        partition_date.month,
+        partition_date.day,
         int(schedule_parts[1]),
         int(schedule_parts[0]),
         tz="UTC",
@@ -156,7 +168,9 @@ def search_query_sku_group_es_features_dag() -> None:
             ),
         )
 
-    wait_for_elasticsearch_collect >> materialize('{{ dag_run.conf.get("partition_date", "") }}')
+    wait_for_elasticsearch_collect >> materialize(
+        '{{ (dag_run.conf or {}).get("partition_date") or macros.ds_add(ds, -1) }}'
+    )
 
 
 dag = search_query_sku_group_es_features_dag()

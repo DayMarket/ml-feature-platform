@@ -13,6 +13,8 @@
 - Elasticsearch collect DAG расписание: ежедневно в 04:00 UTC, `0 4 * * *`.
 - Writer DAG: trigger-only, запускается collect DAG-ом после успешной записи manifest в S3.
 - Writer DAG содержит `ExternalTaskSensor` на Elasticsearch collect DAG за тот же `partition_date`.
+- При ручном запуске writer DAG можно передать `{"partition_date": "YYYY-MM-DD"}`; если conf не передан,
+  используется предыдущий UTC-день от logical date запуска.
 - `start_date=2026-03-13T00:00:00Z`, `catchup=False`.
 
 ## Грейн / ключ
