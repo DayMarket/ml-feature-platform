@@ -16,9 +16,9 @@ source:
   elasticsearch:
     conn_id: elasticsearch_search
     endpoint_path: /_search
-    size: 3000
+    size: 1000
     parallel_jobs: 24
-    chunk_size: 3000
+    chunk_size: 1000
     write_chunk_size: 50000
     request_timeout_seconds: 60
     retry_count: 3
