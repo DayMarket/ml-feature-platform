@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import importlib.util
+import gc
 import sys
 import time
 from dataclasses import dataclass
@@ -290,6 +291,43 @@ def _collect_elasticsearch_rows(
     timeout_seconds: int,
     retry_count: int,
 ) -> list[dict[str, Any]]:
+    rows = []
+    seen_keys = set()
+    for row in _iter_elasticsearch_rows(
+        records=records,
+        partition_date=partition_date,
+        elastic=elastic,
+        search_module=search_module,
+        fields=fields,
+        size=size,
+        parallel_jobs=parallel_jobs,
+        timeout_seconds=timeout_seconds,
+        retry_count=retry_count,
+    ):
+        key = (row["query"], row["sku_group_id"])
+        if key in seen_keys:
+            continue
+        rows.append(row)
+        seen_keys.add(key)
+    logger.info(
+        "Collected %d ES feature rows from %d Trino query groups",
+        len(rows),
+        len(records),
+    )
+    return rows
+
+
+def _iter_elasticsearch_rows(
+    records: Sequence[Mapping[str, Any]],
+    partition_date: date,
+    elastic: ElasticsearchConfig,
+    search_module,
+    fields: Sequence[str],
+    size: int,
+    parallel_jobs: int,
+    timeout_seconds: int,
+    retry_count: int,
+):
     from joblib import Parallel, delayed
 
     analyze = _load_analyze_module()
@@ -339,27 +377,20 @@ def _collect_elasticsearch_rows(
         len(tasks),
         parallel_jobs,
     )
-    result_batches = Parallel(n_jobs=parallel_jobs, backend="threading")(
+
+    result_batches = Parallel(
+        n_jobs=parallel_jobs,
+        backend="threading",
+        return_as="generator_unordered",
+        pre_dispatch=parallel_jobs * 2,
+    )(
         delayed(fetch_query_rows)(query, sku_group_ids)
         for query, sku_group_ids in tasks
     )
 
-    rows = []
-    seen_keys = set()
     for batch in result_batches:
         for row in batch:
-            key = (row["query"], row["sku_group_id"])
-            if key in seen_keys:
-                continue
-            rows.append(row)
-            seen_keys.add(key)
-
-    logger.info(
-        "Collected %d ES feature rows from %d Trino query groups",
-        len(rows),
-        len(tasks),
-    )
-    return rows
+            yield row
 
 
 def _chunks(values: Sequence[Mapping[str, Any]], chunk_size: int):
@@ -444,14 +475,18 @@ def append_daily_chunk(transaction, table, frame, partition_date: date) -> int:
 
     frame = _prepare_daily_frame(frame, partition_date)
     arrow_table = _to_arrow_for_table(table, frame)
+    written_rows = arrow_table.num_rows
     transaction.append(arrow_table)
+    del arrow_table
+    del frame
+    gc.collect()
     logger.info(
         "Staged append of %d rows to %s for date=%s",
-        arrow_table.num_rows,
+        written_rows,
         table.name(),
         partition_date,
     )
-    return arrow_table.num_rows
+    return written_rows
 
 
 def _append_row_buffer(
@@ -488,7 +523,6 @@ def write_elasticsearch_features_by_chunks(
     if write_chunk_size < 1:
         raise ValueError("write_chunk_size must be at least 1")
 
-    seen_keys = set()
     total_rows = 0
     transaction = table.transaction()
     partition_clear_staged = False
@@ -497,7 +531,10 @@ def write_elasticsearch_features_by_chunks(
         _iter_query_group_chunks(query_groups, chunk_size),
         start=1,
     ):
-        rows = _collect_elasticsearch_rows(
+        rows_seen = 0
+        row_buffer = []
+        seen_keys = set()
+        for row in _iter_elasticsearch_rows(
             records=chunk_records,
             partition_date=partition_date,
             elastic=elastic,
@@ -507,10 +544,8 @@ def write_elasticsearch_features_by_chunks(
             parallel_jobs=parallel_jobs,
             timeout_seconds=timeout_seconds,
             retry_count=retry_count,
-        )
-
-        row_buffer = []
-        for row in rows:
+        ):
+            rows_seen += 1
             key = (row["query"], row["sku_group_id"])
             if key in seen_keys:
                 continue
@@ -546,10 +581,10 @@ def write_elasticsearch_features_by_chunks(
             "Processed ES chunk %d: query_groups=%d rows=%d total_written=%d",
             chunk_number,
             len(chunk_records),
-            len(rows),
+            rows_seen,
             total_rows,
         )
-        del rows
+        del seen_keys
 
     if not partition_clear_staged:
         stage_clear_daily_snapshot(transaction, table, partition_date)

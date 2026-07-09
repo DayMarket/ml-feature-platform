@@ -324,9 +324,9 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             ]
         )
 
-        def fake_collect_elasticsearch_rows(**_):
+        def fake_iter_elasticsearch_rows(**_):
             events.append("collect")
-            return next(collect_results)
+            yield from next(collect_results)
 
         def fake_stage_clear_daily_snapshot(*_):
             events.append("stage_clear")
@@ -340,13 +340,13 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             return operation()
 
         previous_pandas = sys.modules.get("pandas")
-        previous_collect = self.runtime._collect_elasticsearch_rows
+        previous_iter = self.runtime._iter_elasticsearch_rows
         previous_stage_clear = self.runtime.stage_clear_daily_snapshot
         previous_append = self.runtime.append_daily_chunk
         previous_commit = self.runtime._run_iceberg_commit
         previous_analyze = self.runtime._load_analyze_module
         sys.modules["pandas"] = FakePandas
-        self.runtime._collect_elasticsearch_rows = fake_collect_elasticsearch_rows
+        self.runtime._iter_elasticsearch_rows = fake_iter_elasticsearch_rows
         self.runtime.stage_clear_daily_snapshot = fake_stage_clear_daily_snapshot
         self.runtime.append_daily_chunk = fake_append_daily_chunk
         self.runtime._run_iceberg_commit = fake_run_iceberg_commit
@@ -375,7 +375,7 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
                 sys.modules.pop("pandas", None)
             else:
                 sys.modules["pandas"] = previous_pandas
-            self.runtime._collect_elasticsearch_rows = previous_collect
+            self.runtime._iter_elasticsearch_rows = previous_iter
             self.runtime.stage_clear_daily_snapshot = previous_stage_clear
             self.runtime.append_daily_chunk = previous_append
             self.runtime._run_iceberg_commit = previous_commit

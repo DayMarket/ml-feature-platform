@@ -93,7 +93,9 @@ Elasticsearch-запросами и не на каждый chunk. При retry D
 таблицы.
 
 ES chunk и Iceberg write chunk разделены: один ES chunk может вернуть сотни тысяч строк, поэтому pandas/Arrow
-таблицы для Iceberg создаются блоками не больше `write_chunk_size` строк внутри одной transaction.
+таблицы для Iceberg создаются блоками не больше `write_chunk_size` строк внутри одной transaction. Результаты
+Elasticsearch читаются из `joblib` streaming generator и сразу попадают в write buffer; полный список строк ES chunk-а
+и глобальный dedup-set на весь run не держатся в памяти.
 
 ## Владелец / алерты
 

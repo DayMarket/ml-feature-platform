@@ -7,12 +7,12 @@
 - DAG: `feature-platform.upload.dynamic_pricing_inference_upload`.
 - Расписание: каждые 3 часа, `0 */3 * * *` UTC.
 - `start_date=2026-07-09T00:00:00+00:00`, `catchup=False`.
-- Сенсор: `dbt.source.trino.ml_feature_platform_gold.feature_platform_dynamic_pricing_sku_group_price_features.dq`.
+- Сенсор: `feature-platform.layers.gold.calculated_at_sku_group_id_promotion_id.dynamic_pricing_sku_group_price_features`.
 
 ## Источник
 
 - `iceberg.gold.feature_platform_dynamic_pricing_sku_group_price_features`.
-- Режим чтения: после успешного DQ берется максимальный `calculated_at` из таблицы.
+- Режим чтения: после успешного producer DAG берется максимальный `calculated_at` из таблицы.
 
 ## Kafka
 
