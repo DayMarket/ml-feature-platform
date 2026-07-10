@@ -287,17 +287,21 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             partition_date=date(2026, 3, 13),
             clickstream_events_table='"dwh-iceberg".silver_b2c_clickstream.events',
             search_logs_table='"dwh-iceberg".silver.search_logs',
+            min_result_query_installs=2,
         )
 
         self.assertIn('FROM "dwh-iceberg".silver_b2c_clickstream.events', sql)
         self.assertIn("event_type = 'PRODUCT_IMPRESSION'", sql)
         self.assertIn("widget_space_name = 'SEARCH_RESULTS'", sql)
+        self.assertIn("logged_at >= CAST('2026-03-13' AS TIMESTAMP(6))", sql)
+        self.assertIn("logged_at < CAST('2026-03-14' AS TIMESTAMP(6))", sql)
         self.assertIn("received_at >= CAST('2026-03-13' AS TIMESTAMP(6))", sql)
         self.assertIn("received_at < CAST('2026-03-14' AS TIMESTAMP(6))", sql)
-        self.assertIn("logged_at >= CAST('2026-03-10' AS TIMESTAMP(6))", sql)
-        self.assertIn("logged_at < CAST('2026-03-17' AS TIMESTAMP(6))", sql)
+        self.assertNotIn("logged_at >= CAST('2026-03-10' AS TIMESTAMP(6))", sql)
         self.assertIn("logged_at >= CAST('2026-03-12' AS TIMESTAMP(6))", sql)
-        self.assertIn("logged_at < CAST('2026-03-14' AS TIMESTAMP(6))", sql)
+        self.assertIn("HAVING", sql)
+        self.assertIn("COUNT(DISTINCT install_id) >= 2", sql)
+        self.assertIn("INNER JOIN final_stats fs", sql)
         self.assertIn("array_agg(DISTINCT cq.sku_group_id)", sql)
 
     def test_search_body_filters_sku_groups_and_enables_explain(self):

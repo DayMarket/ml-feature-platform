@@ -115,6 +115,7 @@ def search_query_sku_group_es_elasticsearch_collect_dag() -> None:
             partition_date=partition_date,
             clickstream_events_table=config["source"]["clickstream_events_table"],
             search_logs_table=config["source"]["search_logs_table"],
+            min_result_query_installs=int(config["source"]["min_result_query_installs"]),
         )
         query_groups = runtime.query_trino(config["source"]["trino_conn_id"], sql)
         elastic = runtime.elasticsearch_config(config["source"]["elasticsearch"])

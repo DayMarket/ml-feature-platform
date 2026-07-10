@@ -43,7 +43,7 @@ Trino-шаг выбирает все возможные пары `query, sku_gro
 - `widget_section_name = 'SEARCH_RESULTS'`;
 - `COALESCE(is_full_catpred, false) = false`;
 - `received_at >= date` и `received_at < date + 1 day`;
-- защитное окно по `logged_at`: `date - 3 days <= logged_at < date + 4 days`.
+- `logged_at >= date` и `logged_at < date + 1 day`.
 
 `search_logs` читается за окно:
 
@@ -53,7 +53,8 @@ Trino-шаг выбирает все возможные пары `query, sku_gro
 
 Если `corrected_query_text` пустой, для join используется нормализованный `query_text`, иначе нормализованный
 `corrected_query_text`. В Elasticsearch отправляется `result_query_text`, сгруппированный с массивом
-`sku_group_id`.
+`sku_group_id`, только если `COUNT(DISTINCT install_id) >= 2` за окно `search_logs`. Порог задается в config как
+`source.min_result_query_installs`.
 
 Elasticsearch-запрос использует `size=3000`, `parallel_jobs=24`, `chunk_size=3000`, `write_chunk_size=50000`,
 `explain=true`, фильтр

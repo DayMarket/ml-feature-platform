@@ -13,6 +13,7 @@ source:
   trino_conn_id: trino_search
   clickstream_events_table: '"dwh-iceberg".silver_b2c_clickstream.events'
   search_logs_table: '"dwh-iceberg".silver.search_logs'
+  min_result_query_installs: 2
   elasticsearch:
     conn_id: elasticsearch_search
     endpoint_path: /_search
