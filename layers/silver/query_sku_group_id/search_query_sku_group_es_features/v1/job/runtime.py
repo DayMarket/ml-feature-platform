@@ -374,20 +374,91 @@ def _put_text(client, storage: RawStorageConfig, key: str, payload: str) -> None
     )
 
 
-def load_latest_raw_manifest(client, storage: RawStorageConfig, partition_date: date) -> dict[str, Any]:
-    key = raw_date_manifest_key(storage, partition_date)
+def _is_s3_no_such_key_error(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        response = getattr(current, "response", None)
+        if isinstance(response, Mapping):
+            error = response.get("Error", {})
+            if isinstance(error, Mapping):
+                code = str(error.get("Code") or "")
+                if code in {"NoSuchKey", "404", "NotFound"}:
+                    return True
+        if current.__class__.__name__ == "NoSuchKey":
+            return True
+        message = str(current)
+        if "NoSuchKey" in message or "specified key does not exist" in message:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _read_s3_json(client, storage: RawStorageConfig, key: str) -> dict[str, Any]:
     response = client.get_object(Bucket=storage.bucket, Key=key)
     response_body = response["Body"]
     try:
         body = response_body.read().decode("utf-8")
     finally:
         response_body.close()
-    manifest = json.loads(body)
+    return json.loads(body)
+
+
+def _raw_run_manifest_candidates(
+    client,
+    storage: RawStorageConfig,
+    partition_date: date,
+) -> list[dict[str, Any]]:
+    prefix = f"{raw_date_prefix(storage, partition_date)}/run_id="
+    paginator = client.get_paginator("list_objects_v2")
+    manifests = []
+    for page in paginator.paginate(Bucket=storage.bucket, Prefix=prefix):
+        for item in page.get("Contents", []):
+            key = item.get("Key")
+            if isinstance(key, str) and key.endswith("/manifest.json"):
+                manifests.append(
+                    {
+                        "key": key,
+                        "last_modified": item.get("LastModified"),
+                    }
+                )
+    manifests.sort(
+        key=lambda item: (
+            item.get("last_modified") is not None,
+            str(item.get("last_modified") or ""),
+            item["key"],
+        )
+    )
+    return manifests
+
+
+def load_latest_raw_manifest(client, storage: RawStorageConfig, partition_date: date) -> dict[str, Any]:
+    key = raw_date_manifest_key(storage, partition_date)
+    try:
+        manifest = _read_s3_json(client, storage, key)
+    except Exception as exc:
+        if not _is_s3_no_such_key_error(exc):
+            raise
+        candidates = _raw_run_manifest_candidates(client, storage, partition_date)
+        if not candidates:
+            raise RuntimeError(
+                "Raw Elasticsearch manifest was not found for "
+                f"date={partition_date.isoformat()}. Expected {key} or a "
+                f"run-level manifest under {raw_date_prefix(storage, partition_date)}/"
+                "run_id=*/manifest.json. Raw chunk files alone are not enough for "
+                "safe materialization because the collect DAG may have stopped before "
+                "publishing the complete manifest."
+            ) from exc
+        key = candidates[-1]["key"]
+        manifest = _read_s3_json(client, storage, key)
+
     if manifest.get("date") != partition_date.isoformat():
         raise ValueError(
             f"Raw manifest {key} has date={manifest.get('date')!r}, "
             f"expected {partition_date.isoformat()!r}"
         )
+    logger.info("Loaded raw Elasticsearch manifest %s", key)
     return manifest
 
 

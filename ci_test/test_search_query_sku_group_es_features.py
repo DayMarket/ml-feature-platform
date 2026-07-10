@@ -84,6 +84,113 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             "airflow/2026/bm25_features/raw/date=2026-07-08/manifest.json",
         )
 
+    def test_load_latest_raw_manifest_falls_back_to_run_manifest(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        partition_date = date(2026, 7, 8)
+        run_manifest_key = (
+            "airflow/2026/bm25_features/raw/date=2026-07-08/"
+            "run_id=scheduled__2026-07-08T04:00:00_00:00/manifest.json"
+        )
+
+        class FakeNoSuchKey(Exception):
+            def __init__(self, key):
+                super().__init__(f"NoSuchKey: {key}")
+                self.response = {"Error": {"Code": "NoSuchKey"}}
+
+        class FakePaginator:
+            def paginate(self, Bucket, Prefix):
+                self.bucket = Bucket
+                self.prefix = Prefix
+                return [
+                    {
+                        "Contents": [
+                            {
+                                "Key": run_manifest_key,
+                                "LastModified": "2026-07-08T06:00:00+00:00",
+                            }
+                        ]
+                    }
+                ]
+
+        class FakeClient:
+            def __init__(self):
+                self.read_keys = []
+
+            def get_object(self, Bucket, Key):
+                self.read_keys.append(Key)
+                if Key != run_manifest_key:
+                    raise FakeNoSuchKey(Key)
+                return {
+                    "Body": io.BytesIO(
+                        json.dumps(
+                            {
+                                "date": "2026-07-08",
+                                "parts": [{"key": "part-000001.jsonl.gz"}],
+                            }
+                        ).encode("utf-8")
+                    )
+                }
+
+            def get_paginator(self, name):
+                self.paginator_name = name
+                return FakePaginator()
+
+        client = FakeClient()
+        manifest = self.runtime.load_latest_raw_manifest(client, storage, partition_date)
+
+        self.assertEqual(manifest["date"], "2026-07-08")
+        self.assertEqual(manifest["parts"][0]["key"], "part-000001.jsonl.gz")
+        self.assertEqual(client.paginator_name, "list_objects_v2")
+        self.assertEqual(
+            client.read_keys,
+            [
+                "airflow/2026/bm25_features/raw/date=2026-07-08/manifest.json",
+                run_manifest_key,
+            ],
+        )
+
+    def test_load_latest_raw_manifest_requires_a_manifest(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+
+        class FakeNoSuchKey(Exception):
+            def __init__(self, key):
+                super().__init__(f"NoSuchKey: {key}")
+                self.response = {"Error": {"Code": "NoSuchKey"}}
+
+        class FakePaginator:
+            def paginate(self, Bucket, Prefix):
+                return [{"Contents": []}]
+
+        class FakeClient:
+            def get_object(self, Bucket, Key):
+                raise FakeNoSuchKey(Key)
+
+            def get_paginator(self, name):
+                return FakePaginator()
+
+        with self.assertRaisesRegex(RuntimeError, "Raw Elasticsearch manifest was not found"):
+            self.runtime.load_latest_raw_manifest(
+                FakeClient(),
+                storage,
+                date(2026, 7, 8),
+            )
+
     def test_iter_raw_manifest_records_reads_jsonl_gzip_parts(self):
         storage = self.runtime.RawStorageConfig(
             conn_id="search_research_bucket",

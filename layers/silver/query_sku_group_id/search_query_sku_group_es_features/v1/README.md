@@ -68,8 +68,10 @@ Elasticsearch collect DAG пишет ответы Elasticsearch в `jsonl.gz`:
 
 Одна строка raw-файла содержит `date`, `query` и Elasticsearch `hit` с `_source` и `_explanation`. После успешной
 записи collect DAG публикует date-level `manifest.json` и `_SUCCESS`, затем триггерит writer DAG с `partition_date`.
-Writer DAG сначала ждет успешный Elasticsearch collect DAG через `ExternalTaskSensor`, затем читает manifest, парсит raw hits
-существующим `job/analyze.py` и пишет финальные колонки в Iceberg.
+Writer DAG сначала ждет успешный Elasticsearch collect DAG через `ExternalTaskSensor`, затем читает date-level
+`manifest.json`; если alias еще не доступен, он берет последний `run_id=*/manifest.json` за эту дату. Raw chunk-файлы
+без manifest не материализуются, потому что такой набор мог остаться от незавершенного collect-запуска. После чтения
+manifest writer парсит raw hits существующим `job/analyze.py` и пишет финальные колонки в Iceberg.
 
 ## Output columns
 
