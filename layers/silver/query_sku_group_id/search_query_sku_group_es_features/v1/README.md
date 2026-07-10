@@ -11,7 +11,7 @@
 - Путь: `layers/silver/query_sku_group_id/search_query_sku_group_es_features/v1`.
 - Групповой тег Airflow: `search-es-features`.
 - Elasticsearch collect DAG расписание: ежедневно в 04:00 UTC, `0 4 * * *`.
-- Writer DAG: trigger-only, запускается collect DAG-ом после успешной записи manifest в S3.
+- Writer DAG: trigger-only, запускается collect DAG-ом после записи raw JSONL в S3.
 - Writer DAG содержит `ExternalTaskSensor` на Elasticsearch collect DAG за тот же `partition_date`.
 - При ручном запуске writer DAG можно передать `{"partition_date": "YYYY-MM-DD"}`; если conf не передан,
   используется предыдущий UTC-день от logical date запуска.
@@ -66,12 +66,11 @@ Elasticsearch collect DAG пишет ответы Elasticsearch в `jsonl.gz`:
 
 `airflow/2026/bm25_features/raw/date=<YYYY-MM-DD>/run_id=<run_id>/chunk=<NNNNNN>/part-<NNNNNN>.jsonl.gz`.
 
-Одна строка raw-файла содержит `date`, `query` и Elasticsearch `hit` с `_source` и `_explanation`. После успешной
-записи collect DAG публикует date-level `manifest.json` и `_SUCCESS`, затем триггерит writer DAG с `partition_date`.
-Writer DAG сначала ждет успешный Elasticsearch collect DAG через `ExternalTaskSensor`, затем читает date-level
-`manifest.json`; если alias еще не доступен, он берет последний `run_id=*/manifest.json` за эту дату. Raw chunk-файлы
-без manifest не материализуются, потому что такой набор мог остаться от незавершенного collect-запуска. После чтения
-manifest writer парсит raw hits существующим `job/analyze.py` и пишет финальные колонки в Iceberg.
+Одна строка raw-файла содержит `date`, `query` и Elasticsearch `hit` с `_source` и `_explanation`. После записи raw
+collect DAG триггерит writer DAG с `partition_date`. Writer DAG сначала ждет успешный Elasticsearch collect DAG через
+`ExternalTaskSensor`, затем читает date-level `manifest.json`; если manifest отсутствует, он выбирает последний `run_id`
+за дату и строит список входов из `chunk=*/part-*.jsonl.gz`. После этого writer парсит raw hits существующим
+`job/analyze.py` и пишет финальные колонки в Iceberg.
 
 ## Output columns
 
@@ -106,8 +105,9 @@ Elasticsearch collect DAG читает Trino через `trino_search`, Elastics
 3000 query-групп. Ответы Elasticsearch читаются streaming generator-ом и сохраняются в `jsonl.gz` частями по
 `raw_storage.file_row_limit=50000` строк; полный список строк ES chunk-а не держится в памяти.
 
-Writer DAG читает raw `jsonl.gz` из manifest, удаляет партицию `date` в Iceberg отдельным commit-ом, затем парсит
-hits и append-ит финальные строки блоками по `write_chunk_size=50000`. Каждый append делает отдельный Iceberg commit,
+Writer DAG читает raw `jsonl.gz` из manifest или списка `chunk=*/part-*.jsonl.gz`, удаляет партицию `date` в Iceberg
+отдельным commit-ом, затем парсит hits и append-ит финальные строки блоками по `write_chunk_size=50000`. Каждый append
+делает отдельный Iceberg commit,
 поэтому строки становятся видимыми по мере работы writer DAG-а, а retry writer DAG-а начинает с повторной очистки
 партиции и перечитывает уже сохраненный raw без повторного похода в Elasticsearch.
 

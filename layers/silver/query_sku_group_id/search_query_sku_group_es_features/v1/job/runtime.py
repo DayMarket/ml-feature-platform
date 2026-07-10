@@ -433,6 +433,66 @@ def _raw_run_manifest_candidates(
     return manifests
 
 
+def _raw_part_run_id(key: str) -> str | None:
+    marker = "/run_id="
+    if marker not in key:
+        return None
+    suffix = key.split(marker, 1)[1]
+    return suffix.split("/", 1)[0] if "/" in suffix else None
+
+
+def _raw_part_candidates(
+    client,
+    storage: RawStorageConfig,
+    partition_date: date,
+) -> list[dict[str, Any]]:
+    prefix = f"{raw_date_prefix(storage, partition_date)}/run_id="
+    paginator = client.get_paginator("list_objects_v2")
+    runs: dict[str, dict[str, Any]] = {}
+    for page in paginator.paginate(Bucket=storage.bucket, Prefix=prefix):
+        for item in page.get("Contents", []):
+            key = item.get("Key")
+            if (
+                not isinstance(key, str)
+                or "/chunk=" not in key
+                or "/part-" not in key
+                or not key.endswith(".jsonl.gz")
+            ):
+                continue
+            run_id = _raw_part_run_id(key)
+            if not run_id:
+                continue
+            run = runs.setdefault(
+                run_id,
+                {
+                    "run_id": run_id,
+                    "last_modified": None,
+                    "parts": [],
+                },
+            )
+            last_modified = item.get("LastModified")
+            if str(last_modified or "") > str(run["last_modified"] or ""):
+                run["last_modified"] = last_modified
+            run["parts"].append(
+                {
+                    "key": key,
+                    "bytes": item.get("Size"),
+                }
+            )
+
+    candidates = list(runs.values())
+    for candidate in candidates:
+        candidate["parts"].sort(key=lambda part: part["key"])
+    candidates.sort(
+        key=lambda item: (
+            item.get("last_modified") is not None,
+            str(item.get("last_modified") or ""),
+            item["run_id"],
+        )
+    )
+    return candidates
+
+
 def load_latest_raw_manifest(client, storage: RawStorageConfig, partition_date: date) -> dict[str, Any]:
     key = raw_date_manifest_key(storage, partition_date)
     try:
@@ -441,24 +501,51 @@ def load_latest_raw_manifest(client, storage: RawStorageConfig, partition_date: 
         if not _is_s3_no_such_key_error(exc):
             raise
         candidates = _raw_run_manifest_candidates(client, storage, partition_date)
-        if not candidates:
-            raise RuntimeError(
-                "Raw Elasticsearch manifest was not found for "
-                f"date={partition_date.isoformat()}. Expected {key} or a "
-                f"run-level manifest under {raw_date_prefix(storage, partition_date)}/"
-                "run_id=*/manifest.json. Raw chunk files alone are not enough for "
-                "safe materialization because the collect DAG may have stopped before "
-                "publishing the complete manifest."
-            ) from exc
-        key = candidates[-1]["key"]
-        manifest = _read_s3_json(client, storage, key)
+        if candidates:
+            key = candidates[-1]["key"]
+            manifest = _read_s3_json(client, storage, key)
+        else:
+            part_candidates = _raw_part_candidates(client, storage, partition_date)
+            if not part_candidates:
+                raise RuntimeError(
+                    "Raw Elasticsearch data was not found for "
+                    f"date={partition_date.isoformat()}. Expected {key}, a "
+                    f"run-level manifest under {raw_date_prefix(storage, partition_date)}/"
+                    "run_id=*/manifest.json, or raw part files under "
+                    "run_id=*/chunk=*/part-*.jsonl.gz."
+                ) from exc
+            latest_run = part_candidates[-1]
+            manifest = {
+                "date": partition_date.isoformat(),
+                "run_id": latest_run["run_id"],
+                "run_prefix": (
+                    f"{raw_date_prefix(storage, partition_date)}/"
+                    f"run_id={latest_run['run_id']}"
+                ),
+                "parts": latest_run["parts"],
+                "source": "listed_raw_parts",
+            }
+            logger.warning(
+                "Raw Elasticsearch manifest was not found for date=%s; "
+                "materializing %d listed raw parts from run_id=%s",
+                partition_date,
+                len(latest_run["parts"]),
+                latest_run["run_id"],
+            )
 
     if manifest.get("date") != partition_date.isoformat():
         raise ValueError(
             f"Raw manifest {key} has date={manifest.get('date')!r}, "
             f"expected {partition_date.isoformat()!r}"
         )
-    logger.info("Loaded raw Elasticsearch manifest %s", key)
+    if manifest.get("source") == "listed_raw_parts":
+        logger.info(
+            "Loaded raw Elasticsearch file list for run_id=%s parts=%d",
+            manifest.get("run_id"),
+            len(manifest.get("parts", [])),
+        )
+    else:
+        logger.info("Loaded raw Elasticsearch manifest %s", key)
     return manifest
 
 

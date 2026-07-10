@@ -157,7 +157,88 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             ],
         )
 
-    def test_load_latest_raw_manifest_requires_a_manifest(self):
+    def test_load_latest_raw_manifest_falls_back_to_latest_run_parts(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        partition_date = date(2026, 7, 8)
+
+        class FakeNoSuchKey(Exception):
+            def __init__(self, key):
+                super().__init__(f"NoSuchKey: {key}")
+                self.response = {"Error": {"Code": "NoSuchKey"}}
+
+        class FakePaginator:
+            def paginate(self, Bucket, Prefix):
+                return [
+                    {
+                        "Contents": [
+                            {
+                                "Key": (
+                                    "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                                    "run_id=scheduled__2026-07-07T04:00:00_00:00/"
+                                    "chunk=000001/part-000001.jsonl.gz"
+                                ),
+                                "LastModified": "2026-07-08T05:00:00+00:00",
+                                "Size": 10,
+                            },
+                            {
+                                "Key": (
+                                    "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                                    "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                                    "chunk=000002/part-000001.jsonl.gz"
+                                ),
+                                "LastModified": "2026-07-08T06:02:00+00:00",
+                                "Size": 20,
+                            },
+                            {
+                                "Key": (
+                                    "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                                    "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                                    "chunk=000001/part-000001.jsonl.gz"
+                                ),
+                                "LastModified": "2026-07-08T06:01:00+00:00",
+                                "Size": 30,
+                            },
+                        ]
+                    }
+                ]
+
+        class FakeClient:
+            def get_object(self, Bucket, Key):
+                raise FakeNoSuchKey(Key)
+
+            def get_paginator(self, name):
+                return FakePaginator()
+
+        manifest = self.runtime.load_latest_raw_manifest(
+            FakeClient(),
+            storage,
+            partition_date,
+        )
+
+        self.assertEqual(manifest["date"], "2026-07-08")
+        self.assertEqual(manifest["source"], "listed_raw_parts")
+        self.assertEqual(manifest["run_id"], "scheduled__2026-07-08T04:00:00_00:00")
+        self.assertEqual(
+            [part["key"] for part in manifest["parts"]],
+            [
+                "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                "chunk=000001/part-000001.jsonl.gz",
+                "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                "chunk=000002/part-000001.jsonl.gz",
+            ],
+        )
+
+    def test_load_latest_raw_manifest_requires_manifest_or_raw_parts(self):
         storage = self.runtime.RawStorageConfig(
             conn_id="search_research_bucket",
             bucket="bucket",
@@ -184,7 +265,7 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             def get_paginator(self, name):
                 return FakePaginator()
 
-        with self.assertRaisesRegex(RuntimeError, "Raw Elasticsearch manifest was not found"):
+        with self.assertRaisesRegex(RuntimeError, "Raw Elasticsearch data was not found"):
             self.runtime.load_latest_raw_manifest(
                 FakeClient(),
                 storage,
