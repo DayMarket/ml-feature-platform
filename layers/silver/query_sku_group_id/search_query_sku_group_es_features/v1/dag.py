@@ -1,4 +1,4 @@
-"""Parse raw Elasticsearch explain payloads and write Iceberg features."""
+"""Parse raw Elasticsearch explain payloads into prepared parquet files."""
 
 import importlib.util
 import os
@@ -147,19 +147,14 @@ def search_query_sku_group_es_features_dag() -> None:
     )
 
     @task(executor_config=_executor_config())
-    def materialize(partition_date_value: str) -> None:
+    def prepare_parquet(partition_date_value: str) -> None:
         runtime = _load_job_module("runtime.py", "search_es_features_runtime")
 
         config = runtime.load_config(CONFIG_PATH)
 
-        output_ref = runtime.table_ref(config)
-        catalog = runtime.get_iceberg_catalog(output_ref)
-        output_table = runtime.preflight_table(catalog, output_ref)
-
         partition_date = runtime.parse_partition_date(partition_date_value)
         storage = runtime.raw_storage_config(config["raw_storage"])
-        runtime.write_raw_features_to_iceberg(
-            table=output_table,
+        runtime.write_raw_features_to_prepared_parquet(
             partition_date=partition_date,
             storage=storage,
             fields=config["source"]["elasticsearch"]["fields"],
@@ -168,7 +163,7 @@ def search_query_sku_group_es_features_dag() -> None:
             ),
         )
 
-    wait_for_elasticsearch_collect >> materialize(
+    wait_for_elasticsearch_collect >> prepare_parquet(
         '{{ (dag_run.conf or {}).get("partition_date") or macros.ds_add(ds, -1) }}'
     )
 

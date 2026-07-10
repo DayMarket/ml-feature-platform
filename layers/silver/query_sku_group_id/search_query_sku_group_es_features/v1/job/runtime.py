@@ -327,6 +327,22 @@ def raw_date_success_key(storage: RawStorageConfig, partition_date: date) -> str
     return f"{raw_date_prefix(storage, partition_date)}/_SUCCESS"
 
 
+def prepared_date_prefix(storage: RawStorageConfig, partition_date: date) -> str:
+    return f"{storage.prefix}/prepared/date={partition_date.isoformat()}"
+
+
+def prepared_run_prefix(storage: RawStorageConfig, partition_date: date, run_id: str) -> str:
+    return f"{prepared_date_prefix(storage, partition_date)}/run_id={_safe_key_part(run_id)}"
+
+
+def prepared_date_manifest_key(storage: RawStorageConfig, partition_date: date) -> str:
+    return f"{prepared_date_prefix(storage, partition_date)}/manifest.json"
+
+
+def prepared_date_success_key(storage: RawStorageConfig, partition_date: date) -> str:
+    return f"{prepared_date_prefix(storage, partition_date)}/_SUCCESS"
+
+
 def _delete_s3_keys(client, bucket: str, keys: Sequence[str]) -> None:
     for start in range(0, len(keys), 1000):
         batch = [{"Key": key} for key in keys[start : start + 1000]]
@@ -352,6 +368,17 @@ def clear_raw_success_markers(client, storage: RawStorageConfig, partition_date:
         [
             raw_date_manifest_key(storage, partition_date),
             raw_date_success_key(storage, partition_date),
+        ],
+    )
+
+
+def clear_prepared_success_markers(client, storage: RawStorageConfig, partition_date: date) -> None:
+    _delete_s3_keys(
+        client,
+        storage.bucket,
+        [
+            prepared_date_manifest_key(storage, partition_date),
+            prepared_date_success_key(storage, partition_date),
         ],
     )
 
@@ -1096,17 +1123,227 @@ def _append_committed_row_buffer(
 
 def iter_raw_manifest_records(client, storage: RawStorageConfig, manifest: Mapping[str, Any]):
     for part in manifest.get("parts", []):
-        key = part["key"]
-        response = client.get_object(Bucket=storage.bucket, Key=key)
-        body = response["Body"]
-        try:
-            with gzip.GzipFile(fileobj=body, mode="rb") as stream:
-                for line in stream:
-                    if line.strip():
-                        yield json.loads(line.decode("utf-8"))
-        finally:
-            body.close()
+        yield from iter_raw_part_records(client, storage, part)
 
+
+def iter_raw_part_records(client, storage: RawStorageConfig, part: Mapping[str, Any]):
+    key = part["key"]
+    response = client.get_object(Bucket=storage.bucket, Key=key)
+    body = response["Body"]
+    try:
+        with gzip.GzipFile(fileobj=body, mode="rb") as stream:
+            for line in stream:
+                if line.strip():
+                    yield json.loads(line.decode("utf-8"))
+    finally:
+        body.close()
+
+
+def _prepared_arrow_schema(columns: Sequence[str]):
+    import pyarrow as pa
+
+    int_columns = {"sku_group_id", "product_id"}
+    string_columns = {"query", "sku_group_title", "analysis"}
+    list_columns = {"sku_group_emb"}
+
+    schema_fields = []
+    for column in columns:
+        if column == "date":
+            schema_fields.append(pa.field(column, pa.date32()))
+        elif column in int_columns:
+            schema_fields.append(pa.field(column, pa.int64()))
+        elif column in string_columns:
+            schema_fields.append(pa.field(column, pa.string()))
+        elif column in list_columns or column.startswith("bm25_"):
+            schema_fields.append(pa.field(column, pa.list_(pa.float64())))
+        else:
+            schema_fields.append(pa.field(column, pa.float64()))
+    return pa.schema(schema_fields)
+
+
+def _to_prepared_arrow(
+    rows: Sequence[Mapping[str, Any]],
+    partition_date: date,
+    columns: Sequence[str],
+):
+    import pandas as pd
+    import pyarrow as pa
+
+    frame = pd.DataFrame(rows, columns=columns)
+    frame = _prepare_daily_frame(frame, partition_date)
+    schema = _prepared_arrow_schema(columns)
+    expected = [field.name for field in schema]
+    return pa.Table.from_pandas(
+        frame.loc[:, expected],
+        schema=schema,
+        preserve_index=False,
+    )
+
+
+def _upload_parquet_table(client, storage: RawStorageConfig, key: str, arrow_table) -> dict[str, Any]:
+    import pyarrow.parquet as pq
+
+    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as output:
+        output_path = output.name
+    try:
+        pq.write_table(arrow_table, output_path, compression="snappy")
+        file_size = os.path.getsize(output_path)
+        if hasattr(client, "upload_file"):
+            client.upload_file(
+                output_path,
+                storage.bucket,
+                key,
+                ExtraArgs={"ContentType": "application/octet-stream"},
+            )
+        else:
+            with Path(output_path).open("rb") as stream:
+                client.put_object(
+                    Bucket=storage.bucket,
+                    Key=key,
+                    Body=stream.read(),
+                    ContentType="application/octet-stream",
+                )
+        return {
+            "key": key,
+            "rows": arrow_table.num_rows,
+            "bytes": file_size,
+        }
+    finally:
+        try:
+            os.remove(output_path)
+        except FileNotFoundError:
+            pass
+
+
+def _upload_prepared_row_buffer(
+    client,
+    storage: RawStorageConfig,
+    key: str,
+    rows: Sequence[Mapping[str, Any]],
+    partition_date: date,
+    columns: Sequence[str],
+) -> dict[str, Any]:
+    arrow_table = _to_prepared_arrow(rows, partition_date, columns)
+    try:
+        return _upload_parquet_table(client, storage, key, arrow_table)
+    finally:
+        del arrow_table
+        gc.collect()
+
+
+def _prepared_parquet_key(run_prefix: str, raw_part_key: str, split_number: int) -> str:
+    parts = raw_part_key.rsplit("/", 2)
+    chunk_name = parts[-2] if len(parts) >= 2 and parts[-2].startswith("chunk=") else "chunk=000000"
+    file_name = parts[-1] if parts else "part-000000.jsonl.gz"
+    parquet_name = file_name.removesuffix(".jsonl.gz")
+    if split_number > 1:
+        parquet_name = f"{parquet_name}-{split_number:06d}"
+    return f"{run_prefix}/{chunk_name}/{parquet_name}.parquet"
+
+
+def write_raw_features_to_prepared_parquet(
+    partition_date: date,
+    storage: RawStorageConfig,
+    fields: Sequence[str],
+    write_chunk_size: int,
+) -> dict[str, Any]:
+    if write_chunk_size < 1:
+        raise ValueError("write_chunk_size must be at least 1")
+
+    client = get_s3_client(storage)
+    raw_manifest = load_latest_raw_manifest(client, storage, partition_date)
+    run_id = str(raw_manifest.get("run_id") or datetime.now(timezone.utc).isoformat())
+    run_prefix = prepared_run_prefix(storage, partition_date, run_id)
+    delete_s3_prefix(client, storage, run_prefix + "/")
+    clear_prepared_success_markers(client, storage, partition_date)
+
+    analyze = _load_analyze_module()
+    output_columns = analyze.output_columns(fields)
+    prepared_manifest: dict[str, Any] = {
+        "date": partition_date.isoformat(),
+        "run_id": run_id,
+        "run_prefix": run_prefix,
+        "storage_conn_id": storage.conn_id,
+        "bucket": storage.bucket,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "source_raw_manifest": {
+            "run_id": raw_manifest.get("run_id"),
+            "run_prefix": raw_manifest.get("run_prefix"),
+            "source": raw_manifest.get("source", "manifest"),
+        },
+        "parts": [],
+        "raw_parts": len(raw_manifest.get("parts", [])),
+        "raw_records": 0,
+        "rows": 0,
+    }
+
+    for raw_part in raw_manifest.get("parts", []):
+        row_buffer = []
+        split_number = 1
+        raw_part_key = str(raw_part["key"])
+
+        def flush_buffer() -> None:
+            nonlocal split_number, row_buffer
+            if not row_buffer:
+                return
+            parquet_key = _prepared_parquet_key(run_prefix, raw_part_key, split_number)
+            part = _upload_prepared_row_buffer(
+                client,
+                storage,
+                parquet_key,
+                row_buffer,
+                partition_date,
+                output_columns,
+            )
+            part["raw_key"] = raw_part_key
+            prepared_manifest["parts"].append(part)
+            prepared_manifest["rows"] += part["rows"]
+            logger.info(
+                "Uploaded prepared parquet %s rows=%d bytes=%d",
+                part["key"],
+                part["rows"],
+                part["bytes"],
+            )
+            row_buffer = []
+            split_number += 1
+
+        for raw_record in iter_raw_part_records(client, storage, raw_part):
+            prepared_manifest["raw_records"] += 1
+            query = str(raw_record.get("query") or "").strip()
+            hit = raw_record.get("hit")
+            if not query or not isinstance(hit, Mapping):
+                continue
+            row = analyze.hit_to_row(
+                hit,
+                query=query,
+                partition_date=partition_date,
+                fields=fields,
+            )
+            if row["sku_group_id"] == 0:
+                continue
+            row_buffer.append(row)
+            if len(row_buffer) >= write_chunk_size:
+                flush_buffer()
+        flush_buffer()
+
+    prepared_manifest["finished_at_utc"] = datetime.now(timezone.utc).isoformat()
+    run_manifest_key = f"{run_prefix}/manifest.json"
+    date_manifest_key = prepared_date_manifest_key(storage, partition_date)
+    success_key = prepared_date_success_key(storage, partition_date)
+    prepared_manifest["run_manifest_key"] = run_manifest_key
+    prepared_manifest["date_manifest_key"] = date_manifest_key
+
+    _put_json(client, storage, run_manifest_key, prepared_manifest)
+    _put_json(client, storage, date_manifest_key, prepared_manifest)
+    _put_text(client, storage, success_key, run_manifest_key)
+    logger.info(
+        "Finished prepared parquet write date=%s rows=%d raw_records=%d manifest=%s",
+        partition_date,
+        prepared_manifest["rows"],
+        prepared_manifest["raw_records"],
+        date_manifest_key,
+    )
+    return prepared_manifest
 
 def write_raw_features_to_iceberg(
     table,

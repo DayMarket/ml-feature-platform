@@ -83,6 +83,15 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             self.runtime.raw_date_manifest_key(storage, partition_date),
             "airflow/2026/bm25_features/raw/date=2026-07-08/manifest.json",
         )
+        self.assertEqual(
+            self.runtime.prepared_run_prefix(
+                storage,
+                partition_date,
+                "scheduled__2026-07-08T04:00:00+00:00",
+            ),
+            "airflow/2026/bm25_features/prepared/date=2026-07-08/"
+            "run_id=scheduled__2026-07-08T04:00:00_00:00",
+        )
 
     def test_load_latest_raw_manifest_falls_back_to_run_manifest(self):
         storage = self.runtime.RawStorageConfig(
@@ -309,6 +318,139 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         self.assertEqual(client.bucket, "bucket")
         self.assertEqual(client.key, "raw/date=2026-07-08/part.jsonl.gz")
         self.assertEqual([record["query"] for record in records], ["bandana", "t-shirt"])
+
+    def test_write_raw_features_to_prepared_parquet_uses_s3_without_iceberg(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        raw_key = (
+            "airflow/2026/bm25_features/raw/date=2026-07-08/"
+            "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+            "chunk=000001/part-000001.jsonl.gz"
+        )
+        raw_payload = io.BytesIO()
+        with gzip.GzipFile(fileobj=raw_payload, mode="wb") as stream:
+            for record in [
+                {"query": "bandana", "hit": {"sku_group_id": 948376}},
+                {"query": "ignored", "hit": {"sku_group_id": 0}},
+            ]:
+                stream.write(json.dumps(record).encode("utf-8") + b"\n")
+        raw_payload.seek(0)
+
+        class FakeAnalyze:
+            @staticmethod
+            def output_columns(fields):
+                return ["date", "query", "sku_group_id"]
+
+            @staticmethod
+            def hit_to_row(hit, query, partition_date, fields):
+                return {
+                    "date": partition_date,
+                    "query": query,
+                    "sku_group_id": hit["sku_group_id"],
+                }
+
+        class FakeClient:
+            def __init__(self):
+                self.objects = {}
+
+            def get_object(self, Bucket, Key):
+                self.bucket = Bucket
+                self.key = Key
+                return {"Body": io.BytesIO(raw_payload.getvalue())}
+
+            def put_object(self, Bucket, Key, Body, ContentType):
+                self.objects[Key] = {
+                    "body": Body,
+                    "content_type": ContentType,
+                }
+
+        uploaded = []
+        events = []
+        client = FakeClient()
+
+        def fake_upload_prepared_row_buffer(
+            _client,
+            _storage,
+            key,
+            rows,
+            partition_date,
+            columns,
+        ):
+            uploaded.append(
+                {
+                    "key": key,
+                    "rows": list(rows),
+                    "partition_date": partition_date,
+                    "columns": list(columns),
+                }
+            )
+            return {"key": key, "rows": len(rows), "bytes": 123}
+
+        previous_get_s3 = self.runtime.get_s3_client
+        previous_load_manifest = self.runtime.load_latest_raw_manifest
+        previous_delete_prefix = self.runtime.delete_s3_prefix
+        previous_clear_markers = self.runtime.clear_prepared_success_markers
+        previous_analyze = self.runtime._load_analyze_module
+        previous_upload = self.runtime._upload_prepared_row_buffer
+        self.runtime.get_s3_client = lambda _storage: client
+        self.runtime.load_latest_raw_manifest = lambda *_: {
+            "date": "2026-07-08",
+            "run_id": "scheduled__2026-07-08T04:00:00_00:00",
+            "run_prefix": (
+                "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                "run_id=scheduled__2026-07-08T04:00:00_00:00"
+            ),
+            "parts": [{"key": raw_key}],
+        }
+        self.runtime.delete_s3_prefix = lambda _client, _storage, prefix: events.append(
+            ("delete", prefix)
+        )
+        self.runtime.clear_prepared_success_markers = lambda *_: events.append(("clear",))
+        self.runtime._load_analyze_module = lambda: FakeAnalyze
+        self.runtime._upload_prepared_row_buffer = fake_upload_prepared_row_buffer
+        try:
+            manifest = self.runtime.write_raw_features_to_prepared_parquet(
+                partition_date=date(2026, 7, 8),
+                storage=storage,
+                fields=["skus.title"],
+                write_chunk_size=10,
+            )
+        finally:
+            self.runtime.get_s3_client = previous_get_s3
+            self.runtime.load_latest_raw_manifest = previous_load_manifest
+            self.runtime.delete_s3_prefix = previous_delete_prefix
+            self.runtime.clear_prepared_success_markers = previous_clear_markers
+            self.runtime._load_analyze_module = previous_analyze
+            self.runtime._upload_prepared_row_buffer = previous_upload
+
+        prepared_prefix = (
+            "airflow/2026/bm25_features/prepared/date=2026-07-08/"
+            "run_id=scheduled__2026-07-08T04:00:00_00:00"
+        )
+        self.assertEqual(events, [("delete", prepared_prefix + "/"), ("clear",)])
+        self.assertEqual(manifest["rows"], 1)
+        self.assertEqual(manifest["raw_records"], 2)
+        self.assertEqual(
+            uploaded[0]["key"],
+            prepared_prefix + "/chunk=000001/part-000001.parquet",
+        )
+        self.assertEqual(uploaded[0]["rows"][0]["sku_group_id"], 948376)
+        self.assertIn(prepared_prefix + "/manifest.json", client.objects)
+        self.assertIn(
+            "airflow/2026/bm25_features/prepared/date=2026-07-08/manifest.json",
+            client.objects,
+        )
+        self.assertIn(
+            "airflow/2026/bm25_features/prepared/date=2026-07-08/_SUCCESS",
+            client.objects,
+        )
 
     def test_explain_parser_keeps_root_total_score_and_field_bm25(self):
         explanation = {

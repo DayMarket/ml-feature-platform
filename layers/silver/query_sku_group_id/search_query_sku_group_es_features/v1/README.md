@@ -1,17 +1,18 @@
 # Search Query/SKU Group Elasticsearch Features
 
 Пайплайн собирает silver-признаки из Elasticsearch `_explanation` на уровне поискового запроса и `sku_group_id`.
-Сбор raw-ответов Elasticsearch и запись финальной Iceberg-таблицы разнесены на два DAG-а.
+Сбор raw-ответов Elasticsearch и подготовка parquet-признаков на S3 разнесены на два DAG-а.
 
 ## Выход и оркестрация
 
-- Таблица: `iceberg.silver.feature_platform_search_query_sku_group_es_features`.
+- Финальная таблица: `iceberg.silver.feature_platform_search_query_sku_group_es_features`.
+- Prepared S3 path: `airflow/2026/bm25_features/prepared/date=<YYYY-MM-DD>/run_id=<run_id>/`.
 - Elasticsearch collect DAG: `feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_es_features.elasticsearch_collect`.
 - Writer DAG: `feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_es_features`.
 - Путь: `layers/silver/query_sku_group_id/search_query_sku_group_es_features/v1`.
 - Групповой тег Airflow: `search-es-features`.
 - Elasticsearch collect DAG расписание: ежедневно в 04:00 UTC, `0 4 * * *`.
-- Writer DAG: trigger-only, запускается collect DAG-ом после записи raw JSONL в S3.
+- Writer DAG: trigger-only, запускается collect DAG-ом после записи raw JSONL в S3 и пишет prepared parquet на S3.
 - Writer DAG содержит `ExternalTaskSensor` на Elasticsearch collect DAG за тот же `partition_date`.
 - При ручном запуске writer DAG можно передать `{"partition_date": "YYYY-MM-DD"}`; если conf не передан,
   используется предыдущий UTC-день от logical date запуска.
@@ -70,7 +71,11 @@ Elasticsearch collect DAG пишет ответы Elasticsearch в `jsonl.gz`:
 collect DAG триггерит writer DAG с `partition_date`. Writer DAG сначала ждет успешный Elasticsearch collect DAG через
 `ExternalTaskSensor`, затем читает date-level `manifest.json`; если manifest отсутствует, он выбирает последний `run_id`
 за дату и строит список входов из `chunk=*/part-*.jsonl.gz`. После этого writer парсит raw hits существующим
-`job/analyze.py` и пишет финальные колонки в Iceberg.
+`job/analyze.py` и пишет подготовленные parquet-файлы:
+
+`airflow/2026/bm25_features/prepared/date=<YYYY-MM-DD>/run_id=<run_id>/chunk=<NNNNNN>/part-<NNNNNN>.parquet`.
+
+Для prepared-слоя дополнительно публикуются `run_id=<run_id>/manifest.json`, date-level `manifest.json` и `_SUCCESS`.
 
 ## Output columns
 
@@ -105,11 +110,10 @@ Elasticsearch collect DAG читает Trino через `trino_search`, Elastics
 3000 query-групп. Ответы Elasticsearch читаются streaming generator-ом и сохраняются в `jsonl.gz` частями по
 `raw_storage.file_row_limit=50000` строк; полный список строк ES chunk-а не держится в памяти.
 
-Writer DAG читает raw `jsonl.gz` из manifest или списка `chunk=*/part-*.jsonl.gz`, удаляет партицию `date` в Iceberg
-отдельным commit-ом, затем парсит hits и append-ит финальные строки блоками по `write_chunk_size=50000`. Каждый append
-делает отдельный Iceberg commit,
-поэтому строки становятся видимыми по мере работы writer DAG-а, а retry writer DAG-а начинает с повторной очистки
-партиции и перечитывает уже сохраненный raw без повторного похода в Elasticsearch.
+Writer DAG читает raw `jsonl.gz` из manifest или списка `chunk=*/part-*.jsonl.gz`, парсит hits и пишет parquet-файлы
+блоками по `write_chunk_size=50000`. Этот шаг не открывает Iceberg table и не делает Hive Metastore commit, поэтому не
+берет Iceberg lock. Retry writer DAG-а очищает только prepared-prefix текущего `run_id` и перечитывает уже сохраненный
+raw без повторного похода в Elasticsearch.
 
 ## Владелец / алерты
 
