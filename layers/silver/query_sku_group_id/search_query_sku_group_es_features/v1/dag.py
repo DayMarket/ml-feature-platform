@@ -183,11 +183,10 @@ def search_query_sku_group_es_features_dag() -> None:
             storage=storage,
         )
 
-    prepared_partition_date = prepare_parquet(
-        '{{ (dag_run.conf or {}).get("partition_date") or macros.ds_add(ds, -1) }}'
-    )
-    wait_for_elasticsearch_collect >> prepared_partition_date
-    load_to_iceberg(prepared_partition_date)
+    partition_date_arg = '{{ (dag_run.conf or {}).get("partition_date") or macros.ds_add(ds, -1) }}'
+    prepared = prepare_parquet(partition_date_arg)
+    loaded = load_to_iceberg(partition_date_arg)
+    wait_for_elasticsearch_collect >> prepared >> loaded
 
 
 dag = search_query_sku_group_es_features_dag()
