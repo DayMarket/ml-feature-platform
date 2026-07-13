@@ -520,6 +520,86 @@ def _raw_part_candidates(
     return candidates
 
 
+def _prepared_run_manifest_candidates(
+    client,
+    storage: RawStorageConfig,
+    partition_date: date,
+) -> list[dict[str, Any]]:
+    prefix = f"{prepared_date_prefix(storage, partition_date)}/run_id="
+    paginator = client.get_paginator("list_objects_v2")
+    manifests = []
+    for page in paginator.paginate(Bucket=storage.bucket, Prefix=prefix):
+        for item in page.get("Contents", []):
+            key = item.get("Key")
+            if isinstance(key, str) and key.endswith("/manifest.json"):
+                manifests.append(
+                    {
+                        "key": key,
+                        "last_modified": item.get("LastModified"),
+                    }
+                )
+    manifests.sort(
+        key=lambda item: (
+            item.get("last_modified") is not None,
+            str(item.get("last_modified") or ""),
+            item["key"],
+        )
+    )
+    return manifests
+
+
+def _prepared_part_candidates(
+    client,
+    storage: RawStorageConfig,
+    partition_date: date,
+) -> list[dict[str, Any]]:
+    prefix = f"{prepared_date_prefix(storage, partition_date)}/run_id="
+    paginator = client.get_paginator("list_objects_v2")
+    runs: dict[str, dict[str, Any]] = {}
+    for page in paginator.paginate(Bucket=storage.bucket, Prefix=prefix):
+        for item in page.get("Contents", []):
+            key = item.get("Key")
+            if (
+                not isinstance(key, str)
+                or "/chunk=" not in key
+                or "/part-" not in key
+                or not key.endswith(".parquet")
+            ):
+                continue
+            run_id = _raw_part_run_id(key)
+            if not run_id:
+                continue
+            run = runs.setdefault(
+                run_id,
+                {
+                    "run_id": run_id,
+                    "last_modified": None,
+                    "parts": [],
+                },
+            )
+            last_modified = item.get("LastModified")
+            if str(last_modified or "") > str(run["last_modified"] or ""):
+                run["last_modified"] = last_modified
+            run["parts"].append(
+                {
+                    "key": key,
+                    "bytes": item.get("Size"),
+                }
+            )
+
+    candidates = list(runs.values())
+    for candidate in candidates:
+        candidate["parts"].sort(key=lambda part: part["key"])
+    candidates.sort(
+        key=lambda item: (
+            item.get("last_modified") is not None,
+            str(item.get("last_modified") or ""),
+            item["run_id"],
+        )
+    )
+    return candidates
+
+
 def load_latest_raw_manifest(client, storage: RawStorageConfig, partition_date: date) -> dict[str, Any]:
     key = raw_date_manifest_key(storage, partition_date)
     try:
@@ -573,6 +653,66 @@ def load_latest_raw_manifest(client, storage: RawStorageConfig, partition_date: 
         )
     else:
         logger.info("Loaded raw Elasticsearch manifest %s", key)
+    return manifest
+
+
+def load_latest_prepared_manifest(
+    client,
+    storage: RawStorageConfig,
+    partition_date: date,
+) -> dict[str, Any]:
+    key = prepared_date_manifest_key(storage, partition_date)
+    try:
+        manifest = _read_s3_json(client, storage, key)
+    except Exception as exc:
+        if not _is_s3_no_such_key_error(exc):
+            raise
+        candidates = _prepared_run_manifest_candidates(client, storage, partition_date)
+        if candidates:
+            key = candidates[-1]["key"]
+            manifest = _read_s3_json(client, storage, key)
+        else:
+            part_candidates = _prepared_part_candidates(client, storage, partition_date)
+            if not part_candidates:
+                raise RuntimeError(
+                    "Prepared Elasticsearch feature data was not found for "
+                    f"date={partition_date.isoformat()}. Expected {key}, a "
+                    f"run-level manifest under {prepared_date_prefix(storage, partition_date)}/"
+                    "run_id=*/manifest.json, or parquet files under "
+                    "run_id=*/chunk=*/part-*.parquet."
+                ) from exc
+            latest_run = part_candidates[-1]
+            manifest = {
+                "date": partition_date.isoformat(),
+                "run_id": latest_run["run_id"],
+                "run_prefix": (
+                    f"{prepared_date_prefix(storage, partition_date)}/"
+                    f"run_id={latest_run['run_id']}"
+                ),
+                "parts": latest_run["parts"],
+                "source": "listed_prepared_parts",
+            }
+            logger.warning(
+                "Prepared manifest was not found for date=%s; "
+                "loading %d listed parquet parts from run_id=%s",
+                partition_date,
+                len(latest_run["parts"]),
+                latest_run["run_id"],
+            )
+
+    if manifest.get("date") != partition_date.isoformat():
+        raise ValueError(
+            f"Prepared manifest {key} has date={manifest.get('date')!r}, "
+            f"expected {partition_date.isoformat()!r}"
+        )
+    if manifest.get("source") == "listed_prepared_parts":
+        logger.info(
+            "Loaded prepared parquet file list for run_id=%s parts=%d",
+            manifest.get("run_id"),
+            len(manifest.get("parts", [])),
+        )
+    else:
+        logger.info("Loaded prepared parquet manifest %s", key)
     return manifest
 
 
@@ -1215,6 +1355,76 @@ def _upload_parquet_table(client, storage: RawStorageConfig, key: str, arrow_tab
             pass
 
 
+def _download_s3_object_to_tempfile(
+    client,
+    storage: RawStorageConfig,
+    key: str,
+    suffix: str,
+) -> str:
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as output:
+        output_path = output.name
+
+    if hasattr(client, "download_file"):
+        client.download_file(storage.bucket, key, output_path)
+        return output_path
+
+    response = client.get_object(Bucket=storage.bucket, Key=key)
+    body = response["Body"]
+    try:
+        with Path(output_path).open("wb") as output:
+            if hasattr(body, "iter_chunks"):
+                for chunk in body.iter_chunks(chunk_size=8 * 1024 * 1024):
+                    if chunk:
+                        output.write(chunk)
+            else:
+                output.write(body.read())
+    finally:
+        body.close()
+    return output_path
+
+
+def _read_prepared_parquet_part(client, storage: RawStorageConfig, part: Mapping[str, Any]):
+    import pyarrow.parquet as pq
+
+    key = str(part["key"])
+    path = _download_s3_object_to_tempfile(client, storage, key, ".parquet")
+    try:
+        return pq.read_table(path)
+    finally:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+
+
+def _align_arrow_table_to_iceberg_schema(table, arrow_table, partition_date: date):
+    arrow_schema = table.schema().as_arrow()
+    expected = [field.name for field in arrow_schema]
+    actual = arrow_table.column_names
+    missing = [name for name in expected if name not in actual]
+    unexpected = [name for name in actual if name not in expected]
+    if missing:
+        raise ValueError(f"Prepared parquet is missing columns required by {table.name()}: {missing}")
+    if unexpected:
+        logger.warning("Ignoring prepared parquet columns not present in %s: %s", table.name(), unexpected)
+
+    selected = arrow_table.select(expected)
+    date_values = selected.column("date").to_pylist()
+    invalid_dates = []
+    for value in date_values:
+        if isinstance(value, datetime):
+            value = value.date()
+        if value is not None and value != partition_date:
+            invalid_dates.append(value)
+            if len(invalid_dates) >= 5:
+                break
+    if invalid_dates:
+        raise ValueError(
+            f"Prepared parquet contains date values other than {partition_date}: {invalid_dates}"
+        )
+    return selected.cast(arrow_schema, safe=False)
+
+
 def _upload_prepared_row_buffer(
     client,
     storage: RawStorageConfig,
@@ -1344,6 +1554,64 @@ def write_raw_features_to_prepared_parquet(
         date_manifest_key,
     )
     return prepared_manifest
+
+
+def write_prepared_parquet_to_iceberg(
+    table,
+    partition_date: date,
+    storage: RawStorageConfig,
+) -> None:
+    from pyiceberg.expressions import EqualTo
+
+    client = get_s3_client(storage)
+    manifest = load_latest_prepared_manifest(client, storage, partition_date)
+    parts = list(manifest.get("parts", []))
+
+    transaction = table.transaction()
+    transaction.delete(delete_filter=EqualTo("date", partition_date))
+    logger.info(
+        "Staged Iceberg partition overwrite for %s date=%s from prepared run_id=%s parts=%d",
+        table.name(),
+        partition_date,
+        manifest.get("run_id"),
+        len(parts),
+    )
+
+    total_rows = 0
+    for part in parts:
+        key = str(part["key"])
+        arrow_table = _read_prepared_parquet_part(client, storage, part)
+        try:
+            arrow_table = _align_arrow_table_to_iceberg_schema(
+                table,
+                arrow_table,
+                partition_date,
+            )
+            rows = arrow_table.num_rows
+            transaction.append(arrow_table)
+            total_rows += rows
+            logger.info(
+                "Staged prepared parquet append %s rows=%d total_rows=%d",
+                key,
+                rows,
+                total_rows,
+            )
+        finally:
+            del arrow_table
+            gc.collect()
+
+    _run_iceberg_commit(
+        f"commit prepared parquet load {table.name()} date={partition_date}",
+        transaction.commit_transaction,
+    )
+    logger.info(
+        "Committed prepared parquet load to %s date=%s parts=%d rows=%d",
+        table.name(),
+        partition_date,
+        len(parts),
+        total_rows,
+    )
+
 
 def write_raw_features_to_iceberg(
     table,
