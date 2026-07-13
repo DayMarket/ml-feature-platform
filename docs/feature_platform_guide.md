@@ -391,7 +391,7 @@ layers/<silver_or_gold>/<primary_key_group>/<entity_name>/v1/
 Что означает каждая сущность:
 
 - `config.yaml` задает Iceberg catalog/schema/name, primary key и ownership metadata. По нему CI понимает, что таблица принадлежит Feature Platform.
-- `migrations/create_table.sql` создает Iceberg-таблицу и комментарии колонок. Эта миграция реально применяется CI после merge в `master`.
+- `migrations/create_table.sql` создает Iceberg-таблицу и комментарии колонок. Для новых таблиц добавляйте `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')` в `CREATE TABLE IF NOT EXISTS`. Эта миграция реально применяется CI после merge в `master`.
 - дополнительные migrations нужны для изменений уже существующих таблиц, например добавления новой колонки.
 - `job/arguments.py` и `job/entities.py` описывают runtime-аргументы, обычно `partition_start`, `partition_end` и `table_name`.
 - `job/getting_*.py` содержит основной расчет: чтение источников, join, фильтры, окна, формулы и финальный output.
@@ -501,6 +501,9 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Gold-признак количества заказов на уровне sku_group_id'
 PARTITIONED BY (date)
+TBLPROPERTIES (
+    'engine.hive.lock-enabled' = 'false'
+)
 ```
 
 Пример расчета внутри PySpark job:

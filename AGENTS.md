@@ -119,7 +119,7 @@ Use this workflow:
 - If a feature depends on source tables, source values, or business semantics that are not explicit in the current context, ask whether to use MCP tools such as Trino or ClickHouse or whether the user will provide the contract. Do this even when a plausible table or column was found in the repository.
 - After duplicate checks and clarification, summarize the selected contract back to the user before editing files.
 - Choose the entity grain and primary key. Include `date` for scheduled snapshots unless there is a deliberate exception documented in README and code.
-- Add or update migrations first. Use idempotent DDL and include comments for all output columns.
+- Add or update migrations first. Use idempotent DDL and include comments for all output columns. Every new `migrations/create_table.sql` for a repository-managed Iceberg output table must include `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')` in the `CREATE TABLE IF NOT EXISTS` statement.
 - Implement Spark jobs using existing local PySpark patterns. Prefer Spark functions/DataFrame API where it improves maintainability; Spark SQL is acceptable when it mirrors a validated analytical SQL clearly.
 - Implement Trino/ClickHouse-source jobs using an Airflow/Python pattern: read from the confirmed source connection, transform according to the approved SQL/source contract, and write the final result to Iceberg through `pyiceberg`.
 - Keep source table names visible in transformation code or config; do not hide lineage behind opaque constants.
@@ -137,6 +137,7 @@ Use this workflow:
 Schema-change checklist:
 
 - Update `migrations/create_table.sql` for new environments.
+- For every newly created repository-managed Iceberg table, include `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')` in `migrations/create_table.sql`.
 - Add an idempotent migration for existing environments, for example `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
 - Update PySpark select/write columns.
 - Update README feature or dataset descriptions.
@@ -172,7 +173,7 @@ Use this workflow for training sample tables under `datasets/`:
 - Dataset README files must include explicit output, orchestration, and dataset-contract sections: fully qualified table, exact DAG id, path, grain, primary key, sources, label semantics, windows, leakage boundary, null handling, and operational caveats.
 - Add DQ sensor dependencies on DQ DAGs for every repository-managed source table from `layers/**` or `datasets/**`. For external upstream tables, use the producing team's documented DAG/DQ contract.
 - Implement Spark datasets with the same shared Spark image plus `git-sync` pattern used by layer jobs. Implement Trino/ClickHouse-source datasets with the Airflow/Python plus `pyiceberg` pattern after the source connection is confirmed.
-- Add or update migrations first. Use idempotent DDL and include comments for all output columns, including labels, weights, split columns, and sampling metadata.
+- Add or update migrations first. Use idempotent DDL and include comments for all output columns, including labels, weights, split columns, and sampling metadata. Every new dataset `migrations/create_table.sql` must include `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')` in the `CREATE TABLE IF NOT EXISTS` statement.
 - Decide whether generated DQ is enough. For datasets, consider table-specific checks for label accepted values, split accepted values, non-negative weights, primary-key uniqueness, and partition completeness only when they are part of the training contract and not noisy or expensive.
 - Run local validation commands before finishing. If current CI scripts only discover `layers/**/config.yaml`, update the relevant CI scripts and tests before adding the first dataset table.
 
@@ -233,7 +234,7 @@ Implemented Spark layer pipelines generally follow this shape:
 - `job/entities.py`: dataclass for runtime arguments.
 - `job/getting_*.py`: main PySpark transformation and write logic.
 - `entrypoints/*.py`: executable Spark entrypoint that creates `SparkSession`, parses args, calls `job.run`, and stops Spark.
-- `migrations/create_table.sql`: Iceberg DDL. Add extra migration files for schema changes.
+- `migrations/create_table.sql`: Iceberg DDL with `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')` for new tables. Add extra migration files for schema changes.
 - `README.md`: Russian-language human summary of purpose, sources, grain, key formulas, and operational notes.
 
 Trino/ClickHouse-source layer pipelines may use a separate Airflow/Python shape instead of SparkApplication. They should still live under `layers/<layer>/<primary_key_group>/<entity>/v1`, keep migrations and README alongside the code, read through explicitly confirmed Airflow connections, and write the output Iceberg table with `pyiceberg`. There may be no current examples in this repository; when generating one, keep the pattern explicit in README and do not reuse Spark-specific `spark`/`spark_applications` config unless Spark execution is actually used.
@@ -249,7 +250,7 @@ Dataset pipelines generally follow the same table contract as layer pipelines, b
 - `config/factory.py`: optional local factory when the entity needs templated runtime configuration.
 - `job/`: transformation code that builds the training sample table, including label, split, sampling, and leakage-boundary logic.
 - `entrypoints/`: executable Spark entrypoint when Spark execution is used.
-- `migrations/create_table.sql`: Iceberg DDL. Add extra migration files for schema changes.
+- `migrations/create_table.sql`: Iceberg DDL with `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')` for new tables. Add extra migration files for schema changes.
 - `README.md`: Russian-language human summary of dataset purpose, training/evaluation consumer, sources, grain, labels, windows, leakage boundaries, output table, exact DAG id, and operational notes.
 
 Dataset directories must not contain ranking upload configuration. Dataset versions are path-level contracts; create a new version when changing sample semantics in a way that existing training consumers cannot safely treat as the same dataset.
@@ -355,6 +356,7 @@ Migration CI:
 - Migration discovery for repository-managed output tables must walk both `layers/**/config.yaml` and `datasets/**/config.yaml` with SQL files under `migrations/`. If current CI scripts only walk `layers/**/config.yaml`, update the scripts and tests before adding the first dataset table.
 - `{target_table}` is substituted with the Spark table name from `config.yaml`.
 - `create_table.sql` runs first, then remaining migrations in filename order.
+- New `create_table.sql` migrations for repository-managed Iceberg tables must include `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')`.
 - Idempotency validation requires `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`; destructive `DROP`/`DELETE`/`TRUNCATE` statements are rejected.
 
 dbt source sync:
