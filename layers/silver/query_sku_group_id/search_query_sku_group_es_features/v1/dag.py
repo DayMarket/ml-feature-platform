@@ -1,8 +1,9 @@
-"""Parse raw Elasticsearch explain payloads into prepared parquet files."""
+"""Parse raw Elasticsearch explain payloads and load the daily Iceberg partition."""
 
 import importlib.util
 import os
 import sys
+import time
 from datetime import timedelta
 
 import pendulum
@@ -147,7 +148,7 @@ def search_query_sku_group_es_features_dag() -> None:
     )
 
     @task(executor_config=_executor_config())
-    def prepare_parquet(partition_date_value: str) -> None:
+    def prepare_parquet(partition_date_value: str) -> str:
         runtime = _load_job_module("runtime.py", "search_es_features_runtime")
 
         config = runtime.load_config(CONFIG_PATH)
@@ -162,10 +163,31 @@ def search_query_sku_group_es_features_dag() -> None:
                 config["source"]["elasticsearch"]["write_chunk_size"]
             ),
         )
+        return partition_date.isoformat()
 
-    wait_for_elasticsearch_collect >> prepare_parquet(
+    @task(executor_config=_executor_config())
+    def load_to_iceberg(partition_date_value: str) -> None:
+        runtime = _load_job_module("runtime.py", "search_es_features_iceberg_runtime")
+
+        config = runtime.load_config(CONFIG_PATH)
+        time.sleep(20)
+        output_ref = runtime.table_ref(config)
+        catalog = runtime.get_iceberg_catalog(output_ref)
+        output_table = runtime.preflight_table(catalog, output_ref)
+
+        partition_date = runtime.parse_partition_date(partition_date_value)
+        storage = runtime.raw_storage_config(config["raw_storage"])
+        runtime.write_prepared_parquet_to_iceberg(
+            table=output_table,
+            partition_date=partition_date,
+            storage=storage,
+        )
+
+    prepared_partition_date = prepare_parquet(
         '{{ (dag_run.conf or {}).get("partition_date") or macros.ds_add(ds, -1) }}'
     )
+    wait_for_elasticsearch_collect >> prepared_partition_date
+    load_to_iceberg(prepared_partition_date)
 
 
 dag = search_query_sku_group_es_features_dag()
