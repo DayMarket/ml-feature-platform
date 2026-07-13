@@ -18,5 +18,4 @@ DAG id: `feature-platform.layers.gold.query_sku_group_id.query_skg_pairwise_feat
 - записывает ее в партицию `date = {{ ds }}`;
 - сохраняет полный набор legacy pairwise-колонок, а ranking upload публикует из них только `fs_search_query_skg_v3`.
 
-Эта таблица является новым источником группы `fs_search_query_skg_v3` в `upload/ranking_features/v1/config.yaml`.
-
+Эта таблица является новым источником группы `fs_search_query_skg_v3` в `upload/features_service_upload/v1/config.yaml`.

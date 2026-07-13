@@ -6,7 +6,7 @@
 
 - собирает промежуточные и переиспользуемые таблицы в слое `silver`;
 - собирает финальные модельные признаки в слое `gold`;
-- при необходимости публикует `gold`-признаки в сервис ранжирования через `upload/ranking_features/v1`.
+- при необходимости публикует `gold`-признаки в сервис ранжирования через `upload/features_service_upload/v1`.
 
 Важное правило: все итоговые признаки и агрегаты Feature Platform сохраняются в Iceberg. Trino и ClickHouse можно использовать как source engines, если нужного источника нет в Spark/Iceberg, но результат `silver` или `gold` все равно должен быть repository-managed Iceberg-таблицей.
 
@@ -21,7 +21,7 @@
 - `layers/silver/<primary_key_group>/*/v1` - переиспользуемые агрегаты и промежуточные таблицы.
 - `layers/gold/<primary_key_group>/*/v1` - финальные признаки для моделей или downstream-сервисов.
 - `config/spark` - общий SparkApplication template и resource profiles для Spark layer DAG-ов.
-- `upload/ranking_features/v1` - загрузка feature groups в Kafka-топик сервиса ранжирования.
+- `upload/features_service_upload/v1` - загрузка feature groups в Kafka-топик сервиса ранжирования.
 - `scripts/` - CI-синхронизация миграций, dbt sources, Iceberg maintenance и валидации.
 - `ci_test/` - локальные regression-тесты для CI-логики.
 - `docs/feature_platform_guide.md` - подробная инструкция по созданию, изменению, удалению и публикации признаков.

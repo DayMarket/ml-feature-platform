@@ -49,7 +49,7 @@ Gold DAG ждет DQ-DAG silver-источника:
 
 ## Downstream
 
-Ranking-upload не настроен — таблица пока используется как внутренняя feature-таблица. При публикации в ranking-service добавить группу в `upload/ranking_features/v1` (entity key `sku_group_id`).
+Ranking-upload не настроен — таблица пока используется как внутренняя feature-таблица. При публикации в ranking-service добавить группу в `upload/features_service_upload/v1` (entity key `sku_group_id`).
 
 ## Runtime
 

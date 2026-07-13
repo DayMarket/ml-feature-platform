@@ -122,7 +122,7 @@ Grain: `date,product_id`.
 - совпадают ли окна и включение/исключение `{{ ds }}`;
 - совпадают ли фильтры и source semantics;
 - как обрабатываются null и zero denominator;
-- используется ли таблица в `upload/ranking_features/v1/config.yaml`;
+- используется ли таблица в `upload/features_service_upload/v1/config.yaml`;
 - есть ли downstream jobs, которые читают эту таблицу.
 
 Если похожая фича уже есть, не надо делать дубль автоматически. Надо описать отличие и спросить, действительно ли нужна новая фича.
@@ -292,13 +292,13 @@ DESCRIBE iceberg.silver.order_items_attribution
 Пример ответа:
 
 ```text
-Загрузка описана в `upload/ranking_features/v1`.
+Загрузка описана в `upload/features_service_upload/v1`.
 
-Основной конфиг - `upload/ranking_features/v1/config.yaml`. В нем перечислены feature groups. Каждая group читает одну gold-таблицу, например `feature_platform_sku_group_feedback_base_stats`, и отправляет упорядоченный список колонок в Kafka topic `ranking.features.updates`.
+Основной конфиг - `upload/features_service_upload/v1/config.yaml`. В нем перечислены feature groups. Каждая group читает одну gold-таблицу, например `feature_platform_sku_group_feedback_base_stats`, и отправляет упорядоченный список колонок в Kafka topic `ranking.features.updates`.
 
 Перед чтением таблицы upload DAG ждет dbt DQ DAG исходной таблицы. Затем job читает партицию за `{{ ds }}`, строит protobuf `FeaturesUpdate` через `ranking-python-client` и пишет сообщения в Kafka.
 
-Порядок feature groups и размеры в serving contract лежат в `upload/ranking_features/v1/ranking_service_input.yaml`. Порядок важен: в сервис отправляются значения, а не имена колонок.
+Порядок feature groups и размеры в serving contract лежат в `upload/features_service_upload/v1/ranking_service_input.yaml`. Порядок важен: в сервис отправляются значения, а не имена колонок.
 
 CI проверяет, что source table для upload находится в `gold`, все перечисленные признаки существуют в migrations, primary key содержит `date`, а entity keys поддержаны upload job.
 ```
@@ -391,7 +391,7 @@ layers/<silver_or_gold>/<primary_key_group>/<entity_name>/v1/
 Что означает каждая сущность:
 
 - `config.yaml` задает Iceberg catalog/schema/name, primary key и ownership metadata. По нему CI понимает, что таблица принадлежит Feature Platform.
-- `migrations/create_table.sql` создает Iceberg-таблицу и комментарии колонок. Эта миграция реально применяется CI после merge в `master`.
+- `migrations/create_table.sql` создает Iceberg-таблицу и комментарии колонок. Для новых таблиц добавляйте `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')` в `CREATE TABLE IF NOT EXISTS`. Эта миграция реально применяется CI после merge в `master`.
 - дополнительные migrations нужны для изменений уже существующих таблиц, например добавления новой колонки.
 - `job/arguments.py` и `job/entities.py` описывают runtime-аргументы, обычно `partition_start`, `partition_end` и `table_name`.
 - `job/getting_*.py` содержит основной расчет: чтение источников, join, фильтры, окна, формулы и финальный output.
@@ -501,6 +501,9 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Gold-признак количества заказов на уровне sku_group_id'
 PARTITIONED BY (date)
+TBLPROPERTIES (
+    'engine.hive.lock-enabled' = 'false'
+)
 ```
 
 Пример расчета внутри PySpark job:
@@ -684,11 +687,11 @@ ALTER TABLE {target_table}
 ADD COLUMN IF NOT EXISTS new_feature DOUBLE COMMENT 'Описание новой фичи'
 ```
 
-Также обновляются PySpark job, README таблицы и, если колонка должна попасть в ranking service, `upload/ranking_features/v1/config.yaml` и `ranking_service_input.yaml`. В конце агент запускает проверки и отдельно сообщает, менялся ли ranking serving contract.
+Также обновляются PySpark job, README таблицы и, если колонка должна попасть в ranking service, `upload/features_service_upload/v1/config.yaml` и `ranking_service_input.yaml`. В конце агент запускает проверки и отдельно сообщает, менялся ли ranking serving contract.
 
 ## 18. Как работать с ranking upload
 
-Ranking upload находится в `upload/ranking_features/v1`.
+Ranking upload находится в `upload/features_service_upload/v1`.
 
 Основные правила:
 
@@ -713,7 +716,7 @@ Ranking upload находится в `upload/ranking_features/v1`.
 
 Чтобы добавить feature group, пользователь описывает, какую `gold`-таблицу и какие колонки нужно отдавать в ranking service. Агент проверяет, что таблица действительно repository-managed `gold`, что все колонки есть в migrations, что entity keys поддержаны upload job, что `source.dq_execution_delta_minutes` соответствует DQ DAG исходной таблицы, и что порядок колонок согласован с serving contract.
 
-После этого обновляются `upload/ranking_features/v1/config.yaml` и `upload/ranking_features/v1/ranking_service_input.yaml`. Проверка ranking upload подтверждает, что source table, schema, feature list, entity keys и размеры feature groups согласованы между конфигами и миграциями.
+После этого обновляются `upload/features_service_upload/v1/config.yaml` и `upload/features_service_upload/v1/ranking_service_input.yaml`. Проверка ranking upload подтверждает, что source table, schema, feature list, entity keys и размеры feature groups согласованы между конфигами и миграциями.
 
 ## 19. Другие важные особенности
 

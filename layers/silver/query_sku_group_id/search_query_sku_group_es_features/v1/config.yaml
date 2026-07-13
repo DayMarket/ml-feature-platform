@@ -13,12 +13,14 @@ source:
   trino_conn_id: trino_search
   clickstream_events_table: '"dwh-iceberg".silver_b2c_clickstream.events'
   search_logs_table: '"dwh-iceberg".silver.search_logs'
+  min_result_query_installs: 2
   elasticsearch:
     conn_id: elasticsearch_search
     endpoint_path: /_search
-    size: 3000
+    size: 2000
     parallel_jobs: 24
-    chunk_size: 3000
+    chunk_size: 2000
+    write_chunk_size: 50000
     request_timeout_seconds: 60
     retry_count: 3
     fields:
@@ -38,18 +40,31 @@ source:
       - product.title.uz.synonym
       - full_category_name
 
+raw_storage:
+  conn_id: search_research_bucket
+  prefix: airflow/2026/bm25_features
+  file_row_limit: 50000
+
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
-  cpu: "10"
-  memory: 16Gi
+  cpu: "16"
+  memory: 32Gi
 
-dag:
-  id: feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_es_features
-  group_tag: search-es-features
+elasticsearch_collect_dag:
+  id: feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_es_features.elasticsearch_collect
   schedule: "0 4 * * *"
   start_date: "2026-03-13T00:00:00Z"
   team: search
   owner: team:search
+  dagrun_timeout_hours: 72
+
+dag:
+  id: feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_es_features
+  group_tag: search-es-features
+  start_date: "2026-03-13T00:00:00Z"
+  team: search
+  owner: team:search
+  dagrun_timeout_hours: 24
 
 alerts:
   team: search

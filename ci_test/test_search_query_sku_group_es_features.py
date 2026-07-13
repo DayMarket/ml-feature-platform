@@ -1,4 +1,7 @@
+import gzip
+import io
 import importlib.util
+import json
 import sys
 import unittest
 from datetime import date
@@ -46,6 +49,408 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
                     self.runtime.previous_utc_date(value),
                     date(2026, 6, 16),
                 )
+        self.assertEqual(
+            self.runtime.parse_partition_date("2026-06-16"),
+            date(2026, 6, 16),
+        )
+
+    def test_raw_storage_paths_use_configured_prefix_and_safe_run_id(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        partition_date = date(2026, 7, 8)
+
+        self.assertEqual(
+            self.runtime.raw_date_prefix(storage, partition_date),
+            "airflow/2026/bm25_features/raw/date=2026-07-08",
+        )
+        self.assertEqual(
+            self.runtime.raw_run_prefix(
+                storage,
+                partition_date,
+                "manual__2026-07-08T10:40:23.147933+00:00",
+            ),
+            "airflow/2026/bm25_features/raw/date=2026-07-08/"
+            "run_id=manual__2026-07-08T10:40:23.147933_00:00",
+        )
+        self.assertEqual(
+            self.runtime.raw_date_manifest_key(storage, partition_date),
+            "airflow/2026/bm25_features/raw/date=2026-07-08/manifest.json",
+        )
+        self.assertEqual(
+            self.runtime.prepared_run_prefix(
+                storage,
+                partition_date,
+                "scheduled__2026-07-08T04:00:00+00:00",
+            ),
+            "airflow/2026/bm25_features/prepared/date=2026-07-08/"
+            "run_id=scheduled__2026-07-08T04:00:00_00:00",
+        )
+
+    def test_load_latest_raw_manifest_falls_back_to_run_manifest(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        partition_date = date(2026, 7, 8)
+        run_manifest_key = (
+            "airflow/2026/bm25_features/raw/date=2026-07-08/"
+            "run_id=scheduled__2026-07-08T04:00:00_00:00/manifest.json"
+        )
+
+        class FakeNoSuchKey(Exception):
+            def __init__(self, key):
+                super().__init__(f"NoSuchKey: {key}")
+                self.response = {"Error": {"Code": "NoSuchKey"}}
+
+        class FakePaginator:
+            def paginate(self, Bucket, Prefix):
+                self.bucket = Bucket
+                self.prefix = Prefix
+                return [
+                    {
+                        "Contents": [
+                            {
+                                "Key": run_manifest_key,
+                                "LastModified": "2026-07-08T06:00:00+00:00",
+                            }
+                        ]
+                    }
+                ]
+
+        class FakeClient:
+            def __init__(self):
+                self.read_keys = []
+
+            def get_object(self, Bucket, Key):
+                self.read_keys.append(Key)
+                if Key != run_manifest_key:
+                    raise FakeNoSuchKey(Key)
+                return {
+                    "Body": io.BytesIO(
+                        json.dumps(
+                            {
+                                "date": "2026-07-08",
+                                "parts": [{"key": "part-000001.jsonl.gz"}],
+                            }
+                        ).encode("utf-8")
+                    )
+                }
+
+            def get_paginator(self, name):
+                self.paginator_name = name
+                return FakePaginator()
+
+        client = FakeClient()
+        manifest = self.runtime.load_latest_raw_manifest(client, storage, partition_date)
+
+        self.assertEqual(manifest["date"], "2026-07-08")
+        self.assertEqual(manifest["parts"][0]["key"], "part-000001.jsonl.gz")
+        self.assertEqual(client.paginator_name, "list_objects_v2")
+        self.assertEqual(
+            client.read_keys,
+            [
+                "airflow/2026/bm25_features/raw/date=2026-07-08/manifest.json",
+                run_manifest_key,
+            ],
+        )
+
+    def test_load_latest_raw_manifest_falls_back_to_latest_run_parts(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        partition_date = date(2026, 7, 8)
+
+        class FakeNoSuchKey(Exception):
+            def __init__(self, key):
+                super().__init__(f"NoSuchKey: {key}")
+                self.response = {"Error": {"Code": "NoSuchKey"}}
+
+        class FakePaginator:
+            def paginate(self, Bucket, Prefix):
+                return [
+                    {
+                        "Contents": [
+                            {
+                                "Key": (
+                                    "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                                    "run_id=scheduled__2026-07-07T04:00:00_00:00/"
+                                    "chunk=000001/part-000001.jsonl.gz"
+                                ),
+                                "LastModified": "2026-07-08T05:00:00+00:00",
+                                "Size": 10,
+                            },
+                            {
+                                "Key": (
+                                    "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                                    "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                                    "chunk=000002/part-000001.jsonl.gz"
+                                ),
+                                "LastModified": "2026-07-08T06:02:00+00:00",
+                                "Size": 20,
+                            },
+                            {
+                                "Key": (
+                                    "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                                    "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                                    "chunk=000001/part-000001.jsonl.gz"
+                                ),
+                                "LastModified": "2026-07-08T06:01:00+00:00",
+                                "Size": 30,
+                            },
+                        ]
+                    }
+                ]
+
+        class FakeClient:
+            def get_object(self, Bucket, Key):
+                raise FakeNoSuchKey(Key)
+
+            def get_paginator(self, name):
+                return FakePaginator()
+
+        manifest = self.runtime.load_latest_raw_manifest(
+            FakeClient(),
+            storage,
+            partition_date,
+        )
+
+        self.assertEqual(manifest["date"], "2026-07-08")
+        self.assertEqual(manifest["source"], "listed_raw_parts")
+        self.assertEqual(manifest["run_id"], "scheduled__2026-07-08T04:00:00_00:00")
+        self.assertEqual(
+            [part["key"] for part in manifest["parts"]],
+            [
+                "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                "chunk=000001/part-000001.jsonl.gz",
+                "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                "chunk=000002/part-000001.jsonl.gz",
+            ],
+        )
+
+    def test_load_latest_raw_manifest_requires_manifest_or_raw_parts(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+
+        class FakeNoSuchKey(Exception):
+            def __init__(self, key):
+                super().__init__(f"NoSuchKey: {key}")
+                self.response = {"Error": {"Code": "NoSuchKey"}}
+
+        class FakePaginator:
+            def paginate(self, Bucket, Prefix):
+                return [{"Contents": []}]
+
+        class FakeClient:
+            def get_object(self, Bucket, Key):
+                raise FakeNoSuchKey(Key)
+
+            def get_paginator(self, name):
+                return FakePaginator()
+
+        with self.assertRaisesRegex(RuntimeError, "Raw Elasticsearch data was not found"):
+            self.runtime.load_latest_raw_manifest(
+                FakeClient(),
+                storage,
+                date(2026, 7, 8),
+            )
+
+    def test_iter_raw_manifest_records_reads_jsonl_gzip_parts(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        payload = io.BytesIO()
+        with gzip.GzipFile(fileobj=payload, mode="wb") as stream:
+            for record in [
+                {"query": "bandana", "hit": {"_id": "1"}},
+                {"query": "t-shirt", "hit": {"_id": "2"}},
+            ]:
+                stream.write(json.dumps(record).encode("utf-8") + b"\n")
+        payload.seek(0)
+
+        class FakeClient:
+            def get_object(self, Bucket, Key):
+                self.bucket = Bucket
+                self.key = Key
+                return {"Body": payload}
+
+        client = FakeClient()
+        records = list(
+            self.runtime.iter_raw_manifest_records(
+                client,
+                storage,
+                {"parts": [{"key": "raw/date=2026-07-08/part.jsonl.gz"}]},
+            )
+        )
+
+        self.assertEqual(client.bucket, "bucket")
+        self.assertEqual(client.key, "raw/date=2026-07-08/part.jsonl.gz")
+        self.assertEqual([record["query"] for record in records], ["bandana", "t-shirt"])
+
+    def test_write_raw_features_to_prepared_parquet_uses_s3_without_iceberg(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        raw_key = (
+            "airflow/2026/bm25_features/raw/date=2026-07-08/"
+            "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+            "chunk=000001/part-000001.jsonl.gz"
+        )
+        raw_payload = io.BytesIO()
+        with gzip.GzipFile(fileobj=raw_payload, mode="wb") as stream:
+            for record in [
+                {"query": "bandana", "hit": {"sku_group_id": 948376}},
+                {"query": "ignored", "hit": {"sku_group_id": 0}},
+            ]:
+                stream.write(json.dumps(record).encode("utf-8") + b"\n")
+        raw_payload.seek(0)
+
+        class FakeAnalyze:
+            @staticmethod
+            def output_columns(fields):
+                return ["date", "query", "sku_group_id"]
+
+            @staticmethod
+            def hit_to_row(hit, query, partition_date, fields):
+                return {
+                    "date": partition_date,
+                    "query": query,
+                    "sku_group_id": hit["sku_group_id"],
+                }
+
+        class FakeClient:
+            def __init__(self):
+                self.objects = {}
+
+            def get_object(self, Bucket, Key):
+                self.bucket = Bucket
+                self.key = Key
+                return {"Body": io.BytesIO(raw_payload.getvalue())}
+
+            def put_object(self, Bucket, Key, Body, ContentType):
+                self.objects[Key] = {
+                    "body": Body,
+                    "content_type": ContentType,
+                }
+
+        uploaded = []
+        events = []
+        client = FakeClient()
+
+        def fake_upload_prepared_row_buffer(
+            _client,
+            _storage,
+            key,
+            rows,
+            partition_date,
+            columns,
+        ):
+            uploaded.append(
+                {
+                    "key": key,
+                    "rows": list(rows),
+                    "partition_date": partition_date,
+                    "columns": list(columns),
+                }
+            )
+            return {"key": key, "rows": len(rows), "bytes": 123}
+
+        previous_get_s3 = self.runtime.get_s3_client
+        previous_load_manifest = self.runtime.load_latest_raw_manifest
+        previous_delete_prefix = self.runtime.delete_s3_prefix
+        previous_clear_markers = self.runtime.clear_prepared_success_markers
+        previous_analyze = self.runtime._load_analyze_module
+        previous_upload = self.runtime._upload_prepared_row_buffer
+        self.runtime.get_s3_client = lambda _storage: client
+        self.runtime.load_latest_raw_manifest = lambda *_: {
+            "date": "2026-07-08",
+            "run_id": "scheduled__2026-07-08T04:00:00_00:00",
+            "run_prefix": (
+                "airflow/2026/bm25_features/raw/date=2026-07-08/"
+                "run_id=scheduled__2026-07-08T04:00:00_00:00"
+            ),
+            "parts": [{"key": raw_key}],
+        }
+        self.runtime.delete_s3_prefix = lambda _client, _storage, prefix: events.append(
+            ("delete", prefix)
+        )
+        self.runtime.clear_prepared_success_markers = lambda *_: events.append(("clear",))
+        self.runtime._load_analyze_module = lambda: FakeAnalyze
+        self.runtime._upload_prepared_row_buffer = fake_upload_prepared_row_buffer
+        try:
+            manifest = self.runtime.write_raw_features_to_prepared_parquet(
+                partition_date=date(2026, 7, 8),
+                storage=storage,
+                fields=["skus.title"],
+                write_chunk_size=10,
+            )
+        finally:
+            self.runtime.get_s3_client = previous_get_s3
+            self.runtime.load_latest_raw_manifest = previous_load_manifest
+            self.runtime.delete_s3_prefix = previous_delete_prefix
+            self.runtime.clear_prepared_success_markers = previous_clear_markers
+            self.runtime._load_analyze_module = previous_analyze
+            self.runtime._upload_prepared_row_buffer = previous_upload
+
+        prepared_prefix = (
+            "airflow/2026/bm25_features/prepared/date=2026-07-08/"
+            "run_id=scheduled__2026-07-08T04:00:00_00:00"
+        )
+        self.assertEqual(events, [("delete", prepared_prefix + "/"), ("clear",)])
+        self.assertEqual(manifest["rows"], 1)
+        self.assertEqual(manifest["raw_records"], 2)
+        self.assertEqual(
+            uploaded[0]["key"],
+            prepared_prefix + "/chunk=000001/part-000001.parquet",
+        )
+        self.assertEqual(uploaded[0]["rows"][0]["sku_group_id"], 948376)
+        self.assertIn(prepared_prefix + "/manifest.json", client.objects)
+        self.assertIn(
+            "airflow/2026/bm25_features/prepared/date=2026-07-08/manifest.json",
+            client.objects,
+        )
+        self.assertIn(
+            "airflow/2026/bm25_features/prepared/date=2026-07-08/_SUCCESS",
+            client.objects,
+        )
 
     def test_explain_parser_keeps_root_total_score_and_field_bm25(self):
         explanation = {
@@ -212,17 +617,21 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             partition_date=date(2026, 3, 13),
             clickstream_events_table='"dwh-iceberg".silver_b2c_clickstream.events',
             search_logs_table='"dwh-iceberg".silver.search_logs',
+            min_result_query_installs=2,
         )
 
         self.assertIn('FROM "dwh-iceberg".silver_b2c_clickstream.events', sql)
         self.assertIn("event_type = 'PRODUCT_IMPRESSION'", sql)
         self.assertIn("widget_space_name = 'SEARCH_RESULTS'", sql)
+        self.assertIn("logged_at >= CAST('2026-03-13' AS TIMESTAMP(6))", sql)
+        self.assertIn("logged_at < CAST('2026-03-14' AS TIMESTAMP(6))", sql)
         self.assertIn("received_at >= CAST('2026-03-13' AS TIMESTAMP(6))", sql)
         self.assertIn("received_at < CAST('2026-03-14' AS TIMESTAMP(6))", sql)
-        self.assertIn("logged_at >= CAST('2026-03-10' AS TIMESTAMP(6))", sql)
-        self.assertIn("logged_at < CAST('2026-03-17' AS TIMESTAMP(6))", sql)
+        self.assertNotIn("logged_at >= CAST('2026-03-10' AS TIMESTAMP(6))", sql)
         self.assertIn("logged_at >= CAST('2026-03-12' AS TIMESTAMP(6))", sql)
-        self.assertIn("logged_at < CAST('2026-03-14' AS TIMESTAMP(6))", sql)
+        self.assertIn("HAVING", sql)
+        self.assertIn("COUNT(DISTINCT install_id) >= 2", sql)
+        self.assertIn("INNER JOIN final_stats fs", sql)
         self.assertIn("array_agg(DISTINCT cq.sku_group_id)", sql)
 
     def test_search_body_filters_sku_groups_and_enables_explain(self):
@@ -317,9 +726,16 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         class FakePandas:
             DataFrame = FakeFrame
 
-        def fake_collect_elasticsearch_rows(**_):
+        collect_results = iter(
+            [
+                [{"query": "bandana", "sku_group_id": 948376}],
+                [{"query": "t-shirt", "sku_group_id": 111}],
+            ]
+        )
+
+        def fake_iter_elasticsearch_rows(**_):
             events.append("collect")
-            return [{"query": "bandana", "sku_group_id": 948376}]
+            yield from next(collect_results)
 
         def fake_stage_clear_daily_snapshot(*_):
             events.append("stage_clear")
@@ -333,13 +749,13 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             return operation()
 
         previous_pandas = sys.modules.get("pandas")
-        previous_collect = self.runtime._collect_elasticsearch_rows
+        previous_iter = self.runtime._iter_elasticsearch_rows
         previous_stage_clear = self.runtime.stage_clear_daily_snapshot
         previous_append = self.runtime.append_daily_chunk
         previous_commit = self.runtime._run_iceberg_commit
         previous_analyze = self.runtime._load_analyze_module
         sys.modules["pandas"] = FakePandas
-        self.runtime._collect_elasticsearch_rows = fake_collect_elasticsearch_rows
+        self.runtime._iter_elasticsearch_rows = fake_iter_elasticsearch_rows
         self.runtime.stage_clear_daily_snapshot = fake_stage_clear_daily_snapshot
         self.runtime.append_daily_chunk = fake_append_daily_chunk
         self.runtime._run_iceberg_commit = fake_run_iceberg_commit
@@ -359,6 +775,7 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
                 size=3000,
                 parallel_jobs=2,
                 chunk_size=1,
+                write_chunk_size=1,
                 timeout_seconds=60,
                 retry_count=3,
             )
@@ -367,7 +784,7 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
                 sys.modules.pop("pandas", None)
             else:
                 sys.modules["pandas"] = previous_pandas
-            self.runtime._collect_elasticsearch_rows = previous_collect
+            self.runtime._iter_elasticsearch_rows = previous_iter
             self.runtime.stage_clear_daily_snapshot = previous_stage_clear
             self.runtime.append_daily_chunk = previous_append
             self.runtime._run_iceberg_commit = previous_commit

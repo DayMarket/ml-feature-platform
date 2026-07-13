@@ -5,5 +5,8 @@ input-labels:
     missing-feature-value: 0.0
     feature-sets:
       - name: fs_dynamic_pricing_skg_promotion_price_features_v1
-        schema: SKU_GROUP_TO_PROMOTION
-        size: 9
+        schema: SKU_GROUP_TO_PROMO
+        size: 7
+      - name: fs_dynamic_pricing_skg_promotion_price_inference_v1
+        schema: SKU_GROUP_TO_PROMO
+        size: 1
