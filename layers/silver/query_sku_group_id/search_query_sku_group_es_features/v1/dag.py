@@ -148,7 +148,7 @@ def search_query_sku_group_es_features_dag() -> None:
     )
 
     @task(executor_config=_executor_config())
-    def prepare_parquet(partition_date_value: str) -> None:
+    def prepare_parquet(partition_date_value: str) -> str:
         runtime = _load_job_module("runtime.py", "search_es_features_runtime")
 
         config = runtime.load_config(CONFIG_PATH)
@@ -163,6 +163,7 @@ def search_query_sku_group_es_features_dag() -> None:
                 config["source"]["elasticsearch"]["write_chunk_size"]
             ),
         )
+        return partition_date.isoformat()
 
     @task(executor_config=_executor_config())
     def load_to_iceberg(partition_date_value: str) -> None:
