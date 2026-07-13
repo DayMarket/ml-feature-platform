@@ -3,6 +3,7 @@ import io
 import importlib.util
 import json
 import sys
+import types
 import unittest
 from datetime import date
 from pathlib import Path
@@ -281,6 +282,86 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
                 date(2026, 7, 8),
             )
 
+    def test_load_latest_prepared_manifest_falls_back_to_latest_run_parts(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+
+        class FakeNoSuchKey(Exception):
+            def __init__(self, key):
+                super().__init__(f"NoSuchKey: {key}")
+                self.response = {"Error": {"Code": "NoSuchKey"}}
+
+        class FakePaginator:
+            def paginate(self, Bucket, Prefix):
+                return [
+                    {
+                        "Contents": [
+                            {
+                                "Key": (
+                                    "airflow/2026/bm25_features/prepared/date=2026-07-08/"
+                                    "run_id=scheduled__2026-07-07T04:00:00_00:00/"
+                                    "chunk=000001/part-000001.parquet"
+                                ),
+                                "LastModified": "2026-07-08T05:00:00+00:00",
+                                "Size": 10,
+                            },
+                            {
+                                "Key": (
+                                    "airflow/2026/bm25_features/prepared/date=2026-07-08/"
+                                    "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                                    "chunk=000002/part-000001.parquet"
+                                ),
+                                "LastModified": "2026-07-08T06:02:00+00:00",
+                                "Size": 20,
+                            },
+                            {
+                                "Key": (
+                                    "airflow/2026/bm25_features/prepared/date=2026-07-08/"
+                                    "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                                    "chunk=000001/part-000001.parquet"
+                                ),
+                                "LastModified": "2026-07-08T06:01:00+00:00",
+                                "Size": 30,
+                            },
+                        ]
+                    }
+                ]
+
+        class FakeClient:
+            def get_object(self, Bucket, Key):
+                raise FakeNoSuchKey(Key)
+
+            def get_paginator(self, name):
+                return FakePaginator()
+
+        manifest = self.runtime.load_latest_prepared_manifest(
+            FakeClient(),
+            storage,
+            date(2026, 7, 8),
+        )
+
+        self.assertEqual(manifest["date"], "2026-07-08")
+        self.assertEqual(manifest["source"], "listed_prepared_parts")
+        self.assertEqual(manifest["run_id"], "scheduled__2026-07-08T04:00:00_00:00")
+        self.assertEqual(
+            [part["key"] for part in manifest["parts"]],
+            [
+                "airflow/2026/bm25_features/prepared/date=2026-07-08/"
+                "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                "chunk=000001/part-000001.parquet",
+                "airflow/2026/bm25_features/prepared/date=2026-07-08/"
+                "run_id=scheduled__2026-07-08T04:00:00_00:00/"
+                "chunk=000002/part-000001.parquet",
+            ],
+        )
+
     def test_iter_raw_manifest_records_reads_jsonl_gzip_parts(self):
         storage = self.runtime.RawStorageConfig(
             conn_id="search_research_bucket",
@@ -450,6 +531,122 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         self.assertIn(
             "airflow/2026/bm25_features/prepared/date=2026-07-08/_SUCCESS",
             client.objects,
+        )
+
+    def test_write_prepared_parquet_to_iceberg_commits_once(self):
+        storage = self.runtime.RawStorageConfig(
+            conn_id="search_research_bucket",
+            bucket="bucket",
+            prefix="airflow/2026/bm25_features",
+            endpoint_url=None,
+            region_name="ru-central1",
+            access_key_id=None,
+            secret_access_key=None,
+        )
+        parts = [
+            {"key": "prepared/date=2026-07-08/run_id=run/chunk=000001/part-000001.parquet"},
+            {"key": "prepared/date=2026-07-08/run_id=run/chunk=000002/part-000001.parquet"},
+        ]
+        events = []
+
+        class FakeEqualTo:
+            def __init__(self, name, value):
+                self.name = name
+                self.value = value
+
+        class FakeArrowTable:
+            def __init__(self, name, rows):
+                self.name = name
+                self.num_rows = rows
+
+        class FakeTransaction:
+            def delete(self, delete_filter):
+                events.append(("delete", delete_filter.name, delete_filter.value))
+
+            def append(self, arrow_table):
+                events.append(("append", arrow_table.name, arrow_table.num_rows))
+
+            def commit_transaction(self):
+                events.append(("commit_transaction",))
+
+        class FakeTable:
+            def name(self):
+                return "silver.feature_platform_search_query_sku_group_es_features"
+
+            def transaction(self):
+                events.append(("transaction",))
+                return FakeTransaction()
+
+        pyiceberg_module = types.ModuleType("pyiceberg")
+        expressions_module = types.ModuleType("pyiceberg.expressions")
+        expressions_module.EqualTo = FakeEqualTo
+
+        previous_pyiceberg = sys.modules.get("pyiceberg")
+        previous_expressions = sys.modules.get("pyiceberg.expressions")
+        previous_get_s3 = self.runtime.get_s3_client
+        previous_manifest = self.runtime.load_latest_prepared_manifest
+        previous_read = self.runtime._read_prepared_parquet_part
+        previous_align = self.runtime._align_arrow_table_to_iceberg_schema
+        previous_commit = self.runtime._run_iceberg_commit
+        sys.modules["pyiceberg"] = pyiceberg_module
+        sys.modules["pyiceberg.expressions"] = expressions_module
+        self.runtime.get_s3_client = lambda _storage: object()
+        self.runtime.load_latest_prepared_manifest = lambda *_: {
+            "date": "2026-07-08",
+            "run_id": "run",
+            "parts": parts,
+        }
+
+        def fake_read(_client, _storage, part):
+            events.append(("read", part["key"]))
+            return FakeArrowTable(part["key"], 10)
+
+        self.runtime._read_prepared_parquet_part = fake_read
+        self.runtime._align_arrow_table_to_iceberg_schema = (
+            lambda _table, arrow_table, _partition_date: arrow_table
+        )
+        self.runtime._run_iceberg_commit = lambda _name, operation, **__: (
+            events.append(("commit", _name)),
+            operation(),
+        )[-1]
+        try:
+            self.runtime.write_prepared_parquet_to_iceberg(
+                table=FakeTable(),
+                partition_date=date(2026, 7, 8),
+                storage=storage,
+            )
+        finally:
+            if previous_pyiceberg is None:
+                sys.modules.pop("pyiceberg", None)
+            else:
+                sys.modules["pyiceberg"] = previous_pyiceberg
+            if previous_expressions is None:
+                sys.modules.pop("pyiceberg.expressions", None)
+            else:
+                sys.modules["pyiceberg.expressions"] = previous_expressions
+            self.runtime.get_s3_client = previous_get_s3
+            self.runtime.load_latest_prepared_manifest = previous_manifest
+            self.runtime._read_prepared_parquet_part = previous_read
+            self.runtime._align_arrow_table_to_iceberg_schema = previous_align
+            self.runtime._run_iceberg_commit = previous_commit
+
+        self.assertEqual(
+            events,
+            [
+                ("transaction",),
+                ("delete", "date", date(2026, 7, 8)),
+                ("read", parts[0]["key"]),
+                ("append", parts[0]["key"], 10),
+                ("read", parts[1]["key"]),
+                ("append", parts[1]["key"], 10),
+                (
+                    "commit",
+                    "commit prepared parquet load "
+                    "silver.feature_platform_search_query_sku_group_es_features "
+                    "date=2026-07-08",
+                ),
+                ("commit_transaction",),
+            ],
         )
 
     def test_explain_parser_keeps_root_total_score_and_field_bm25(self):
