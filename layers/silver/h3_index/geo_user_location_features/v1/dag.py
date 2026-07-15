@@ -79,7 +79,7 @@ def get_dag_default_args() -> dict:
     catchup=False,
 )
 def geo_user_location_features_dag() -> None:
-    # @task(executor_config=_executor_config())
+    @task()
     def materialize(partition_value: str) -> None:
         runtime = _load_module("runtime.py", "geo_user_location_features_runtime")
         query = _load_module("query.py", "geo_user_location_features_query")
