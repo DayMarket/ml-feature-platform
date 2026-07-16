@@ -1,11 +1,5 @@
 # Gold-фичи ATC и заказов по Query и SKU Group
 
-Страница описывает различия между версиями таблицы `sku_group_query_atc_order_features`.
-Обе версии строят дневной срез на грейне `date, query, sku_group_id` из одних и тех же silver-источников:
-
-- `iceberg.silver.feature_platform_search_sku_group_id_install_query`;
-- `iceberg.silver.feature_platform_sku_group_query_search_orders`.
-
 Обе версии используют одинаковую нормализацию `query`, фильтр `space = SEARCH_RESULTS`, основу ключей из поисковых показов, `LEFT JOIN` заказов, фильтр `query_skg_uniq_impressions_14 >= 2`, отсечение пар без ATC и заказов за 90 дней, Spark `overwritePartitions()` и те же DQ sensors silver-источников.
 
 ## Версии
@@ -48,10 +42,4 @@ query_skg_orders_frac_all_skg_orders_n = query_skg_orders_n / skg_orders_n
 
 Добавленные в `v2` smoothed/fraction-признаки используют окна `[ds - n, ds - 1]`, то есть не включают дату расчета. Базовые conversion/count/ratio-признаки, унаследованные из `v1`, оставлены с прежней логикой расчета.
 
-## Практический вывод
-
-`v1` подходит как базовая версия с уже существующим набором pairwise conversion-признаков. `v2` нужна, когда потребителю важны более устойчивые признаки для редких пар `query, sku_group_id`: она добавляет priors на уровне `sku_group_id` и доли пары внутри всех ATC/заказов sku group.
-
-Переход с `v1` на `v2` не является schema evolution существующей таблицы: у `v2` отдельные DAG, Spark application, table key и физическая Iceberg-таблица. Потребитель должен явно переключиться на таблицу `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features_v2`.
-
-На момент описания текущий ranking upload `fs_search_query_skg_v3` в `upload/features_service_upload/v1/config.yaml` читает legacy-таблицу `feature_platform_query_skg_pairwise_features_legacy`, а не `v1` или `v2` этой сущности.
+DAG v1 отключен, данные в таблицу не собираются
