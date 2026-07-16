@@ -4,5 +4,4 @@
 
 - [`query_skg_aggregated_conversions_legacy`](query_skg_aggregated_conversions_legacy/v1/README.md) — legacy-агрегации конверсий;
 - [`query_skg_pairwise_features_legacy`](query_skg_pairwise_features_legacy/v1/README.md) — legacy pairwise-вектор для ranking;
-- [`sku_group_query_atc_order_features`](sku_group_query_atc_order_features/v1/README.md) — признаки ATC и заказов;
-- [`sku_group_query_atc_order_features v2`](sku_group_query_atc_order_features/v2/README.md) — расширенные признаки ATC и заказов.
+- [`sku_group_query_atc_order_features`](sku_group_query_atc_order_features/README.md) — признаки ATC и заказов, различия `v1` и `v2`.
