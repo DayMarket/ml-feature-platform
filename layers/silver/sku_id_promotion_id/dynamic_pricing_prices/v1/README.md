@@ -23,7 +23,7 @@
 
 Список `promotion_id` хранится в `config.yaml` (`source.promotion_ids`):
 
-- `model_3008_sku_ext_no_filter_budget_34_with_cb_v2_sku_card_0526`;
+- `model_3008_sku_ext_no_filter_budget_34_cm2_ladder_with_cb_v2_sku_card_cm2_ladder_0711`;
 - `model_3008_sku_ext_internal_matching_soft_budget_29_with_cb_v2_sku_card_internal_matching_soft_0526`;
 - `model_3008_sku_ext_internal_matching_hard_budget_29_with_cb_v2_sku_card_internal_matching_hard_0526`.
 
