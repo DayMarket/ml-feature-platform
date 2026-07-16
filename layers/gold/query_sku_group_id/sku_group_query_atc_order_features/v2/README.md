@@ -1,6 +1,6 @@
 # Gold-фичи ATC и заказов по Query и SKU Group
 
-DAG id: `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features`
+DAG id: `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features.v2`
 
 Пайплайн строит дневные признаки конверсий и отношений окон на уровне пары `query` и `sku_group_id`.
 
