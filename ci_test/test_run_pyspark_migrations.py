@@ -39,16 +39,36 @@ class FakeFrame:
         self.schema = type("Schema", (), {"fields": fields})()
 
 
+class FakePropertiesFrame:
+    def __init__(self, table_properties: dict[str, str]):
+        self.table_properties = table_properties
+
+    def collect(self) -> list[tuple[str, str]]:
+        return list(self.table_properties.items())
+
+
 class FakeSpark:
-    def __init__(self, fields: list[FakeField]):
+    def __init__(
+        self,
+        fields: list[FakeField],
+        table_properties: dict[str, str] | None = None,
+    ):
         self.fields = fields
+        self.table_properties = table_properties or {}
         self.sql_calls: list[str] = []
 
     def table(self, _table_name: str) -> FakeFrame:
         return FakeFrame(self.fields)
 
-    def sql(self, statement: str) -> None:
+    def sql(self, statement: str) -> FakePropertiesFrame | None:
         self.sql_calls.append(statement)
+        if statement.startswith("SHOW TBLPROPERTIES "):
+            return FakePropertiesFrame(self.table_properties)
+        property_statement = "SET TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')"
+        if property_statement in statement:
+            self.table_properties["engine.hive.lock-enabled"] = "false"
+            return None
+        return None
 
 
 def main() -> int:
@@ -79,6 +99,27 @@ def main() -> int:
         assert "disable Hive locks" in str(error)
     else:
         raise AssertionError("CREATE TABLE without disabled Hive locks passed validation")
+
+    lock_statement = (
+        "ALTER TABLE iceberg.silver.example "
+        "SET TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')"
+    )
+
+    locked_spark = FakeSpark([], {"engine.hive.lock-enabled": "false"})
+    migrations.run_statement(locked_spark, lock_statement)
+    assert locked_spark.sql_calls == [
+        "SHOW TBLPROPERTIES iceberg.silver.example",
+    ]
+
+    missing_property_spark = FakeSpark([])
+    migrations.run_statement(missing_property_spark, lock_statement)
+    assert missing_property_spark.sql_calls == [
+        "SHOW TBLPROPERTIES iceberg.silver.example",
+        lock_statement,
+    ]
+    assert missing_property_spark.table_properties == {
+        "engine.hive.lock-enabled": "false",
+    }
 
     statement = (
         "ALTER TABLE iceberg.silver.example "
