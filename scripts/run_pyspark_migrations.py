@@ -8,6 +8,10 @@ from pyspark.sql import SparkSession
 
 
 COMMENT_LINE_PATTERN = re.compile(r"^\s*--")
+LOCK_DISABLED_TABLE_PROPERTY_PATTERN = re.compile(
+    r"'engine\.hive\.lock-enabled'\s*=\s*'false'",
+    re.IGNORECASE,
+)
 ADD_COLUMN_IF_NOT_EXISTS_PATTERN = re.compile(
     r"^\s*ALTER\s+TABLE\s+(?P<table>\S+)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+"
     r"(?P<column>`?[\w]+`?)\s+(?P<definition>.+?)\s*$",
@@ -96,12 +100,15 @@ def split_sql(sql: str) -> list[str]:
 
 def validate_idempotent_statement(statement: str, migration_path: Path) -> None:
     normalized = " ".join(statement.split()).upper()
-    if normalized.startswith("CREATE TABLE") and not normalized.startswith(
-        "CREATE TABLE IF NOT EXISTS"
-    ):
-        raise RuntimeError(
-            f"{migration_path}: CREATE TABLE migration must use IF NOT EXISTS"
-        )
+    if normalized.startswith("CREATE TABLE"):
+        if not normalized.startswith("CREATE TABLE IF NOT EXISTS"):
+            raise RuntimeError(
+                f"{migration_path}: CREATE TABLE migration must use IF NOT EXISTS"
+            )
+        if not LOCK_DISABLED_TABLE_PROPERTY_PATTERN.search(statement):
+            raise RuntimeError(
+                f"{migration_path}: CREATE TABLE migration must disable Hive locks"
+            )
     if normalized.startswith("ALTER TABLE") and " ADD COLUMN " in normalized:
         if " ADD COLUMN IF NOT EXISTS " not in normalized:
             raise RuntimeError(

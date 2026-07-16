@@ -95,3 +95,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Gold-таблица совместимых поисковых conversion признаков на уровне sku_group_id'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

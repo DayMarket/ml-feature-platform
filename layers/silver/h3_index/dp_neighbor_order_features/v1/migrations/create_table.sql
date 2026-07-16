@@ -62,3 +62,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Silver: соседские заказные/GMV-агрегаты ПВЗ и дистанции по гексагонам H3 (расширенная сетка колец/окон)'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

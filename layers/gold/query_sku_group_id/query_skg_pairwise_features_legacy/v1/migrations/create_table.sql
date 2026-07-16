@@ -80,3 +80,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Legacy gold pairwise features query/SKU group с 30-дневным carry-forward'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

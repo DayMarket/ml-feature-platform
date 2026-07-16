@@ -67,3 +67,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Gold-фичи ATC и заказных конверсий по query и sku_group_id'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

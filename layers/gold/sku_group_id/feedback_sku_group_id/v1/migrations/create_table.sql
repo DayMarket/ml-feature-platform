@@ -22,3 +22,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Gold-фичи опубликованных отзывов и рейтинга товара на уровне sku_group_id за все время на дату расчета'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

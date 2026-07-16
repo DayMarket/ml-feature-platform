@@ -15,3 +15,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Gold агрегаты dynamic-pricing цен и скидок на уровне sku_group_id/promotion_id'
 PARTITIONED BY (days(calculated_at))
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

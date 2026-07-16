@@ -41,3 +41,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Silver: активность пользователей (просмотры/заказы) по кольцам H3 (расширенная сетка)'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

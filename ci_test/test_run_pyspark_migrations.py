@@ -53,6 +53,33 @@ class FakeSpark:
 
 def main() -> int:
     migrations = load_migration_module()
+    migrations.validate_idempotent_statement(
+        """
+        CREATE TABLE IF NOT EXISTS iceberg.silver.example (
+            date DATE
+        )
+        USING iceberg
+        PARTITIONED BY (date)
+        TBLPROPERTIES ('engine.hive.lock-enabled'='false')
+        """,
+        Path("create_table.sql"),
+    )
+    try:
+        migrations.validate_idempotent_statement(
+            """
+            CREATE TABLE IF NOT EXISTS iceberg.silver.example (
+                date DATE
+            )
+            USING iceberg
+            PARTITIONED BY (date)
+            """,
+            Path("create_table.sql"),
+        )
+    except RuntimeError as error:
+        assert "disable Hive locks" in str(error)
+    else:
+        raise AssertionError("CREATE TABLE without disabled Hive locks passed validation")
+
     statement = (
         "ALTER TABLE iceberg.silver.example "
         "RENAME COLUMN IF EXISTS search_queries TO search_queries_with_installs "

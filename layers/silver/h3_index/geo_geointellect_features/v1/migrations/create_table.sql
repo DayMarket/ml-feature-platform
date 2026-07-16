@@ -27,3 +27,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Silver: демография и пешеходный трафик (geointellect) по кольцам и родительским уровням H3'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')
