@@ -120,6 +120,7 @@ spec:
       name: git
   executor:
     cores: <executor_cores>
+    coreRequest: "<executor_core_request>"
     instances: <executor_instances>
     memory: <executor_memory>
     serviceAccount: spark-operator-spark

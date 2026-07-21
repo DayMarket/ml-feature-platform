@@ -143,6 +143,9 @@ def get_deployment(folder_name: str, deployment_name: str) -> str:
         "<driver_cores>": str(task_resources["driver_cores"]),
         "<driver_memory>": str(task_resources["driver_memory"]),
         "<executor_cores>": str(task_resources["executor_cores"]),
+        "<executor_core_request>": str(
+            task_resources.get("executor_core_request", task_resources["executor_cores"])
+        ),
         "<executor_instances>": str(task_resources["executor_instances"]),
         "<executor_memory>": str(task_resources["executor_memory"]),
     }
