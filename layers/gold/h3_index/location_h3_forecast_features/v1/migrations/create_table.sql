@@ -183,3 +183,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Gold: широкая h3-витрина всех признаков location — сырые silver-колонки (feature store) + стабильный контракт модели location forecast (переименования/производные/дефолты)'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

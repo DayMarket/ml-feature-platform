@@ -11,4 +11,5 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Legacy daily conversions по query, platform и sku_group_id для восстановления fs_search_query_skg_v3'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')
 

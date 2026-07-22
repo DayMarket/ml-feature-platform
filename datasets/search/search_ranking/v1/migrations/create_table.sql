@@ -20,3 +20,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Training dataset v1 для search ranking на уровне поискового показа'
 PARTITIONED BY (collection_date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

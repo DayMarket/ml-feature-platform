@@ -8,3 +8,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Silver: версионированные DSSM scores на уровне query и sku_group_id из ranking analytics logs'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

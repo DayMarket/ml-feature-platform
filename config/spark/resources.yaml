@@ -7,17 +7,25 @@
       "driver_cores": "1",
       "driver_memory": "4g",
       "executor_cores": "4",
+      "executor_core_request": "3",
       "executor_instances": "3",
-      "executor_memory": "8g",
-      "maxExecutors": "3"
+      "executor_memory": "8g"
+    },
+    "medium": {
+      "driver_cores": "1",
+      "driver_memory": "8g",
+      "executor_cores": "6",
+      "executor_core_request": "4",
+      "executor_instances": "4",
+      "executor_memory": "12g"
     },
     "large": {
       "driver_cores": "1",
       "driver_memory": "10g",
       "executor_cores": "8",
+      "executor_core_request": "6",
       "executor_instances": "5",
-      "executor_memory": "16g",
-      "maxExecutors": "5"
+      "executor_memory": "16g"
     }
   }
 }

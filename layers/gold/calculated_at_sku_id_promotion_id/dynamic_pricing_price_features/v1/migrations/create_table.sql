@@ -13,3 +13,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Gold snapshot финальных цен SKU с учетом динамического ценообразования'
 PARTITIONED BY (days(calculated_at))
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

@@ -11,3 +11,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Предагрегированная статистика поиска и категорий на уровне install_id - query/category_id - sku_group_id'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

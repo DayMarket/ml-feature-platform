@@ -8,6 +8,16 @@ from pyspark.sql import SparkSession
 
 
 COMMENT_LINE_PATTERN = re.compile(r"^\s*--")
+LOCK_DISABLED_TABLE_PROPERTY_PATTERN = re.compile(
+    r"'engine\.hive\.lock-enabled'\s*=\s*'false'",
+    re.IGNORECASE,
+)
+LOCK_DISABLED_ALTER_PATTERN = re.compile(
+    r"^\s*ALTER\s+TABLE\s+(?P<table>\S+)\s+SET\s+TBLPROPERTIES\s*\(\s*"
+    r"'engine\.hive\.lock-enabled'\s*=\s*'false'\s*"
+    r"\)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
 ADD_COLUMN_IF_NOT_EXISTS_PATTERN = re.compile(
     r"^\s*ALTER\s+TABLE\s+(?P<table>\S+)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+"
     r"(?P<column>`?[\w]+`?)\s+(?P<definition>.+?)\s*$",
@@ -96,12 +106,15 @@ def split_sql(sql: str) -> list[str]:
 
 def validate_idempotent_statement(statement: str, migration_path: Path) -> None:
     normalized = " ".join(statement.split()).upper()
-    if normalized.startswith("CREATE TABLE") and not normalized.startswith(
-        "CREATE TABLE IF NOT EXISTS"
-    ):
-        raise RuntimeError(
-            f"{migration_path}: CREATE TABLE migration must use IF NOT EXISTS"
-        )
+    if normalized.startswith("CREATE TABLE"):
+        if not normalized.startswith("CREATE TABLE IF NOT EXISTS"):
+            raise RuntimeError(
+                f"{migration_path}: CREATE TABLE migration must use IF NOT EXISTS"
+            )
+        if not LOCK_DISABLED_TABLE_PROPERTY_PATTERN.search(statement):
+            raise RuntimeError(
+                f"{migration_path}: CREATE TABLE migration must disable Hive locks"
+            )
     if normalized.startswith("ALTER TABLE") and " ADD COLUMN " in normalized:
         if " ADD COLUMN IF NOT EXISTS " not in normalized:
             raise RuntimeError(
@@ -226,7 +239,35 @@ def get_existing_column_types(spark: SparkSession, table_name: str) -> dict[str,
     }
 
 
+def get_row_field(row: Any, field_name: str, index: int) -> Any:
+    try:
+        return row[field_name]
+    except (KeyError, TypeError, ValueError):
+        pass
+    if hasattr(row, field_name):
+        return getattr(row, field_name)
+    return row[index]
+
+
+def get_table_property(spark: SparkSession, table_name: str, property_name: str) -> str | None:
+    rows = spark.sql(f"SHOW TBLPROPERTIES {table_name}").collect()
+    for row in rows:
+        key = str(get_row_field(row, "key", 0))
+        if key == property_name:
+            return str(get_row_field(row, "value", 1))
+    return None
+
+
 def run_statement(spark: SparkSession, statement: str) -> None:
+    lock_disabled_match = LOCK_DISABLED_ALTER_PATTERN.match(statement)
+    if lock_disabled_match:
+        table_name = lock_disabled_match.group("table")
+        property_name = "engine.hive.lock-enabled"
+        property_value = get_table_property(spark, table_name, property_name)
+        if property_value is not None and property_value.lower() == "false":
+            print(f"Skip existing table property {table_name}.{property_name}=false")
+            return
+
     rename_column_match = RENAME_COLUMN_IF_EXISTS_PATTERN.match(statement)
     if rename_column_match:
         table_name = rename_column_match.group("table")

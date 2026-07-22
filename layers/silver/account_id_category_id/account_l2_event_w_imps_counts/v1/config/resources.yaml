@@ -5,7 +5,7 @@
   "driver_cores": "1",
   "driver_memory": "10g",
   "executor_cores": "8",
+  "executor_core_request": "6",
   "executor_instances": "5",
-  "executor_memory": "16g",
-  "maxExecutors": "5"
+  "executor_memory": "16g"
 }

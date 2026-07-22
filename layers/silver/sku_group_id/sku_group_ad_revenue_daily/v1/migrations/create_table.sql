@@ -8,3 +8,4 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Дневной silver pre-aggregate рекламной выручки на уровне sku_group_id из adv_funnel_daily (весь рекламный CPC-funnel, без разреза по площадке)'
 PARTITIONED BY (date)
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

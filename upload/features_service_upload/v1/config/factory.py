@@ -274,6 +274,9 @@ def get_deployment(
         "<driver_cores>": str(resources["driver_cores"]),
         "<driver_memory>": str(resources["driver_memory"]),
         "<executor_cores>": str(resources["executor_cores"]),
+        "<executor_core_request>": str(
+            resources.get("executor_core_request", resources["executor_cores"])
+        ),
         "<executor_instances>": str(resources["executor_instances"]),
         "<executor_memory>": str(resources["executor_memory"]),
         "<s3_secret_key>": str(s3_connection["aws_secret_access_key"]),
