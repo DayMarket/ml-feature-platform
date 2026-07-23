@@ -34,50 +34,50 @@ class DynamicPricingDefaultPromotionTest(unittest.TestCase):
     def setUpClass(cls):
         cls.query = load_query()
 
-    def test_output_promotion_ids_appends_default_once(self):
-        self.assertEqual(
-            self.query.output_promotion_ids(["model_a"]),
-            ["model_a", self.query.DEFAULT_PROMOTION_ID],
-        )
-        self.assertEqual(
-            self.query.output_promotion_ids(["model_a", "0"]),
-            ["model_a", "0"],
-        )
-
-    def test_gold_query_keeps_default_promotion_out_of_discount_sources(self):
-        sql = self.query.build_gold_query(
-            calculated_at=datetime(2026, 7, 1, 3, 0, 0),
-            promotion_ids=[self.query.DEFAULT_PROMOTION_ID],
+    def test_promotion_discovery_filters_prefix_in_both_sources(self):
+        sql = self.query.build_promotion_ids_query(
             silver_table='"dwh-iceberg".silver.feature_platform_dynamic_pricing_daily_prices',
             history_days=15,
         )
 
-        self.assertIn("('0')", sql)
-        self.assertIn("CROSS JOIN promotion_filter pf", sql)
-        self.assertIn("WHERE promotion_id <> '0'", sql)
-        self.assertNotIn(
-            "promotion_id IN (SELECT promotion_id FROM promotion_filter)",
-            sql,
-        )
         self.assertEqual(
-            sql.count(
-                "promotion_id IN (SELECT promotion_id FROM source_promotion_filter)"
-            ),
+            sql.count("starts_with(promotion_id, 'dyno_pricing_')"),
+            2,
+        )
+        self.assertIn("SELECT DISTINCT promotion_id", sql)
+
+    def test_gold_query_keeps_default_promotion_out_of_discount_sources(self):
+        sql = self.query.build_gold_query(
+            calculated_at=datetime(2026, 7, 1, 3, 0, 0),
+            promotion_id=self.query.DEFAULT_PROMOTION_ID,
+            silver_table='"dwh-iceberg".silver.feature_platform_dynamic_pricing_daily_prices',
+            history_days=15,
+        )
+
+        self.assertIn("'0' AS promotion_id", sql)
+        self.assertEqual(sql.count("AND FALSE"), 2)
+        self.assertEqual(
+            sql.count("starts_with(promotion_id, 'dyno_pricing_')"),
             2,
         )
 
-    def test_today_discounts_query_uses_source_promotion_filter(self):
+    def test_today_discounts_query_uses_prefix_filter(self):
         sql = self.query.build_today_discounts_query(
             calculated_at=datetime(2026, 7, 1, 3, 0, 0),
-            promotion_ids=[self.query.DEFAULT_PROMOTION_ID],
+            promotion_id="dyno_pricing_model_a",
         )
 
-        self.assertIn("('0')", sql)
-        self.assertIn("WHERE promotion_id <> '0'", sql)
-        self.assertIn(
-            "promotion_id IN (SELECT promotion_id FROM source_promotion_filter)",
-            sql,
-        )
+        self.assertIn("promotion_id = 'dyno_pricing_model_a'", sql)
+        self.assertIn("starts_with(promotion_id, 'dyno_pricing_')", sql)
+
+    def test_rejects_non_dynamic_pricing_model(self):
+        with self.assertRaisesRegex(ValueError, "must start"):
+            self.query.build_gold_query(
+                calculated_at=datetime(2026, 7, 1, 3, 0, 0),
+                promotion_id="model_a",
+                silver_table='"dwh-iceberg".silver.feature_platform_dynamic_pricing_daily_prices',
+                history_days=15,
+            )
 
 
 if __name__ == "__main__":

@@ -143,17 +143,23 @@ def dynamic_pricing_price_features_dag() -> None:
 
         calculated_at = runtime.parse_snapshot_timestamp(calculated_at_value)
         history_days = int(output_config["source"]["history_days"])
-        promotion_ids = query.output_promotion_ids(
-            output_config["source"]["promotion_ids"]
-        )
         silver_table = runtime.trino_table_name(silver_ref)
+        promotion_frame = runtime.query_trino(
+            output_config["source"]["trino_conn_id"],
+            query.build_promotion_ids_query(
+                silver_table=silver_table,
+                history_days=history_days,
+            ),
+        )
+        promotion_ids = promotion_frame["promotion_id"].tolist()
+        promotion_ids.append(query.DEFAULT_PROMOTION_ID)
 
         for promotion_id in promotion_ids:
             frame = runtime.query_trino(
                 output_config["source"]["trino_conn_id"],
                 query.build_gold_query(
                     calculated_at=calculated_at,
-                    promotion_ids=[promotion_id],
+                    promotion_id=promotion_id,
                     silver_table=silver_table,
                     history_days=history_days,
                 ),
