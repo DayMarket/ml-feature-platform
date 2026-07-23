@@ -5,7 +5,7 @@
   "dag": {
     "id": "feature_platform_ranking_features_upload_dag",
     "schedule": "0 4 * * *",
-    "start_date": "2026-06-19T00:00:00+00:00",
+    "start_date": "2026-07-23T00:00:00+00:00",
     "team": "search"
   },
   "alerts": {
@@ -22,76 +22,174 @@
       "name": "search_ranking_main",
       "feature_groups": [
         {
-          "name": "fs_search_skg_rating_v1",
+          "name": "fs_search_query_skg_atc_order_features_v2",
           "features": [
-            "product_rating"
-          ]
-        },
-        {
-          "name": "fs_search_skg_price_ratios_v1",
-          "features": [
-            "ratio_crnt_min_to_avg_min_full_price_14",
-            "ratio_crnt_min_to_avg_min_full_price_30"
-          ]
-        },
-        {
-          "name": "fs_search_skg_conversion_features_v1",
-          "features": [
-            "smooth_conv_imp2order_3",
-            "smooth_conv_imp2order_7",
-            "smooth_conv_imp2order_14",
-            "imp2order_3_to_1",
-            "imp2order_21_to_14",
-            "imp2order_30_to_21"
-          ]
-        },
-        {
-          "name": "fs_search_skg_price_index_status_v1",
-          "features": [
-            "price_index_status"
-          ]
-        },
-        {
-          "name": "fs_search_skg_price_features_v1",
-          "features": [
-            "sell_price_eod",
-            "abs_discount",
-            "fraq_discount",
-            "category_mean_sell_price"
-          ]
-        },
-        {
-          "name": "fs_search_query_skg_v3",
-          "features": [
+            "query_skg_smooth_conv_imp2atc_1",
+            "query_skg_smooth_conv_imp2order_1",
+            "query_skg_atc_frac_all_skg_atc_1",
+            "query_skg_orders_frac_all_skg_orders_1",
+            "query_skg_smooth_conv_imp2atc_3",
+            "query_skg_smooth_conv_imp2order_3",
+            "query_skg_atc_frac_all_skg_atc_3",
+            "query_skg_orders_frac_all_skg_orders_3",
             "query_skg_uniq_orders_7",
             "query_skg_conv_imp2atc_7",
+            "query_skg_smooth_conv_imp2atc_7",
+            "query_skg_smooth_conv_imp2order_7",
+            "query_skg_atc_frac_all_skg_atc_7",
+            "query_skg_orders_frac_all_skg_orders_7",
             "query_skg_conv_imp2order_7",
             "query_skg_uniq_orders_14",
             "query_skg_conv_imp2atc_14",
+            "query_skg_smooth_conv_imp2atc_14",
+            "query_skg_smooth_conv_imp2order_14",
+            "query_skg_atc_frac_all_skg_atc_14",
+            "query_skg_orders_frac_all_skg_orders_14",
             "query_skg_conv_imp2order_14",
             "query_skg_uniq_orders_21",
             "query_skg_conv_imp2atc_21",
+            "query_skg_smooth_conv_imp2atc_21",
+            "query_skg_smooth_conv_imp2order_21",
+            "query_skg_atc_frac_all_skg_atc_21",
+            "query_skg_orders_frac_all_skg_orders_21",
             "query_skg_conv_imp2order_21",
             "query_skg_uniq_orders_30",
             "query_skg_conv_imp2atc_30",
+            "query_skg_smooth_conv_imp2atc_30",
+            "query_skg_smooth_conv_imp2order_30",
+            "query_skg_atc_frac_all_skg_atc_30",
+            "query_skg_orders_frac_all_skg_orders_30",
             "query_skg_conv_imp2order_30",
             "query_skg_imp2atc_3_to_1",
             "query_skg_imp2atc_7_to_3",
             "query_skg_imp2atc_14_to_7",
             "query_skg_imp2atc_30_to_14",
-            "query_skg_imp2order_30_to_14",
-            "query_skg_uniq_atcs_60",
-            "query_skg_uniq_orders_60",
-            "query_skg_conv_imp2atc_60",
-            "query_skg_conv_imp2order_60",
-            "query_skg_uniq_atcs_90",
-            "query_skg_uniq_orders_90",
-            "query_skg_conv_imp2atc_90",
-            "query_skg_conv_imp2order_90",
-            "query_skg_imp2atc_60_to_30",
-            "query_skg_imp2order_60_to_30",
-            "query_skg_imp2atc_90_to_60",
-            "query_skg_imp2order_90_to_60"
+            "query_skg_imp2order_30_to_14"
+          ]
+        },
+        {
+          "name": "fs_search_skg_conversion_features_v2",
+          "features": [
+            "skg_return_rate_7",
+            "category_orders_30",
+            "skg_return_rate_30",
+            "conv_imp2order_7",
+            "skg_conv_atc2order_30",
+            "skg_incr_rate_orders_1_to_30",
+            "category_atc_30",
+            "category_atc_14",
+            "category_atc_7",
+            "skg_incr_rate_orders_1_to_14",
+            "category_skg_atc_frac_category_atc_3",
+            "category_skg_orders_frac_category_orders_21",
+            "skg_conv_atc2order_21",
+            "category_orders_7",
+            "imp2order_3_to_1",
+            "skg_incr_rate_atc_1_to_14",
+            "skg_conv_atc2order_14",
+            "skg_incr_rate_atc_1_to_3",
+            "skg_return_rate_1",
+            "skg_conv_atc2order_7",
+            "category_skg_orders_frac_category_orders_7",
+            "category_skg_atc_frac_category_atc_21",
+            "skg_return_rate_21",
+            "category_skg_orders_frac_category_orders_30",
+            "category_skg_atc_30",
+            "skg_conv_atc2order_3",
+            "conv_imp2order_14",
+            "category_skg_atc_7",
+            "skg_conv_atc2order_1",
+            "category_skg_atc_frac_category_atc_14",
+            "category_skg_orders_21",
+            "skg_incr_rate_orders_1_to_7",
+            "skg_days_since_last_impression",
+            "category_atc_1",
+            "category_skg_atc_frac_category_atc_1",
+            "skg_return_rate_3",
+            "skg_days_since_last_atc",
+            "conv_imp2order_3",
+            "category_skg_orders_1",
+            "category_orders_21",
+            "smooth_conv_imp2order_3",
+            "smooth_conv_imp2order_7",
+            "imp2order_30_to_21",
+            "category_atc_21",
+            "category_skg_atc_3",
+            "skg_return_rate_14",
+            "category_orders_14",
+            "category_skg_atc_frac_category_atc_30",
+            "category_skg_orders_frac_category_orders_14",
+            "category_skg_atc_14",
+            "skg_incr_rate_orders_1_to_3",
+            "category_orders_3",
+            "category_skg_atc_1",
+            "category_skg_orders_frac_category_orders_3",
+            "skg_incr_rate_atc_1_to_30",
+            "category_skg_orders_30",
+            "category_atc_3",
+            "category_orders_1",
+            "category_skg_orders_frac_category_orders_1",
+            "category_skg_atc_frac_category_atc_7",
+            "category_skg_orders_14",
+            "smooth_conv_imp2order_14",
+            "skg_incr_rate_atc_1_to_7",
+            "skg_incr_rate_atc_1_to_21",
+            "category_skg_orders_7",
+            "category_skg_atc_21",
+            "skg_incr_rate_orders_1_to_21",
+            "category_skg_orders_3",
+            "imp2order_21_to_14"
+          ]
+        },
+        {
+          "name": "fs_search_skg_stock_features_v1",
+          "features": [
+            "skg_total_stock_30",
+            "skg_total_stock_7",
+            "skg_total_stock_14",
+            "skg_total_stock_3",
+            "skg_total_stock_1",
+            "skg_total_stock_21"
+          ]
+        },
+        {
+          "name": "fs_search_skg_price_features_v1",
+          "features": [
+            "abs_discount",
+            "ratio_crnt_min_to_avg_min_full_price_30",
+            "category_mean_sell_price",
+            "ratio_crnt_min_to_avg_min_full_price_14",
+            "fraq_discount",
+            "sell_price_eod"
+          ]
+        },
+        {
+          "name": "fs_search_query_atc_features_v1",
+          "features": [
+            "query_uniq_impressions_1",
+            "query_uniq_atcs_1",
+            "query_orders_1",
+            "query_uniq_impressions_3",
+            "query_uniq_atcs_3",
+            "query_orders_3",
+            "query_uniq_impressions_7",
+            "query_uniq_atcs_7",
+            "query_orders_7",
+            "query_uniq_impressions_14",
+            "query_uniq_atcs_14",
+            "query_orders_14",
+            "query_uniq_impressions_21",
+            "query_uniq_atcs_21",
+            "query_orders_21",
+            "query_uniq_impressions_30",
+            "query_uniq_atcs_30",
+            "query_orders_30"
+          ]
+        },
+        {
+          "name": "fs_search_skg_rating_v1",
+          "features": [
+            "product_rating"
           ]
         }
       ]
@@ -101,51 +199,147 @@
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_sku_group_feedback_base_stats",
+        "table": "feature_platform_search_sku_group_id_query_atc_order_features_v2",
         "dq_execution_delta_minutes": 180
       },
-      "name": "fs_search_skg_rating_v1",
+      "name": "fs_search_query_skg_atc_order_features_v2",
       "features": [
-        "product_rating"
+        "query_skg_smooth_conv_imp2atc_1",
+        "query_skg_smooth_conv_imp2order_1",
+        "query_skg_atc_frac_all_skg_atc_1",
+        "query_skg_orders_frac_all_skg_orders_1",
+        "query_skg_smooth_conv_imp2atc_3",
+        "query_skg_smooth_conv_imp2order_3",
+        "query_skg_atc_frac_all_skg_atc_3",
+        "query_skg_orders_frac_all_skg_orders_3",
+        "query_skg_uniq_orders_7",
+        "query_skg_conv_imp2atc_7",
+        "query_skg_smooth_conv_imp2atc_7",
+        "query_skg_smooth_conv_imp2order_7",
+        "query_skg_atc_frac_all_skg_atc_7",
+        "query_skg_orders_frac_all_skg_orders_7",
+        "query_skg_conv_imp2order_7",
+        "query_skg_uniq_orders_14",
+        "query_skg_conv_imp2atc_14",
+        "query_skg_smooth_conv_imp2atc_14",
+        "query_skg_smooth_conv_imp2order_14",
+        "query_skg_atc_frac_all_skg_atc_14",
+        "query_skg_orders_frac_all_skg_orders_14",
+        "query_skg_conv_imp2order_14",
+        "query_skg_uniq_orders_21",
+        "query_skg_conv_imp2atc_21",
+        "query_skg_smooth_conv_imp2atc_21",
+        "query_skg_smooth_conv_imp2order_21",
+        "query_skg_atc_frac_all_skg_atc_21",
+        "query_skg_orders_frac_all_skg_orders_21",
+        "query_skg_conv_imp2order_21",
+        "query_skg_uniq_orders_30",
+        "query_skg_conv_imp2atc_30",
+        "query_skg_smooth_conv_imp2atc_30",
+        "query_skg_smooth_conv_imp2order_30",
+        "query_skg_atc_frac_all_skg_atc_30",
+        "query_skg_orders_frac_all_skg_orders_30",
+        "query_skg_conv_imp2order_30",
+        "query_skg_imp2atc_3_to_1",
+        "query_skg_imp2atc_7_to_3",
+        "query_skg_imp2atc_14_to_7",
+        "query_skg_imp2atc_30_to_14",
+        "query_skg_imp2order_30_to_14"
       ]
     },
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_sku_group_price_features",
+        "table": "feature_platform_sku_group_search_conversion_features_v2",
         "dq_execution_delta_minutes": 180
       },
-      "name": "fs_search_skg_price_ratios_v1",
+      "name": "fs_search_skg_conversion_features_v2",
       "features": [
-        "ratio_crnt_min_to_avg_min_full_price_14",
-        "ratio_crnt_min_to_avg_min_full_price_30"
-      ]
-    },
-    {
-      "source": {
-        "schema": "gold",
-        "table": "feature_platform_sku_group_search_conversion_features",
-        "dq_execution_delta_minutes": 180
-      },
-      "name": "fs_search_skg_conversion_features_v1",
-      "features": [
+        "skg_return_rate_7",
+        "category_orders_30",
+        "skg_return_rate_30",
+        "conv_imp2order_7",
+        "skg_conv_atc2order_30",
+        "skg_incr_rate_orders_1_to_30",
+        "category_atc_30",
+        "category_atc_14",
+        "category_atc_7",
+        "skg_incr_rate_orders_1_to_14",
+        "category_skg_atc_frac_category_atc_3",
+        "category_skg_orders_frac_category_orders_21",
+        "skg_conv_atc2order_21",
+        "category_orders_7",
+        "imp2order_3_to_1",
+        "skg_incr_rate_atc_1_to_14",
+        "skg_conv_atc2order_14",
+        "skg_incr_rate_atc_1_to_3",
+        "skg_return_rate_1",
+        "skg_conv_atc2order_7",
+        "category_skg_orders_frac_category_orders_7",
+        "category_skg_atc_frac_category_atc_21",
+        "skg_return_rate_21",
+        "category_skg_orders_frac_category_orders_30",
+        "category_skg_atc_30",
+        "skg_conv_atc2order_3",
+        "conv_imp2order_14",
+        "category_skg_atc_7",
+        "skg_conv_atc2order_1",
+        "category_skg_atc_frac_category_atc_14",
+        "category_skg_orders_21",
+        "skg_incr_rate_orders_1_to_7",
+        "skg_days_since_last_impression",
+        "category_atc_1",
+        "category_skg_atc_frac_category_atc_1",
+        "skg_return_rate_3",
+        "skg_days_since_last_atc",
+        "conv_imp2order_3",
+        "category_skg_orders_1",
+        "category_orders_21",
         "smooth_conv_imp2order_3",
         "smooth_conv_imp2order_7",
+        "imp2order_30_to_21",
+        "category_atc_21",
+        "category_skg_atc_3",
+        "skg_return_rate_14",
+        "category_orders_14",
+        "category_skg_atc_frac_category_atc_30",
+        "category_skg_orders_frac_category_orders_14",
+        "category_skg_atc_14",
+        "skg_incr_rate_orders_1_to_3",
+        "category_orders_3",
+        "category_skg_atc_1",
+        "category_skg_orders_frac_category_orders_3",
+        "skg_incr_rate_atc_1_to_30",
+        "category_skg_orders_30",
+        "category_atc_3",
+        "category_orders_1",
+        "category_skg_orders_frac_category_orders_1",
+        "category_skg_atc_frac_category_atc_7",
+        "category_skg_orders_14",
         "smooth_conv_imp2order_14",
-        "imp2order_3_to_1",
-        "imp2order_21_to_14",
-        "imp2order_30_to_21"
+        "skg_incr_rate_atc_1_to_7",
+        "skg_incr_rate_atc_1_to_21",
+        "category_skg_orders_7",
+        "category_skg_atc_21",
+        "skg_incr_rate_orders_1_to_21",
+        "category_skg_orders_3",
+        "imp2order_21_to_14"
       ]
     },
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_sku_group_price_index_status",
+        "table": "feature_platform_sku_group_stock_features",
         "dq_execution_delta_minutes": 180
       },
-      "name": "fs_search_skg_price_index_status_v1",
+      "name": "fs_search_skg_stock_features_v1",
       "features": [
-        "price_index_status"
+        "skg_total_stock_30",
+        "skg_total_stock_7",
+        "skg_total_stock_14",
+        "skg_total_stock_3",
+        "skg_total_stock_1",
+        "skg_total_stock_21"
       ]
     },
     {
@@ -156,49 +350,51 @@
       },
       "name": "fs_search_skg_price_features_v1",
       "features": [
-        "sell_price_eod",
         "abs_discount",
+        "ratio_crnt_min_to_avg_min_full_price_30",
+        "category_mean_sell_price",
+        "ratio_crnt_min_to_avg_min_full_price_14",
         "fraq_discount",
-        "category_mean_sell_price"
+        "sell_price_eod"
       ]
     },
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_query_skg_pairwise_features_legacy",
+        "table": "feature_platform_search_query_atc_features",
         "dq_execution_delta_minutes": 180
       },
-      "name": "fs_search_query_skg_v3",
+      "name": "fs_search_query_atc_features_v1",
       "features": [
-        "query_skg_uniq_orders_7",
-        "query_skg_conv_imp2atc_7",
-        "query_skg_conv_imp2order_7",
-        "query_skg_uniq_orders_14", 
-        "query_skg_conv_imp2atc_14",
-        "query_skg_conv_imp2order_14",
-        "query_skg_uniq_orders_21",
-        "query_skg_conv_imp2atc_21",
-        "query_skg_conv_imp2order_21",
-        "query_skg_uniq_orders_30",
-        "query_skg_conv_imp2atc_30",
-        "query_skg_conv_imp2order_30",
-        "query_skg_imp2atc_3_to_1",
-        "query_skg_imp2atc_7_to_3",
-        "query_skg_imp2atc_14_to_7",
-        "query_skg_imp2atc_30_to_14",
-        "query_skg_imp2order_30_to_14",
-        "query_skg_uniq_atcs_60",
-        "query_skg_uniq_orders_60",
-        "query_skg_conv_imp2atc_60",
-        "query_skg_conv_imp2order_60",
-        "query_skg_uniq_atcs_90",
-        "query_skg_uniq_orders_90",
-        "query_skg_conv_imp2atc_90",
-        "query_skg_conv_imp2order_90",
-        "query_skg_imp2atc_60_to_30",
-        "query_skg_imp2order_60_to_30",
-        "query_skg_imp2atc_90_to_60",
-        "query_skg_imp2order_90_to_60"
+        "query_uniq_impressions_1",
+        "query_uniq_atcs_1",
+        "query_orders_1",
+        "query_uniq_impressions_3",
+        "query_uniq_atcs_3",
+        "query_orders_3",
+        "query_uniq_impressions_7",
+        "query_uniq_atcs_7",
+        "query_orders_7",
+        "query_uniq_impressions_14",
+        "query_uniq_atcs_14",
+        "query_orders_14",
+        "query_uniq_impressions_21",
+        "query_uniq_atcs_21",
+        "query_orders_21",
+        "query_uniq_impressions_30",
+        "query_uniq_atcs_30",
+        "query_orders_30"
+      ]
+    },
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_sku_group_feedback_base_stats",
+        "dq_execution_delta_minutes": 180
+      },
+      "name": "fs_search_skg_rating_v1",
+      "features": [
+        "product_rating"
       ]
     }
   ]

@@ -4,25 +4,28 @@ input-labels:
     type: OFFLINE
     missing-feature-value: 0.0
     feature-sets:
+      - name: fs_search_query_skg_atc_order_features_v2
+        schema: SKU_GROUP_TO_QUERY
+        size: 41
+      - name: fs_search_skg_conversion_features_v2
+        schema: SKU_GROUP
+        size: 69
+      - name: fs_search_skg_stock_features_v1
+        schema: SKU_GROUP
+        size: 6
+      - name: fs_search_skg_price_features_v1
+        schema: SKU_GROUP
+        size: 6
+      - name: fs_search_query_atc_features_v1
+        schema: QUERY
+        size: 18
       - name: fs_search_skg_rating_v1
         schema: SKU_GROUP
         size: 1
-      - name: fs_search_skg_price_ratios_v1
-        schema: SKU_GROUP
-        size: 2
-      - name: fs_search_skg_conversion_features_v1
-        schema: SKU_GROUP
-        size: 6
-      - name: fs_search_skg_price_index_status_v1
-        schema: SKU_GROUP
-        size: 1
-      - name: fs_search_skg_price_features_v1
-        schema: SKU_GROUP
-        size: 4
-      - name: fs_search_query_skg_v3
-        schema: SKU_GROUP_TO_QUERY
-        size: 29
       - name: dssm_score
+        schema: EXTERNAL
+        size: 1
+      - name: normalized_linear_score
         schema: EXTERNAL
         size: 1
 
