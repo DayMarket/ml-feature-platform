@@ -12,9 +12,6 @@ source:
   engine: trino_iceberg
   trino_conn_id: trino_search
   history_days: 15
-  promotion_ids:
-    - model_3008_sku_ext_no_filter_budget_34_with_cb_v2_sku_card_0526
-    - model_3008_sku_ext_no_filter_budget_34_cm2_ladder_with_cb_v2_sku_card_cm2_ladder_0711
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
