@@ -22,7 +22,7 @@ Catalog, колонка даты и ключи сущности автомати
 
 На платформе dbt source/DQ DAG-и по умолчанию стартуют в `01:00 UTC`. Текущий upload DAG запускается в `04:00 UTC`, поэтому для production feature groups используется `source.dq_execution_delta_minutes = 180`.
 
-Upload DAG имеет `start_date=2026-07-21T00:00:00+00:00`, расписание интерпретируется в UTC.
+Upload DAG имеет `start_date=2026-07-23T00:00:00+00:00`, расписание интерпретируется в UTC.
 
 Production-конфиг не должен содержать `source.limit`, чтобы DAG загружал полные партиции всех feature groups.
 
