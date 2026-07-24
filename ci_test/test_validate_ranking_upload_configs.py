@@ -98,7 +98,11 @@ def main() -> int:
             "table": "feature_platform_dynamic_pricing_sku_group_price_features",
             "timestamp_column": "calculated_at",
             "read_mode": "latest_timestamp",
-            "dq_execution_delta_minutes": 0,
+            "dependency_dag_id": (
+                "feature-platform.layers.gold.calculated_at_sku_group_id_promotion_id."
+                "dynamic_pricing_sku_group_price_features"
+            ),
+            "dependency_execution_delta_minutes": 0,
         },
         "name": "fs_dynamic_pricing",
         "features": ["avg_sell_price"],
