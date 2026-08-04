@@ -41,8 +41,8 @@ def _load_job_module(filename: str, module_name: str):
 
 def _executor_config() -> dict:
     runtime = CONFIG["runtime"]
-    memory = str(runtime.get("memory", "16Gi"))
-    cpu = str(runtime.get("cpu", "10"))
+    memory = str(runtime.get("memory", "40Gi"))
+    cpu = str(runtime.get("cpu", "12"))
     return {
         "pod_override": k8s.V1Pod(
             spec=k8s.V1PodSpec(

@@ -97,7 +97,7 @@ def dynamic_pricing_prices_dag() -> None:
 
         table = runtime.preflight_table(catalog, ref)
         partition_date = runtime.previous_utc_date(interval_end_value)
-        sql = query.build_query(partition_date, config["source"]["promotion_ids"])
+        sql = query.build_query(partition_date)
         frame = runtime.query_trino(config["source"]["trino_conn_id"], sql)
         runtime.write_daily_snapshot(table, frame, partition_date)
 

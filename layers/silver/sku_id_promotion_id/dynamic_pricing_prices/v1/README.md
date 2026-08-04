@@ -21,15 +21,13 @@
 
 - `promotions.public.dynamic_discount` - расчеты динамической скидки за закрытый UTC-день.
 
-Список `promotion_id` хранится в `config.yaml` (`source.promotion_ids`):
-
-- `model_3008_sku_ext_no_filter_budget_34_cm2_ladder_with_cb_v2_sku_card_cm2_ladder_0711`;
-- `model_3008_sku_ext_internal_matching_soft_budget_29_with_cb_v2_sku_card_internal_matching_soft_0526`;
-- `model_3008_sku_ext_internal_matching_hard_budget_29_with_cb_v2_sku_card_internal_matching_hard_0526`.
+Trino-запрос выбирает все `promotion_id` с префиксом `dyno_pricing_`. Список моделей в
+`config.yaml` не поддерживается.
 
 ## Логика
 
 Для каждой пары `sku_id, promotion_id` берется последняя запись за `date` по `created_at DESC`.
+Фильтр `starts_with(promotion_id, 'dyno_pricing_')` применяется в исходном Trino-запросе.
 Фильтр окна строится от Airflow interval, а не от физического `now()`:
 `created_at >= date 00:00:00 UTC` и `created_at < date + 1 day 00:00:00 UTC`.
 

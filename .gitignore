@@ -7,3 +7,4 @@ __pycache__/
 
 # Local analysis snippets
 docs/new_search_features_pyspark_reference.py
+upload/features_service_upload/v1/ranking_service_features.csv
