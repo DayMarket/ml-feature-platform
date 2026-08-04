@@ -1,0 +1,42 @@
+resources:
+  path: ../../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-silver-product-attributes-snapshot
+  main_application_file: local:///git/repo/layers/silver/snapshot_date_product_id/product_attributes_snapshot/v1/entrypoints/get_product_attributes_snapshot.py
+  resource_profile: medium
+
+table:
+  key: product_attributes_snapshot
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_product_attributes_snapshot
+  primary_key: snapshot_date,product_id
+  meta:
+    team: team::recsys
+    create_dbt_pr: true
+    create_maintenance_pr: true
+
+source:
+  engine: spark_iceberg
+  product_table: iceberg.silver.product
+  category_table: iceberg.silver_apidb_kazanexpress.public_category
+  sku_table: iceberg.silver.sku
+  category_gender_table: iceberg.silver.recsys_category_genders
+  technical_category_root_id: 1
+  excluded_brand_id: 160078
+  max_category_depth: 10
+
+dag:
+  id: feature-platform.layers.silver.snapshot_date_product_id.product_attributes_snapshot
+  group_tag: recsys-main-page-features
+  schedule: "0 19 * * *"
+  start_date: "2026-08-04T19:00:00Z"
+  team: recsys
+  owner: team:recsys
+
+alerts:
+  team: recsys
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_recsys

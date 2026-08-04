@@ -1,0 +1,65 @@
+# Silver-справочник атрибутов товара
+
+DAG id: `feature-platform.layers.silver.snapshot_date_product_id.product_attributes_snapshot`.
+
+Airflow group tag: `recsys-main-page-features`.
+
+Целевая таблица: `iceberg.silver.feature_platform_product_attributes_snapshot`.
+
+## Контракт
+
+Путь сущности: `layers/silver/snapshot_date_product_id/product_attributes_snapshot/v1`.
+
+Grain и primary key: `snapshot_date,product_id`.
+
+Колонки:
+
+- `snapshot_date` — дата point-in-time snapshot в `Asia/Tashkent`;
+- `product_id` — ID товара;
+- `l1_category_id`–`l5_category_id` — первые пять содержательных уровней иерархии с fallback на ближайший существующий родитель;
+- `l6_category_id` — конечная `category_id` товара;
+- `brand_id` — содержательный бренд товара;
+- `shop_id` — магазин товара;
+- `created_at` — время создания товара в UTC;
+- `category_gender` — `M`, `F`, `U` или `NULL`.
+
+`age_in_days` и отдельные gender-флаги в Silver не хранятся. Они вычисляются в Gold относительно его `calculated_at`.
+
+## Источники и логика
+
+Источники:
+
+- `iceberg.silver.product` — базовый список товаров, `category_id`, `shop_id` и `created_at`;
+- `iceberg.silver_apidb_kazanexpress.public_category` — актуальный `id -> parent_id` справочник категорий;
+- `iceberg.silver.sku` — `product_id -> brand_name_id`;
+- `iceberg.silver.recsys_category_genders` — gender конечной категории.
+
+Таблица `iceberg.silver.category`, на которую ссылаются некоторые старые контракты, не используется: при проверке через Trino она отсутствовала. Иерархия восстанавливается из уникального текущего справочника `public_category`.
+
+Категорийный путь строится от конечной категории до корня максимум через десять уровней. Технический root `category_id = 1` исключается. После разворота пути:
+
+- L1 — первый содержательный уровень;
+- L2–L5 — соответствующий уровень или ближайший предыдущий, если уровень отсутствует;
+- L6 — исходная конечная `product.category_id`.
+
+Эта логика сохраняет прежнюю семантику L1–L5. Для исторических веток глубже шести уровней промежуточные уровни после L5 не публикуются, а L6 остается конечной категорией товара.
+
+Перед расчетом job проверяет глубину дерева и завершается с ошибкой, если появляется путь длиннее десяти уровней: в таком случае нельзя молча публиковать неверный L1.
+
+`brand_name_id = 160078` и `NULL` исключаются до выбора бренда. В источнике на момент проверки было 19 товаров с несколькими содержательными брендами. Прежний `DISTINCT ON (product_id)` без `ORDER BY` выбирал один из них недетерминированно; новый контракт использует `MIN(brand_name_id)` как стабильный anomaly fallback. Для остальных товаров логика эквивалентна фильтрации placeholder.
+
+`category_gender` присоединяется по `product.category_id = recsys_category_genders.category_id`. Значения вне `M`, `F`, `U` приводятся к `NULL`.
+
+## Оркестрация
+
+DAG запускается ежедневно в `19:00 UTC`, что соответствует `00:00 Asia/Tashkent`. Стартовая дата — `2026-08-04T19:00:00Z`.
+
+`snapshot_date` равна локальной дате `data_interval_end` в `Asia/Tashkent`. Например, `data_interval_end = 2026-08-04 19:00:00 UTC` записывает `snapshot_date = 2026-08-05`.
+
+`catchup=False`: источники содержат текущее состояние и не позволяют честно восстановить исторический point-in-time snapshot. Повторный запуск перезаписывает только целевую партицию через `overwritePartitions()`.
+
+Подтвержденные upstream DQ DAG ids для внешних таблиц неизвестны, поэтому отдельные sensors в этой версии не добавлены. После merge CI создает стандартный dbt DQ-контракт для результата: уникальность primary key и `not_null` для `snapshot_date` и `product_id`. CI также регистрирует таблицу в Iceberg maintenance.
+
+Пайплайн использует общий Spark image с `git-sync` и resource profile `medium`. Отдельный image не создается.
+
+Ranking upload не настроен: S1 является внутренним переиспользуемым Silver-контрактом.
