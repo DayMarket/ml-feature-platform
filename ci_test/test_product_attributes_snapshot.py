@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -15,6 +16,18 @@ def _load_partition_module():
     module_path = ENTITY_ROOT / "job/partition.py"
     spec = importlib.util.spec_from_file_location(
         "product_attributes_snapshot_partition",
+        module_path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_job_module(module_name):
+    module_path = ENTITY_ROOT / f"job/{module_name}.py"
+    spec = importlib.util.spec_from_file_location(
+        f"product_attributes_snapshot_{module_name}",
         module_path,
     )
     module = importlib.util.module_from_spec(spec)
@@ -47,6 +60,63 @@ def test_snapshot_date_rejects_unsupported_values(value):
         partition.snapshot_date_from_partition_end(value)
 
 
+def test_source_config_drives_query_and_depth_validation():
+    runtime_config = _load_job_module("runtime_config")
+    query = _load_job_module("query")
+    settings = runtime_config.load_source_settings(ENTITY_ROOT / "config.yaml")
+
+    snapshot_sql = query.build_product_attributes_snapshot_query(
+        settings,
+        "2026-08-05",
+    )
+    depth_sql = query.build_category_depth_validation_query(settings)
+    l6_validation_sql = query.build_required_l6_validation_query(settings)
+
+    for table_name in settings.table_names:
+        assert table_name in snapshot_sql
+    assert settings.category_table in depth_sql
+    assert settings.product_table in l6_validation_sql
+    assert "product.category_id IS NULL" in l6_validation_sql
+    assert "category.id IS NULL" in l6_validation_sql
+    assert "category.id = 1" in l6_validation_sql
+    assert "c9.parent_id IS NOT NULL" in depth_sql
+    assert " c10 " not in depth_sql
+    assert "brand_name_id <> 160078" in snapshot_sql
+    assert "MIN(brand_name_id)" in snapshot_sql
+    assert "dominant_gender IN ('M', 'F', 'U')" in snapshot_sql
+
+
+def test_l6_is_last_non_technical_category_and_has_no_null_fallback():
+    runtime_config = _load_job_module("runtime_config")
+    query = _load_job_module("query")
+    settings = runtime_config.load_source_settings(ENTITY_ROOT / "config.yaml")
+
+    snapshot_sql = query.build_product_attributes_snapshot_query(
+        settings,
+        "2026-08-05",
+    )
+
+    assert "value <> 1" in snapshot_sql
+    assert (
+        "CAST(TRY_ELEMENT_AT(hierarchy, -1) AS BIGINT) "
+        "AS l6_category_id"
+    ) in snapshot_sql
+    assert "hierarchy.l6_category_id" in snapshot_sql
+    assert "NULLIF(" not in snapshot_sql
+
+
+def test_query_rejects_invalid_snapshot_date():
+    runtime_config = _load_job_module("runtime_config")
+    query = _load_job_module("query")
+    settings = runtime_config.load_source_settings(ENTITY_ROOT / "config.yaml")
+
+    with pytest.raises(ValueError):
+        query.build_product_attributes_snapshot_query(
+            settings,
+            "2026/08/05",
+        )
+
+
 def test_contract_contains_approved_runtime_and_business_rules():
     config = (ENTITY_ROOT / "config.yaml").read_text(encoding="utf-8")
     dag = (ENTITY_ROOT / "dag.py").read_text(encoding="utf-8")
@@ -64,13 +134,9 @@ def test_contract_contains_approved_runtime_and_business_rules():
     assert "catchup: false" in config
     assert 'catchup=dag_settings["catchup"]' in dag
     assert 'CronDataIntervalTimetable(dag_settings["schedule"], "UTC")' in dag
-    assert "iceberg.silver_apidb_kazanexpress.public_category" in job
-    assert "iceberg.silver.recsys_category_genders" in job
-    assert "_validate_category_depth(spark)" in job
-    assert "c9.parent_id <> {TECHNICAL_CATEGORY_ROOT_ID}" in job
-    assert "NULLIF(" in job
-    assert "CAST(product.category_id AS BIGINT)" in job
-    assert "brand_name_id <> {EXCLUDED_BRAND_ID}" in job
-    assert "MIN(brand_name_id)" in job
+    assert "load_source_settings()" in job
+    assert "_validate_category_depth(spark, settings)" in job
+    assert "_validate_required_l6(spark, settings)" in job
     assert "PARTITIONED BY (snapshot_date)" in migration
+    assert "Последняя содержательная категория пути" in migration
     assert "'engine.hive.lock-enabled' = 'false'" in migration

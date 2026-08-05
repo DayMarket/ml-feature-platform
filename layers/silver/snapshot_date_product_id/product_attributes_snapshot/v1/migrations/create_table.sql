@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     l3_category_id BIGINT COMMENT 'Категория L3 либо ближайший существующий родитель',
     l4_category_id BIGINT COMMENT 'Категория L4 либо ближайший существующий родитель',
     l5_category_id BIGINT COMMENT 'Категория L5 либо ближайший существующий родитель',
-    l6_category_id BIGINT COMMENT 'Конечная category_id товара; NULL для технического root 1',
+    l6_category_id BIGINT COMMENT 'Последняя содержательная категория пути; равна конечной category_id товара',
     brand_id BIGINT COMMENT 'Минимальный содержательный brand_name_id товара после исключения business placeholder 160078',
     shop_id BIGINT COMMENT 'ID магазина товара',
     created_at TIMESTAMP COMMENT 'Время создания товара в UTC',
