@@ -6,6 +6,9 @@
 - [`account_id_category_id`](account_id_category_id/README.md) — события account/category;
 - [`category_level_category_id`](category_level_category_id/README.md) — агрегаты по уровням иерархии категорий;
 - [`city_id_dimensional_group`](city_id_dimensional_group/README.md) — стоимость логистики по городу и габаритной группе;
+- [`calculated_at_account_id_l1_category_id`](calculated_at_account_id_l1_category_id/README.md) — 12-часовые показы account/L1;
+- [`calculated_at_account_id_l2_category_id`](calculated_at_account_id_l2_category_id/README.md) — 12-часовые показы account/L2;
+- [`calculated_at_account_id_session_id_product_id_event_type`](calculated_at_account_id_session_id_product_id_event_type/README.md) — 12-часовые product action counts;
 - [`h3_index`](h3_index/README.md) — географические и локационные предагрегаты;
 - [`order_city_id`](order_city_id/README.md) — агрегаты по городу доставки заказа;
 - [`order_region_id`](order_region_id/README.md) — агрегаты по региону доставки заказа;
