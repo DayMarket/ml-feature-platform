@@ -47,6 +47,7 @@ LEFT JOIN {CATEGORY_TABLE} c8 ON c7.parent_id = c8.id
 LEFT JOIN {CATEGORY_TABLE} c9 ON c8.parent_id = c9.id
 WHERE c9.parent_id IS NOT NULL
     AND c9.parent_id > 0
+    AND c9.parent_id <> {TECHNICAL_CATEGORY_ROOT_ID}
 LIMIT 1
 """
     ).take(1)
@@ -159,7 +160,10 @@ SELECT
     hierarchy.l3_category_id,
     hierarchy.l4_category_id,
     hierarchy.l5_category_id,
-    CAST(product.category_id AS BIGINT) AS l6_category_id,
+    NULLIF(
+        CAST(product.category_id AS BIGINT),
+        {TECHNICAL_CATEGORY_ROOT_ID}
+    ) AS l6_category_id,
     brands.brand_id,
     CAST(product.shop_id AS BIGINT) AS shop_id,
     CAST(product.created_at AS TIMESTAMP) AS created_at,

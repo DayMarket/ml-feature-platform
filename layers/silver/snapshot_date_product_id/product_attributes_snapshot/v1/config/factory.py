@@ -56,6 +56,18 @@ def _normalize_team_name(value: Any) -> str:
     return team_name
 
 
+def _parse_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+
+    normalized = str(value).strip().strip('"').strip("'").lower()
+    if normalized in {"true", "yes", "1"}:
+        return True
+    if normalized in {"false", "no", "0"}:
+        return False
+    raise ValueError(f"Unsupported boolean value: {value!r}")
+
+
 def _get_table_name(config: dict[str, Any]) -> str:
     table = config["table"]
     return ".".join((table["catalog"], table["schema"], table["name"]))
@@ -70,7 +82,7 @@ def _get_resources(config: dict[str, Any]) -> dict[str, Any]:
         return json.load(resources_file)
 
 
-def get_dag_settings() -> dict[str, str]:
+def get_dag_settings() -> dict[str, Any]:
     config = _get_config()
     table_meta = config["table"]["meta"]
     dag_config = config["dag"]
@@ -86,6 +98,7 @@ def get_dag_settings() -> dict[str, str]:
         "group_tag": str(dag_config["group_tag"]),
         "schedule": str(dag_config["schedule"]),
         "start_date": str(dag_config["start_date"]),
+        "catchup": _parse_bool(dag_config["catchup"]),
         "alert_severity": str(alerts_config["severity"]),
         "alert_team": alert_team,
         "alert_oncall_webhook_conn_id": str(

@@ -33,6 +33,7 @@ dag:
   group_tag: recsys-main-page-features
   schedule: "0 19 * * *"
   start_date: "2026-08-04T19:00:00Z"
+  catchup: false
   team: recsys
   owner: team:recsys
 

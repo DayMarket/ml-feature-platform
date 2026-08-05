@@ -48,7 +48,7 @@ default_args = {
         "recsys",
     ],
     is_paused_upon_creation=True,
-    catchup=False,
+    catchup=dag_settings["catchup"],
     schedule=CronDataIntervalTimetable(dag_settings["schedule"], "UTC"),
     start_date=pendulum.parse(dag_settings["start_date"]).in_timezone("UTC"),
     dag_id=dag_settings["dag_id"],
