@@ -3,7 +3,10 @@
 Переиспользуемые предагрегаты и промежуточные Iceberg-таблицы.
 
 - [`account_id_category_id`](account_id_category_id/README.md) — события account/category;
+- [`category_level_category_id`](category_level_category_id/README.md) — агрегаты по уровням иерархии категорий;
 - [`h3_index`](h3_index/README.md) — географические и локационные предагрегаты;
+- [`order_city_id`](order_city_id/README.md) — агрегаты по городу доставки заказа;
+- [`order_region_id`](order_region_id/README.md) — агрегаты по региону доставки заказа;
 - [`product_id`](product_id/README.md) — предагрегаты на уровне product;
 - [`query_platform_sku_group_id`](query_platform_sku_group_id/README.md) — дневные query/platform/SKU group conversions;
 - [`query_sku_group_id`](query_sku_group_id/README.md) — заказы и другие агрегаты пары query/SKU group;
