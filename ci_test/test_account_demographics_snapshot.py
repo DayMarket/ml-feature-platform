@@ -101,6 +101,7 @@ class AccountDemographicsRuntimeTest(unittest.TestCase):
 
         self.assertEqual(config["source"]["trino_conn_id"], "trino_recsys")
         self.assertEqual(config["snapshot"]["timezone"], "Asia/Tashkent")
+        self.assertEqual(config["dag"]["start_date"], "2026-06-01T00:00:00Z")
         self.assertEqual(
             config["table"]["name"],
             "feature_platform_account_demographics_snapshot",

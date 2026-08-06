@@ -9,7 +9,7 @@
 - Путь: `layers/silver/snapshot_date_account_id/account_demographics_snapshot/v1`.
 - Airflow group tag: `recsys-main-page-features`.
 - Расписание: ежедневно в `19:00 UTC`, то есть в `00:00 Asia/Tashkent`.
-- `start_date=2026-08-04T19:00:00Z`, `catchup=false`.
+- `start_date=2026-06-01T00:00:00Z`, `catchup=false`.
 
 `snapshot_date` рассчитывается как локальная дата
 `data_interval_end AT TIME ZONE 'Asia/Tashkent'`. Повторный запуск одной партиции использует ту
