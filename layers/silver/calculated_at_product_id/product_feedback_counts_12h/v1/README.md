@@ -68,7 +68,7 @@ All-time показатели не рассчитываются через S4. �
 DAG запускается в `07:00` и `19:00 UTC`, синхронно с другими 12-часовыми Silver-срезами группы
 `recsys-main-page-features`. `calculated_at` равен UTC `data_interval_end`.
 
-`start_date = 2026-07-05 19:00 UTC`, `catchup=false`. Для заполнения исторических rolling-окон
+`start_date = 2026-06-01 00:00 UTC`, `catchup=false`. Для заполнения исторических rolling-окон
 нужен отдельный контролируемый backfill.
 
 Iceberg-таблица партиционирована по `hours(calculated_at)`. Повторный запуск идемпотентно
