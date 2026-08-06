@@ -10,7 +10,7 @@
   (`layers/silver/order_city_id/order_completion_city_features/v1/dag.py`).
 - Групповой тег Airflow: `order-completion-rates`.
 - Расписание: ежедневно в 03:00 UTC, `0 3 * * *`.
-- `start_date=2026-08-05T00:00:00Z`, `catchup=False`, `max_active_runs=1`.
+- `start_date=2026-04-01T00:00:00Z`, `catchup=False`, `max_active_runs=1`.
 - Сенсоров нет. `history_order_items` — внешний DE-источник; его снапшот за `analyze_date = D`
   публикуется в `D 19:00 UTC`, то есть за 8 часов до запуска DAG за `D`.
 
