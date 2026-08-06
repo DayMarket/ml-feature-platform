@@ -130,7 +130,7 @@ def test_contract_contains_approved_runtime_and_business_rules():
     assert "primary_key: snapshot_date,product_id" in config
     assert "resource_profile: medium" in config
     assert 'schedule: "0 19 * * *"' in config
-    assert 'start_date: "2026-08-04T19:00:00Z"' in config
+    assert 'start_date: "2026-06-01T00:00:00Z"' in config
     assert "catchup: false" in config
     assert 'catchup=dag_settings["catchup"]' in dag
     assert 'CronDataIntervalTimetable(dag_settings["schedule"], "UTC")' in dag

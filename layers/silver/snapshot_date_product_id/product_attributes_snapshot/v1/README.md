@@ -54,7 +54,7 @@ Grain и primary key: `snapshot_date,product_id`.
 
 ## Оркестрация
 
-DAG запускается ежедневно в `19:00 UTC`, что соответствует `00:00 Asia/Tashkent`. Стартовая дата — `2026-08-04T19:00:00Z`.
+DAG запускается ежедневно в `19:00 UTC`, что соответствует `00:00 Asia/Tashkent`. Стартовая дата — `2026-06-01T00:00:00Z`.
 
 `snapshot_date` равна локальной дате `data_interval_end` в `Asia/Tashkent`. Например, `data_interval_end = 2026-08-04 19:00:00 UTC` записывает `snapshot_date = 2026-08-05`.
 
