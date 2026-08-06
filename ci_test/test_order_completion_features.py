@@ -1,7 +1,7 @@
 import importlib.util
 import sys
 import unittest
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -202,6 +202,13 @@ class OrderCompletionOrchestrationTest(unittest.TestCase):
                 )
                 self.assertEqual(config["dag"]["group_tag"], GROUP_TAG)
                 self.assertEqual(config["dag"]["schedule"], "0 3 * * *")
+                # Кавычки должны сниматься yaml, иначе pendulum.parse в dag.py упадет.
+                start_date = config["dag"]["start_date"]
+                self.assertEqual(start_date, "2026-04-01T00:00:00Z")
+                self.assertEqual(
+                    datetime.fromisoformat(start_date.replace("Z", "+00:00")),
+                    datetime(2026, 4, 1, tzinfo=timezone.utc),
+                )
                 self.assertEqual(config["source"]["engine"], "trino")
                 self.assertEqual(config["source"]["trino_conn_id"], "trino_search")
                 self.assertEqual(config["table"]["catalog"], "iceberg")
