@@ -155,7 +155,7 @@ def test_contract_contains_schedule_schema_and_idempotent_partition():
     assert "resource_profile: large" in config
     assert "group_tag: recsys-main-page-features" in config
     assert 'schedule: "0 7,19 * * *"' in config
-    assert 'start_date: "2026-07-05T19:00:00Z"' in config
+    assert 'start_date: "2026-06-01T00:00:00Z"' in config
     assert "catchup: false" in config
     assert 'catchup=dag_settings["catchup"]' in dag
     assert 'CronDataIntervalTimetable(dag_settings["schedule"], "UTC")' in dag
@@ -163,6 +163,6 @@ def test_contract_contains_schedule_schema_and_idempotent_partition():
     assert "'engine.hive.lock-enabled' = 'false'" in migration
     assert "sku_id" not in migration
     assert "sku_group_id" not in migration
-    assert "31" in readme
+    assert "отдельный контролируемый backfill" in readme
     assert "Активного model consumer" in readme
     assert "Airflow group tag: `recsys-main-page-features`" in readme

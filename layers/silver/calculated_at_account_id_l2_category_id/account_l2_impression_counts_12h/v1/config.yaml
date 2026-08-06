@@ -32,7 +32,7 @@ dag:
   id: feature-platform.layers.silver.calculated_at_account_id_l2_category_id.account_l2_impression_counts_12h
   group_tag: recsys-main-page-features
   schedule: "0 7,19 * * *"
-  start_date: "2026-07-05T19:00:00Z"
+  start_date: "2026-06-01T00:00:00Z"
   catchup: false
   team: recsys
   owner: team:recsys
