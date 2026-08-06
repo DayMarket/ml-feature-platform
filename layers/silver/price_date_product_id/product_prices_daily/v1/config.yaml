@@ -1,0 +1,33 @@
+# Trino-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+table:
+  key: product_prices_daily
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_product_prices_daily
+  primary_key: price_date,product_id
+  meta:
+    team: team::recsys
+    create_dbt_pr: true
+    create_maintenance_pr: true
+
+source:
+  engine: trino
+  trino_conn_id: trino_recsys
+  max_valid_price: 1000000000
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.silver.price_date_product_id.product_prices_daily
+  group_tag: recsys-main-page-features
+  schedule: "0 0 * * *"
+  start_date: "2026-06-01T00:00:00Z"
+  catchup: false
+  team: recsys
+  owner: team:recsys
+
+alerts:
+  team: recsys
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_recsys
