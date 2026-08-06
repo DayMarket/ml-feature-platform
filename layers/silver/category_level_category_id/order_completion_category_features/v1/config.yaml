@@ -21,7 +21,7 @@ dag:
   id: feature-platform.layers.silver.category_level_category_id.order_completion_category_features
   group_tag: order-completion-rates
   schedule: "0 3 * * *"
-  start_date: "2026-08-05T00:00:00Z"
+  start_date: "2026-04-01T00:00:00Z"
   team: search
   owner: team:search
 
