@@ -13,4 +13,5 @@
 - [`sku_group_id`](sku_group_id/README.md) — предагрегаты SKU group;
 - [`sku_group_id_query_category`](sku_group_id_query_category/README.md) — поисковые и категорийные взаимодействия SKU group;
 - [`sku_id_promotion_id`](sku_id_promotion_id/README.md) — дневные динамические скидки SKU/promotion;
+- [`snapshot_date_sku_id`](snapshot_date_sku_id/README.md) — дневные SKU-снимки;
 - [`sku_id`](sku_id/README.md) — предагрегаты на уровне SKU.
