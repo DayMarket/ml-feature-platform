@@ -1,0 +1,31 @@
+# Trino-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+table:
+  key: order_completion_region_features
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_order_completion_region_features
+  primary_key: date,order_region_id
+  meta:
+    team: team:search
+
+source:
+  engine: trino
+  trino_conn_id: trino_search
+  # Окно по generated_at внутри снапшота analyze_date.
+  lookback_days: 120
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.silver.order_region_id.order_completion_region_features
+  group_tag: order-completion-rates
+  schedule: "0 3 * * *"
+  start_date: "2026-08-05T00:00:00Z"
+  team: search
+  owner: team:search
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
