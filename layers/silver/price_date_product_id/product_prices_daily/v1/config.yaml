@@ -22,7 +22,7 @@ dag:
   id: feature-platform.layers.silver.price_date_product_id.product_prices_daily
   group_tag: recsys-main-page-features
   schedule: "0 0 * * *"
-  start_date: "2026-01-01T00:00:00Z"
+  start_date: "2026-06-01T00:00:00Z"
   catchup: false
   team: recsys
   owner: team:recsys

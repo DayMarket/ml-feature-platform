@@ -11,7 +11,7 @@
 - Групповой тег Airflow: `recsys-main-page-features`.
 - Расписание: ежедневно в 00:00 UTC (`0 0 * * *`).
 - `price_date` — предыдущая календарная дата UTC относительно `data_interval_end`.
-- `start_date=2026-01-01T00:00:00Z`, `catchup=False`.
+- `start_date=2026-06-01T00:00:00Z`, `catchup=False`.
 
 Upstream-источники внешние для feature-platform. Подтвержденный DQ DAG id для
 `marts.daily_sku_quantity_eod` отсутствует, поэтому upstream sensor не добавлен. Пустой срез
