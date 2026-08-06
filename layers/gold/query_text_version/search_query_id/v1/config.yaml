@@ -1,0 +1,46 @@
+# Trino + Elasticsearch-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+table:
+  key: search_query_id
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_search_query_id
+  primary_key: query_text,version
+  meta:
+    team: team:search
+
+source:
+  engine: trino_elasticsearch
+  trino_conn_id: trino_search
+  space: SEARCH_RESULTS
+  stop_words_path: job/stop_words.txt
+  elasticsearch:
+    conn_id: elasticsearch_search
+    index: search-index
+    analyzer: full_name_analyzer
+    parallel_jobs: 24
+    request_timeout_seconds: 10
+    retry_count: 10
+
+output:
+  version: v1
+  write_chunk_size: 50000
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  cpu: "8"
+  memory: 16Gi
+
+dag:
+  id: feature-platform.layers.gold.query_text_version.search_query_id
+  group_tag: search-query-id
+  schedule: "0 5 * * *"
+  start_date: "2026-08-07T00:00:00Z"
+  team: search
+  owner: team:search
+  dagrun_timeout_hours: 6
+  source_dq_execution_delta_hours: 4
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
