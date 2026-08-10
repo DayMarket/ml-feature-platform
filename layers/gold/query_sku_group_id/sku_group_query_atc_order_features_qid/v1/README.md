@@ -25,7 +25,12 @@ Pairwise-фичи ATC и заказных конверсий по паре за�
 ## Зависимости
 
 - `feature-platform.layers.gold.query_text_version.search_query_id` (`execution_delta = 1 час`) -
-  сам DAG справочника, не его DQ.
+  сам DAG справочника, не его DQ. Это осознанное отступление от общего правила AGENTS.md (ждать
+  DQ-прогон, а не Spark-DAG): владелец фичи явно потребовал, чтобы новые DAG стартовали после
+  самого `search_query_id`. Технически это и правильнее: PK справочника - `query_text,version`, без
+  колонки `date`, поэтому `scripts/sync_dbt_sources.py` не генерирует для него freshness- и
+  row-count-тесты по дате, и его DQ-прогон не несёт партиционной семантики, на которую можно было
+  бы выравнивать `execution_delta`.
 - `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`
   (`execution_delta = 5 часов`).
 - `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq`
@@ -56,6 +61,12 @@ Pairwise-фичи ATC и заказных конверсий по паре за�
 - `has_query_id` - `false` для фолбэка.
 
 Обе колонки служебные, в вектор ranking upload не входят.
+
+Поскольку `query_id` - это нормализованная строка запроса, а не суррогатный идентификатор,
+фолбэковый `group_key` (запрос вне справочника) в редком случае может совпасть с настоящим
+`query_id` другой группы. Обычно это безобидно - речь идёт об одном и том же запросе - и на
+первичный ключ таблицы это не влияет, потому что строки выхода ключуются по `query`
+(в паре с `sku_group_id`).
 
 ## Рантайм
 
