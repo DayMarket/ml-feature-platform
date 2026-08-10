@@ -1,7 +1,8 @@
 # Уплотнение поисковых фичей по query_id
 
-Дата: 2026-08-10. Команда: search. Статус: дизайн согласован, план реализации написан
-(`docs/superpowers/plans/2026-08-10-query-id-features.md`).
+Дата: 2026-08-10. Команда: search. Статус: gold-таблицы реализованы, DAG на паузе.
+План: `docs/superpowers/plans/2026-08-10-query-id-features.md`. Публикация в ranking upload
+отложена и в этой итерации не делалась.
 
 **Границы первой итерации:** реализуются только две gold-таблицы. Разделы про ranking upload
 (новые feature groups, перенос аплоад-DAG на 07:00, пересчёт дельт, `ranking_service_input.yaml`)
