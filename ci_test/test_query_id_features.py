@@ -298,5 +298,78 @@ class PairMigrationAndConfigTest(unittest.TestCase):
         )
 
 
+class PairJobTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.job = load_job_module(
+            PAIR_QID,
+            "getting_sku_group_query_atc_order_features_qid.py",
+            "test_sku_group_query_atc_order_features_qid_job",
+        )
+
+    def test_selected_columns_match_migration_columns(self):
+        self.assertEqual(list(self.job.SELECTED_COLUMNS), migration_columns(PAIR_QID))
+
+    def test_smoothing_coefficient_mirrors_the_origin_job(self):
+        origin_source = (
+            PAIR_ORIGIN / "job" / "getting_sku_group_query_atc_order_features.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("SMOOTHING_COEF = 100.0", origin_source)
+        self.assertEqual(self.job.SMOOTHING_COEF, 100.0)
+
+    def test_windows_mirror_the_origin_job(self):
+        self.assertEqual(self.job.WINDOWS, (1, 3, 7, 14, 21, 30, 60, 90))
+
+    def test_normalization_is_identical_to_the_query_level_job(self):
+        query_job = load_job_module(
+            QUERY_QID,
+            "getting_search_query_atc_features_qid.py",
+            "test_query_atc_features_qid_job_for_pair",
+        )
+
+        self.assertEqual(
+            self.job.NORMALIZATION_REPLACEMENTS,
+            query_job.NORMALIZATION_REPLACEMENTS,
+        )
+        for value in ("  Ёлка   ЗЕЛЁНАЯ ", "krossovka", ""):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self.job.normalize_query_value(value),
+                    query_job.normalize_query_value(value),
+                )
+
+    def test_dictionary_source_is_pinned_to_v1(self):
+        self.assertEqual(
+            self.job.QUERY_ID_TABLE,
+            "iceberg.gold.feature_platform_search_query_id",
+        )
+        self.assertEqual(self.job.QUERY_ID_VERSION, "v1")
+
+    def test_partition_date_is_parsed_not_sliced(self):
+        source = (
+            PAIR_QID / "job" / "getting_sku_group_query_atc_order_features_qid.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("partition_start[:10]", source)
+        self.assertEqual(self.job.parse_partition_date("2026-06-17T00:00:00Z"), "2026-06-17")
+
+    def test_sku_level_denominators_stay_grouped_by_sku_group_id_only(self):
+        source = (
+            PAIR_QID / "job" / "getting_sku_group_query_atc_order_features_qid.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('daily_events.groupBy("sku_group_id")', source)
+        self.assertIn('orders.groupBy("sku_group_id")', source)
+
+    def test_pair_aggregations_are_grouped_by_group_key(self):
+        source = (
+            PAIR_QID / "job" / "getting_sku_group_query_atc_order_features_qid.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('groupBy("group_key", "sku_group_id")', source)
+        self.assertNotIn('groupBy("query", "sku_group_id")', source)
+
+
 if __name__ == "__main__":
     unittest.main()
