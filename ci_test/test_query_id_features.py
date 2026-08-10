@@ -8,6 +8,15 @@ ROOT = Path(__file__).resolve().parents[1]
 QUERY_ORIGIN = ROOT / "layers" / "gold" / "query" / "search_query_atc_features" / "v1"
 QUERY_QID = ROOT / "layers" / "gold" / "query" / "search_query_atc_features_qid" / "v1"
 
+PAIR_ORIGIN = (
+    ROOT / "layers" / "gold" / "query_sku_group_id"
+    / "sku_group_query_atc_order_features" / "v2"
+)
+PAIR_QID = (
+    ROOT / "layers" / "gold" / "query_sku_group_id"
+    / "sku_group_query_atc_order_features_qid" / "v1"
+)
+
 SERVICE_COLUMNS = ("query_id", "has_query_id")
 
 COLUMN_PATTERN = re.compile(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*)\s+[A-Z]", re.MULTILINE)
@@ -235,6 +244,58 @@ class QueryLevelDagTest(unittest.TestCase):
 
     def test_dag_is_paused_upon_creation(self):
         self.assertIn("is_paused_upon_creation=True", self.source)
+
+
+class PairMigrationAndConfigTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.config = read_simple_config(PAIR_QID / "config.yaml")
+
+    def test_feature_columns_mirror_the_origin_table(self):
+        origin = migration_columns(PAIR_ORIGIN)
+        qid = migration_columns(PAIR_QID)
+
+        self.assertEqual(
+            [column for column in qid if column not in SERVICE_COLUMNS],
+            origin,
+        )
+
+    def test_service_columns_are_present_right_after_the_key(self):
+        columns = migration_columns(PAIR_QID)
+
+        self.assertEqual(
+            columns[:5],
+            ["date", "query", "sku_group_id", "query_id", "has_query_id"],
+        )
+
+    def test_hive_locks_are_disabled(self):
+        sql = (PAIR_QID / "migrations" / "create_table.sql").read_text(encoding="utf-8")
+
+        self.assertIn("'engine.hive.lock-enabled' = 'false'", sql)
+        self.assertIn("PARTITIONED BY (date)", sql)
+
+    def test_table_identity(self):
+        table = self.config["table"]
+
+        self.assertEqual(table["catalog"], "iceberg")
+        self.assertEqual(table["schema"], "gold")
+        self.assertEqual(
+            table["name"],
+            "feature_platform_search_sku_group_id_query_atc_order_features_qid",
+        )
+        self.assertEqual(table["primary_key"], "date,query,sku_group_id")
+        self.assertEqual(table["meta"]["team"], "team:search")
+
+    def test_primary_key_matches_layer_directory_group(self):
+        self.assertEqual(PAIR_QID.parents[1].name, "query_sku_group_id")
+
+    def test_resource_profile_matches_the_origin(self):
+        origin_config = read_simple_config(PAIR_ORIGIN / "config.yaml")
+
+        self.assertEqual(
+            self.config["spark"]["resource_profile"],
+            origin_config["spark"]["resource_profile"],
+        )
 
 
 if __name__ == "__main__":
