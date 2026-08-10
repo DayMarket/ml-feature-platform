@@ -1031,7 +1031,7 @@ git commit -m "feat(gold): add DAG and README for search_query_atc_features_qid"
 
 **Interfaces:**
 - Consumes: ничего от предыдущих задач.
-- Produces: таблица `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features_qid` с колонками `date, query, sku_group_id, query_id, has_query_id` + 64 фичевые колонки, идентичные v2.
+- Produces: таблица `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features_qid` с колонками `date, query, sku_group_id, query_id, has_query_id` + 61 фичевая колонка, идентичная v2.
 
 - [ ] **Step 1: Создать директории и скопировать основу**
 
@@ -1378,7 +1378,7 @@ SELECTED_COLUMNS = (
     "has_query_id",
 ```
 
-Остальные 64 фичевые записи кортежа не трогать.
+Остальные 61 фичевая запись кортежа не трогается.
 
 Заменить функцию `_normalize_query_frame` целиком на четыре функции:
 

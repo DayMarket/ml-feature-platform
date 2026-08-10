@@ -57,7 +57,7 @@ schema `EXTERNAL`/`CONSTANT` и приходят не из этого репоз
 | Новая таблица | Путь | PK | Зеркалит | Колонок-фичей / в аплоаде |
 |---|---|---|---|---|
 | `iceberg.gold.feature_platform_search_query_atc_features_qid` | `layers/gold/query/search_query_atc_features_qid/v1` | `date,query` | `feature_platform_search_query_atc_features` | 24 / 18 |
-| `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features_qid` | `layers/gold/query_sku_group_id/sku_group_query_atc_order_features_qid/v1` | `date,query,sku_group_id` | `..._query_atc_order_features_v2` | 64 / 41 |
+| `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features_qid` | `layers/gold/query_sku_group_id/sku_group_query_atc_order_features_qid/v1` | `date,query,sku_group_id` | `..._query_atc_order_features_v2` | 61 / 41 |
 
 DAG-идентификаторы:
 
