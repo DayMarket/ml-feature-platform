@@ -414,5 +414,36 @@ class PairJobTest(unittest.TestCase):
         self.assertIn('.withColumnRenamed("group_key", "query_id")', source)
 
 
+class PairDagTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (PAIR_QID / "dag.py").read_text(encoding="utf-8")
+
+    def test_dag_id_encodes_repository_path(self):
+        self.assertEqual(
+            DAG_ID_PATTERN.search(self.source).group(1),
+            "feature-platform.layers.gold.query_sku_group_id."
+            "sku_group_query_atc_order_features_qid",
+        )
+
+    def test_schedule_runs_after_the_query_id_dag(self):
+        self.assertEqual(CRON_PATTERN.search(self.source).group(1), "0 6 * * *")
+
+    def test_it_waits_for_the_query_id_dag_itself(self):
+        self.assertIn(
+            '"feature-platform.layers.gold.query_text_version.search_query_id"',
+            self.source,
+        )
+        self.assertIn("execution_delta=timedelta(hours=1)", self.source)
+
+    def test_it_waits_for_both_silver_dq_dags(self):
+        self.assertIn("feature_platform_search_sku_group_id_install_query.dq", self.source)
+        self.assertIn("feature_platform_sku_group_query_search_orders.dq", self.source)
+        self.assertIn("execution_delta=timedelta(hours=5)", self.source)
+
+    def test_dag_is_paused_upon_creation(self):
+        self.assertIn("is_paused_upon_creation=True", self.source)
+
+
 if __name__ == "__main__":
     unittest.main()
