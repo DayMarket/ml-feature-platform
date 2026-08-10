@@ -12,6 +12,9 @@ SERVICE_COLUMNS = ("query_id", "has_query_id")
 
 COLUMN_PATTERN = re.compile(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*)\s+[A-Z]", re.MULTILINE)
 
+DAG_ID_PATTERN = re.compile(r'dag_id="([^"]+)"')
+CRON_PATTERN = re.compile(r"CronDataIntervalTimetable\(\s*['\"]([^'\"]+)['\"]")
+
 
 def migration_columns(entity_dir: Path) -> list[str]:
     sql = (entity_dir / "migrations" / "create_table.sql").read_text(encoding="utf-8")
@@ -188,6 +191,50 @@ class QueryLevelJobTest(unittest.TestCase):
 
         self.assertIn("WINDOWS = (1, 3, 7, 14, 21, 30, 60, 90)", origin_source)
         self.assertEqual(self.job.WINDOWS, (1, 3, 7, 14, 21, 30, 60, 90))
+
+
+class QueryLevelDagTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (QUERY_QID / "dag.py").read_text(encoding="utf-8")
+
+    def test_dag_id_encodes_repository_path(self):
+        self.assertEqual(
+            DAG_ID_PATTERN.search(self.source).group(1),
+            "feature-platform.layers.gold.query.search_query_atc_features_qid",
+        )
+
+    def test_schedule_runs_after_the_query_id_dag(self):
+        self.assertEqual(CRON_PATTERN.search(self.source).group(1), "0 6 * * *")
+
+    def test_it_waits_for_the_query_id_dag_itself_not_its_dq(self):
+        self.assertIn(
+            '"feature-platform.layers.gold.query_text_version.search_query_id"',
+            self.source,
+        )
+        self.assertNotIn(
+            "ml_feature_platform_gold.feature_platform_search_query_id.dq",
+            self.source,
+        )
+
+    def test_it_waits_for_both_silver_dq_dags(self):
+        self.assertIn(
+            "feature_platform_search_sku_group_id_install_query.dq",
+            self.source,
+        )
+        self.assertIn(
+            "feature_platform_sku_group_query_search_orders.dq",
+            self.source,
+        )
+
+    def test_execution_deltas_line_up_with_the_schedule(self):
+        # 06:00 логической даты минус 1 час = 05:00, логическая дата прогона search_query_id.
+        # 06:00 минус 5 часов = 01:00, логическая дата DQ силверов.
+        self.assertIn("execution_delta=timedelta(hours=1)", self.source)
+        self.assertIn("execution_delta=timedelta(hours=5)", self.source)
+
+    def test_dag_is_paused_upon_creation(self):
+        self.assertIn("is_paused_upon_creation=True", self.source)
 
 
 if __name__ == "__main__":
