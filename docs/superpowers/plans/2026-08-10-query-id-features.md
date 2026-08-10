@@ -4,7 +4,9 @@
 
 **Goal:** Посчитать существующие поисковые фичи, агрегируя события в рамках каноничного `query_id`, и отдать результат по-прежнему на исходных `query_text`, чтобы ключ джойна в ranking-сервисе не менялся.
 
-**Architecture:** Две новые gold-сущности — покомпонентные зеркала `search_query_atc_features` (грейн `date,query`) и `sku_group_query_atc_order_features/v2` (грейн `date,query,sku_group_id`). В каждой оконные суммы группируются по `group_key = coalesce(query_id, query)` вместо `query`, после чего результат разворачивается обратно на все `query_text` группы. Старые таблицы и их группы аплоада не трогаются. Аплоад-DAG переезжает с 04:00 на 07:00 UTC, чтобы поместиться после справочника `query_id` (05:00) и новых gold-джобов (06:00).
+**Architecture:** Две новые gold-сущности — покомпонентные зеркала `search_query_atc_features` (грейн `date,query`) и `sku_group_query_atc_order_features/v2` (грейн `date,query,sku_group_id`). В каждой оконные суммы группируются по `group_key = coalesce(query_id, query)` вместо `query`, после чего результат разворачивается обратно на все `query_text` группы. Старые таблицы не трогаются.
+
+**Границы итерации:** `upload/features_service_upload/v1/**` в этой итерации **не изменяется**. Обе таблицы считаются и лежат в Iceberg, но в ranking-сервис не публикуются, поэтому аплоад-DAG остаётся в 04:00 и конфликта расписаний не возникает. Всё, что понадобится для публикации, описано в разделе «Отложено: публикация в ranking upload» в конце плана.
 
 **Tech Stack:** PySpark 3.5.5 на shared-образе `ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3`, Iceberg 1.5.2, Airflow 3 (`SparkKubernetesOperator`, `CronDataIntervalTimetable`, `ExternalTaskSensor`), доставка кода через `git-sync`. Тесты — `unittest` из stdlib, запускаются как обычные python-скрипты.
 
@@ -19,7 +21,8 @@
 - Нормализация запроса ровно в этом порядке: `lower` → `ё`→`е` → `\s+`→` ` → `trim`. Применяется и к событиям, и к `query_text` из справочника.
 - Разбор границы интервала — только через тестируемый `parse_partition_date`. `partition_start[:10]` запрещён.
 - Фичевые колонки новых таблиц — строгое зеркало оригиналов: те же имена, те же формулы, тот же порядок. Новых фичей не добавляем.
-- Служебные колонки `query_id` и `has_query_id` присутствуют в таблицах, но **не входят** в списки `features` аплоада.
+- Служебные колонки `query_id` и `has_query_id` присутствуют в таблицах, но фичами не считаются: в вектор ranking upload они не попадут, когда публикацию включат.
+- `upload/features_service_upload/v1/**` в этой итерации не редактируется ни одной задачей.
 - Отсечки топ-N нет: пишутся все пары.
 - Никаких `DROP`/`DELETE`/`TRUNCATE` в миграциях.
 - Новые DAG создаются с `is_paused_upon_creation=True`.
@@ -1850,348 +1853,17 @@ git commit -m "feat(gold): add DAG and README for sku_group_query_atc_order_feat
 
 ---
 
-### Task 7: Ranking upload — перенос на 07:00 и две новые группы
+
+### Task 7: Финальная валидация
 
 **Files:**
-- Modify: `upload/features_service_upload/v1/config.yaml`
-- Modify: `upload/features_service_upload/v1/README.md`
-- Modify: `ci_test/test_query_id_features.py`
-
-**Interfaces:**
-- Consumes: `config.yaml` обеих новых сущностей (задачи 1 и 4) — валидатор сверяет `source.schema`/`source.table` с ними; dag_id и кроны новых DAG (задачи 3 и 6).
-- Produces: группы `fs_search_query_atc_features_qid_v1` и `fs_search_query_skg_atc_order_features_qid_v1`, модель `search_ranking_qid`, расписание аплоада `0 7 * * *`.
-
-- [ ] **Step 1: Написать тест на арифметику дельт**
-
-Дописать в `ci_test/test_query_id_features.py`:
-
-```python
-import json
-
-UPLOAD_CONFIG = ROOT / "upload" / "features_service_upload" / "v1" / "config.yaml"
-
-QID_GROUPS = {
-    "fs_search_query_atc_features_qid_v1": "fs_search_query_atc_features_v1",
-    "fs_search_query_skg_atc_order_features_qid_v1": (
-        "fs_search_query_skg_atc_order_features_v2"
-    ),
-}
-
-
-def source_dag_crons() -> dict[str, str]:
-    """dag_id -> cron, собранный по всем layer-DAG репозитория."""
-    crons = {}
-    for dag_path in sorted(ROOT.glob("layers/**/dag.py")):
-        source = dag_path.read_text(encoding="utf-8")
-        dag_id_match = DAG_ID_PATTERN.search(source)
-        cron_match = CRON_PATTERN.search(source)
-        if dag_id_match and cron_match:
-            crons[dag_id_match.group(1)] = cron_match.group(1)
-    return crons
-
-
-def cron_minutes(cron: str) -> int:
-    minute, hour = cron.split()[:2]
-    return int(hour) * 60 + int(minute)
-
-
-class RankingUploadTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.config = json.loads(UPLOAD_CONFIG.read_text(encoding="utf-8"))
-        cls.groups = {
-            str(group["name"]): group for group in cls.config["feature_groups"]
-        }
-
-    def test_upload_runs_after_the_new_gold_dags(self):
-        self.assertEqual(self.config["dag"]["schedule"], "0 7 * * *")
-
-    def test_every_execution_delta_matches_its_source_dag_cron(self):
-        crons = source_dag_crons()
-        upload_minutes = cron_minutes(self.config["dag"]["schedule"])
-
-        for name, group in self.groups.items():
-            with self.subTest(feature_group=name):
-                source = group["source"]
-                cron = crons[source["dependency_dag_id"]]
-                expected = (upload_minutes - cron_minutes(cron)) % (24 * 60)
-
-                self.assertEqual(
-                    source["dependency_execution_delta_minutes"],
-                    expected,
-                )
-
-    def test_no_execution_delta_is_negative(self):
-        for name, group in self.groups.items():
-            with self.subTest(feature_group=name):
-                self.assertGreaterEqual(
-                    group["source"]["dependency_execution_delta_minutes"],
-                    0,
-                )
-
-    def test_qid_groups_mirror_their_origin_feature_lists(self):
-        for qid_name, origin_name in QID_GROUPS.items():
-            with self.subTest(feature_group=qid_name):
-                self.assertEqual(
-                    self.groups[qid_name]["features"],
-                    self.groups[origin_name]["features"],
-                )
-
-    def test_qid_groups_read_the_qid_tables(self):
-        self.assertEqual(
-            self.groups["fs_search_query_atc_features_qid_v1"]["source"]["table"],
-            "feature_platform_search_query_atc_features_qid",
-        )
-        self.assertEqual(
-            self.groups["fs_search_query_skg_atc_order_features_qid_v1"]["source"]["table"],
-            "feature_platform_search_sku_group_id_query_atc_order_features_qid",
-        )
-
-    def test_service_columns_are_not_uploaded(self):
-        for qid_name in QID_GROUPS:
-            with self.subTest(feature_group=qid_name):
-                features = self.groups[qid_name]["features"]
-
-                self.assertNotIn("query_id", features)
-                self.assertNotIn("has_query_id", features)
-
-    def test_origin_groups_are_untouched(self):
-        for origin_name, table in (
-            ("fs_search_query_atc_features_v1", "feature_platform_search_query_atc_features"),
-            (
-                "fs_search_query_skg_atc_order_features_v2",
-                "feature_platform_search_sku_group_id_query_atc_order_features_v2",
-            ),
-        ):
-            with self.subTest(feature_group=origin_name):
-                self.assertEqual(self.groups[origin_name]["source"]["table"], table)
-
-    def test_production_config_has_no_source_limit(self):
-        for name, group in self.groups.items():
-            with self.subTest(feature_group=name):
-                self.assertIsNone(group["source"].get("limit"))
-```
-
-- [ ] **Step 2: Запустить тест и убедиться, что он падает**
-
-Run: `python3 ci_test/test_query_id_features.py -v`
-Expected: FAIL — расписание пока `0 4 * * *`, групп `*_qid_*` нет.
-
-- [ ] **Step 3: Перенести расписание и пересчитать дельты**
-
-В `upload/features_service_upload/v1/config.yaml` заменить
-
-```json
-    "schedule": "0 4 * * *",
-```
-
-на
-
-```json
-    "schedule": "0 7 * * *",
-```
-
-Затем заменить `dependency_execution_delta_minutes` у шести существующих групп. Значения ниже — это `420 - (минуты крона источника)`:
-
-| Feature group | Кron источника | Было | Стало |
-|---|---|---|---|
-| `fs_search_query_skg_atc_order_features_v2` | `0 3 * * *` | 60 | 240 |
-| `fs_search_skg_conversion_features_v2` | `0 3 * * *` | 60 | 240 |
-| `fs_search_skg_stock_features_v1` | `0 3 * * *` | 60 | 240 |
-| `fs_search_skg_price_features_v1` | `0 2 * * *` | 120 | 300 |
-| `fs_search_query_atc_features_v1` | `0 3 * * *` | 60 | 240 |
-| `fs_search_skg_rating_v1` | `10 3 * * *` | 50 | 230 |
-
-- [ ] **Step 4: Добавить две новые группы**
-
-В массив `feature_groups` добавить два элемента. Порядок фичей обязан совпадать с оригиналами один-в-один — он и есть контракт сервинга, а `test_qid_groups_mirror_their_origin_feature_lists` его сторожит.
-
-```json
-    {
-      "source": {
-        "schema": "gold",
-        "table": "feature_platform_search_query_atc_features_qid",
-        "dependency_dag_id": "feature-platform.layers.gold.query.search_query_atc_features_qid",
-        "dependency_execution_delta_minutes": 60
-      },
-      "name": "fs_search_query_atc_features_qid_v1",
-      "features": [
-        "query_uniq_impressions_1",
-        "query_uniq_atcs_1",
-        "query_orders_1",
-        "query_uniq_impressions_3",
-        "query_uniq_atcs_3",
-        "query_orders_3",
-        "query_uniq_impressions_7",
-        "query_uniq_atcs_7",
-        "query_orders_7",
-        "query_uniq_impressions_14",
-        "query_uniq_atcs_14",
-        "query_orders_14",
-        "query_uniq_impressions_21",
-        "query_uniq_atcs_21",
-        "query_orders_21",
-        "query_uniq_impressions_30",
-        "query_uniq_atcs_30",
-        "query_orders_30"
-      ]
-    },
-    {
-      "source": {
-        "schema": "gold",
-        "table": "feature_platform_search_sku_group_id_query_atc_order_features_qid",
-        "dependency_dag_id": "feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features_qid",
-        "dependency_execution_delta_minutes": 60
-      },
-      "name": "fs_search_query_skg_atc_order_features_qid_v1",
-      "features": [
-        "query_skg_smooth_conv_imp2atc_1",
-        "query_skg_smooth_conv_imp2order_1",
-        "query_skg_atc_frac_all_skg_atc_1",
-        "query_skg_orders_frac_all_skg_orders_1",
-        "query_skg_smooth_conv_imp2atc_3",
-        "query_skg_smooth_conv_imp2order_3",
-        "query_skg_atc_frac_all_skg_atc_3",
-        "query_skg_orders_frac_all_skg_orders_3",
-        "query_skg_uniq_orders_7",
-        "query_skg_conv_imp2atc_7",
-        "query_skg_smooth_conv_imp2atc_7",
-        "query_skg_smooth_conv_imp2order_7",
-        "query_skg_atc_frac_all_skg_atc_7",
-        "query_skg_orders_frac_all_skg_orders_7",
-        "query_skg_conv_imp2order_7",
-        "query_skg_uniq_orders_14",
-        "query_skg_conv_imp2atc_14",
-        "query_skg_smooth_conv_imp2atc_14",
-        "query_skg_smooth_conv_imp2order_14",
-        "query_skg_atc_frac_all_skg_atc_14",
-        "query_skg_orders_frac_all_skg_orders_14",
-        "query_skg_conv_imp2order_14",
-        "query_skg_uniq_orders_21",
-        "query_skg_conv_imp2atc_21",
-        "query_skg_smooth_conv_imp2atc_21",
-        "query_skg_smooth_conv_imp2order_21",
-        "query_skg_atc_frac_all_skg_atc_21",
-        "query_skg_orders_frac_all_skg_orders_21",
-        "query_skg_conv_imp2order_21",
-        "query_skg_uniq_orders_30",
-        "query_skg_conv_imp2atc_30",
-        "query_skg_smooth_conv_imp2atc_30",
-        "query_skg_smooth_conv_imp2order_30",
-        "query_skg_atc_frac_all_skg_atc_30",
-        "query_skg_orders_frac_all_skg_orders_30",
-        "query_skg_conv_imp2order_30",
-        "query_skg_imp2atc_3_to_1",
-        "query_skg_imp2atc_7_to_3",
-        "query_skg_imp2atc_14_to_7",
-        "query_skg_imp2atc_30_to_14",
-        "query_skg_imp2order_30_to_14"
-      ]
-    }
-```
-
-- [ ] **Step 5: Добавить модель для новых групп**
-
-Валидатор требует, чтобы каждая группа была указана хотя бы в одной модели. Новые группы выносятся в отдельную модель, а не дописываются в `search_ranking_main`: тогда они попадают в собственный TaskGroup со своими сенсорами, и падение нового сенсора не блокирует существующий аплоад.
-
-В массив `models` добавить:
-
-```json
-    {
-      "name": "search_ranking_qid",
-      "feature_groups": [
-        {
-          "name": "fs_search_query_atc_features_qid_v1",
-          "features": [<те же 18 имён в том же порядке, что в Step 4>]
-        },
-        {
-          "name": "fs_search_query_skg_atc_order_features_qid_v1",
-          "features": [<те же 41 имя в том же порядке, что в Step 4>]
-        }
-      ]
-    }
-```
-
-Списки здесь дублируют Step 4 дословно: валидатор проверяет, что модель ссылается только на фичи,
-объявленные в группе, а `_model_feature_groups` из `config/factory.py` берёт именно этот список для
-аргумента `--feature_groups` Spark-джоба. Скопировать оба массива из Step 4 без изменений.
-
-- [ ] **Step 6: Обновить README аплоада**
-
-В `upload/features_service_upload/v1/README.md` привести в соответствие расписание (`0 7 * * *` вместо `0 4 * * *`), таблицу дельт и список групп: добавить `fs_search_query_atc_features_qid_v1` и `fs_search_query_skg_atc_order_features_qid_v1` с указанием, что это query_id-уплотнённые зеркала и что вектор фичей у них совпадает с оригиналами.
-
-Отдельно зафиксировать в README, что перенос на 07:00 сдвигает обновление фичей в сервисе на три часа позже, и что это следствие цепочки `search_query_id (05:00) -> gold qid (06:00) -> upload (07:00)`.
-
-- [ ] **Step 7: Запустить тесты и валидатор**
-
-Run:
-```bash
-python3 ci_test/test_query_id_features.py -v
-python3 scripts/validate_ranking_upload_configs.py
-python3 ci_test/test_validate_ranking_upload_configs.py
-```
-Expected: все PASS. Валидатор должен напечатать восемь строк `Valid ranking feature group:` и два компонента аплоада.
-
-Если валидатор ругается `columns are missing from ... migrations` — значит миграция новой таблицы не содержит какой-то фичи; сверить со Step 2 задач 1 и 4.
-
-- [ ] **Step 8: Коммит**
-
-```bash
-git add upload/features_service_upload/v1 ci_test/test_query_id_features.py
-git commit -m "feat(upload): publish query_id-densified feature groups and move upload to 07:00 UTC"
-```
-
----
-
-### Task 8: Контракт сервинга и финальная валидация
-
-**Files:**
-- Modify: `upload/features_service_upload/v1/ranking_service_input.yaml`
 - Modify: `docs/superpowers/specs/2026-08-10-query-id-features-design.md`
 
 **Interfaces:**
-- Consumes: имена и размеры групп из задачи 7.
-- Produces: описание входа сервиса с двумя новыми feature-sets.
+- Consumes: всё, созданное в задачах 1–6.
+- Produces: ничего для последующих задач.
 
-**Гейт перед выполнением этой задачи:** `ranking_service_input.yaml` описывает вектор входа ranking-сервиса. Добавление feature-sets расширяет вход модели, поэтому изменение нужно согласовать с владельцами сервиса и с планом переобучения модели. Не мержить этот коммит, пока модель не готова потреблять новый сегмент. Задачи 1–7 самодостаточны и безопасны без него: данные будут литься в feature-сервис под своими `fsName`, но вход модели не изменится.
-
-- [ ] **Step 1: Добавить новые feature-sets в конец label `input`**
-
-В `upload/features_service_upload/v1/ranking_service_input.yaml`, в списке `feature-sets` метки `input`, дописать в самый конец — после `normalized_linear_score`:
-
-```yaml
-      - name: fs_search_query_atc_features_qid_v1
-        schema: QUERY
-        size: 18
-      - name: fs_search_query_skg_atc_order_features_qid_v1
-        schema: SKU_GROUP_TO_QUERY
-        size: 41
-```
-
-Дописывать именно в конец: вставка перед существующими элементами сдвинула бы вектор и сломала бы уже задеплоенную модель.
-
-- [ ] **Step 2: Проверить, что размеры совпадают с конфигом аплоада**
-
-Дописать в `ci_test/test_query_id_features.py`, в класс `RankingUploadTest`:
-
-```python
-    def test_service_input_sizes_match_feature_counts(self):
-        service_input = (
-            ROOT / "upload" / "features_service_upload" / "v1" / "ranking_service_input.yaml"
-        ).read_text(encoding="utf-8")
-
-        for name, schema in (
-            ("fs_search_query_atc_features_qid_v1", "QUERY"),
-            ("fs_search_query_skg_atc_order_features_qid_v1", "SKU_GROUP_TO_QUERY"),
-        ):
-            with self.subTest(feature_set=name):
-                size = len(self.groups[name]["features"])
-                block = f"- name: {name}\n        schema: {schema}\n        size: {size}"
-
-                self.assertIn(block, service_input)
-```
-
-- [ ] **Step 3: Запустить полный набор локальных проверок**
+- [ ] **Step 1: Прогнать полный набор локальных проверок**
 
 Run:
 ```bash
@@ -2204,15 +1876,18 @@ git diff --check
 ```
 Expected: все PASS, `git diff --check` без вывода.
 
+`validate_ranking_upload_configs.py` прогоняется несмотря на то, что `upload/` не менялся:
+он заново обходит `layers/**/config.yaml`, и падение здесь означало бы, что новый `config.yaml`
+сломал общий парсер.
+
 Если `test_sync_dbt_sources.py` или `test_sync_iceberg_maintenance.py` падают — почти наверняка
 они сверяются с полным перечнем таблиц репозитория, и в него нужно добавить две новые. Это
 ожидаемое обновление, а не поломка: дописать
 `feature_platform_search_query_atc_features_qid` и
 `feature_platform_search_sku_group_id_query_atc_order_features_qid` в соответствующий ожидаемый
-список внутри теста, ничего больше в нём не меняя. То же касается
-`test_validate_ranking_upload_configs.py`, если он перечисляет группы аплоада явно.
+список внутри теста, ничего больше в нём не меняя.
 
-- [ ] **Step 4: Записать статус реализации в спеку**
+- [ ] **Step 2: Записать статус реализации в спеку**
 
 В `docs/superpowers/specs/2026-08-10-query-id-features-design.md` заменить строку статуса в шапке
 
@@ -2223,24 +1898,65 @@ Expected: все PASS, `git diff --check` без вывода.
 на
 
 ```markdown
-Дата: 2026-08-10. Команда: search. Статус: реализовано, DAG на паузе, аплоад ждёт бэкфилла справочника.
+Дата: 2026-08-10. Команда: search. Статус: gold-таблицы реализованы, DAG на паузе. Публикация в ranking upload отложена и в этой итерации не делалась.
 ```
 
-- [ ] **Step 5: Коммит**
+- [ ] **Step 3: Коммит**
 
 ```bash
-git add upload/features_service_upload/v1/ranking_service_input.yaml ci_test/test_query_id_features.py docs/superpowers/specs/2026-08-10-query-id-features-design.md
-git commit -m "feat(upload): declare query_id feature sets in ranking service input"
+git add ci_test docs/superpowers/specs/2026-08-10-query-id-features-design.md
+git commit -m "chore: validate query_id gold entities and record spec status"
 ```
 
 ---
 
+## Отложено: публикация в ranking upload
+
+В этой итерации `upload/features_service_upload/v1/**` **не трогается**. Обе новые gold-таблицы
+считаются и живут в Iceberg, но в feature-сервис не уезжают. Соответственно не возникает и
+конфликта расписаний: аплоад остаётся в 04:00 и ничего не ждёт от новых DAG.
+
+Когда публикацию решат включить, понадобится отдельный PR со следующим содержимым.
+
+1. Перенести аплоад на `0 7 * * *` UTC. Без этого нельзя: аплоад в 04:00 не может дождаться
+   таблицы, которая появляется в 06:00, а `scripts/validate_ranking_upload_configs.py` требует
+   `dependency_execution_delta_minutes >= 0`.
+2. Пересчитать дельты шести существующих групп как `420 - (минуты крона источника)`:
+
+| Feature group | Крон источника | Сейчас | Станет |
+|---|---|---|---|
+| `fs_search_query_skg_atc_order_features_v2` | `0 3 * * *` | 60 | 240 |
+| `fs_search_skg_conversion_features_v2` | `0 3 * * *` | 60 | 240 |
+| `fs_search_skg_stock_features_v1` | `0 3 * * *` | 60 | 240 |
+| `fs_search_skg_price_features_v1` | `0 2 * * *` | 120 | 300 |
+| `fs_search_query_atc_features_v1` | `0 3 * * *` | 60 | 240 |
+| `fs_search_skg_rating_v1` | `10 3 * * *` | 50 | 230 |
+
+3. Добавить группы `fs_search_query_atc_features_qid_v1` (source
+   `feature_platform_search_query_atc_features_qid`, delta 60) и
+   `fs_search_query_skg_atc_order_features_qid_v1` (source
+   `feature_platform_search_sku_group_id_query_atc_order_features_qid`, delta 60). Списки `features`
+   копируются дословно из `fs_search_query_atc_features_v1` (18 имён) и
+   `fs_search_query_skg_atc_order_features_v2` (41 имя), порядок обязан совпадать: он и есть
+   контракт сервинга. Служебные `query_id` и `has_query_id` в списки не входят.
+4. Вынести обе группы в отдельную модель `search_ranking_qid`, а не дописывать их в
+   `search_ranking_main`: тогда они получают собственный TaskGroup со своими сенсорами, и падение
+   нового сенсора не блокирует существующий аплоад.
+5. Отдельным согласованным шагом — `ranking_service_input.yaml`: дописать два feature-set
+   (`QUERY`, size 18 и `SKU_GROUP_TO_QUERY`, size 41) **в самый конец** списка метки `input`.
+   Вставка перед существующими элементами сдвинула бы вектор и сломала задеплоенную модель.
+   Мержить только когда модель готова потреблять новый сегмент.
+6. Согласовать фактический объём с владельцами топика `ranking.features.updates` и
+   ranking-сервиса: парная таблица на замере от 2026-08-09 даёт около 3.3 раза к v2, и это число
+   вырастет по мере наполнения справочника.
+
 ## Выкатка после мержа
 
-Эти шаги выполняются в проде и в план-задачи не входят, но без них результата не будет.
+Эти шаги выполняются в проде и в план-задачи не входят.
 
 1. Дождаться, пока CI прогонит `run pyspark migrations` на `master` — обе таблицы создадутся.
-2. Проверить сгенерированные PR: dbt-trino DQ-источники и Iceberg maintenance в `DayMarket/pyspark-etl`.
+2. Проверить сгенерированные PR: dbt-trino DQ-источники и Iceberg maintenance в
+   `DayMarket/pyspark-etl`.
 3. Снять паузу с `feature-platform.layers.gold.query.search_query_atc_features_qid` и
    `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features_qid`.
 4. После первого успешного прогона сравнить объёмы за одну дату:
@@ -2264,8 +1980,6 @@ WHERE date = DATE '<дата прогона>'
 GROUP BY has_query_id;
 ```
 
-6. Согласовать фактический объём с владельцами топика `ranking.features.updates` и ranking-сервиса,
-   после чего снимать паузу с аплоада.
-7. Отдельной задачей — бэкфилл `search_query_id` по историческим 90 дням. Без него уплотнение
+6. Отдельной задачей — бэкфилл `search_query_id` по историческим 90 дням. Без него уплотнение
    работает только на голове трафика: на 2026-08-10 справочник покрывает 7.5 % различных
-   `query_text` при 81.5 % показов. После бэкфилла переснять объёмы пунктами 4–5.
+   `query_text` при 81.5 % показов. После бэкфилла переснять пункты 4–5.
