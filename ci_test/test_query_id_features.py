@@ -370,6 +370,49 @@ class PairJobTest(unittest.TestCase):
         self.assertIn('groupBy("group_key", "sku_group_id")', source)
         self.assertNotIn('groupBy("query", "sku_group_id")', source)
 
+    def test_pair_joins_key_on_group_key_not_query(self):
+        source = (
+            PAIR_QID / "job" / "getting_sku_group_query_atc_order_features_qid.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('on=["group_key", "sku_group_id"]', source)
+        self.assertNotIn('on=["query", "sku_group_id"]', source)
+
+    def test_null_fill_excludes_group_key_not_query(self):
+        source = (
+            PAIR_QID / "job" / "getting_sku_group_query_atc_order_features_qid.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            'if column_name not in ("group_key", "sku_group_id"):',
+            source,
+        )
+        self.assertNotIn(
+            'if column_name not in ("query", "sku_group_id"):',
+            source,
+        )
+
+    def test_date_is_set_after_the_expansion_join(self):
+        source = (
+            PAIR_QID / "job" / "getting_sku_group_query_atc_order_features_qid.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertLess(
+            source.index('members.join('),
+            source.index('withColumn("date"'),
+        )
+
+    def test_features_are_expanded_from_group_key_back_to_query(self):
+        source = (
+            PAIR_QID / "job" / "getting_sku_group_query_atc_order_features_qid.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            'members.join(features, on="group_key", how="inner")',
+            source,
+        )
+        self.assertIn('.withColumnRenamed("group_key", "query_id")', source)
+
 
 if __name__ == "__main__":
     unittest.main()
