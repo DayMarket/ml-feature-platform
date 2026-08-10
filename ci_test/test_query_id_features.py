@@ -87,5 +87,108 @@ class QueryLevelConfigTest(unittest.TestCase):
         )
 
 
+import importlib.util
+import sys
+import types
+
+
+def stub_pyspark() -> None:
+    """Подменяет pyspark заглушками: локально его нет, а нам нужны только чистые функции."""
+    if "pyspark" in sys.modules:
+        return
+    pyspark_module = types.ModuleType("pyspark")
+    pyspark_sql_module = types.ModuleType("pyspark.sql")
+    pyspark_sql_module.DataFrame = object
+    pyspark_sql_module.SparkSession = object
+    pyspark_sql_functions_module = types.ModuleType("pyspark.sql.functions")
+    pyspark_sql_column_module = types.ModuleType("pyspark.sql.column")
+    pyspark_sql_column_module.Column = object
+    pyspark_sql_module.functions = pyspark_sql_functions_module
+    pyspark_sql_module.column = pyspark_sql_column_module
+    pyspark_module.sql = pyspark_sql_module
+    sys.modules["pyspark"] = pyspark_module
+    sys.modules["pyspark.sql"] = pyspark_sql_module
+    sys.modules["pyspark.sql.functions"] = pyspark_sql_functions_module
+    sys.modules["pyspark.sql.column"] = pyspark_sql_column_module
+
+
+def load_job_module(entity_dir: Path, filename: str, module_name: str):
+    stub_pyspark()
+    entities_spec = importlib.util.spec_from_file_location(
+        "job.entities",
+        entity_dir / "job" / "entities.py",
+    )
+    entities_module = importlib.util.module_from_spec(entities_spec)
+    job_package = types.ModuleType("job")
+    job_package.__path__ = [str(entity_dir / "job")]
+    sys.modules["job"] = job_package
+    sys.modules["job.entities"] = entities_module
+    entities_spec.loader.exec_module(entities_module)
+
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        entity_dir / "job" / filename,
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class QueryLevelJobTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.job = load_job_module(
+            QUERY_QID,
+            "getting_search_query_atc_features_qid.py",
+            "test_query_atc_features_qid_job",
+        )
+
+    def test_normalization_lowercases_folds_yo_and_collapses_spaces(self):
+        self.assertEqual(self.job.normalize_query_value("  Красные   КРОССОВКИ "), "красные кроссовки")
+        self.assertEqual(self.job.normalize_query_value("ЁЛКА"), "елка")
+        self.assertEqual(self.job.normalize_query_value("ёлка"), "елка")
+
+    def test_normalization_of_blank_input_is_empty(self):
+        for value in (None, "", "   ", "\t\n"):
+            with self.subTest(value=value):
+                self.assertEqual(self.job.normalize_query_value(value), "")
+
+    def test_supported_partition_date_formats(self):
+        for value in (
+            "2026-06-17 00:00:00",
+            "2026-06-17T00:00:00",
+            "2026-06-17T00:00:00+00:00",
+            "2026-06-17T00:00:00Z",
+            "2026-06-17 00:00:00+00:00",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(self.job.parse_partition_date(value), "2026-06-17")
+
+    def test_unsupported_partition_date_raises_with_value(self):
+        with self.assertRaises(ValueError) as error:
+            self.job.parse_partition_date("17.06.2026")
+
+        self.assertIn("17.06.2026", str(error.exception))
+
+    def test_dictionary_source_is_pinned_to_v1(self):
+        self.assertEqual(
+            self.job.QUERY_ID_TABLE,
+            "iceberg.gold.feature_platform_search_query_id",
+        )
+        self.assertEqual(self.job.QUERY_ID_VERSION, "v1")
+
+    def test_selected_columns_match_migration_columns(self):
+        self.assertEqual(list(self.job.SELECTED_COLUMNS), migration_columns(QUERY_QID))
+
+    def test_windows_mirror_the_origin_job(self):
+        origin_source = (
+            QUERY_ORIGIN / "job" / "getting_search_query_atc_features.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("WINDOWS = (1, 3, 7, 14, 21, 30, 60, 90)", origin_source)
+        self.assertEqual(self.job.WINDOWS, (1, 3, 7, 14, 21, 30, 60, 90))
+
+
 if __name__ == "__main__":
     unittest.main()
