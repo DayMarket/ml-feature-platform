@@ -42,7 +42,7 @@ Production-конфиг не должен содержать `source.limit`, ч�
 
 Нельзя использовать одно и то же `name` для нескольких неполных наборов признаков из разных таблиц: сервис получает массив значений без имен и ожидает единый согласованный контракт feature group.
 
-Порядок feature groups для конфигурации сервиса ранжирования приведен в `ranking_service_input.yaml`. Daily upload публикует 141 признак из шести gold-таблиц; каждая таблица представлена отдельной feature group.
+Порядок feature groups для текущей конфигурации сервиса ранжирования приведен в `ranking_service_input.yaml`. Этот manifest не обязан перечислять новые параллельно публикуемые версии feature group до их подключения на стороне новой модели.
 
 `models` описывает, какие признаки из каких feature groups использует конкретная модель. Feature всегда указывается внутри своей feature group:
 
@@ -62,7 +62,7 @@ Production-конфиг не должен содержать `source.limit`, ч�
 
 Новая feature group нужна только для нового serving-контракта группы: другой `name`, другой source/entity contract или новый namespace/версия публикации. Разные модели могут брать разные subset-ы признаков из одной feature group.
 
-Группа `fs_search_query_skg_atc_order_features_v2` читает 41 query/SKU-group признак из `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features_v2`. Остальные группы читают признаки на grain `sku_group_id` или `query` из своих gold-таблиц, перечисленных в `config.yaml`.
+Группа `fs_search_query_skg_atc_order_features_v2` читает 41 query/SKU-group признак из `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features_v2`. Группа `fs_search_query_skg_atc_order_features_v3` публикуется параллельно из той же таблицы: она сохраняет порядок 41 признака `v2`, добавляя в начало `query_skg_conv_imp2atc_90` и `query_skg_conv_imp2order_90`. Остальные группы читают признаки на grain `sku_group_id` или `query` из своих gold-таблиц, перечисленных в `config.yaml`.
 
 CI запускает `scripts/validate_ranking_upload_configs.py`. Проверка находит исходную таблицу по `layers/**/config.yaml`, получает `primary_key`, читает колонки из миграций и завершает сборку с ошибкой, если ключи или признаки отсутствуют.
 
