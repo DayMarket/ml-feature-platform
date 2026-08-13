@@ -24,6 +24,7 @@
 - `upload/features_service_upload/v1` - загрузка feature groups в Kafka-топик сервиса ранжирования.
 - `scripts/` - CI-синхронизация миграций, dbt sources, Iceberg maintenance и валидации.
 - `ci_test/` - локальные regression-тесты для CI-логики.
+- [`feature_platform_map.md`](feature_platform_map.md) - автоматически обновляемая карта DAG-зависимостей, расписаний и resource profiles.
 - `docs/feature_platform_guide.md` - подробная инструкция по созданию, изменению, удалению и публикации признаков.
 
 ## Где лежит контракт таблицы
