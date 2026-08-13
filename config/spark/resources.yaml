@@ -26,6 +26,22 @@
       "executor_core_request": "6",
       "executor_instances": "5",
       "executor_memory": "16g"
+    },
+    "search_dataset": {
+      "driver_cores": "1",
+      "driver_memory": "10g",
+      "executor_cores": "4",
+      "executor_core_request": "4",
+      "executor_instances": "5",
+      "executor_memory": "12g"
+    },
+    "search_qid_features": {
+      "driver_cores": "1",
+      "driver_memory": "10g",
+      "executor_cores": "4",
+      "executor_core_request": "4",
+      "executor_instances": "5",
+      "executor_memory": "12g"
     }
   }
 }

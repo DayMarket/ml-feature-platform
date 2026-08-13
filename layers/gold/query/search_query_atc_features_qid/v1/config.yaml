@@ -20,5 +20,5 @@ dag:
 
 alerts:
   team: search
-  severity: P3
+  severity: P4
   oncall_webhook_conn_id: oncall_webhook_search
