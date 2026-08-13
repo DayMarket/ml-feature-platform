@@ -85,10 +85,13 @@ def test_map_contains_cross_dag_dependencies_and_schedules():
     logistics_records = [
         record
         for record in records.values()
-        if record.group_tag == "location-h3-forecast"
+        if record.group_tag in generator._critical_group_tags(ROOT, "Logistics")
     ]
-    assert len(logistics_records) == 6
+    assert len(logistics_records) == 9
     assert {record.area for record in logistics_records} == {"silver", "gold"}
+    assert {
+        record.group_tag for record in logistics_records
+    } == {"location-h3-forecast", "order-completion-rates"}
 
     assert generator.severity_policy_violations(list(records.values())) == []
 

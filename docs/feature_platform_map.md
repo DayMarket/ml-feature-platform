@@ -98,18 +98,21 @@ gantt
 
 ## 2. Production-critical DAGs — Logistics
 
-Команда: **Logistics**. Цепочка определяется общим Airflow group tag
-`location-h3-forecast` и включает итоговую gold-витрину и все связанные silver DAG.
+Команда: **Logistics**. Цепочки определяются Airflow group tags из
+`config/feature_platform_map.json`.
 
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 360}}}%%
 flowchart LR
     d0["gold.h3_index.location_h3_forecast_features<br/>UTC 02:00 · P3 · airflow-python"]
-    d1["silver.h3_index.dp_neighbor_order_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d2["silver.h3_index.geo_geointellect_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d3["silver.h3_index.geo_user_activity_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d4["silver.h3_index.geo_user_location_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d5["silver.h3_index.geo_yandex_poi_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d1["silver.category_level_category_id.order_completion_category_features<br/>UTC 03:00 · P3 · airflow-python"]
+    d2["silver.h3_index.dp_neighbor_order_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d3["silver.h3_index.geo_geointellect_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d4["silver.h3_index.geo_user_activity_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d5["silver.h3_index.geo_user_location_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d6["silver.h3_index.geo_yandex_poi_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d7["silver.order_city_id.order_completion_city_features<br/>UTC 03:00 · P3 · airflow-python"]
+    d8["silver.order_region_id.order_completion_region_features<br/>UTC 03:00 · P3 · airflow-python"]
     x0["dbt-dq.silver.feature_platform_dp_neighbor_order_features.dq"]
     x1["dbt-dq.silver.feature_platform_geo_geointellect_features.dq"]
     x2["dbt-dq.silver.feature_platform_geo_user_activity_features.dq"]
@@ -120,7 +123,7 @@ flowchart LR
     x2 -->|"sensor Δ1h"| d0
     x3 -->|"sensor Δ1h"| d0
     x4 -->|"sensor Δ1h"| d0
-    class d1,d2,d3,d4,d5 silver
+    class d1,d2,d3,d4,d5,d6,d7,d8 silver
     class d0 gold
     class x0,x1,x2,x3,x4 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
@@ -141,6 +144,7 @@ gantt
     section Logistics
     00h00 · 5 DAG · airflow-python×5 :milestone, s0_0000, 00:00, 0m
     02h00 · 1 DAG · airflow-python×1 :milestone, s0_0120, 02:00, 0m
+    03h00 · 3 DAG · airflow-python×3 :milestone, s0_0180, 03:00, 0m
 ```
 
 ## 3. Offline, training and backfill DAGs
@@ -157,12 +161,9 @@ flowchart LR
     d3["gold.query_text_version.search_query_id<br/>UTC 05:00 · P3 · airflow-python"]
     d4["gold.sku_group_id.sku_group_search_conversion_features<br/>UTC 03:00 · P3 · large"]
     d5["gold.sku_group_id_query_text.sku_group_query_atc_features<br/>UTC 02:00 · P3 · large"]
-    d6["silver.category_level_category_id.order_completion_category_features<br/>UTC 03:00 · P3 · airflow-python"]
-    d7["silver.order_city_id.order_completion_city_features<br/>UTC 03:00 · P3 · airflow-python"]
-    d8["silver.order_region_id.order_completion_region_features<br/>UTC 03:00 · P3 · airflow-python"]
-    d9["silver.product_id.product_search_queries<br/>UTC 03:00 · P4 · large"]
-    d10["silver.query_sku_group_id.search_query_sku_group_es_features<br/>manual · P3 · airflow-python"]
-    d11["silver.sku_group_id.sku_group_orders<br/>UTC 01:00 · P3 · large"]
+    d6["silver.product_id.product_search_queries<br/>UTC 03:00 · P4 · large"]
+    d7["silver.query_sku_group_id.search_query_sku_group_es_features<br/>manual · P3 · airflow-python"]
+    d8["silver.sku_group_id.sku_group_orders<br/>UTC 01:00 · P3 · large"]
     x0["dbt-dq.silver.feature_platform_search_sku_group_id_install_query.dq"]
     x1["dbt-dq.silver.feature_platform_sku_group_query_search_orders.dq"]
     x2["silver.query_sku_group_id.search_query_sku_group_es_features.elasticsearch_collect"]
@@ -176,8 +177,8 @@ flowchart LR
     x0 -->|"sensor Δ2h"| d4
     x1 -->|"sensor Δ2h"| d4
     x0 -->|"sensor Δ1h"| d5
-    x2 -->|"sensor"| d10
-    class d6,d7,d8,d9,d10,d11 silver
+    x2 -->|"sensor"| d7
+    class d6,d7,d8 silver
     class d1,d2,d3,d4,d5 gold
     class d0 datasets
     class x0,x1,x2 external
@@ -202,7 +203,7 @@ gantt
     section Other
     01h00 · 1 DAG · large×1 :milestone, s2_0060, 01:00, 0m
     02h00 · 1 DAG · large×1 :milestone, s2_0120, 02:00, 0m
-    03h00 · 5 DAG · large×2 · airflow-python×3 :milestone, s2_0180, 03:00, 0m
+    03h00 · 2 DAG · large×2 :milestone, s2_0180, 03:00, 0m
     05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
     06h00 · 2 DAG · small×1 · search_qid_features×1 :milestone, s2_0360, 06:00, 0m
 ```

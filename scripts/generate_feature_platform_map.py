@@ -92,8 +92,9 @@ def render_repository_map(
     records = records or discover_dags(repo_root)
     if not records:
         raise ValueError("No Airflow DAG definitions found")
+    logistics_group_tags = _critical_group_tags(repo_root, "Logistics")
     logistics_records = [
-        record for record in records if record.group_tag == "location-h3-forecast"
+        record for record in records if record.group_tag in logistics_group_tags
     ]
     logistics_ids = {record.dag_id for record in logistics_records}
     production_records = [
@@ -159,8 +160,8 @@ def render_repository_map(
         "",
         "## 2. Production-critical DAGs — Logistics",
         "",
-        "Команда: **Logistics**. Цепочка определяется общим Airflow group tag",
-        "`location-h3-forecast` и включает итоговую gold-витрину и все связанные silver DAG.",
+        "Команда: **Logistics**. Цепочки определяются Airflow group tags из",
+        "`config/feature_platform_map.json`.",
         "",
         "```mermaid",
         *_render_mermaid(logistics_records),
@@ -262,6 +263,24 @@ def _map_exclusions(repo_root: Path) -> dict[str, str]:
                 f"{MAP_CONFIG}: every excluded DAG must have a non-empty reason"
             )
     return exclusions
+
+
+def _critical_group_tags(repo_root: Path, team: str) -> set[str]:
+    config_path = repo_root / MAP_CONFIG
+    if not config_path.exists():
+        return set()
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    critical_groups = config.get("critical_groups", {})
+    if not isinstance(critical_groups, dict):
+        raise ValueError(f"{MAP_CONFIG}: critical_groups must be an object")
+    group_tags = critical_groups.get(team, [])
+    if not isinstance(group_tags, list) or not all(
+        isinstance(group_tag, str) and group_tag.strip() for group_tag in group_tags
+    ):
+        raise ValueError(
+            f"{MAP_CONFIG}: critical_groups.{team} must be a list of non-empty strings"
+        )
+    return set(group_tags)
 
 
 def _parse_dag_file(repo_root: Path, dag_path: Path) -> list[DagRecord]:

@@ -1,4 +1,10 @@
 {
+  "critical_groups": {
+    "Logistics": [
+      "location-h3-forecast",
+      "order-completion-rates"
+    ]
+  },
   "excluded_dags": {
     "feature-platform.layers.gold.calculated_at_sku_group_id_promotion_id.dynamic_pricing_sku_group_price_features": "Paused in Airflow; confirmed on 2026-08-13",
     "feature-platform.layers.gold.calculated_at_sku_id_promotion_id.dynamic_pricing_price_features": "Paused in Airflow; confirmed on 2026-08-13",
