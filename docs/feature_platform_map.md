@@ -27,19 +27,30 @@ Upload DAG и все repository DAG, транзитивно питающие pro
 Стрелка направлена от upstream DAG к зависимому DAG; `Δ` — разница logical date.
 
 ```mermaid
-%%{init: {"flowchart": {"wrappingWidth": 220}}}%%
+%%{init: {"flowchart": {"wrappingWidth": 220}, "htmlLabels": false, "markdownAutoWrap": false}}%%
 flowchart LR
-    d0["search_query_atc_features<br>UTC 03:00 · P3 · small"]
-    d1["sku_group_query_atc_order_features.v2<br>UTC 03:00 · P3 · large"]
-    d2["feedback_sku_group_id<br>UTC 03:10 · P3 · small"]
-    d3["sku_group_price_features<br>UTC 02:00 · P3 · small"]
-    d4["sku_group_search_conversion_features.v2<br>UTC 03:00 · P3 · large"]
-    d5["sku_group_stock_features<br>UTC 03:00 · P3 · small"]
-    d6["sku_group_query_search_orders<br>UTC 01:00 · P3 · large"]
-    d7["sku_group_id_prices<br>UTC 01:00 · P3 · small"]
-    d8["sku_group_install<br>UTC 01:00 · P3 · large"]
-    d9["sku_stock_daily<br>UTC 00:00 · P3 · small"]
-    d10["ranking_features_upload_dag<br>UTC 04:00 · P3 · spark-custom"]
+    d0["`search_query_atc_features
+UTC 03:00 · P3 · small`"]
+    d1["`sku_group_query_atc_order_features.v2
+UTC 03:00 · P3 · large`"]
+    d2["`feedback_sku_group_id
+UTC 03:10 · P3 · small`"]
+    d3["`sku_group_price_features
+UTC 02:00 · P3 · small`"]
+    d4["`sku_group_search_conversion_features.v2
+UTC 03:00 · P3 · large`"]
+    d5["`sku_group_stock_features
+UTC 03:00 · P3 · small`"]
+    d6["`sku_group_query_search_orders
+UTC 01:00 · P3 · large`"]
+    d7["`sku_group_id_prices
+UTC 01:00 · P3 · small`"]
+    d8["`sku_group_install
+UTC 01:00 · P3 · large`"]
+    d9["`sku_stock_daily
+UTC 00:00 · P3 · small`"]
+    d10["`ranking_features_upload_dag
+UTC 04:00 · P3 · spark-custom`"]
     x0["dwh_trino.sku_eod"]
     x1["events.dq"]
     x2["sessions.dq"]
@@ -98,17 +109,26 @@ gantt
 `config/feature_platform_map.json`.
 
 ```mermaid
-%%{init: {"flowchart": {"wrappingWidth": 220}}}%%
+%%{init: {"flowchart": {"wrappingWidth": 220}, "htmlLabels": false, "markdownAutoWrap": false}}%%
 flowchart LR
-    d0["location_h3_forecast_features<br>UTC 02:00 · P3 · airflow-python"]
-    d1["order_completion_category_features<br>UTC 03:00 · P3 · airflow-python"]
-    d2["dp_neighbor_order_features<br>UTC 00:00 · P3 · airflow-python"]
-    d3["geo_geointellect_features<br>UTC 00:00 · P3 · airflow-python"]
-    d4["geo_user_activity_features<br>UTC 00:00 · P3 · airflow-python"]
-    d5["geo_user_location_features<br>UTC 00:00 · P3 · airflow-python"]
-    d6["geo_yandex_poi_features<br>UTC 00:00 · P3 · airflow-python"]
-    d7["order_completion_city_features<br>UTC 03:00 · P3 · airflow-python"]
-    d8["order_completion_region_features<br>UTC 03:00 · P3 · airflow-python"]
+    d0["`location_h3_forecast_features
+UTC 02:00 · P3 · airflow-python`"]
+    d1["`order_completion_category_features
+UTC 03:00 · P3 · airflow-python`"]
+    d2["`dp_neighbor_order_features
+UTC 00:00 · P3 · airflow-python`"]
+    d3["`geo_geointellect_features
+UTC 00:00 · P3 · airflow-python`"]
+    d4["`geo_user_activity_features
+UTC 00:00 · P3 · airflow-python`"]
+    d5["`geo_user_location_features
+UTC 00:00 · P3 · airflow-python`"]
+    d6["`geo_yandex_poi_features
+UTC 00:00 · P3 · airflow-python`"]
+    d7["`order_completion_city_features
+UTC 03:00 · P3 · airflow-python`"]
+    d8["`order_completion_region_features
+UTC 03:00 · P3 · airflow-python`"]
     d2 -->|"DQ Δ1h"| d0
     d3 -->|"DQ Δ1h"| d0
     d4 -->|"DQ Δ1h"| d0
@@ -143,17 +163,26 @@ DAG, которые не входят в объявленные serving-цепо
 standalone-подготовка данных. P3 в этом графе — кандидат на проверку severity и слота.
 
 ```mermaid
-%%{init: {"flowchart": {"wrappingWidth": 220}}}%%
+%%{init: {"flowchart": {"wrappingWidth": 220}, "htmlLabels": false, "markdownAutoWrap": false}}%%
 flowchart LR
-    d0["search_ranking.v1<br>UTC 10:00 · P4 · search_dataset"]
-    d1["search_query_atc_features_qid<br>UTC 06:00 · P4 · small"]
-    d2["sku_group_query_atc_order_features_qid<br>UTC 06:00 · P4 · search_qid_features"]
-    d3["search_query_id<br>UTC 05:00 · P3 · airflow-python"]
-    d4["sku_group_search_conversion_features<br>UTC 03:00 · P3 · large"]
-    d5["sku_group_query_atc_features<br>UTC 02:00 · P3 · large"]
-    d6["product_search_queries<br>UTC 03:00 · P4 · large"]
-    d7["search_query_sku_group_es_features<br>manual · P3 · airflow-python"]
-    d8["sku_group_orders<br>UTC 01:00 · P3 · large"]
+    d0["`search_ranking.v1
+UTC 10:00 · P4 · search_dataset`"]
+    d1["`search_query_atc_features_qid
+UTC 06:00 · P4 · small`"]
+    d2["`sku_group_query_atc_order_features_qid
+UTC 06:00 · P4 · search_qid_features`"]
+    d3["`search_query_id
+UTC 05:00 · P3 · airflow-python`"]
+    d4["`sku_group_search_conversion_features
+UTC 03:00 · P3 · large`"]
+    d5["`sku_group_query_atc_features
+UTC 02:00 · P3 · large`"]
+    d6["`product_search_queries
+UTC 03:00 · P4 · large`"]
+    d7["`search_query_sku_group_es_features
+manual · P3 · airflow-python`"]
+    d8["`sku_group_orders
+UTC 01:00 · P3 · large`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
     x2["elasticsearch_collect"]

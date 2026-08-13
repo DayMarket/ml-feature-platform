@@ -814,7 +814,7 @@ def _render_mermaid(records: list[DagRecord]) -> list[str]:
     )
     external_node_ids = {dag_id: f"x{index}" for index, dag_id in enumerate(external_ids)}
     lines = [
-        '%%{init: {"flowchart": {"wrappingWidth": 220}}}%%',
+        '%%{init: {"flowchart": {"wrappingWidth": 220}, "htmlLabels": false, "markdownAutoWrap": false}}%%',
         "flowchart LR",
     ]
     for record in records:
@@ -852,8 +852,8 @@ def _render_mermaid(records: list[DagRecord]) -> list[str]:
 def _mermaid_label(record: DagRecord) -> str:
     schedule = _schedule_start_label(record.schedule)
     return _escape_mermaid(
-        f"{_graph_dag_name(record.dag_id)}<br>{schedule} · "
-        f"{record.severity or '—'} · {record.resource}"
+        f"`{_graph_dag_name(record.dag_id)}\n"
+        f"{schedule} · {record.severity or '—'} · {record.resource}`"
     )
 
 
