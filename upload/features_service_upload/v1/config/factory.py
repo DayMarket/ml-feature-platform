@@ -196,6 +196,7 @@ def _source_dependencies(
                     f"{_sanitize_task_id(str(source['table']))}"
                 ),
                 "external_dag_id": str(source["dependency_dag_id"]),
+                "external_task_id": source.get("dependency_task_id"),
                 "execution_delta_minutes": int(
                     source["dependency_execution_delta_minutes"]
                 ),
