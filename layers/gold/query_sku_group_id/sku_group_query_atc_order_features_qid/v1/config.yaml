@@ -5,7 +5,7 @@ spark:
   template_path: ../../../../../config/spark/layer_spark_application.yaml
   application_name: fetch-gold-sku-group-query-atc-order-features-qid
   main_application_file: local:///git/repo/layers/gold/query_sku_group_id/sku_group_query_atc_order_features_qid/v1/entrypoints/get_sku_group_query_atc_order_features_qid.py
-  resource_profile: large
+  resource_profile: search_qid_features
 
 table:
   key: sku_group_query_atc_order_features_qid
@@ -20,5 +20,5 @@ dag:
 
 alerts:
   team: search
-  severity: P3
+  severity: P4
   oncall_webhook_conn_id: oncall_webhook_search
