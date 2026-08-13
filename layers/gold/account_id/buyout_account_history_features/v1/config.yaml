@@ -36,4 +36,4 @@ dag:
 alerts:
   team: buyer
   severity: P2
-  oncall_webhook_conn_id: oncall_webhook_buyer
+  oncall_webhook_conn_id: team:buyer

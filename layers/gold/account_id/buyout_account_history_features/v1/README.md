@@ -144,7 +144,7 @@ Resource profile: `large` (`config/spark/resources.yaml`).
 ## Владелец / алерты
 
 `table.meta.team = team:buyer`, `dag.team = buyer`, `dag.owner = team:buyer`,
-alerts `buyer`, severity `P2`, webhook conn id `oncall_webhook_buyer`.
+alerts `buyer`, severity `P2`, webhook conn id `team:buyer`.
 
 ## Открытые вопросы
 
@@ -156,7 +156,7 @@ alerts `buyer`, severity `P2`, webhook conn id `oncall_webhook_buyer`.
   Если владелец предпочтёт самый свежий снимок, надо читать партицию `D+1` и одновременно
   поменять дельту сенсора на 2 часа. Расхождение затрагивает только аккаунты с первым в жизни
   заказом в сутки `D` после 07:00 по Ташкенту.
-- Conn id `oncall_webhook_buyer` собран по конвенции `oncall_webhook_<team>` — подтвердить у владельца.
+- Conn id `team:buyer` собран по конвенции `oncall_webhook_<team>` — подтвердить у владельца.
 - `registration_date` отдаётся как есть: сентинел `1970-01-01`, если он встречается в источнике,
   даст большое `days_since_registration`. В MAD-13227 поле тоже не гейтилось.
 - Из `user_creation_facts.sql` в витрину не перенесены `gmv_created_prev_365d`,

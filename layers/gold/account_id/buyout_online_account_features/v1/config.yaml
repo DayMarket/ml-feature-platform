@@ -11,7 +11,7 @@ table:
 source:
   engine: trino
   # Домена buyer среди connection нет; значение подтверждает владелец (см. README).
-  trino_conn_id: trino_search
+  trino_conn_id: trino_bx_analytics
   # Имя витрины-источника берётся из её config.yaml, здесь не дублируется.
   entity_path: layers/gold/account_id/buyout_account_history_features/v1
   # Партиция читается по остатку account_id: одна выгрузка целиком не помещается в память задачи.
@@ -31,4 +31,4 @@ dag:
 alerts:
   team: buyer
   severity: P2
-  oncall_webhook_conn_id: oncall_webhook_buyer
+  oncall_webhook_conn_id: team:buyer

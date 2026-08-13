@@ -22,7 +22,7 @@ TEAM = "buyer"
 TABLE_TEAM = "team:buyer"
 DAG_OWNER = "team:buyer"
 ALERT_SEVERITY = "P2"
-ONCALL_WEBHOOK_CONN_ID = "oncall_webhook_buyer"
+ONCALL_WEBHOOK_CONN_ID = "team:buyer"
 START_DATE = "2026-08-20T00:00:00Z"
 
 # layer / group / entity + ожидаемый контракт таблицы и оркестрации.

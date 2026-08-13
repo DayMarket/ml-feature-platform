@@ -62,10 +62,10 @@ silver не попадала в serving-контракт молча: расши�
 ## Рантайм
 
 Trino-source пайплайн (Airflow/Python + `pyiceberg`), не Spark. Чтение через connection
-`trino_search`, запись — через entity-local модуль `job/runtime.py`.
+`trino_bx_analytics`, запись — через entity-local модуль `job/runtime.py`.
 Образ задачи: `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`, 4Gi / 2 CPU.
 
-Выбор `trino_search` — вопрос PR: витрина не относится к поисковому домену, но у buyer-команды
+`trino_bx_analytics` — рабочий Trino-коннекшн buyer-команды (используется DAG-ами product-analytics-dags, например cm2_early_estimate).
 пока нет отдельного Trino-connection.
 
 Перед запросом DAG проверяет через PyIceberg обе таблицы — источник и выход. Запись
@@ -73,5 +73,5 @@ Trino-source пайплайн (Airflow/Python + `pyiceberg`), не Spark. Чте
 
 ## Владелец / алерты
 
-`table.meta.team = team:buyer`, alerts `buyer`, severity P2, webhook `oncall_webhook_buyer`.
-Идентификатор on-call webhook подтверждается в PR.
+`table.meta.team = team:buyer`, alerts `buyer`, severity P2, webhook `team:buyer`.
+Вебхук `team:buyer` — рабочее прод-значение buyer-команды (например, DAG user_daily_metrics_ice в product-analytics-dags).

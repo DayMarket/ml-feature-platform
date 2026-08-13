@@ -79,19 +79,19 @@ DQ-DAG разделяет логическую дату производящег
 ## Рантайм
 
 Trino-source пайплайн (Airflow/Python + `pyiceberg`), не Spark. Чтение через connection
-`trino_search`, запись — через entity-local модуль `job/runtime.py`.
+`trino_bx_analytics`, запись — через entity-local модуль `job/runtime.py`.
 Образ задачи: `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`, 8Gi / 2 CPU.
 
 ## Владелец / алерты
 
 `table.meta.team = team:buyer`, `dag.team = buyer`, `dag.owner = team:buyer`,
-alerts `buyer`, severity `P2`, webhook conn id `oncall_webhook_buyer`.
+alerts `buyer`, severity `P2`, webhook conn id `team:buyer`.
 
 ## Открытые вопросы
 
-- Airflow connection к Trino: домена buyer в списке (`trino_search`, `trino_recsys`) нет,
-  временно взят `trino_search` — подтвердить у владельца.
-- Conn id `oncall_webhook_buyer` собран по конвенции `oncall_webhook_<team>` — подтвердить у владельца.
+- Airflow connection к Trino: домена buyer в списке (`trino_bx_analytics`, `trino_recsys`) нет,
+  временно взят `trino_bx_analytics` — подтвердить у владельца.
+- Conn id `team:buyer` собран по конвенции `oncall_webhook_<team>` — подтвердить у владельца.
 - `execution_delta` сенсора уточняется после появления DQ-DAG.
 - Число срезов 16 выбрано по оценке «десятки миллионов аккаунтов × 82 колонки»; после первого
   прогона сверить фактическую память задачи и при необходимости изменить `source.shards`.

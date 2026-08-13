@@ -10,7 +10,7 @@ table:
 
 source:
   engine: trino
-  trino_conn_id: trino_search
+  trino_conn_id: trino_bx_analytics
   # Скользящее окно до даты партиции: [date - 90 дней, date).
   lookback_days: 90
 
@@ -28,4 +28,4 @@ dag:
 alerts:
   team: buyer
   severity: P2
-  oncall_webhook_conn_id: oncall_webhook_buyer
+  oncall_webhook_conn_id: team:buyer

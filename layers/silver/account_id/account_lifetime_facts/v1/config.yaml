@@ -12,8 +12,8 @@ table:
 
 source:
   engine: clickhouse
-  # Открытый вопрос PR: RBAC-доступ к marketing.account_properties для Airflow.
-  clickhouse_conn_id: clickhouse_default
+  # Коннекшн заводится DE по конвенции clickhouse_<dag>_dag; заявка — в PR.
+  clickhouse_conn_id: clickhouse_account_lifetime_facts_dag
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
@@ -29,4 +29,4 @@ dag:
 alerts:
   team: buyer
   severity: P2
-  oncall_webhook_conn_id: oncall_webhook_buyer
+  oncall_webhook_conn_id: team:buyer
