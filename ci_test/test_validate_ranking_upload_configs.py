@@ -128,6 +128,36 @@ def main() -> int:
     )
     assert any("read_mode=latest_timestamp" in error for error in errors)
 
+    external_feature_group = {
+        "source": {
+            "external": True,
+            "catalog": "iceberg",
+            "schema": "um_prod_feature_store_iceberg",
+            "table": "cold_start_boosted_pw_convs_query_atc_order_90",
+            "primary_key": ["date", "query", "sku_group_id"],
+            "columns": [
+                "date",
+                "query",
+                "sku_group_id",
+                "query_skg_conv_imp2atc_90",
+                "query_skg_conv_imp2order_90",
+            ],
+            "dependency_dag_id": "spark.pyspark_feature_store_dag",
+            "dependency_task_id": "fetch_boosted_conversions_etl",
+            "dependency_execution_delta_minutes": 240,
+        },
+        "name": "fs_search_query_skg_atc_order_features_cold_start",
+        "features": [
+            "query_skg_conv_imp2atc_90",
+            "query_skg_conv_imp2order_90",
+        ],
+    }
+    assert validator.validate_feature_group(
+        config_path,
+        external_feature_group,
+        {},
+    ) == []
+
     print("Ranking upload model manifest validation tests completed successfully")
     return 0
 
