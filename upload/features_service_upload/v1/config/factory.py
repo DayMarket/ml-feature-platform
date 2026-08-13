@@ -270,12 +270,14 @@ def get_deployment(
         "<hive_metastore_uris>": str(resources["hive_metastore_uris"]),
         "<driver_cores>": str(resources["driver_cores"]),
         "<driver_memory>": str(resources["driver_memory"]),
+        "<driver_memory_overhead>": str(resources["driver_memory_overhead"]),
         "<executor_cores>": str(resources["executor_cores"]),
         "<executor_core_request>": str(
             resources.get("executor_core_request", resources["executor_cores"])
         ),
         "<executor_instances>": str(resources["executor_instances"]),
         "<executor_memory>": str(resources["executor_memory"]),
+        "<executor_memory_overhead>": str(resources["executor_memory_overhead"]),
         "<s3_secret_key>": str(s3_connection["aws_secret_access_key"]),
         "<s3_access_key>": str(s3_connection["aws_access_key_id"]),
         "<run_date>": "{{ ds }}",
