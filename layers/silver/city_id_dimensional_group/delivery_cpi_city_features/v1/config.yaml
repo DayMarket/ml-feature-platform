@@ -1,0 +1,31 @@
+# Trino-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+table:
+  key: delivery_cpi_city_features
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_delivery_cpi_city_features
+  primary_key: date,city_id,dimensional_group
+  meta:
+    team: team:buyer
+
+source:
+  engine: trino
+  trino_conn_id: trino_search
+  # Скользящее окно до даты партиции: [date - 90 дней, date).
+  lookback_days: 90
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.silver.city_id_dimensional_group.delivery_cpi_city_features
+  group_tag: buyout-features
+  schedule: "0 3 * * *"
+  start_date: "2026-08-20T00:00:00Z"
+  team: buyer
+  owner: team:buyer
+
+alerts:
+  team: buyer
+  severity: P2
+  oncall_webhook_conn_id: oncall_webhook_buyer
