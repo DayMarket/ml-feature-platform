@@ -165,7 +165,7 @@ def render_repository_map(
         "## 2. Production-critical DAGs — Logistics",
         "",
         "Команда: **Logistics**. Цепочки определяются Airflow group tags и точными DAG ids из",
-        "`config/feature_platform_map.json`; category-level completion DAG остаётся в Search.",
+        "`config/feature_platform_map.json`.",
         "",
         "```mermaid",
         *_render_mermaid(logistics_records),

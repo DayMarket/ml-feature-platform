@@ -6,6 +6,7 @@
   },
   "critical_dags": {
     "Logistics": [
+      "feature-platform.layers.silver.category_level_category_id.order_completion_category_features",
       "feature-platform.layers.silver.order_city_id.order_completion_city_features",
       "feature-platform.layers.silver.order_region_id.order_completion_region_features"
     ]
