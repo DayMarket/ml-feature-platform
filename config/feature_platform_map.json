@@ -1,8 +1,13 @@
 {
   "critical_groups": {
     "Logistics": [
-      "location-h3-forecast",
-      "order-completion-rates"
+      "location-h3-forecast"
+    ]
+  },
+  "critical_dags": {
+    "Logistics": [
+      "feature-platform.layers.silver.order_city_id.order_completion_city_features",
+      "feature-platform.layers.silver.order_region_id.order_completion_region_features"
     ]
   },
   "excluded_dags": {

@@ -93,8 +93,12 @@ def render_repository_map(
     if not records:
         raise ValueError("No Airflow DAG definitions found")
     logistics_group_tags = _critical_group_tags(repo_root, "Logistics")
+    logistics_dag_ids = _critical_dag_ids(repo_root, "Logistics")
     logistics_records = [
-        record for record in records if record.group_tag in logistics_group_tags
+        record
+        for record in records
+        if record.group_tag in logistics_group_tags
+        or record.dag_id in logistics_dag_ids
     ]
     logistics_ids = {record.dag_id for record in logistics_records}
     production_records = [
@@ -160,8 +164,8 @@ def render_repository_map(
         "",
         "## 2. Production-critical DAGs — Logistics",
         "",
-        "Команда: **Logistics**. Цепочки определяются Airflow group tags из",
-        "`config/feature_platform_map.json`.",
+        "Команда: **Logistics**. Цепочки определяются Airflow group tags и точными DAG ids из",
+        "`config/feature_platform_map.json`; category-level completion DAG остаётся в Search.",
         "",
         "```mermaid",
         *_render_mermaid(logistics_records),
@@ -281,6 +285,24 @@ def _critical_group_tags(repo_root: Path, team: str) -> set[str]:
             f"{MAP_CONFIG}: critical_groups.{team} must be a list of non-empty strings"
         )
     return set(group_tags)
+
+
+def _critical_dag_ids(repo_root: Path, team: str) -> set[str]:
+    config_path = repo_root / MAP_CONFIG
+    if not config_path.exists():
+        return set()
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    critical_dags = config.get("critical_dags", {})
+    if not isinstance(critical_dags, dict):
+        raise ValueError(f"{MAP_CONFIG}: critical_dags must be an object")
+    dag_ids = critical_dags.get(team, [])
+    if not isinstance(dag_ids, list) or not all(
+        isinstance(dag_id, str) and dag_id.strip() for dag_id in dag_ids
+    ):
+        raise ValueError(
+            f"{MAP_CONFIG}: critical_dags.{team} must be a list of non-empty strings"
+        )
+    return set(dag_ids)
 
 
 def _parse_dag_file(repo_root: Path, dag_path: Path) -> list[DagRecord]:

@@ -86,12 +86,14 @@ def test_map_contains_cross_dag_dependencies_and_schedules():
         record
         for record in records.values()
         if record.group_tag in generator._critical_group_tags(ROOT, "Logistics")
+        or record.dag_id in generator._critical_dag_ids(ROOT, "Logistics")
     ]
-    assert len(logistics_records) == 9
+    assert len(logistics_records) == 8
     assert {record.area for record in logistics_records} == {"silver", "gold"}
-    assert {
-        record.group_tag for record in logistics_records
-    } == {"location-h3-forecast", "order-completion-rates"}
+    assert (
+        "feature-platform.layers.silver.category_level_category_id."
+        "order_completion_category_features"
+    ) not in {record.dag_id for record in logistics_records}
 
     assert generator.severity_policy_violations(list(records.values())) == []
 
