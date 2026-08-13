@@ -22,11 +22,14 @@ def test_generated_feature_platform_map_is_current():
     expected = generator.render_repository_map(ROOT)
     actual = (ROOT / "docs" / "feature_platform_map.md").read_text(encoding="utf-8")
     assert actual == expected
-    assert "## 1. Production-critical DAGs" in actual
-    assert "## 2. Offline, training and backfill DAGs" in actual
+    assert "## 1. Production-critical DAGs — Search" in actual
+    assert "## 2. Production-critical DAGs — Logistics" in actual
+    assert "## 3. Offline, training and backfill DAGs" in actual
     assert "title Production-critical DAG starts (UTC)" in actual
+    assert "title Logistics-critical DAG starts (UTC)" in actual
     assert "title Offline, training and backfill DAG starts (UTC)" in actual
     assert "section Production-critical" in actual
+    assert "section Logistics" in actual
     assert "section Training" in actual
     assert "section Backfill" in actual
     assert "section Other" in actual
@@ -78,6 +81,14 @@ def test_map_contains_cross_dag_dependencies_and_schedules():
     assert dataset.severity == "P4"
     assert dataset.workload == "training"
     assert dataset.expected_severity == "P4"
+
+    logistics_records = [
+        record
+        for record in records.values()
+        if record.group_tag == "location-h3-forecast"
+    ]
+    assert len(logistics_records) == 6
+    assert {record.area for record in logistics_records} == {"silver", "gold"}
 
     assert generator.severity_policy_violations(list(records.values())) == []
 

@@ -21,7 +21,7 @@ Severity policy:
 - `P4` — training datasets и отдельные backfill DAG.
 - Для остальных DAG карта показывает настроенную severity без автоматической переклассификации.
 
-## 1. Production-critical DAGs
+## 1. Production-critical DAGs — Search
 
 Upload DAG и все repository DAG, транзитивно питающие production feature groups.
 Стрелка направлена от upstream DAG к зависимому DAG; `Δ` — разница logical date.
@@ -96,7 +96,54 @@ gantt
     04h00 · 1 DAG · spark-custom×1 :milestone, s0_0240, 04:00, 0m
 ```
 
-## 2. Offline, training and backfill DAGs
+## 2. Production-critical DAGs — Logistics
+
+Команда: **Logistics**. Цепочка определяется общим Airflow group tag
+`location-h3-forecast` и включает итоговую gold-витрину и все связанные silver DAG.
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 360}}}%%
+flowchart LR
+    d0["gold.h3_index.location_h3_forecast_features<br/>UTC 02:00 · P3 · airflow-python"]
+    d1["silver.h3_index.dp_neighbor_order_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d2["silver.h3_index.geo_geointellect_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d3["silver.h3_index.geo_user_activity_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d4["silver.h3_index.geo_user_location_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d5["silver.h3_index.geo_yandex_poi_features<br/>UTC 00:00 · P3 · airflow-python"]
+    x0["dbt-dq.silver.feature_platform_dp_neighbor_order_features.dq"]
+    x1["dbt-dq.silver.feature_platform_geo_geointellect_features.dq"]
+    x2["dbt-dq.silver.feature_platform_geo_user_activity_features.dq"]
+    x3["dbt-dq.silver.feature_platform_geo_user_location_features.dq"]
+    x4["dbt-dq.silver.feature_platform_geo_yandex_poi_features.dq"]
+    x0 -->|"sensor Δ1h"| d0
+    x1 -->|"sensor Δ1h"| d0
+    x2 -->|"sensor Δ1h"| d0
+    x3 -->|"sensor Δ1h"| d0
+    x4 -->|"sensor Δ1h"| d0
+    class d1,d2,d3,d4,d5 silver
+    class d0 gold
+    class x0,x1,x2,x3,x4 external
+    classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
+    classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
+    classDef datasets fill:#dcfce7,stroke:#16a34a,color:#052e16
+    classDef upload fill:#f3e8ff,stroke:#9333ea,color:#3b0764
+    classDef external fill:#f3f4f6,stroke:#6b7280,color:#111827
+```
+
+### Logistics-critical start timeline
+
+```mermaid
+gantt
+    title Logistics-critical DAG starts (UTC)
+    dateFormat HH:mm
+    axisFormat %H:%M
+    tickInterval 1hour
+    section Logistics
+    00h00 · 5 DAG · airflow-python×5 :milestone, s0_0000, 00:00, 0m
+    02h00 · 1 DAG · airflow-python×1 :milestone, s0_0120, 02:00, 0m
+```
+
+## 3. Offline, training and backfill DAGs
 
 DAG, которые не входят в объявленные serving-цепочки: обучение, backfill и
 standalone-подготовка данных. P3 в этом графе — кандидат на проверку severity и слота.
@@ -105,51 +152,35 @@ standalone-подготовка данных. P3 в этом графе — ка
 %%{init: {"flowchart": {"wrappingWidth": 360}}}%%
 flowchart LR
     d0["datasets.search.search_ranking.v1<br/>UTC 10:00 · P4 · search_dataset"]
-    d1["gold.h3_index.location_h3_forecast_features<br/>UTC 02:00 · P3 · airflow-python"]
-    d2["gold.query.search_query_atc_features_qid<br/>UTC 06:00 · P4 · small"]
-    d3["gold.query_sku_group_id.sku_group_query_atc_order_features_qid<br/>UTC 06:00 · P4 · search_qid_features"]
-    d4["gold.query_text_version.search_query_id<br/>UTC 05:00 · P3 · airflow-python"]
-    d5["gold.sku_group_id.sku_group_search_conversion_features<br/>UTC 03:00 · P3 · large"]
-    d6["gold.sku_group_id_query_text.sku_group_query_atc_features<br/>UTC 02:00 · P3 · large"]
-    d7["silver.category_level_category_id.order_completion_category_features<br/>UTC 03:00 · P3 · airflow-python"]
-    d8["silver.h3_index.dp_neighbor_order_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d9["silver.h3_index.geo_geointellect_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d10["silver.h3_index.geo_user_activity_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d11["silver.h3_index.geo_user_location_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d12["silver.h3_index.geo_yandex_poi_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d13["silver.order_city_id.order_completion_city_features<br/>UTC 03:00 · P3 · airflow-python"]
-    d14["silver.order_region_id.order_completion_region_features<br/>UTC 03:00 · P3 · airflow-python"]
-    d15["silver.product_id.product_search_queries<br/>UTC 03:00 · P4 · large"]
-    d16["silver.query_sku_group_id.search_query_sku_group_es_features<br/>manual · P3 · airflow-python"]
-    d17["silver.sku_group_id.sku_group_orders<br/>UTC 01:00 · P3 · large"]
-    x0["dbt-dq.silver.feature_platform_dp_neighbor_order_features.dq"]
-    x1["dbt-dq.silver.feature_platform_geo_geointellect_features.dq"]
-    x2["dbt-dq.silver.feature_platform_geo_user_activity_features.dq"]
-    x3["dbt-dq.silver.feature_platform_geo_user_location_features.dq"]
-    x4["dbt-dq.silver.feature_platform_geo_yandex_poi_features.dq"]
-    x5["dbt-dq.silver.feature_platform_search_sku_group_id_install_query.dq"]
-    x6["dbt-dq.silver.feature_platform_sku_group_query_search_orders.dq"]
-    x7["silver.query_sku_group_id.search_query_sku_group_es_features.elasticsearch_collect"]
-    x0 -->|"sensor Δ1h"| d1
-    x1 -->|"sensor Δ1h"| d1
-    x2 -->|"sensor Δ1h"| d1
-    x3 -->|"sensor Δ1h"| d1
-    x4 -->|"sensor Δ1h"| d1
-    x5 -->|"sensor Δ5h"| d2
-    x6 -->|"sensor Δ5h"| d2
-    d4 -->|"sensor Δ1h"| d2
-    x5 -->|"sensor Δ5h"| d3
-    x6 -->|"sensor Δ5h"| d3
-    d4 -->|"sensor Δ1h"| d3
-    x5 -->|"sensor Δ4h"| d4
-    x5 -->|"sensor Δ2h"| d5
-    x6 -->|"sensor Δ2h"| d5
-    x5 -->|"sensor Δ1h"| d6
-    x7 -->|"sensor"| d16
-    class d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17 silver
-    class d1,d2,d3,d4,d5,d6 gold
+    d1["gold.query.search_query_atc_features_qid<br/>UTC 06:00 · P4 · small"]
+    d2["gold.query_sku_group_id.sku_group_query_atc_order_features_qid<br/>UTC 06:00 · P4 · search_qid_features"]
+    d3["gold.query_text_version.search_query_id<br/>UTC 05:00 · P3 · airflow-python"]
+    d4["gold.sku_group_id.sku_group_search_conversion_features<br/>UTC 03:00 · P3 · large"]
+    d5["gold.sku_group_id_query_text.sku_group_query_atc_features<br/>UTC 02:00 · P3 · large"]
+    d6["silver.category_level_category_id.order_completion_category_features<br/>UTC 03:00 · P3 · airflow-python"]
+    d7["silver.order_city_id.order_completion_city_features<br/>UTC 03:00 · P3 · airflow-python"]
+    d8["silver.order_region_id.order_completion_region_features<br/>UTC 03:00 · P3 · airflow-python"]
+    d9["silver.product_id.product_search_queries<br/>UTC 03:00 · P4 · large"]
+    d10["silver.query_sku_group_id.search_query_sku_group_es_features<br/>manual · P3 · airflow-python"]
+    d11["silver.sku_group_id.sku_group_orders<br/>UTC 01:00 · P3 · large"]
+    x0["dbt-dq.silver.feature_platform_search_sku_group_id_install_query.dq"]
+    x1["dbt-dq.silver.feature_platform_sku_group_query_search_orders.dq"]
+    x2["silver.query_sku_group_id.search_query_sku_group_es_features.elasticsearch_collect"]
+    x0 -->|"sensor Δ5h"| d1
+    x1 -->|"sensor Δ5h"| d1
+    d3 -->|"sensor Δ1h"| d1
+    x0 -->|"sensor Δ5h"| d2
+    x1 -->|"sensor Δ5h"| d2
+    d3 -->|"sensor Δ1h"| d2
+    x0 -->|"sensor Δ4h"| d3
+    x0 -->|"sensor Δ2h"| d4
+    x1 -->|"sensor Δ2h"| d4
+    x0 -->|"sensor Δ1h"| d5
+    x2 -->|"sensor"| d10
+    class d6,d7,d8,d9,d10,d11 silver
+    class d1,d2,d3,d4,d5 gold
     class d0 datasets
-    class x0,x1,x2,x3,x4,x5,x6,x7 external
+    class x0,x1,x2 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
     classDef datasets fill:#dcfce7,stroke:#16a34a,color:#052e16
@@ -169,9 +200,8 @@ gantt
     10h00 · 1 DAG · search_dataset×1 :milestone, s0_0600, 10:00, 0m
     section Backfill
     section Other
-    00h00 · 5 DAG · airflow-python×5 :milestone, s2_0000, 00:00, 0m
     01h00 · 1 DAG · large×1 :milestone, s2_0060, 01:00, 0m
-    02h00 · 2 DAG · large×1 · airflow-python×1 :milestone, s2_0120, 02:00, 0m
+    02h00 · 1 DAG · large×1 :milestone, s2_0120, 02:00, 0m
     03h00 · 5 DAG · large×2 · airflow-python×3 :milestone, s2_0180, 03:00, 0m
     05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
     06h00 · 2 DAG · small×1 · search_qid_features×1 :milestone, s2_0360, 06:00, 0m

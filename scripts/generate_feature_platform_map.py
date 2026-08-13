@@ -35,6 +35,7 @@ class DagRecord:
     table: str | None
     severity: str | None
     dependencies: tuple[Dependency, ...]
+    group_tag: str | None = None
     is_backfill: bool = False
     workload: str = "other"
     expected_severity: str | None = None
@@ -91,8 +92,20 @@ def render_repository_map(
     records = records or discover_dags(repo_root)
     if not records:
         raise ValueError("No Airflow DAG definitions found")
-    production_records = [record for record in records if record.workload == "production"]
-    offline_records = [record for record in records if record.workload != "production"]
+    logistics_records = [
+        record for record in records if record.group_tag == "location-h3-forecast"
+    ]
+    logistics_ids = {record.dag_id for record in logistics_records}
+    production_records = [
+        record
+        for record in records
+        if record.workload == "production" and record.dag_id not in logistics_ids
+    ]
+    offline_records = [
+        record
+        for record in records
+        if record.workload != "production" and record.dag_id not in logistics_ids
+    ]
 
     lines = [
         "# Feature Platform: DAG dependencies and schedules",
@@ -122,7 +135,7 @@ def render_repository_map(
         "- `P4` — training datasets и отдельные backfill DAG.",
         "- Для остальных DAG карта показывает настроенную severity без автоматической переклассификации.",
         "",
-        "## 1. Production-critical DAGs",
+        "## 1. Production-critical DAGs — Search",
         "",
         "Upload DAG и все repository DAG, транзитивно питающие production feature groups.",
         "Стрелка направлена от upstream DAG к зависимому DAG; `Δ` — разница logical date.",
@@ -144,7 +157,26 @@ def render_repository_map(
         ),
         "```",
         "",
-        "## 2. Offline, training and backfill DAGs",
+        "## 2. Production-critical DAGs — Logistics",
+        "",
+        "Команда: **Logistics**. Цепочка определяется общим Airflow group tag",
+        "`location-h3-forecast` и включает итоговую gold-витрину и все связанные silver DAG.",
+        "",
+        "```mermaid",
+        *_render_mermaid(logistics_records),
+        "```",
+        "",
+        "### Logistics-critical start timeline",
+        "",
+        "```mermaid",
+        *_render_start_timeline(
+            logistics_records,
+            "Logistics-critical DAG starts (UTC)",
+            ("Logistics",),
+        ),
+        "```",
+        "",
+        "## 3. Offline, training and backfill DAGs",
         "",
         "DAG, которые не входят в объявленные serving-цепочки: обучение, backfill и",
         "standalone-подготовка данных. P3 в этом графе — кандидат на проверку severity и слота.",
@@ -285,6 +317,7 @@ def _parse_dag_file(repo_root: Path, dag_path: Path) -> list[DagRecord]:
                 table=record_table,
                 severity=_configured_severity(config),
                 dependencies=tuple(sorted(set(dependencies), key=lambda dep: (dep.upstream_dag_id, dep.kind))),
+                group_tag=_configured_group_tag(config),
                 is_backfill=_contains_backfill(node),
             )
         )
@@ -677,6 +710,11 @@ def _table_name(config: dict[str, Any]) -> str | None:
 def _configured_severity(config: dict[str, Any]) -> str | None:
     severity = config.get("alerts", {}).get("severity")
     return str(severity) if severity else None
+
+
+def _configured_group_tag(config: dict[str, Any]) -> str | None:
+    group_tag = config.get("dag", {}).get("group_tag")
+    return str(group_tag) if group_tag else None
 
 
 def _owns_output_table(dag_id: str, config: dict[str, Any]) -> bool:
