@@ -852,7 +852,7 @@ def _render_mermaid(records: list[DagRecord]) -> list[str]:
 def _mermaid_label(record: DagRecord) -> str:
     schedule = _schedule_start_label(record.schedule)
     return _escape_mermaid(
-        f"{_graph_dag_name(record.dag_id)}<br/>{schedule} · "
+        f"{_graph_dag_name(record.dag_id)}<br>{schedule} · "
         f"{record.severity or '—'} · {record.resource}"
     )
 

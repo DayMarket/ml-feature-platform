@@ -34,6 +34,8 @@ def test_generated_feature_platform_map_is_current():
     assert "section Backfill" in actual
     assert "section Other" in actual
     assert "UTC 03:00" in actual
+    assert "search_query_atc_features<br>UTC 03:00 · P3 · small" in actual
+    assert "<br/>" not in actual
 
 
 def test_map_contains_cross_dag_dependencies_and_schedules():
