@@ -124,13 +124,52 @@ def validate_feature_group(
             f"{config_path}: feature group {group_name} "
             "source.dependency_execution_delta_minutes must be a non-negative integer"
         )
-    table = tables.get(source_key)
+    dependency_task_id = source.get("dependency_task_id")
+    if dependency_task_id is not None and (
+        not isinstance(dependency_task_id, str) or not dependency_task_id.strip()
+    ):
+        errors.append(
+            f"{config_path}: feature group {group_name} "
+            "source.dependency_task_id must be a non-empty string"
+        )
+
+    if source.get("external") is True:
+        primary_key = source.get("primary_key")
+        columns = source.get("columns")
+        if not isinstance(primary_key, list) or not primary_key:
+            errors.append(
+                f"{config_path}: external feature group {group_name} "
+                "source.primary_key must be a non-empty list"
+            )
+            primary_key = []
+        if not isinstance(columns, list) or not columns:
+            errors.append(
+                f"{config_path}: external feature group {group_name} "
+                "source.columns must be a non-empty list"
+            )
+            columns = []
+        table = {
+            "catalog": str(source.get("catalog", "")),
+            "schema": source_key[0],
+            "table": source_key[1],
+            "primary_key": [str(column) for column in primary_key],
+            "columns": {str(column) for column in columns},
+            "external": True,
+        }
+        for field in ("catalog", "schema", "table"):
+            if not str(table[field]).strip():
+                errors.append(
+                    f"{config_path}: external feature group {group_name} "
+                    f"source.{field} must be a non-empty string"
+                )
+    else:
+        table = tables.get(source_key)
     if not table:
         return [
             f"{config_path}: feature group {group_name} references unknown source "
             f"{source_key[0]}.{source_key[1]}"
         ]
-    if table["schema"] != "gold":
+    if not table.get("external") and table["schema"] != "gold":
         errors.append(
             f"{config_path}: feature group {group_name} must use a gold source table, "
             f"got {table['schema']}.{table['table']}"
