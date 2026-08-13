@@ -785,26 +785,45 @@ def _expanded_daily_times(schedule: str | None) -> list[int]:
 def _render_mermaid(records: list[DagRecord]) -> list[str]:
     internal_ids = {record.dag_id for record in records}
     node_ids = {record.dag_id: f"d{index}" for index, record in enumerate(records)}
+    table_producers = {
+        record.table: record.dag_id for record in records if record.table
+    }
+    visual_dependencies = {
+        record.dag_id: tuple(
+            sorted(
+                {
+                    _visual_dependency(
+                        dependency,
+                        internal_ids,
+                        table_producers,
+                    )
+                    for dependency in record.dependencies
+                },
+                key=lambda dependency: (dependency.upstream_dag_id, dependency.kind),
+            )
+        )
+        for record in records
+    }
     external_ids = sorted(
         {
             dependency.upstream_dag_id
             for record in records
-            for dependency in record.dependencies
+            for dependency in visual_dependencies[record.dag_id]
             if dependency.upstream_dag_id not in internal_ids
         }
     )
     external_node_ids = {dag_id: f"x{index}" for index, dag_id in enumerate(external_ids)}
     lines = [
-        '%%{init: {"flowchart": {"wrappingWidth": 360}}}%%',
+        '%%{init: {"flowchart": {"wrappingWidth": 220}}}%%',
         "flowchart LR",
     ]
     for record in records:
         label = _mermaid_label(record)
         lines.append(f'    {node_ids[record.dag_id]}["{label}"]')
     for dag_id in external_ids:
-        lines.append(f'    {external_node_ids[dag_id]}["{_escape_mermaid(_short_dag_id(dag_id))}"]')
+        lines.append(f'    {external_node_ids[dag_id]}["{_escape_mermaid(_graph_dag_name(dag_id))}"]')
     for record in records:
-        for dependency in record.dependencies:
+        for dependency in visual_dependencies[record.dag_id]:
             upstream_node = node_ids.get(dependency.upstream_dag_id)
             if upstream_node is None:
                 upstream_node = external_node_ids[dependency.upstream_dag_id]
@@ -833,9 +852,23 @@ def _render_mermaid(records: list[DagRecord]) -> list[str]:
 def _mermaid_label(record: DagRecord) -> str:
     schedule = _schedule_start_label(record.schedule)
     return _escape_mermaid(
-        f"{_short_dag_id(record.dag_id)}<br/>{schedule} · "
+        f"{_graph_dag_name(record.dag_id)}<br/>{schedule} · "
         f"{record.severity or '—'} · {record.resource}"
     )
+
+
+def _visual_dependency(
+    dependency: Dependency,
+    internal_ids: set[str],
+    table_producers: dict[str, str],
+) -> Dependency:
+    if dependency.upstream_dag_id in internal_ids:
+        return dependency
+    upstream_table = _table_from_dq_dag_id(dependency.upstream_dag_id)
+    producer_id = table_producers.get(upstream_table or "")
+    if producer_id:
+        return Dependency(producer_id, "DQ", dependency.delta_minutes)
+    return dependency
 
 
 def _schedule_start_label(schedule: str | None) -> str:
@@ -868,6 +901,20 @@ def _short_dag_id(dag_id: str) -> str:
         if dag_id.startswith(prefix):
             return replacement + dag_id[len(prefix) :]
     return dag_id
+
+
+def _graph_dag_name(dag_id: str) -> str:
+    short_id = _short_dag_id(dag_id)
+    parts = short_id.split(".")
+    if len(parts) >= 2 and re.fullmatch(r"v\d+", parts[-1]):
+        return ".".join(parts[-2:])
+    if dag_id.startswith(("feature-platform.", "feature_platform_")):
+        return parts[-1]
+    if short_id.startswith("dbt-dq."):
+        return ".".join(parts[-2:])
+    if len(parts) > 3:
+        return ".".join(parts[-2:])
+    return short_id
 
 
 def _render_daily_slots(records: list[DagRecord]) -> list[str]:

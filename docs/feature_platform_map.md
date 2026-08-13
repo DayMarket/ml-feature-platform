@@ -27,37 +27,33 @@ Upload DAG и все repository DAG, транзитивно питающие pro
 Стрелка направлена от upstream DAG к зависимому DAG; `Δ` — разница logical date.
 
 ```mermaid
-%%{init: {"flowchart": {"wrappingWidth": 360}}}%%
+%%{init: {"flowchart": {"wrappingWidth": 220}}}%%
 flowchart LR
-    d0["gold.query.search_query_atc_features<br/>UTC 03:00 · P3 · small"]
-    d1["gold.query_sku_group_id.sku_group_query_atc_order_features.v2<br/>UTC 03:00 · P3 · large"]
-    d2["gold.sku_group_id.feedback_sku_group_id<br/>UTC 03:10 · P3 · small"]
-    d3["gold.sku_group_id.sku_group_price_features<br/>UTC 02:00 · P3 · small"]
-    d4["gold.sku_group_id.sku_group_search_conversion_features.v2<br/>UTC 03:00 · P3 · large"]
-    d5["gold.sku_group_id.sku_group_stock_features<br/>UTC 03:00 · P3 · small"]
-    d6["silver.query_sku_group_id.sku_group_query_search_orders<br/>UTC 01:00 · P3 · large"]
-    d7["silver.sku_group_id.sku_group_id_prices<br/>UTC 01:00 · P3 · small"]
-    d8["silver.sku_group_id_query_category.sku_group_install<br/>UTC 01:00 · P3 · large"]
-    d9["silver.sku_id.sku_stock_daily<br/>UTC 00:00 · P3 · small"]
+    d0["search_query_atc_features<br/>UTC 03:00 · P3 · small"]
+    d1["sku_group_query_atc_order_features.v2<br/>UTC 03:00 · P3 · large"]
+    d2["feedback_sku_group_id<br/>UTC 03:10 · P3 · small"]
+    d3["sku_group_price_features<br/>UTC 02:00 · P3 · small"]
+    d4["sku_group_search_conversion_features.v2<br/>UTC 03:00 · P3 · large"]
+    d5["sku_group_stock_features<br/>UTC 03:00 · P3 · small"]
+    d6["sku_group_query_search_orders<br/>UTC 01:00 · P3 · large"]
+    d7["sku_group_id_prices<br/>UTC 01:00 · P3 · small"]
+    d8["sku_group_install<br/>UTC 01:00 · P3 · large"]
+    d9["sku_stock_daily<br/>UTC 00:00 · P3 · small"]
     d10["ranking_features_upload_dag<br/>UTC 04:00 · P3 · spark-custom"]
-    x0["dbt.models.dwh_trino.sku_eod"]
-    x1["dbt-dq.silver.feature_platform_search_sku_group_id_install_query.dq"]
-    x2["dbt-dq.silver.feature_platform_sku_group_id_prices.dq"]
-    x3["dbt-dq.silver.feature_platform_sku_group_query_search_orders.dq"]
-    x4["dbt-dq.silver.feature_platform_sku_stock_daily.dq"]
-    x5["dbt.tests.dbt_clickhouse_dwh.events.dq"]
-    x6["dbt.tests.dbt_clickhouse_dwh.sessions.dq"]
-    x1 -->|"sensor Δ2h"| d0
-    x3 -->|"sensor Δ2h"| d0
-    x1 -->|"sensor Δ2h"| d1
-    x3 -->|"sensor Δ2h"| d1
-    x2 -->|"sensor Δ1h"| d3
-    x1 -->|"sensor Δ2h"| d4
-    x3 -->|"sensor Δ2h"| d4
-    x4 -->|"sensor Δ2h"| d5
+    x0["dwh_trino.sku_eod"]
+    x1["events.dq"]
+    x2["sessions.dq"]
+    d6 -->|"DQ Δ2h"| d0
+    d8 -->|"DQ Δ2h"| d0
+    d6 -->|"DQ Δ2h"| d1
+    d8 -->|"DQ Δ2h"| d1
+    d7 -->|"DQ Δ1h"| d3
+    d6 -->|"DQ Δ2h"| d4
+    d8 -->|"DQ Δ2h"| d4
+    d9 -->|"DQ Δ2h"| d5
     x0 -->|"sensor Δ1h"| d7
-    x5 -->|"sensor"| d8
-    x6 -->|"sensor"| d8
+    x1 -->|"sensor"| d8
+    x2 -->|"sensor"| d8
     x0 -->|"sensor"| d9
     d0 -->|"upload-sensor Δ1h"| d10
     d1 -->|"upload-sensor Δ1h"| d10
@@ -68,7 +64,7 @@ flowchart LR
     class d6,d7,d8,d9 silver
     class d0,d1,d2,d3,d4,d5 gold
     class d10 upload
-    class x0,x1,x2,x3,x4,x5,x6 external
+    class x0,x1,x2 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
     classDef datasets fill:#dcfce7,stroke:#16a34a,color:#052e16
@@ -102,30 +98,24 @@ gantt
 `config/feature_platform_map.json`.
 
 ```mermaid
-%%{init: {"flowchart": {"wrappingWidth": 360}}}%%
+%%{init: {"flowchart": {"wrappingWidth": 220}}}%%
 flowchart LR
-    d0["gold.h3_index.location_h3_forecast_features<br/>UTC 02:00 · P3 · airflow-python"]
-    d1["silver.category_level_category_id.order_completion_category_features<br/>UTC 03:00 · P3 · airflow-python"]
-    d2["silver.h3_index.dp_neighbor_order_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d3["silver.h3_index.geo_geointellect_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d4["silver.h3_index.geo_user_activity_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d5["silver.h3_index.geo_user_location_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d6["silver.h3_index.geo_yandex_poi_features<br/>UTC 00:00 · P3 · airflow-python"]
-    d7["silver.order_city_id.order_completion_city_features<br/>UTC 03:00 · P3 · airflow-python"]
-    d8["silver.order_region_id.order_completion_region_features<br/>UTC 03:00 · P3 · airflow-python"]
-    x0["dbt-dq.silver.feature_platform_dp_neighbor_order_features.dq"]
-    x1["dbt-dq.silver.feature_platform_geo_geointellect_features.dq"]
-    x2["dbt-dq.silver.feature_platform_geo_user_activity_features.dq"]
-    x3["dbt-dq.silver.feature_platform_geo_user_location_features.dq"]
-    x4["dbt-dq.silver.feature_platform_geo_yandex_poi_features.dq"]
-    x0 -->|"sensor Δ1h"| d0
-    x1 -->|"sensor Δ1h"| d0
-    x2 -->|"sensor Δ1h"| d0
-    x3 -->|"sensor Δ1h"| d0
-    x4 -->|"sensor Δ1h"| d0
+    d0["location_h3_forecast_features<br/>UTC 02:00 · P3 · airflow-python"]
+    d1["order_completion_category_features<br/>UTC 03:00 · P3 · airflow-python"]
+    d2["dp_neighbor_order_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d3["geo_geointellect_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d4["geo_user_activity_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d5["geo_user_location_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d6["geo_yandex_poi_features<br/>UTC 00:00 · P3 · airflow-python"]
+    d7["order_completion_city_features<br/>UTC 03:00 · P3 · airflow-python"]
+    d8["order_completion_region_features<br/>UTC 03:00 · P3 · airflow-python"]
+    d2 -->|"DQ Δ1h"| d0
+    d3 -->|"DQ Δ1h"| d0
+    d4 -->|"DQ Δ1h"| d0
+    d5 -->|"DQ Δ1h"| d0
+    d6 -->|"DQ Δ1h"| d0
     class d1,d2,d3,d4,d5,d6,d7,d8 silver
     class d0 gold
-    class x0,x1,x2,x3,x4 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
     classDef datasets fill:#dcfce7,stroke:#16a34a,color:#052e16
@@ -153,20 +143,20 @@ DAG, которые не входят в объявленные serving-цепо
 standalone-подготовка данных. P3 в этом графе — кандидат на проверку severity и слота.
 
 ```mermaid
-%%{init: {"flowchart": {"wrappingWidth": 360}}}%%
+%%{init: {"flowchart": {"wrappingWidth": 220}}}%%
 flowchart LR
-    d0["datasets.search.search_ranking.v1<br/>UTC 10:00 · P4 · search_dataset"]
-    d1["gold.query.search_query_atc_features_qid<br/>UTC 06:00 · P4 · small"]
-    d2["gold.query_sku_group_id.sku_group_query_atc_order_features_qid<br/>UTC 06:00 · P4 · search_qid_features"]
-    d3["gold.query_text_version.search_query_id<br/>UTC 05:00 · P3 · airflow-python"]
-    d4["gold.sku_group_id.sku_group_search_conversion_features<br/>UTC 03:00 · P3 · large"]
-    d5["gold.sku_group_id_query_text.sku_group_query_atc_features<br/>UTC 02:00 · P3 · large"]
-    d6["silver.product_id.product_search_queries<br/>UTC 03:00 · P4 · large"]
-    d7["silver.query_sku_group_id.search_query_sku_group_es_features<br/>manual · P3 · airflow-python"]
-    d8["silver.sku_group_id.sku_group_orders<br/>UTC 01:00 · P3 · large"]
-    x0["dbt-dq.silver.feature_platform_search_sku_group_id_install_query.dq"]
-    x1["dbt-dq.silver.feature_platform_sku_group_query_search_orders.dq"]
-    x2["silver.query_sku_group_id.search_query_sku_group_es_features.elasticsearch_collect"]
+    d0["search_ranking.v1<br/>UTC 10:00 · P4 · search_dataset"]
+    d1["search_query_atc_features_qid<br/>UTC 06:00 · P4 · small"]
+    d2["sku_group_query_atc_order_features_qid<br/>UTC 06:00 · P4 · search_qid_features"]
+    d3["search_query_id<br/>UTC 05:00 · P3 · airflow-python"]
+    d4["sku_group_search_conversion_features<br/>UTC 03:00 · P3 · large"]
+    d5["sku_group_query_atc_features<br/>UTC 02:00 · P3 · large"]
+    d6["product_search_queries<br/>UTC 03:00 · P4 · large"]
+    d7["search_query_sku_group_es_features<br/>manual · P3 · airflow-python"]
+    d8["sku_group_orders<br/>UTC 01:00 · P3 · large"]
+    x0["feature_platform_search_sku_group_id_install_query.dq"]
+    x1["feature_platform_sku_group_query_search_orders.dq"]
+    x2["elasticsearch_collect"]
     x0 -->|"sensor Δ5h"| d1
     x1 -->|"sensor Δ5h"| d1
     d3 -->|"sensor Δ1h"| d1
