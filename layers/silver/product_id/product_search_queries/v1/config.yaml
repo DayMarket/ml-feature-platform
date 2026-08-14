@@ -22,7 +22,7 @@ source:
   engine: spark_iceberg
   ranking_events_table: iceberg.silver.ranking_analytics_events
   sku_table: iceberg.silver.sku
-  model_name: search_unified_model_v6
+  model_name: search_unified_model_v9
   lookback_days: 14
   top_queries_limit: 200
 dag:
