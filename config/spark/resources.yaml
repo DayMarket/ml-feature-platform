@@ -33,6 +33,16 @@
       "executor_memory": "16g",
       "executor_memory_overhead": "3g"
     },
+    "search_product": {
+      "driver_cores": "1",
+      "driver_memory": "12g",
+      "driver_memory_overhead": "2g",
+      "executor_cores": "8",
+      "executor_core_request": "6",
+      "executor_instances": "5",
+      "executor_memory": "20g",
+      "executor_memory_overhead": "3g"
+    },
     "search_dataset": {
       "driver_cores": "1",
       "driver_memory": "10g",
