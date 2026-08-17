@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     avg_items_per_order_win DOUBLE COMMENT 'Среднее число позиций в заказе окна',
     n_distinct_dp_win BIGINT COMMENT 'Различных ПВЗ в заказах окна',
     n_distinct_city_win BIGINT COMMENT 'Различных городов доставки в заказах окна',
+    last_order_city_id BIGINT COMMENT 'Город последнего заказа окна — ключ связи с гео-витриной сервиса (order_completion_city_features присоединяется по date + 1)',
+    last_order_region_id BIGINT COMMENT 'Регион последнего заказа окна — ключ связи с order_completion_region_features',
     first_order_date_win DATE COMMENT 'Дата первого заказа внутри окна среза (Ташкент)',
     last_order_date_win DATE COMMENT 'Дата последнего заказа внутри окна среза (Ташкент)',
     days_since_last_order_win INT COMMENT 'Дней от последнего заказа окна до D',

@@ -65,6 +65,8 @@ FEATURE_COLUMNS = (
     "avg_items_per_order_win",
     "n_distinct_dp_win",
     "n_distinct_city_win",
+    "last_order_city_id",
+    "last_order_region_id",
     "first_order_date_win",
     "last_order_date_win",
     "days_since_last_order_win",

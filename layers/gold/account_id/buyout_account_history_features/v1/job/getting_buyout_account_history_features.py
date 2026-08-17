@@ -60,6 +60,7 @@ WITH hist AS (
         h.delivery_type,
         h.payment_type,
         h.order_city_id,
+        h.order_region_id,
         h.delivery_point_id,
         h.item_quantity,
         h.real_order_item_status                     AS st,
@@ -121,6 +122,7 @@ hist_orders AS (
         MIN_BY(f.payment_type,      f.order_item_id)                   AS payment_type,
         MIN_BY(f.delivery_type,     f.order_item_id)                   AS delivery_type,
         MIN_BY(f.order_city_id,     f.order_item_id)                   AS city_id,
+        MIN_BY(f.order_region_id,   f.order_item_id)                   AS region_id,
         MIN_BY(f.delivery_point_id, f.order_item_id)                   AS delivery_point_id,
         COUNT(*)                                                       AS n_items,
         SUM(f.item_quantity)                                           AS n_units,
@@ -280,6 +282,10 @@ agg AS (
         -- гео и ПВЗ истории; полноценные гео-признаки — отдельная задача (MAD-13228)
         COUNT(DISTINCT o.delivery_point_id)                               AS n_distinct_dp_win,
         COUNT(DISTINCT o.city_id)                                         AS n_distinct_city_win,
+        -- ключи связи с гео-витринами сервиса (order_completion_city/region_features
+        -- присоединяются по date + 1): город и регион последнего заказа окна
+        MAX_BY(o.city_id,   o.order_ts)                                   AS last_order_city_id,
+        MAX_BY(o.region_id, o.order_ts)                                   AS last_order_region_id,
 
         -- временные метки
         MIN(o.order_date)                                                 AS first_order_date_win,
@@ -557,6 +563,8 @@ SELECT
     CAST(h.avg_items_per_order_win AS DOUBLE)          AS avg_items_per_order_win,
     CAST(h.n_distinct_dp_win AS BIGINT)                AS n_distinct_dp_win,
     CAST(h.n_distinct_city_win AS BIGINT)              AS n_distinct_city_win,
+    CAST(h.last_order_city_id AS BIGINT)               AS last_order_city_id,
+    CAST(h.last_order_region_id AS BIGINT)             AS last_order_region_id,
 
     CAST(h.first_order_date_win AS DATE)               AS first_order_date_win,
     CAST(h.last_order_date_win AS DATE)                AS last_order_date_win,
