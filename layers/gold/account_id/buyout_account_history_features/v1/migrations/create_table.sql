@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS {target_table} (
-    date DATE COMMENT 'Дата партиции D: as-of состояние на конец суток D по Ташкенту, срез history_order_items analyze_date = D',
-    account_id BIGINT COMMENT 'ID аккаунта покупателя; в популяции только account_id > 0 с хотя бы одним заказом в окне среза 182 дня',
-    n_orders_win BIGINT COMMENT 'Заказов в окне среза 182 дня',
+    date DATE COMMENT 'Дата партиции D: состояние аккаунта на конец суток D по Ташкенту, снапшот history_order_items с analyze_date = D',
+    account_id BIGINT COMMENT 'ID аккаунта покупателя; в таблице только account_id > 0 с хотя бы одним заказом за 182 дня до D',
+    n_orders_win BIGINT COMMENT 'Заказов за 182 дня до D',
     n_delivered_orders_win BIGINT COMMENT 'Заказов окна, где хотя бы одна позиция доставлена (у курьерки доставка фиксируется по вручению)',
     n_resolved_orders_win BIGINT COMMENT 'Заказов окна, доставленных и с наступившим исходом (нет позиций в статусе ACTIVE)',
     n_orders_30d BIGINT COMMENT 'Заказов, созданных не раньше чем за 30 дней до D (по дате заказа в Ташкенте)',
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     n_items_cancel_before_delivery BIGINT COMMENT 'Позиций со статусом RETURNED BEFORE DELIVERY за окно',
     n_orders_cancelled_before_delivery BIGINT COMMENT 'Заказов, целиком отменённых до доставки (все позиции RETURNED BEFORE DELIVERY)',
     no_show_share_of_delivered DOUBLE COMMENT 'Доля позиций no-show от доставленных позиций окна',
-    no_show_share_of_nonbuyout DOUBLE COMMENT 'Доля no-show среди четырёх составляющих невыкупа',
+    no_show_share_of_nonbuyout DOUBLE COMMENT 'Доля no-show среди составляющих невыкупа: no-show + отмена после доставки + возврат на вручении + возврат после вручения; NULL, если таких позиций в окне нет',
     cancel_before_delivery_share DOUBLE COMMENT 'Доля заказов окна, отменённых до доставки',
     no_show_gmv_share DOUBLE COMMENT 'Доля GMV no-show от GMV доставленных заказов окна',
     n_nonbuyout_events BIGINT COMMENT 'Заказов окна с клиентским невыкупом',
@@ -58,16 +58,16 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     n_distinct_city_win BIGINT COMMENT 'Различных городов доставки в заказах окна',
     last_order_city_id BIGINT COMMENT 'Город последнего заказа окна — ключ связи с гео-витриной сервиса (order_completion_city_features присоединяется по date + 1)',
     last_order_region_id BIGINT COMMENT 'Регион последнего заказа окна — ключ связи с order_completion_region_features',
-    first_order_date_win DATE COMMENT 'Дата первого заказа внутри окна среза (Ташкент)',
-    last_order_date_win DATE COMMENT 'Дата последнего заказа внутри окна среза (Ташкент)',
+    first_order_date_win DATE COMMENT 'Дата первого заказа последних 182 дней (Ташкент)',
+    last_order_date_win DATE COMMENT 'Дата последнего заказа последних 182 дней (Ташкент)',
     days_since_last_order_win INT COMMENT 'Дней от последнего заказа окна до D',
-    tenure_days_win INT COMMENT 'Стаж по окну среза: дней от первого заказа окна до D; занижен при лево-цензурированной истории',
-    history_left_censored INT COMMENT 'Первый заказ окна лежит у левого края среза (окно минус полгода плюс 7 дней буфера): настоящая история длиннее (0/1)',
+    tenure_days_win INT COMMENT 'Дней от первого заказа последних 182 дней до D; занижен, если настоящая история длиннее окна (см. history_left_censored)',
+    history_left_censored INT COMMENT 'Первый заказ окна попал в первые 7 дней 182-дневного окна: настоящая история, скорее всего, длиннее, и признаки первого заказа окна занижены (0/1)',
     orders_created_prev_1d BIGINT COMMENT 'Заказов, созданных за 24 часа до конца суток D (silver.order_items, без учёта исхода)',
     orders_created_prev_7d BIGINT COMMENT 'Заказов, созданных за 7 суток до конца суток D',
     orders_created_prev_30d BIGINT COMMENT 'Заказов, созданных за 30 суток до конца суток D',
     orders_created_prev_90d BIGINT COMMENT 'Заказов, созданных за 90 суток до конца суток D',
-    orders_created_prev_365d BIGINT COMMENT 'Заказов, созданных за 365 суток до конца суток D; горизонт не помещается в окно среза',
+    orders_created_prev_365d BIGINT COMMENT 'Заказов, созданных за 365 суток до конца суток D; горизонт длиннее 182-дневного окна витрины, источник silver.order_items',
     first_order_date_ever DATE COMMENT 'Дата первого созданного заказа за всю жизнь аккаунта (silver-витрина пожизненных фактов)',
     first_order_id_ever BIGINT COMMENT 'ID первого созданного заказа за всю жизнь аккаунта',
     first_issued_order_date DATE COMMENT 'Дата первого выкупленного заказа; относительно исторической даты решения может быть будущим — гейт делает сборщик обучающего набора',
@@ -82,9 +82,9 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     accounts_per_install_current INT COMMENT 'Текущее число аккаунтов на устройство; истории у поля нет, признак приблизительный',
     tenure_days_true INT COMMENT 'Настоящий стаж: дней от первого заказа за всю жизнь до D',
     days_since_registration INT COMMENT 'Дней от регистрации до D',
-    history_left_censored_true INT COMMENT 'Первый заказ за всю жизнь старше 182 дней до D: окно среза не покрывает историю (0/1)'
+    history_left_censored_true INT COMMENT 'Первый заказ за всю жизнь старше 182 дней до D: таблица не видит всю историю аккаунта (0/1)'
 )
 USING iceberg
-COMMENT 'Gold: дневной as-of срез признаков истории выкупа аккаунта для модели невыкупов (MAD-13413)'
+COMMENT 'История выкупа аккаунта для модели невыкупов (MAD-13413). Одна строка — состояние аккаунта на конец суток D по Ташкенту; ключ date + account_id. Данные собраны из снапшота history_order_items с analyze_date = D, поэтому заказы и исходы позже D в признаки не попадают. В таблице только account_id > 0 и только аккаунты с хотя бы одним заказом за последние 182 дня. Внутри: счётчики заказов и выкупаемость за 182 / 90 / 30 дней, исходы последних заказов, разбор невыкупов по типам, оплата, чек, география и факты за всю жизнь аккаунта из feature_platform_account_lifetime_facts. Колонки last_order_city_id и last_order_region_id — ключи для соединения с order_completion_city_features и order_completion_region_features за date + 1. Деньги в UZS; денежная выкупаемость = gmv_completed / (gmv_delivered − GMV уважительных возвратов)'
 PARTITIONED BY (date)
 TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

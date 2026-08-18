@@ -29,6 +29,6 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     sku_vs_product_gap_90d DOUBLE COMMENT 'Разрыв sku и карточки: sku_buyout_rate_shrunk_90d - product_buyout_rate_shrunk_90d (гипотеза размерного эффекта)'
 )
 USING iceberg
-COMMENT 'Gold: online-таблица SKU для сервиса невыкупов — собственный сигнал sku, родительские ставки и сглаженные оценки'
+COMMENT 'Таблица товара для сервиса невыкупов: одна строка на sku_id за date — выкупаемость самого sku, его карточки, категории, магазина и бренда плюс сглаженные оценки. Сглаживание: shrunk = (доля_родителя · 30 + доля_sku · n_доставок) / (30 + n_доставок); категория сглаживается к общей выкупаемости маркетплейса, sku и карточка — к сглаженной доле своей категории. Партиция совпадает с feature_platform_buyout_item_signal_features. Сервис читает последнюю дату: WHERE date = (SELECT max(date) ...)'
 PARTITIONED BY (date)
 TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

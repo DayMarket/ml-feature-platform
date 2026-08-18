@@ -30,6 +30,6 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     cancel_before_delivery_rate_30d DOUBLE COMMENT 'Доля отмен до доставки за 30 дней'
 )
 USING iceberg
-COMMENT 'Gold: товарный сигнал выкупаемости в длинном формате (sku / product / category / shop / brand) в окнах 30 и 90 дней'
+COMMENT 'Выкупаемость товара на пяти уровнях: одна строка — sku, product, category, shop или brand (уровень в key_type, ID в key_id) со счётчиками и долями исходов за 30 и 90 дней до date. Источник — снапшот history_order_items с analyze_date = date, поэтому исходы позже date в данные не попадают. Из этой таблицы собирается feature_platform_buyout_online_sku_features; счётчики n_* нужны для сглаживания и оценки надёжности. GMV в UZS. Ключ date + key_type + key_id'
 PARTITIONED BY (date)
 TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')
