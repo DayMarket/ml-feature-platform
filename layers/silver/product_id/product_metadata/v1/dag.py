@@ -53,14 +53,14 @@ default_args = {
     start_date=pendulum.parse(dag_settings["start_date"]).in_timezone("UTC"),
     dag_id=dag_settings["dag_id"],
 )
-def collect_silver_product_attributes_snapshot():
+def collect_silver_product_metadata():
     SparkKubernetesOperator(
         execution_timeout=timedelta(hours=10),
-        task_id="getting_product_attributes_snapshot",
+        task_id="getting_product_metadata",
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(),
         kubernetes_conn_id="spark_k8s",
     )
 
 
-dag = collect_silver_product_attributes_snapshot()
+dag = collect_silver_product_metadata()

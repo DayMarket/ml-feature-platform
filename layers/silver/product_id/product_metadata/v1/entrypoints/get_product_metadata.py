@@ -7,11 +7,11 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from job.arguments import parse_arguments
-from job.getting_product_attributes_snapshot import run
+from job.getting_product_metadata import run
 
 if __name__ == "__main__":
     spark = (
-        SparkSession.builder.appName("getting-product-attributes-snapshot")
+        SparkSession.builder.appName("getting-product-metadata")
         .enableHiveSupport()
         .getOrCreate()
     )

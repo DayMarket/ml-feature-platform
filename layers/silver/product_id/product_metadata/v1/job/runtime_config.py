@@ -98,9 +98,9 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
                 f"{config_path}: source.{field_name} must be an integer"
             ) from error
 
-    if integer_values["max_category_depth"] < 5:
+    if integer_values["max_category_depth"] != 6:
         raise ValueError(
-            f"{config_path}: source.max_category_depth must be at least 5"
+            f"{config_path}: source.max_category_depth must equal 6"
         )
 
     return SourceSettings(**table_values, **integer_values)

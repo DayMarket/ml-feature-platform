@@ -150,10 +150,16 @@ def get_deployment() -> str:
         "<table_name>": _get_table_name(config),
         "<driver_cores>": str(resource_profile["driver_cores"]),
         "<driver_memory>": str(resource_profile["driver_memory"]),
+        "<driver_memory_overhead>": str(
+            resource_profile["driver_memory_overhead"]
+        ),
         "<executor_cores>": str(resource_profile["executor_cores"]),
         "<executor_core_request>": str(executor_core_request),
         "<executor_instances>": str(resource_profile["executor_instances"]),
         "<executor_memory>": str(resource_profile["executor_memory"]),
+        "<executor_memory_overhead>": str(
+            resource_profile["executor_memory_overhead"]
+        ),
         "<s3_secret_key>": s3_connection["aws_secret_access_key"],
         "<s3_access_key>": s3_connection["aws_access_key_id"],
         "<s3_search_research_secret_key>": research_connection[

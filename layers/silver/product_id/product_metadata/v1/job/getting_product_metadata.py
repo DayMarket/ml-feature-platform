@@ -1,10 +1,11 @@
 from pyspark.sql import DataFrame, SparkSession
 
 from job.entities import Arguments
-from job.partition import snapshot_date_from_partition_end
+from job.partition import dt_from_partition_end
 from job.query import (
     build_category_depth_validation_query,
-    build_product_attributes_snapshot_query,
+    build_product_metadata_merge_query,
+    build_product_metadata_query,
     build_required_l6_validation_query,
 )
 from job.runtime_config import SourceSettings, load_source_settings
@@ -55,39 +56,39 @@ def _validate_required_l6(
         )
 
 
-def build_product_attributes_snapshot(
+def build_product_metadata(
     spark: SparkSession,
-    snapshot_date: str,
+    dt: str,
     settings: SourceSettings,
 ) -> DataFrame:
-    return spark.sql(
-        build_product_attributes_snapshot_query(settings, snapshot_date)
-    )
+    return spark.sql(build_product_metadata_query(settings, dt))
 
 
-def save_product_attributes_snapshot(
+def save_product_metadata(
     spark: SparkSession,
     partition_end: str,
     target_table: str,
 ) -> None:
     spark.conf.set("spark.sql.session.timeZone", "UTC")
+    spark.conf.set("spark.sql.ansi.enabled", "true")
     settings = load_source_settings()
     _require_tables(spark, settings.table_names)
     _require_tables(spark, (target_table,))
     _validate_category_depth(spark, settings)
     _validate_required_l6(spark, settings)
 
-    snapshot_date = snapshot_date_from_partition_end(partition_end).isoformat()
-    snapshot = build_product_attributes_snapshot(
+    dt = dt_from_partition_end(partition_end).isoformat()
+    metadata = build_product_metadata(
         spark,
-        snapshot_date,
+        dt,
         settings,
     )
-    snapshot.writeTo(target_table).overwritePartitions()
+    metadata.createOrReplaceTempView("product_metadata_for_dt")
+    spark.sql(build_product_metadata_merge_query(target_table, dt))
 
 
 def run(spark: SparkSession, arguments: Arguments) -> None:
-    save_product_attributes_snapshot(
+    save_product_metadata(
         spark,
         arguments.partition_end,
         arguments.table_name,
