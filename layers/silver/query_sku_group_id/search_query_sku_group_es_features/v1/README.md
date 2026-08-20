@@ -180,3 +180,19 @@ Iceberg transaction заново перезаписывает только па�
 ## Владелец / алерты
 
 `table.meta.team = team:search`, alerts `search`, severity P3, webhook `oncall_webhook_search`.
+
+## DQ
+
+DQ-тесты выполняются таской `dq` внутри этого DAG'а сразу после `load_to_iceberg`; каталог
+тестов и правила конфигурирования описаны в `dq/README.md`.
+
+Базовый набор: `primary_key_not_null`, `primary_key_unique`, `row_count_min`,
+`row_count_growth`, `freshness`. Дополнительно: `string_not_blank` по колонке `query`.
+
+`row_count_growth` имеет `severity: warn` и повышенный порог `0.5`: DAG запускается вручную
+и нерегулярно, поэтому объём между соседними партициями штатно прыгает.
+
+Партиция для DQ берётся тем же выражением, что и для записи:
+`dag_run.conf["partition_date"]` с фолбэком на `macros.ds_add(ds, -1)`.
+
+Downstream ждёт таску `dq` этого DAG'а, а не dbt-DQ-DAG.
