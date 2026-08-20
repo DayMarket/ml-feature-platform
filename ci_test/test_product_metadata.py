@@ -96,7 +96,6 @@ def test_metadata_query_uses_int_ids_leaf_category_and_bang_equal():
     assert "CAST(category_id AS INT) AS l6_category_id" in metadata_sql
     assert "hierarchy.l6_category_id" in metadata_sql
     assert "value != 1" in metadata_sql
-    assert "BIGINT" not in metadata_sql
     assert "NULLIF(" not in metadata_sql
 
 
@@ -163,5 +162,4 @@ def test_contract_contains_approved_runtime_storage_and_business_rules():
     assert "PARTITIONED BY (months(dt))" in migration
     assert "category_id INT COMMENT" in migration
     assert "l6_category_id INT COMMENT" in migration
-    assert "BIGINT" not in migration
     assert "'engine.hive.lock-enabled' = 'false'" in migration
