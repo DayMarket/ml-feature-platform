@@ -10,10 +10,19 @@ DAG'ами `dbt.source.trino.ml_feature_platform_<schema>.<table>.dq`. Три с
 
 - DQ-DAG запускается по собственному расписанию и не гарантированно после того DAG'а,
   который писал партицию. Проверка может уехать на данные, которых ещё нет, или наоборот
-  подтвердить партицию, которую расчёт ещё дописывает.
+  подтвердить партицию, которую расчёт ещё дописывает. Комментарий в самом `dbt-trino`
+  (`macros/iceberg_relation.sql`) фиксирует ту же проблему с другой стороны: `ref()` в
+  generic-тестах затягивает upstream-модели в `depends_on`, и тест уезжает планироваться
+  в чужой DAG раньше, чем построена витрина, — поэтому там пришлось завести макрос,
+  адресующий Iceberg-таблицу физически, в обход `ref()`.
 - Любое изменение набора тестов требует PR в чужой репозиторий и согласования с DE-инженером.
   ML-инженер не владеет качеством собственной таблицы.
-- Набор тестов у разных таблиц расходится, потому что каждая правка — отдельная договорённость.
+- Наборы тестов у разных таблиц разъезжаются. Фактическое состояние
+  `models/ml_feature_platform/sources.yaml` на 2026-08-20: 39 зарегистрированных таблиц,
+  из них 37 с `dbt_utils.unique_combination_of_columns`, 35 с парой `row_count_*`,
+  и **суммарно 3 теста `not_null` на весь файл** — при том что `render_source_yaml`
+  (`scripts/sync_dbt_sources.py:298`) генерирует `not_null` для каждой PK-колонки каждой
+  таблицы. То есть сгенерированный контракт и реальный разошлись, и заметить это некому.
 
 Цель: DQ становится частью контракта энтити в этом репозитории. ML-инженер объявляет тесты
 именами в `config.yaml`, они исполняются таской внутри того же DAG'а сразу после записи,
@@ -32,6 +41,7 @@ DAG'ами `dbt.source.trino.ml_feature_platform_<schema>.<table>.dq`. Три с
 | Хранение результатов | Iceberg-таблица `iceberg.silver.feature_platform_dq_results` |
 | Визуализация | Superset поверх таблицы результатов; Prometheus/Pushgateway не используем |
 | Оповещение | Существующий oncall-webhook (`send_oncall_notification`) с подробным отчётом |
+| Таксономия тестов | Переиспользуем семейства из `dbt-trino/scripts/check_model_tests_score.py` |
 | Миграция downstream | Фазами: сначала таски, потом переключение сенсоров, потом отключение dbt-тестов |
 | Судьба dbt-trino | `sources.yaml` остаётся (lineage и доступ чужих dbt-моделей), генерация `tests:`/`freshness:` отключается |
 
@@ -88,9 +98,8 @@ ci_test/test_dq_task_wiring.py
 - **`config.py`** — читает блок `dq:` из `config.yaml`, применяет дефолты, строго валидирует.
   Неизвестное имя теста, отсутствующий обязательный параметр, `severity` вне
   `{error, warn}` — исключение на этапе парсинга DAG'а, а не в рантайме таски.
-  Возвращает список описаний тестов и общие настройки прогона.
-- **`tests.py`** — реестр тестов. Каждый тест это пара «рендер SQL по параметрам» и
-  «разбор строки результата в `TestResult`». Никакого исполнения, никакого Airflow —
+- **`tests.py`** — реестр тестов. Каждый тест это тройка «семейство, рендер SQL по параметрам,
+  разбор строки результата в `TestResult`». Никакого исполнения, никакого Airflow —
   чистые функции, полностью покрываемые снапшот-тестами.
 - **`runner.py`** — исполняет отрендеренные запросы через `TrinoHook`, применяет warmup
   и `active_from`, собирает `list[TestResult]`. Делает preflight таблицы до первого теста.
@@ -101,6 +110,11 @@ ci_test/test_dq_task_wiring.py
 
 DAG'и подключают пакет через `REPO_ROOT`, вычисленный от `__file__` — паттерн уже используется
 в `layers/gold/query_text_version/search_query_id/v1/dag.py:17`.
+
+Каждый тест объявляет **семейство** из таксономии, уже принятой в `dbt-trino`
+(`scripts/check_model_tests_score.py`): `null_checks`, `uniqueness`, `domain_values`,
+`referential_integrity`, `row_expr`, `consistency`, `recency`. Это даёт общий словарь с DE
+и позволяет повторить их проверку «покрытия семействами» для новых энтити (см. §13).
 
 ## 5. Контракт в `config.yaml`
 
@@ -114,7 +128,7 @@ dq:
   partition_column: date       # default date
   sample_rows: 5               # default 5
   query_timeout_seconds: 600   # default 600
-  warmup_days: 0               # default 0 (выключено)
+  warmup_days: 1               # default 1
   # active_from: "2026-08-01"  # по умолчанию ключ отсутствует
   tests:
     - name: row_count_min
@@ -151,63 +165,73 @@ dq:
 
 ### Базовые (включены всегда)
 
-| Имя | Параметры | Дефолт | Скан | Что проверяет |
+| Имя | Семейство | Параметры | Дефолт | Скан |
 |---|---|---|---|---|
-| `primary_key_not_null` | — | берёт `table.primary_key` | партиция | ни одна PK-колонка не NULL |
-| `primary_key_unique` | — | берёт `table.primary_key` | партиция | нет дублей по комбинации PK |
-| `row_count_min` | `min_rows` | `1` | партиция | в партиции есть данные |
-| `row_count_growth` | `max_growth_ratio` | `0.2` | 2 партиции | \|rows(d)/rows(d-1) − 1\| ≤ порога |
-| `freshness` | `max_lag_days` | `2` | table-wide | `max(date)` не отстаёт больше чем на N дней |
+| `primary_key_not_null` | null_checks | — | берёт `table.primary_key` | партиция |
+| `primary_key_unique` | uniqueness | — | берёт `table.primary_key` | партиция |
+| `row_count_min` | consistency | `min_rows` | `0` | партиция |
+| `row_count_growth` | consistency | `max_growth_ratio`, `direction` | `0.2`, `both` | 2 партиции |
+| `freshness` | recency | `max_lag_days` | `2` | table-wide |
 
-Соответствие сегодняшнему `render_source_yaml` (`scripts/sync_dbt_sources.py:298`) — один в один,
-кроме одного осознанного ужесточения: `min_rows` меняется с `0` на `1`. Сегодняшний `min_rows: 0`
-делает тест всегда зелёным, то есть пустая партиция проходит. Энтити с легально пустыми днями
-переопределяют значение у себя.
+`row_count_min` воспроизводит семантику `row_count_greater_than_for_date` дословно, включая
+нестрогое сравнение: тест падает при `row_count <= min_rows`. Поэтому дефолт `0` означает
+«партиция не должна быть пустой», а не «любое число строк сойдёт».
 
 ### Опциональные
 
-| Имя | Обязательные параметры | Опциональные | Что проверяет |
+| Имя | Семейство | Обязательные параметры | Опциональные |
 |---|---|---|---|
-| `not_null` | `columns` | `max_null_share` | перечисленные колонки не NULL |
-| `accepted_values` | `column`, `values` | `ignore_nulls` | значения из закрытого списка |
-| `accepted_range` | `column`, `min`/`max` | `min_inclusive`, `max_inclusive`, `ignore_nulls` | значение в диапазоне |
-| `non_negative` | `columns` | `ignore_nulls` | шорткат `accepted_range` с `min: 0` |
-| `null_share_below` | `column`, `max_share` | — | доля NULL ниже порога |
-| `distinct_count_between` | `columns` | `min`, `max` | кардинальность в границах |
-| `expression_is_true` | `expression` | `where` | построчное булево правило |
-| `columns_sum_equals` | `parts`, `total` | `tolerance` | сумма частей равна тоталу |
-| `unique_combination` | `columns` | — | уникальность по не-PK комбинации |
-| `string_not_blank` | `columns` | — | строка не пустая и не из одних пробелов |
-| `relationships` | `column`, `to_table`, `to_column` | `where` | внешний ключ существует |
+| `not_null` | null_checks | `columns` | `max_null_share` |
+| `null_share_below` | null_checks | `column`, `max_share` | — |
+| `unique_combination` | uniqueness | `columns` | — |
+| `accepted_values` | domain_values | `column`, `values` | `ignore_nulls` |
+| `not_accepted_values` | domain_values | `column`, `values` | `ignore_nulls` |
+| `accepted_range` | domain_values | `column`, `min`/`max` | `min_inclusive`, `max_inclusive`, `ignore_nulls` |
+| `non_negative` | domain_values | `columns` | `ignore_nulls` |
+| `string_not_blank` | domain_values | `columns` | — |
+| `distinct_count_between` | consistency | `columns` | `min`, `max` |
+| `columns_sum_equals` | consistency | `parts`, `total` | `tolerance` |
+| `row_count_matches_reference` | consistency | `reference_table`, `reference_date_column` | `reference_where`, `tolerance_ratio` |
+| `expression_is_true` | row_expr | `expression` | `where` |
+| `relationships` | referential_integrity | `column`, `to_table`, `to_column` | `where` |
 
-У каждого теста дополнительно доступны `severity` (`error` \| `warn`, дефолт `error`) и `where`
-для сужения выборки.
+Итого 18 тестов. У каждого дополнительно доступны `severity` (`error` \| `warn`, дефолт
+`error`) и `where` для сужения выборки.
+
+`row_count_matches_reference` — перенос `row_count_matches_source_for_ds` из `dbt-trino`:
+сравнивает число строк партиции с upstream-источником за тот же день. Основной кейс —
+gold, который обязан сойтись с silver.
 
 `relationships` помечается в `dq/README.md` как дорогой: он сканирует чужую таблицу целиком.
 По умолчанию не включён нигде; добавляется только когда контракт join-ключа стабилен,
 и в README энтити фиксируется, почему затраты оправданы.
 
-Экранирование: все строковые значения в `accepted_values` и в `where` проходят через
-единый хелпер квотирования; тесты `ci_test/test_dq_sql.py` содержат кейсы с кавычками и
-не-ASCII, чтобы отловить SQL-инъекцию через конфиг.
+Экранирование: все строковые значения в `accepted_values` / `not_accepted_values` и в `where`
+проходят через единый хелпер квотирования; тесты `ci_test/test_dq_sql.py` содержат кейсы
+с кавычками и не-ASCII, чтобы отловить SQL-инъекцию через конфиг.
 
 ## 7. Поведение на молодых таблицах и бэкфилле
 
 Три независимых механизма, закрывающих три разных случая.
 
-**Отсутствие базы для сравнения.** `row_count_growth` требует партицию `d-1`. Если её нет,
+**Отсутствие базы для сравнения.** `row_count_growth` требует предыдущую партицию. Если её нет
 или в ней ноль строк, коэффициент роста не определён. Такой тест возвращает статус
 `skipped` с причиной (`no baseline partition 2026-08-19`), а не `passed` и не `failed`.
-Поведение встроенное и не настраиваемое: тест, которому не на чем считать, не имеет права
-ни зеленить таблицу, ни ронять DAG. Статус `skipped` пишется в таблицу результатов наравне
-с остальными, чтобы в Superset было видно, что проверка не работала — а не что всё хорошо.
+Поведение встроенное и не настраиваемое.
 
-**Пороги, откалиброванные на зрелых данных.** `dq.warmup_days` (дефолт `0`, выключено):
-пока число различных значений `partition_column` в таблице меньше N, все результаты
-severity `error` понижаются до `warn`. Отчёт в этом режиме явно печатает
-`warmup active: 3/14 days`, чтобы факт снятой защиты был виден в логе и в таблице
-результатов. Инженер ставит `warmup_days` при заведении новой энтити и снимает,
-когда пороги устоялись.
+Это отличается от сегодняшнего dbt: `row_count_growth_within_limit` содержит
+`WHERE previous_row_count > 0 AND ...`, то есть при отсутствии базы **молча возвращает
+ноль строк и проходит**. Внешне выглядит как успешная проверка, хотя проверки не было.
+Новое поведение делает этот случай видимым в логе и в таблице результатов.
+
+**Пороги, откалиброванные на зрелых данных.** `dq.warmup_days`, дефолт `1`.
+Warmup активен, пока число различных значений `partition_column` в таблице **до текущей
+партиции** меньше `warmup_days`. При дефолте `1` это ровно первый день жизни таблицы:
+на самой первой партиции предыдущих дат ноль, `0 < 1` — warmup включён; со второй партиции
+`1 >= 1` — выключен. Пока warmup активен, все результаты severity `error` понижаются до `warn`.
+Отчёт печатает `warmup active: 0/1 days`, и флаг `warmup_active` пишется в таблицу
+результатов, чтобы факт снятой защиты был виден. Энтити с долгим набором данных ставит
+`warmup_days: 14` у себя и снимает, когда пороги устоялись.
 
 **Бэкфилл истории с другим качеством.** `dq.active_from: "2026-08-01"` — для партиций
 раньше указанной даты тесты не запускаются вообще, таска зелёная, в лог пишется причина.
@@ -223,7 +247,7 @@ severity `error` понижаются до `warn`. Отчёт в этом реж
 `iceberg.silver.feature_platform_dq_results`, партиционирование по `date` (days).
 
 Колонки: `date` (проверявшаяся партиция), `run_ts`, `dag_id`, `task_id`, `run_id`,
-`try_number`, `catalog`, `schema_name`, `table_name`, `test_name`, `test_key`,
+`try_number`, `catalog`, `schema_name`, `table_name`, `test_name`, `test_key`, `test_family`,
 `status` (`passed` \| `failed` \| `warned` \| `skipped` \| `errored`), `severity`,
 `failed_rows`, `observed` (наблюдаемое числовое значение — доля, коэффициент, счётчик),
 `threshold` (человекочитаемый порог), `params` (JSON параметров теста), `sql_text`,
@@ -240,6 +264,9 @@ severity `error` понижаются до `warn`. Отчёт в этом реж
 `table.meta.create_dbt_pr: false` — таблица не уезжает в `dbt-trino` и не обзаводится
 собственными DQ-тестами рекурсивно. `create_maintenance_pr: true` — таблица растёт
 ежедневно, компакция нужна.
+
+Хранение примеров нарушающих строк — сознательное расхождение с `dbt-trino`, где
+`+store_failures: false` и упавший тест не оставляет после себя ничего, кроме факта падения.
 
 Из-за размещения в `dq/results/` придётся расширить обход конфигов в
 `scripts/run_pyspark_migrations.py` и `scripts/sync_iceberg_maintenance.py` на
@@ -262,12 +289,17 @@ severity `error` понижаются до `warn`. Отчёт в этом реж
 У энтити, пишущих `{{ ds }}` — оттуда. Выражение читается из конфига энтити, не угадывается
 по имени таблицы.
 
+Это устраняет смещение дат, которое сегодня зашито в dbt-макросы: там «текущей» партицией
+считается `var('ds') - 1 day`, а базой для сравнения `var('ds') - 2 day`, потому что DQ-DAG
+имеет собственную логическую дату. Внутри DAG'а-производителя проверяется ровно та партиция,
+которая только что записана, и базой служит `partition_date - 1`.
+
 Ретраи таски `dq`: `retries: 1`, без экспоненты. Один ретрай гасит флап Trino, больше —
 маскирует настоящее падение.
 
 ## 10. Отчёт и оповещение
 
-`TestResult` = `name, test_key, status, severity, failed_rows, observed, threshold, duration_ms, sql, sample_rows, skip_reason`.
+`TestResult` = `name, test_key, test_family, status, severity, failed_rows, observed, threshold, duration_ms, sql, sample_rows, skip_reason`.
 
 Лог таски:
 
@@ -302,7 +334,7 @@ samples   : (2026-08-19, 118823) x2 | (2026-08-19, 940112) x3 | ...
 
 Основная аналитика — Superset поверх `feature_platform_dq_results`: последний прогон
 по таблице, топ падающих тестов за период, тренд `failed_rows` и `observed` по конкретному
-тесту, доля `skipped`.
+тесту, доля `skipped`, покрытие семействами тестов по энтити.
 
 Grafana `feature-platform-overview` правится по-минимуму. Обе существующие DQ-панели
 («Ошибки DQ (14д)» и «DQ-статус по таблице») фильтруют `silver.airflow_dag_run` по
@@ -332,10 +364,14 @@ dag/task в `_source_dependencies`.
 - `ci_test/test_dq_config.py` — все блоки `dq:` в репозитории валидны. Неизвестное имя теста,
   отсутствующий обязательный параметр, колонка, которой нет в миграциях энтити,
   `dq.enabled: false` без объяснения в README — падение.
-- `ci_test/test_dq_sql.py` — снапшоты отрендеренного SQL для каждого из 16 тестов, включая
+- `ci_test/test_dq_sql.py` — снапшоты отрендеренного SQL для каждого из 18 тестов, включая
   кейсы с кавычками и не-ASCII в значениях.
 - `ci_test/test_dq_task_wiring.py` — в каждом DAG есть таска `dq`, она терминальная,
   и (после фазы 3) ни один сенсор не ссылается на `dbt.source.trino.ml_feature_platform_*`.
+- Проверка покрытия семействами для новых энтити по образцу
+  `dbt-trino/scripts/check_model_tests_score.py`: новая таблица обязана иметь тесты
+  минимум из двух семейств сверх базового набора, иначе CI падает. Пороги подбираются
+  на фазе 2 по фактическому распределению, чтобы не заблокировать существующие энтити.
 - Существующие `ci_test/test_run_pyspark_migrations.py` и `ci_test/test_sync_iceberg_maintenance.py`
   дополняются кейсами на обход `dq/**/config.yaml`.
 
@@ -354,6 +390,9 @@ dag/task в `_source_dependencies`.
 **Фаза 2 — раскатка.** Таска `dq` во все остальные энтити `layers/**` и `datasets/**`.
 Базовый набор везде; содержательные тесты — там, где контракт однозначно читается
 из README и миграции. Где не читается — вопрос владельцу энтити, а не догадка.
+Отдельно закрыть дыру, найденную при анализе: `not_null` по PK-колонкам сейчас реально
+существует лишь у одной таблицы из 39, так что на фазе 2 он впервые начнёт работать
+везде — возможны находки.
 
 **Фаза 3 — переключение зависимостей.** 14 сенсоров и `upload/*/config/factory.py`
 переводятся на `external_task_id="dq"`. dbt-DQ ещё работает, так что откат — это revert одного PR.
@@ -362,22 +401,36 @@ dag/task в `_source_dependencies`.
 и `freshness:`, продолжая писать source-блоки. Один согласующий PR с DE; DQ-DAG'и уходят
 сами. Панели Grafana переставляются на `airflow_task_instance`, дашборды строятся в Superset.
 
-## 15. Риски
+## 15. Отличия от текущего поведения dbt
 
-- **`min_rows` с 0 на 1.** Ужесточение относительно сегодняшнего поведения. Энтити с легально
-  пустыми днями упадут на фазе 2. Митигация: на пилоте и в первую неделю фазы 2 смотрим
-  результаты, для найденных энтити выставляем `min_rows: 0` явно с пояснением в README.
-- **Стоимость Trino.** Партиционный скан дешёвый, но `freshness` и `relationships` — нет.
-  `freshness` считает `max(date)`, что на Iceberg решается по метаданным партиций;
-  `relationships` по умолчанию выключен.
-- **Расхождение вердиктов с dbt на пилоте.** Ожидаемо для `primary_key_unique`: dbt проверяет
-  уникальность по всей истории таблицы, новый тест — по партиции. Это осознанная разница,
-  зафиксировать в `dq/README.md`; при необходимости конкретная энтити ставит `scope: table`.
+Осознанные расхождения, каждое — улучшение, но каждое способно дать новые падения:
+
+| Что | Сегодня в dbt | Будет |
+|---|---|---|
+| `row_count_growth` направление | односторонний: ловит только рост выше порога, обвал до 10% проходит | двусторонний по умолчанию, `direction: up`/`down` при необходимости |
+| `row_count_growth` без базы | `WHERE previous_row_count > 0` — молча проходит | статус `skipped` с причиной, видно в логе и в таблице |
+| `primary_key_unique` | table-wide по всей истории | по партиции; `scope: table` при необходимости |
+| `not_null` по PK | сгенерирован, но фактически есть у 1 таблицы из 39 | работает везде |
+| Упавшие строки | `+store_failures: false`, ничего не сохраняется | `failed_rows`, `observed` и примеры в таблице результатов |
+| Смещение дат | «текущая» партиция = `ds - 1`, база = `ds - 2` | ровно записанная партиция и `partition_date - 1` |
+
+`row_count_min` расхождения не даёт: нестрогое сравнение `row_count <= min_rows` и дефолт `0`
+переносятся дословно.
+
+## 16. Риски
+
+- **Стоимость Trino.** Партиционный скан дешёвый, но `freshness`, `relationships` и
+  `row_count_matches_reference` — нет. `freshness` считает `max(date)`, что на Iceberg
+  решается по метаданным партиций; два других по умолчанию выключены.
+- **Двусторонний `row_count_growth`** впервые начнёт ловить обвалы объёма. На пилоте и
+  первую неделю фазы 2 держать его в `severity: warn`, потом поднять до `error`.
+- **Партиционный `primary_key_unique`** не увидит дубль, размазанный по двум партициям.
+  Для таблиц, где перезапись партиции может оставить хвост, ставить `scope: table` явно.
 - **Простой парсер CI.** Любое усложнение синтаксиса блока `dq:` рискует сломать
   `_read_simple_config`. Митигация: `ci_test/test_dq_config.py` прогоняет оба парсера
   (простой и `yaml.safe_load`) по всем конфигам репозитория.
 
-## 16. Что не входит
+## 17. Что не входит
 
 - Автоматическое удаление DQ-записей из `dbt-trino` — это PR в чужой репозиторий на фазе 4.
 - Дашборды Superset — строятся после фазы 2, отдельной задачей, вне этого репозитория.
