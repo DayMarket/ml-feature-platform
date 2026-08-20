@@ -151,8 +151,8 @@ def test_contract_contains_approved_runtime_storage_and_business_rules():
     assert "resource_profile: small" in config
     assert "max_category_depth: 6" in config
     assert 'schedule: "0 19 * * *"' in config
-    assert 'start_date: "2026-06-01T00:00:00Z"' in config
-    assert "catchup: false" in config
+    assert 'start_date: "2026-08-05T19:00:00Z"' in config
+    assert "catchup: true" in config
     assert 'catchup=dag_settings["catchup"]' in dag
     assert 'CronDataIntervalTimetable(dag_settings["schedule"], "UTC")' in dag
     assert 'spark.conf.set("spark.sql.ansi.enabled", "true")' in job
