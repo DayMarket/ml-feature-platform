@@ -115,7 +115,14 @@ def test_optional_test_severity_and_where() -> None:
     assert spec.severity == "warn"
     assert spec.where == "platform = 'ios'"
     assert spec.family == "domain_values"
-    assert spec.params == {"column": "conversion_rate", "min": 0, "max": 1}
+    assert spec.params == {
+        "column": "conversion_rate",
+        "min": 0,
+        "max": 1,
+        "min_inclusive": True,
+        "max_inclusive": True,
+        "ignore_nulls": True,
+    }
 
 
 def test_unknown_test_name_rejected() -> None:
@@ -648,7 +655,7 @@ def _where(ctx: RenderContext, spec: TestSpec, violation: str) -> str:
 def _count_query(ctx: RenderContext, spec: TestSpec, violation: str) -> str:
     return (
         "SELECT count(*) AS failed_rows, CAST(count(*) AS DOUBLE) AS observed\n"
-        f"FROM {table_ref(ctx)}\n"
+        f"FROM {table_ref(ctx)} AS target\n"
         f"WHERE {_where(ctx, spec, violation)}"
     )
 
@@ -658,7 +665,7 @@ def _sample_query(ctx: RenderContext, spec: TestSpec, violation: str, extra_colu
     projection = ", ".join(quote_identifier(column) for column in columns)
     return (
         f"SELECT {projection}\n"
-        f"FROM {table_ref(ctx)}\n"
+        f"FROM {table_ref(ctx)} AS target\n"
         f"WHERE {_where(ctx, spec, violation)}\n"
         f"LIMIT {int(ctx.sample_rows)}"
     )
@@ -1180,7 +1187,7 @@ def _render_relationships(spec: TestSpec, ctx: RenderContext) -> RenderedTest:
     violation = (
         f"{column} IS NOT NULL AND NOT EXISTS ("
         f"SELECT 1 FROM {to_table} AS reference "
-        f"WHERE reference.{to_column} = {table_ref(ctx)}.{column}{reference_filter})"
+        f"WHERE reference.{to_column} = target.{column}{reference_filter})"
     )
     return RenderedTest(
         spec=spec,
@@ -1471,6 +1478,7 @@ class TestResult:
     sql: str
     sample: str = ""
     skip_reason: str = ""
+    params: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -1587,6 +1595,7 @@ def _result(
         sql=rendered.sql,
         sample=sample,
         skip_reason=skip_reason,
+        params=dict(spec.params),
     )
 ```
 
@@ -1674,12 +1683,16 @@ def test_log_marks_active_warmup() -> None:
 
 
 def test_alert_lists_only_failed_and_warned_and_respects_limit() -> None:
-    text = format_alert(make_outcome(), CTX, "https://airflow/log/1", limit=400)
+    text = format_alert(make_outcome(), CTX, "https://airflow/log/1", limit=4000)
     assert "feature_platform_sku_group_id_prices" in text
     assert "primary_key_unique" in text
     assert "https://airflow/log/1" in text
     assert "primary_key_not_null" not in text
-    assert len(text) <= 400
+
+    trimmed = format_alert(make_outcome(), CTX, "https://airflow/log/1", limit=200)
+    assert len(trimmed) <= 200
+    assert "… отчёт обрезан" in trimmed
+    assert "https://airflow/log/1" in trimmed
 
 
 def main() -> int:
@@ -1829,11 +1842,14 @@ git commit -m "feat(dq): log and oncall report formatting"
 В `ci_test/test_run_pyspark_migrations.py` найти проверку списка обнаруженных миграций и добавить в `main()`:
 
 ```python
-    migration_targets = {entry["table_name"] for entry in migrations.discover_migrations(Path("."))}
-    assert "feature_platform_dq_results" in migration_targets
+    from pathlib import Path
+
+    discovered = migrations.get_layer_migration_targets(Path("."))
+    config_paths = {str(config_path) for config_path, _ in discovered}
+    assert "dq/results/config.yaml" in config_paths
 ```
 
-Если в файле нет функции с таким именем — использовать ту, что реально возвращает список миграций (посмотреть `scripts/run_pyspark_migrations.py:134`), и привести ассерт к её структуре.
+`get_layer_migration_targets(repo_root) -> list[tuple[Path, Path]]` (`scripts/run_pyspark_migrations.py:132`) возвращает пары `(config_path, migrations_dir)` для всех конфигов, у которых есть непустая папка `migrations/`.
 
 - [ ] **Step 2: Запустить тесты и убедиться, что они падают**
 
@@ -1990,7 +2006,10 @@ def test_build_rows_maps_every_field() -> None:
     )
     outcome = DqRunOutcome(
         results=[
-            TestResult("row_count_min", "row_count_min", "consistency", "failed", "error", 1, 0.0, "row_count > 0", 1500, "SELECT 1", sample=""),
+            TestResult(
+                "row_count_min", "row_count_min", "consistency", "failed", "error", 1, 0.0,
+                "row_count > 0", 1500, "SELECT 1", sample="", params={"min_rows": 0},
+            ),
         ],
         warmup_active=True,
     )
@@ -2086,7 +2105,7 @@ def build_rows(
     settings: DqSettings,
     meta: RunMeta,
 ) -> list[dict[str, Any]]:
-    params_by_key = {spec.name: spec.params for spec in settings.tests}
+    _ = settings  # сигнатура сохранена ради симметрии с write_results
     rows: list[dict[str, Any]] = []
     for result in outcome.results:
         rows.append(
@@ -2108,7 +2127,7 @@ def build_rows(
                 "failed_rows": int(result.failed_rows),
                 "observed": result.observed,
                 "threshold": result.threshold,
-                "params": json.dumps(params_by_key.get(result.name, {}), ensure_ascii=False, default=str),
+                "params": json.dumps(result.params, ensure_ascii=False, default=str),
                 "sql_text": result.sql,
                 "sample": result.sample,
                 "duration_ms": int(result.duration_ms),
