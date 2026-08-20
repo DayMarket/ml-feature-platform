@@ -23,6 +23,7 @@ def main() -> int:
     assert "feature_platform_sku_group_id_prices" in discovered_tables["silver"]
     assert "feature_platform_dataset_search_ranking_v1" in discovered_tables["silver"]
     assert "feature_platform_product_search_queries" in discovered_tables["silver"]
+    assert "feature_platform_dq_results" in discovered_tables["silver"]
     assert sync._parse_bool_flag(
         {"create_maintenance_pr": "false"},
         "create_maintenance_pr",
