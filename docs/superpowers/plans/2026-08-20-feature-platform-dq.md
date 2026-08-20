@@ -1951,12 +1951,12 @@ git commit -m "feat(dq): results table, migration and config discovery in CI scr
 ### Task 7: Идемпотентная запись результатов в Iceberg
 
 **Files:**
-- Create: `dq/results.py`
+- Create: `dq/results_writer.py`
 - Test: `ci_test/test_dq_results.py`
 
 **Interfaces:**
 - Consumes: `dq.runner.DqRunOutcome`, `dq.config.RenderContext`.
-- Produces: `dq.results.RunMeta` (поля `dag_id, task_id, run_id, try_number, run_ts`), `dq.results.build_rows(outcome, ctx, settings, meta) -> list[dict]`, `dq.results.write_results(repo_root, outcome, ctx, settings, meta) -> None`, `dq.results.results_table_ref(repo_root) -> tuple[str, str]`.
+- Produces: `dq.results_writer.RunMeta` (поля `dag_id, task_id, run_id, try_number, run_ts`), `dq.results_writer.build_rows(outcome, ctx, settings, meta) -> list[dict]`, `dq.results_writer.write_results(repo_root, outcome, ctx, settings, meta) -> None`, `dq.results_writer.results_table_ref(repo_root) -> tuple[str, str]`.
 
 `build_rows` — чистая функция, тестируется офлайн. `write_results` тянет `pyiceberg` и вызывается только в Airflow.
 
@@ -1973,7 +1973,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dq.config import RenderContext, load_dq_settings
-from dq.results import RunMeta, build_rows, results_table_ref
+from dq.results_writer import RunMeta, build_rows, results_table_ref
 from dq.runner import DqRunOutcome, TestResult
 
 CTX = RenderContext(
@@ -2058,10 +2058,14 @@ if __name__ == "__main__":
 Run: `python3 ci_test/test_dq_results.py`
 Expected: FAIL с `ModuleNotFoundError: No module named 'dq.results'`
 
-- [ ] **Step 3: Реализовать `dq/results.py`**
+- [ ] **Step 3: Реализовать `dq/results_writer.py`**
 
 ```python
-"""Идемпотентная запись истории DQ-прогонов в Iceberg."""
+"""Идемпотентная запись истории DQ-прогонов в Iceberg.
+
+Модуль называется results_writer, а не results, потому что каталог `dq/results/`
+хранит config.yaml и миграцию самой таблицы и как namespace-пакет перекрыл бы `dq.results`.
+"""
 
 from __future__ import annotations
 
@@ -2175,7 +2179,7 @@ Expected: PASS
 - [ ] **Step 5: Коммит**
 
 ```bash
-git add dq/results.py ci_test/test_dq_results.py
+git add dq/results_writer.py ci_test/test_dq_results.py
 git commit -m "feat(dq): idempotent write of DQ run history to Iceberg"
 ```
 
@@ -2253,7 +2257,7 @@ import yaml
 
 from dq.config import RenderContext, load_dq_settings, trino_catalog_alias
 from dq.report import format_alert, format_log
-from dq.results import RunMeta, write_results
+from dq.results_writer import RunMeta, write_results
 from dq.runner import run_dq
 
 TASK_ID = "dq"
