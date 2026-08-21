@@ -19,6 +19,17 @@ from dq.runner import DqRunOutcome
 
 RESULTS_CONFIG_PATH = Path("dq") / "results" / "config.yaml"
 
+# Значения совпадают с job/runtime.py Trino/ClickHouse-энтити: pyiceberg не читает
+# конфигурацию Spark и без явных свойств падает на отсутствующем URI метастора.
+HIVE_METASTORE_URIS = "thrift://hive-metastore.svc-data-hive-metastore.svc.cluster.local:9083"
+ICEBERG_WAREHOUSE = "s3a://um-prod-data-platform-landing-layer/"
+S3_ENDPOINT = "http://storage.yandexcloud.net"
+S3_REGION = "ru-central1"
+S3_CONNECTION_ID = "spark_ycs_connection"
+ICEBERG_LOCK_CHECK_MIN_WAIT_SECONDS = 2
+ICEBERG_LOCK_CHECK_MAX_WAIT_SECONDS = 60
+ICEBERG_LOCK_CHECK_RETRIES = 10
+
 
 @dataclass(frozen=True)
 class RunMeta:
@@ -38,6 +49,44 @@ def results_table_ref(repo_root: Path) -> tuple[str, str]:
     if not schema or not name:
         raise ValueError(f"{RESULTS_CONFIG_PATH}: table.schema и table.name обязательны")
     return schema, name
+
+
+def results_catalog_name(repo_root: Path) -> str:
+    """Имя каталога таблицы результатов из её же config.yaml."""
+    config = yaml.safe_load((Path(repo_root) / RESULTS_CONFIG_PATH).read_text(encoding="utf-8"))
+    catalog = str(config["table"]["catalog"]).strip()
+    if not catalog:
+        raise ValueError(f"{RESULTS_CONFIG_PATH}: table.catalog обязателен")
+    return catalog
+
+
+def catalog_properties(access_key_id: str, secret_access_key: str) -> dict[str, str]:
+    """Свойства pyiceberg-каталога. Без них load_catalog не знает ни метастор, ни S3."""
+    return {
+        "type": "hive",
+        "uri": HIVE_METASTORE_URIS,
+        "warehouse": ICEBERG_WAREHOUSE,
+        "s3.endpoint": S3_ENDPOINT,
+        "s3.access-key-id": access_key_id,
+        "s3.secret-access-key": secret_access_key,
+        "s3.region": S3_REGION,
+        "s3.path-style-access": "true",
+        "lock-check-min-wait-time": str(ICEBERG_LOCK_CHECK_MIN_WAIT_SECONDS),
+        "lock-check-max-wait-time": str(ICEBERG_LOCK_CHECK_MAX_WAIT_SECONDS),
+        "lock-check-retries": str(ICEBERG_LOCK_CHECK_RETRIES),
+    }
+
+
+def load_results_catalog(catalog_name: str):
+    """Каталог для записи результатов; креды S3 берутся из Airflow-соединения."""
+    from airflow.sdk import BaseHook
+    from pyiceberg.catalog import load_catalog
+
+    extra = BaseHook.get_connection(S3_CONNECTION_ID).extra_dejson
+    return load_catalog(
+        catalog_name,
+        **catalog_properties(extra["aws_access_key_id"], extra["aws_secret_access_key"]),
+    )
 
 
 def build_rows(
@@ -91,11 +140,10 @@ def write_results(
         return
 
     import pyarrow as pa
-    from pyiceberg.catalog import load_catalog
     from pyiceberg.expressions import And, EqualTo
 
     schema, name = results_table_ref(repo_root)
-    catalog = load_catalog("iceberg")
+    catalog = load_results_catalog(results_catalog_name(repo_root))
     table = catalog.load_table((schema, name))
 
     arrow_table = pa.Table.from_pylist(rows, schema=table.schema().as_arrow())

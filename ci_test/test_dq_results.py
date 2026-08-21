@@ -6,7 +6,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dq.config import RenderContext, load_dq_settings
-from dq.results_writer import RunMeta, build_rows, results_table_ref
+from dq.results_writer import (
+    RunMeta,
+    build_rows,
+    catalog_properties,
+    results_catalog_name,
+    results_table_ref,
+)
 from dq.runner import DqRunOutcome, TestResult
 
 CTX = RenderContext(
@@ -102,8 +108,27 @@ def test_build_rows_is_empty_when_run_skipped_by_active_from() -> None:
     assert build_rows(outcome, CTX, settings, META) == []
 
 
+def test_results_catalog_name_comes_from_config() -> None:
+    assert results_catalog_name(Path(".")) == "iceberg"
+
+
+def test_catalog_properties_are_complete() -> None:
+    """pyiceberg не наследует конфигурацию Spark: без явных свойств load_catalog
+    падает с 'URI missing ... PYICEBERG_CATALOG__ICEBERG__URI'."""
+    properties = catalog_properties("key-id", "secret")
+    assert properties["type"] == "hive"
+    assert properties["uri"].startswith("thrift://")
+    assert properties["warehouse"].startswith("s3a://")
+    assert properties["s3.access-key-id"] == "key-id"
+    assert properties["s3.secret-access-key"] == "secret"
+    assert properties["s3.path-style-access"] == "true"
+    assert all(str(value) for value in properties.values())
+
+
 def main() -> int:
     test_results_table_ref_comes_from_config()
+    test_results_catalog_name_comes_from_config()
+    test_catalog_properties_are_complete()
     test_build_rows_maps_every_field()
     test_build_rows_keeps_params_of_duplicate_test_names_apart()
     test_build_rows_is_empty_when_run_skipped_by_active_from()
