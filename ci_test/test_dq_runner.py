@@ -125,6 +125,16 @@ def test_active_from_skips_whole_run() -> None:
     assert outcome.results == []
 
 
+def test_preflight_query_is_catalog_qualified() -> None:
+    """Соединение Trino может смотреть в чужой дефолтный каталог (hive),
+    поэтому information_schema обязана быть квалифицирована каталогом таблицы."""
+    settings = load_dq_settings(BASE_CONFIG)
+    query = FakeQuery([("information_schema.tables", [(1,)]), ("COUNT(DISTINCT", [(30,)])])
+    run_dq(settings, CTX, query)
+    preflight_sql = query.executed[0]
+    assert '"dwh-iceberg".information_schema.tables' in preflight_sql, preflight_sql
+
+
 def test_missing_table_raises_diagnostic_error() -> None:
     settings = load_dq_settings(BASE_CONFIG)
     query = FakeQuery([("information_schema.tables", [(0,)])])
@@ -146,6 +156,7 @@ def main() -> int:
     test_warm_up_downgrades_error_to_warn()
     test_warn_severity_never_fails()
     test_active_from_skips_whole_run()
+    test_preflight_query_is_catalog_qualified()
     test_missing_table_raises_diagnostic_error()
     print("DQ runner tests completed successfully")
     return 0

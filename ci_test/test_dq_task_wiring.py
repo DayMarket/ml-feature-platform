@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 PILOT_DAGS = (
     "layers/silver/sku_group_id/sku_group_id_prices/v1/dag.py",
     "layers/silver/query_sku_group_id/search_query_sku_group_es_features/v1/dag.py",
+    "layers/gold/product_id/feedback_product_id/v1/dag.py",
 )
 
 

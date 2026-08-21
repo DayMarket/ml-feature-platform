@@ -46,8 +46,11 @@ class DqRunOutcome:
 
 
 def preflight(query: Query, ctx: RenderContext) -> None:
+    # information_schema резолвится в дефолтном каталоге соединения, а он у trino_*
+    # смотрит в hive. Квалифицируем каталогом таблицы, иначе preflight падает
+    # с CATALOG_NOT_FOUND ещё до первого теста.
     sql = (
-        "SELECT count(*) FROM information_schema.tables\n"
+        f"SELECT count(*) FROM {quote_identifier(ctx.catalog_alias)}.information_schema.tables\n"
         f"WHERE table_schema = {quote_literal(ctx.schema)} AND table_name = {quote_literal(ctx.table)}"
     )
     rows = query(sql)
