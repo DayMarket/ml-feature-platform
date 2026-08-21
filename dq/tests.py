@@ -411,8 +411,9 @@ def _render_columns_sum_equals(spec: TestSpec, ctx: RenderContext) -> RenderedTe
 
 def _render_expression_is_true(spec: TestSpec, ctx: RenderContext) -> RenderedTest:
     expression = str(spec.params["expression"])
-    # IS NOT TRUE ловит и FALSE, и NULL: выражение, не вычислившееся в TRUE, считается нарушением.
-    violation = f"({expression}) IS NOT TRUE"
+    # Нарушение — всё, что не вычислилось в TRUE, включая NULL. Предиката IS NOT TRUE
+    # в Trino нет (это Postgres), поэтому сравниваем через IS DISTINCT FROM.
+    violation = f"({expression}) IS DISTINCT FROM TRUE"
     return RenderedTest(
         spec=spec,
         test_key=f"expression_is_true[{expression[:40]}]",

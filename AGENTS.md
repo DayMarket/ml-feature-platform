@@ -319,6 +319,7 @@ Use this workflow only after confirming that the default Spark image or default 
 - Downstream-DAG'и ждут таску `dq` DAG'а-владельца таблицы: `external_dag_id=<dag id владельца>`, `external_task_id="dq"`. Ссылки на `dbt.source.trino.ml_feature_platform_*.dq` — устаревший контракт, они убираются на фазе 3 миграции.
 - Результаты прогонов пишутся в `iceberg.silver.feature_platform_dq_results`; аналитика строится в Superset поверх неё.
 - Любой SQL, который DQ-таска шлёт в Trino, адресует таблицы полным именем `"<trino-catalog>".<schema>.<table>`, включая служебные запросы к `information_schema`. Дефолтный каталог соединений `trino_*` — `hive`, поэтому неквалифицированное имя падает с `CATALOG_NOT_FOUND` ещё до первого теста. Маппинг каталога берётся из `ci_config.yaml` через `dq.config.trino_catalog_alias`, готовая ссылка на таблицу — `dq.tests.table_ref`.
+- Весь DQ-SQL — и рендереры в `dq/tests.py`, и выражения из `dq.tests[].expression` в конфигах энтити — пишется на диалекте Trino, а не Postgres. Предикатов `IS [NOT] TRUE`/`IS [NOT] FALSE` в Trino нет: «не вычислилось в TRUE» выражается через `IS DISTINCT FROM TRUE`. Локально диалект не исполняется ничем, поэтому новый рендерер обязан получить проверку отрендеренной строки в `ci_test/test_dq_sql.py`, а нетривиальное выражение из конфига — прогон на реальном Trino (MCP или первый запуск DAG'а) до объявления работы законченной.
 - For upstream DE-owned tables, use the source DAG/DQ contract owned by the producing team.
 
 Automatically generated DQ tests:

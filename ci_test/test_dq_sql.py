@@ -156,8 +156,10 @@ def test_columns_sum_equals() -> None:
 
 
 def test_expression_is_true_treats_null_as_failure() -> None:
+    """Trino не знает предиката IS NOT TRUE (это Postgres), нарушение ловим через IS DISTINCT FROM."""
     rendered = render(spec("expression_is_true", expression="min_price <= max_price"), CTX)
-    assert "(min_price <= max_price) IS NOT TRUE" in rendered.sql
+    assert "(min_price <= max_price) IS DISTINCT FROM TRUE" in rendered.sql
+    assert "IS NOT TRUE" not in rendered.sql
 
 
 def test_relationships_uses_not_exists() -> None:
