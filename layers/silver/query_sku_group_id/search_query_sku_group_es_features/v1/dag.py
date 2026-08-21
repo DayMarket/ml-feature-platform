@@ -21,6 +21,11 @@ ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
 CONFIG_PATH = os.path.join(ENTITY_DIR, "config.yaml")
 JOB_DIR = os.path.join(ENTITY_DIR, "job")
 
+REPO_ROOT = os.path.abspath(os.path.join(ENTITY_DIR, "..", "..", "..", "..", ".."))
+sys.path.insert(0, REPO_ROOT)
+
+from dq.task import build_dq_task
+
 
 def _read_config(path: str) -> dict:
     with open(path, encoding="utf-8") as config_stream:
@@ -186,7 +191,8 @@ def search_query_sku_group_es_features_dag() -> None:
     partition_date_arg = '{{ (dag_run.conf or {}).get("partition_date") or macros.ds_add(ds, -1) }}'
     prepared = prepare_parquet(partition_date_arg)
     loaded = load_to_iceberg(partition_date_arg)
-    wait_for_elasticsearch_collect >> prepared >> loaded
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(partition_date_arg)
+    wait_for_elasticsearch_collect >> prepared >> loaded >> dq_task
 
 
 dag = search_query_sku_group_es_features_dag()

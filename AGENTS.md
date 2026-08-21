@@ -50,6 +50,7 @@ Owner metadata:
 - For ClickHouse-source DAGs, always ask the user for the Airflow connection id before scaffolding or editing files, because ClickHouse access is RBAC-sensitive. Do not infer the connection from nearby DAGs.
 - For Trino/ClickHouse-source layer or dataset jobs, use a separate Airflow/Python pattern that reads through the confirmed source connection and writes the repository-managed output to Iceberg with `pyiceberg`. Do not model these jobs as SparkApplications unless the user explicitly chooses Spark execution.
 - For Trino/ClickHouse-source layer or dataset jobs, propose `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` as the default runtime image. If the job needs third-party libraries that are not available in the default image and cannot be safely delivered by repository code, ask the user whether to create or use a custom image before scaffolding runtime files.
+- DQ-тесты репозиторно-управляемых таблиц объявляются в блоке `dq:` файла `config.yaml` энтити и исполняются таской `dq` внутри того же DAG'а сразу после записи партиции. Общий код DQ живёт только в top-level пакете `dq/`; не создавайте `layers/_common` и не дублируйте DQ-логику внутри энтити. Каталог тестов и правила конфигурирования — в `dq/README.md`.
 - Migrations are executed by CI after merge to `master`; jobs may keep defensive table/column checks, but schema evolution belongs in migrations.
 - Treat `config.yaml` as the single source of truth for repository-managed table identifiers. Do not duplicate values in constants such as `GOLD_IDENTIFIER`, `TABLE_IDENTIFIER`, or hard-coded `"schema.table"` strings. DAGs and jobs must load `table.catalog`, `table.schema`, and `table.name` from the owning entity config and pass them explicitly.
 - `table.meta.create_dbt_pr` and `table.meta.create_maintenance_pr` are optional bool flags controlling whether master-side CI creates missing downstream PRs in `DayMarket/dbt-trino` and `DayMarket/pyspark-etl` Iceberg maintenance. Both default to `true` when absent. `true` means the table is eligible for automatic downstream onboarding if the corresponding record is missing. `false` means CI must skip creating that downstream PR entry for this table. A `false` flag is not a destructive delete signal: CI must not remove existing dbt-trino source/DQ records or existing maintenance records only because the flag is false.
@@ -237,6 +238,7 @@ Implemented Spark layer pipelines generally follow this shape:
 - `entrypoints/*.py`: executable Spark entrypoint that creates `SparkSession`, parses args, calls `job.run`, and stops Spark.
 - `migrations/create_table.sql`: Iceberg DDL with `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')` for new tables. Add extra migration files for schema changes.
 - `README.md`: Russian-language human summary of purpose, sources, grain, key formulas, and operational notes.
+- Таска `dq`: терминальная таска DAG'а, собираемая `dq.task.build_dq_task(config_path, repo_root)`. Downstream-DAG'и ждут именно её через `external_task_id="dq"`.
 
 Trino/ClickHouse-source layer pipelines may use a separate Airflow/Python shape instead of SparkApplication. They should still live under `layers/<layer>/<primary_key_group>/<entity>/v1`, keep migrations and README alongside the code, read through explicitly confirmed Airflow connections, and write the output Iceberg table with `pyiceberg`. There may be no current examples in this repository; when generating one, keep the pattern explicit in README and do not reuse Spark-specific `spark`/`spark_applications` config unless Spark execution is actually used.
 
@@ -309,10 +311,11 @@ Use this workflow only after confirming that the default Spark image or default 
 
 ## DQ And Source Sync
 
-- Every repository-managed entity gets DQ tests in `dbt-trino`.
-- DQ DAG id pattern: `dbt.source.trino.ml_feature_platform_<schema>.<table_name>.dq`.
-- Use the table's actual schema from `config.yaml`. Do not assume every source is `silver`.
-- Downstream DAGs must wait for DQ DAGs of feature-platform dependency tables.
+- Каждая репозиторно-управляемая энтити получает DQ-тесты внутри собственного DAG'а, таской `dq`.
+- Базовый набор (`primary_key_not_null`, `primary_key_unique`, `row_count_min`, `row_count_growth`, `freshness`) работает всегда, даже без блока `dq:` в конфиге.
+- Дополнительные тесты объявляются именами в `dq.tests`; полный каталог — в `dq/README.md`.
+- Downstream-DAG'и ждут таску `dq` DAG'а-владельца таблицы: `external_dag_id=<dag id владельца>`, `external_task_id="dq"`. Ссылки на `dbt.source.trino.ml_feature_platform_*.dq` — устаревший контракт, они убираются на фазе 3 миграции.
+- Результаты прогонов пишутся в `iceberg.silver.feature_platform_dq_results`; аналитика строится в Superset поверх неё.
 - For upstream DE-owned tables, use the source DAG/DQ contract owned by the producing team.
 
 Automatically generated DQ tests:
@@ -337,6 +340,7 @@ Do not add expensive high-cardinality or source-wide relationship tests blindly.
 
 Drone currently:
 
+- Runs `scripts/validate_dq_configs.py`.
 - Runs `scripts/validate_ranking_upload_configs.py`.
 - Runs `scripts/run_pyspark_migrations.py --validation-mode` on pushes to `dev`/`master` and on pull requests targeting `dev`/`master` against a disposable local Spark/Iceberg warehouse.
 - Runs real SQL migrations only on `master` push.
@@ -354,7 +358,7 @@ Migration CI:
 
 - Real migration execution reads Spark/Iceberg settings from `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `HIVE_METASTORE_URIS`, optional `ICEBERG_WAREHOUSE`, and S3/AWS region settings.
 - Validation uses a disposable local Spark/Iceberg warehouse and does not require production Hive Metastore or S3 credentials.
-- Migration discovery for repository-managed output tables must walk both `layers/**/config.yaml` and `datasets/**/config.yaml` with SQL files under `migrations/`. If current CI scripts only walk `layers/**/config.yaml`, update the scripts and tests before adding the first dataset table.
+- Migration discovery for repository-managed output tables must walk `layers/**/config.yaml`, `datasets/**/config.yaml` and `dq/**/config.yaml` with SQL files under `migrations/`. If current CI scripts only walk `layers/**/config.yaml`, update the scripts and tests before adding the first dataset table.
 - `{target_table}` is substituted with the Spark table name from `config.yaml`.
 - `create_table.sql` runs first, then remaining migrations in filename order.
 - New `create_table.sql` migrations for repository-managed Iceberg tables must include `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')`.
@@ -369,7 +373,7 @@ dbt source sync:
 
 Iceberg maintenance sync:
 
-- `ml-feature-platform` owns maintenance registration only for Iceberg tables it creates from `layers/**/config.yaml` or `datasets/**/config.yaml`.
+- `ml-feature-platform` owns maintenance registration only for Iceberg tables it creates from `layers/**/config.yaml`, `datasets/**/config.yaml` or `dq/**/config.yaml`.
 - Include repository-created `silver`, `gold`, and dataset tables; do not add upstream external dependency tables.
 - Maintenance removals need manual review; do not remove entries automatically just because a table disappeared locally.
 - Side-effecting maintenance sync runs only on `master` push.
@@ -416,6 +420,15 @@ python3 ci_test/test_script.py
 python3 ci_test/test_sync_dbt_sources.py
 python3 ci_test/test_sync_iceberg_maintenance.py
 python3 scripts/validate_ranking_upload_configs.py
+python3 scripts/validate_dq_configs.py
+python3 ci_test/test_dq_config.py
+python3 ci_test/test_dq_sql.py
+python3 ci_test/test_dq_runner.py
+python3 ci_test/test_dq_report.py
+python3 ci_test/test_dq_results.py
+python3 ci_test/test_dq_task.py
+python3 ci_test/test_dq_task_wiring.py
+python3 ci_test/test_validate_dq_configs.py
 git diff --check
 ```
 

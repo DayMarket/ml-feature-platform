@@ -22,3 +22,27 @@ alerts:
   team: search
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Пилот: двусторонний growth впервые начнёт ловить обвалы объёма,
+    # поэтому первые две недели держим его предупреждением.
+    - name: row_count_growth
+      max_growth_ratio: 0.2
+      severity: warn
+    - name: non_negative
+      columns:
+        - avg_sell_price_eod
+        - median_sell_price_eod
+        - min_sell_price_eod
+        - max_sell_price_eod
+        - avg_full_price_eod
+        - median_full_price_eod
+        - min_full_price_eod
+        - max_full_price_eod
+    - name: expression_is_true
+      expression: "min_sell_price_eod <= median_sell_price_eod AND median_sell_price_eod <= max_sell_price_eod"
+    - name: expression_is_true
+      expression: "min_full_price_eod <= median_full_price_eod AND median_full_price_eod <= max_full_price_eod"

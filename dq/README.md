@@ -1,0 +1,161 @@
+# DQ в Feature Platform
+
+DQ-тесты репозиторно-управляемых таблиц объявляются в блоке `dq:` файла `config.yaml`
+энтити и исполняются таской `dq` внутри того же DAG'а сразу после записи партиции.
+Downstream-DAG'и ждут именно эту таску, а не отдельный dbt-DQ-DAG.
+
+Тесты выполняются как SQL в Trino через `TrinoHook`; таблица адресуется как
+`"dwh-iceberg".<schema>.<table>` (маппинг каталога берётся из `ci_config.yaml`).
+Каждый тест рендерится в запрос, возвращающий одну строку `(failed_rows, observed)`:
+`failed_rows > 0` — падение, `0` — успех, `< 0` — тест не мог быть выполнен и получает
+статус `skipped`.
+
+## Быстрый старт
+
+Блок `dq:` необязателен: базовый набор работает всегда. Добавляйте только то, что сверх него.
+
+```yaml
+dq:
+  enabled: true                # default true
+  trino_conn_id: trino_search  # default trino_search
+  scope: partition             # default partition; table — сканировать всю таблицу
+  partition_column: date       # default date
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  sample_rows: 5               # default 5
+  query_timeout_seconds: 600   # default 600
+  warmup_days: 1               # default 1
+  # active_from: "2026-08-01"  # по умолчанию ключ отсутствует
+  tests:
+    - name: row_count_min
+      min_rows: 50000
+    - name: accepted_range
+      column: conversion_rate
+      min: 0
+      max: 1
+    - name: not_null
+      columns: [orders_cnt, price_avg]
+    - name: expression_is_true
+      expression: "min_price <= median_price AND median_price <= max_price"
+      severity: warn
+```
+
+Правила:
+
+- Базовые тесты работают всегда, независимо от наличия блока `dq:`.
+- Запись в `tests` с именем базового теста переопределяет его параметры.
+- `enabled: false` внутри записи выключает конкретный тест.
+- `dq.enabled: false` выключает DQ у энтити целиком и требует объяснения в README энтити —
+  `scripts/validate_dq_configs.py` это проверяет.
+- У каждого теста доступны `severity` (`error` | `warn`, дефолт `error`) и `where`.
+- `partition_date_template` должен повторять то выражение, которым DAG выбирает
+  записываемую партицию. Не угадывайте его по имени таблицы.
+
+## Каталог тестов
+
+### Базовые — включены всегда
+
+| Имя | Семейство | Параметры | Дефолт | Скан |
+|---|---|---|---|---|
+| `primary_key_not_null` | null_checks | — | берёт `table.primary_key` | партиция |
+| `primary_key_unique` | uniqueness | — | берёт `table.primary_key` | партиция |
+| `row_count_min` | consistency | `min_rows` | `0` | партиция |
+| `row_count_growth` | consistency | `max_growth_ratio`, `direction` | `0.2`, `both` | 2 партиции |
+| `freshness` | recency | `max_lag_days` | `2` | table-wide |
+
+`row_count_min` повторяет семантику dbt-макроса `row_count_greater_than_for_date` дословно,
+включая нестрогое сравнение: тест падает при `row_count <= min_rows`. Дефолт `0` означает
+«партиция не должна быть пустой», а не «любое число строк сойдёт».
+
+### Опциональные
+
+| Имя | Семейство | Обязательные параметры | Опциональные |
+|---|---|---|---|
+| `not_null` | null_checks | `columns` | `max_null_share` |
+| `null_share_below` | null_checks | `column`, `max_share` | — |
+| `unique_combination` | uniqueness | `columns` | — |
+| `accepted_values` | domain_values | `column`, `values` | `ignore_nulls` |
+| `not_accepted_values` | domain_values | `column`, `values` | `ignore_nulls` |
+| `accepted_range` | domain_values | `column`, `min`/`max` | `min_inclusive`, `max_inclusive`, `ignore_nulls` |
+| `non_negative` | domain_values | `columns` | `ignore_nulls` |
+| `string_not_blank` | domain_values | `columns` | — |
+| `distinct_count_between` | consistency | `columns`, `min`/`max` | — |
+| `columns_sum_equals` | consistency | `parts`, `total` | `tolerance` |
+| `row_count_matches_reference` | consistency | `reference_table`, `reference_date_column` | `reference_where`, `tolerance_ratio` |
+| `expression_is_true` | row_expr | `expression` | `where` |
+| `relationships` | referential_integrity | `column`, `to_table`, `to_column` | `where` |
+
+Семейства совпадают с таксономией `dbt-trino/scripts/check_model_tests_score.py` — это общий
+словарь с DE-командой, когда речь идёт о покрытии таблицы тестами.
+
+`expression_is_true` считает нарушением любую строку, где выражение не вычислилось в `TRUE`:
+проверка идёт через `(<expression>) IS NOT TRUE`, поэтому `NULL` тоже считается падением.
+Если `NULL` для вашего контракта допустим — исключите его явно в самом выражении.
+
+### Дорогие тесты
+
+`relationships` сканирует чужую таблицу целиком, `row_count_matches_reference` — партицию
+чужой таблицы. По умолчанию не включены нигде. Добавляйте только когда контракт join-ключа
+стабилен, и фиксируйте в README энтити, почему затраты оправданы.
+
+## Молодые таблицы и бэкфилл
+
+**Нет базы для сравнения.** `row_count_growth` требует предыдущую партицию. Если её нет или
+она пуста, коэффициент роста не определён, и тест получает статус `skipped` с причиной, а не
+`passed` и не `failed`. Поведение встроенное и не настраиваемое: тест, которому не на чем
+считать, не имеет права ни зеленить таблицу, ни ронять DAG. `skipped` попадает в таблицу
+результатов наравне с остальными, чтобы в Superset было видно, что проверка не работала.
+
+**Непрогретые пороги.** `dq.warmup_days` (дефолт `1`): warmup активен, пока число различных
+партиций в таблице **до текущей** меньше `warmup_days`. При дефолте `1` это ровно первый день
+жизни таблицы. Пока warmup активен, все результаты severity `error` понижаются до `warn`,
+а отчёт печатает `warmup: ACTIVE` и пишет флаг `warmup_active` в таблицу результатов.
+Для энтити с долгим набором данных ставьте `warmup_days: 14` и снимайте, когда пороги устоятся.
+
+**Бэкфилл истории.** `dq.active_from: "2026-08-01"` — для партиций раньше указанной даты тесты
+не запускаются вообще. Применяйте только когда старые партиции считались другой логикой и
+чинить их не планируется.
+
+**Preflight.** До первого теста runner проверяет, что таблица есть в каталоге Trino. Если нет —
+падает с сообщением про непроехавшую миграцию, а не с сырым `TABLE_NOT_FOUND`.
+
+## Таблица результатов
+
+`iceberg.silver.feature_platform_dq_results`, партиционирование по `date`, конфиг и миграция
+в `dq/results/`. Каждый прогон пишет строку на тест: статус, severity, `failed_rows`,
+`observed`, порог, JSON параметров, отрендеренный SQL, примеры нарушающих строк, длительность,
+причину пропуска и флаг warmup.
+
+Запись идемпотентна: строки текущей пары `(date, dag_id)` перезаписываются целиком, поэтому
+ретрай таски не плодит дубли.
+
+Таблица помечена `create_dbt_pr: false` — она не уезжает в `dbt-trino` и не заводит DQ-тесты
+сама на себя. Модуль записи называется `dq/results_writer.py`, а не `results.py`, потому что
+каталог `dq/results/` как namespace-пакет перекрыл бы имя `dq.results`.
+
+Аналитика строится в Superset поверх этой таблицы. Статус самой таски `dq` виден в
+`"dwh-iceberg".silver.airflow_task_instance` по `task_id = 'dq'`.
+
+## Отличия от прежнего поведения dbt
+
+| Что | Раньше в dbt | Сейчас |
+|---|---|---|
+| `row_count_growth` направление | односторонний: ловил только рост выше порога, обвал до 10% проходил | двусторонний по умолчанию, `direction: up`/`down` при необходимости |
+| `row_count_growth` без базы | `WHERE previous_row_count > 0` — молча проходил | статус `skipped` с причиной |
+| `primary_key_unique` | table-wide по всей истории | по партиции; `scope: table` при необходимости |
+| `not_null` по PK | генерировался, но фактически был у одной таблицы из 39 | работает везде |
+| Упавшие строки | `+store_failures: false`, не сохранялись | `failed_rows`, `observed` и примеры в таблице результатов |
+| Смещение дат | «текущая» партиция = `ds - 1`, база = `ds - 2` | ровно записанная партиция и `partition_date - 1` |
+
+## Локальные проверки
+
+```bash
+python3 scripts/validate_dq_configs.py
+python3 ci_test/test_dq_config.py
+python3 ci_test/test_dq_sql.py
+python3 ci_test/test_dq_runner.py
+python3 ci_test/test_dq_report.py
+python3 ci_test/test_dq_results.py
+python3 ci_test/test_dq_task.py
+python3 ci_test/test_dq_task_wiring.py
+python3 ci_test/test_validate_dq_configs.py
+```
