@@ -22,3 +22,99 @@ alerts:
   team: search
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Таблица кумулятивная: в каждой партиции лежит срез отзывов «за все время»,
+    # поэтому день ко дню объём меняется на проценты, а не в разы. Порог сузили
+    # до 0.1, но первое время держим предупреждением, пока он не устоится.
+    - name: row_count_growth
+      max_growth_ratio: 0.1
+      severity: warn
+    - name: not_null
+      columns:
+        - product_id
+        - bad_reviews_count
+        - good_reviews_count
+        - total_reviews_count
+        - total_reviews_with_text
+    # AVG(rating) пуст только если ни у одного опубликованного отзыва товара нет
+    # оценки — это аномалия источника, но не повод ронять DAG.
+    - name: not_null
+      columns:
+        - product_rating
+      severity: warn
+    - name: non_negative
+      columns:
+        - product_id
+        - bad_reviews_count
+        - good_reviews_count
+        - total_reviews_count
+        - reviews_mark_one_count
+        - reviews_mark_two_count
+        - reviews_mark_three_count
+        - reviews_mark_four_count
+        - reviews_mark_five_count
+        - total_reviews_with_text
+    - name: accepted_range
+      column: product_rating
+      min: 1
+      max: 5
+    # Каждая доля считается от total_reviews_count, поэтому обязана лежать в [0, 1].
+    # Отдельным тестом на колонку, чтобы в отчёте было видно, какая именно поехала.
+    - name: accepted_range
+      column: ratio_reviews_mark_one
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ratio_reviews_mark_two
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ratio_reviews_mark_three
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ratio_reviews_mark_four
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ratio_reviews_mark_five
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ratio_reviews_bad
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ratio_reviews_good
+      min: 0
+      max: 1
+    # Два разбиения total_reviews_count — по знаку оценки и по самой оценке.
+    # Расхождение означает NULL или оценку вне шкалы 1-5 в public_feedback.
+    - name: columns_sum_equals
+      parts:
+        - bad_reviews_count
+        - good_reviews_count
+      total: total_reviews_count
+    - name: columns_sum_equals
+      parts:
+        - reviews_mark_one_count
+        - reviews_mark_two_count
+        - reviews_mark_three_count
+        - reviews_mark_four_count
+        - reviews_mark_five_count
+      total: total_reviews_count
+    # Отзыв с текстом — подмножество всех отзывов товара.
+    - name: expression_is_true
+      expression: "total_reviews_with_text <= total_reviews_count"
+    # Строка появляется только у товара с опубликованными отзывами: пустой total
+    # означает, что развалился join с silver.sku или сам источник.
+    - name: expression_is_true
+      expression: "total_reviews_count > 0"
+    - name: expression_is_true
+      expression: "abs(ratio_reviews_bad + ratio_reviews_good - 1) < 1e-6"
+    - name: expression_is_true
+      expression: "abs(ratio_reviews_mark_one + ratio_reviews_mark_two + ratio_reviews_mark_three + ratio_reviews_mark_four + ratio_reviews_mark_five - 1) < 1e-6"
