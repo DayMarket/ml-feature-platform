@@ -8,7 +8,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 ENTITY_ROOT = (
     ROOT
-    / "layers/silver/calculated_at_account_id_session_id_product_id_event_type"
+    / "layers/silver/account_id_session_id_product_id_event_type"
     / "account_product_session_action_counts_12h/v1"
 )
 
@@ -106,8 +106,8 @@ def test_query_uses_half_open_window_and_positive_entity_filters():
         "event.received_at < "
         "TIMESTAMP '2026-08-05 07:00:00'"
     ) in sql
-    assert "CAST(event.account_id AS BIGINT) > 0" in sql
-    assert "CAST(event.product_id AS BIGINT) > 0" in sql
+    assert "event.account_id > 0" in sql
+    assert "event.product_id > 0" in sql
     assert "event.session_id IS NOT NULL" in sql
 
 
@@ -121,17 +121,31 @@ def test_query_counts_raw_events_and_keeps_last_received_at():
         datetime(2026, 8, 5, 19, tzinfo=timezone.utc),
     )
 
-    assert "CAST(COUNT(*) AS BIGINT) AS n_events" in sql
+    assert "COUNT(*)" in sql
+    assert "AS n_events" in sql
     assert (
-        "CAST(MAX(received_at) AS TIMESTAMP) AS last_received_at"
+        "FROM_UTC_TIMESTAMP(\n"
+        "        MAX(received_at),\n"
+        "        'Asia/Tashkent'\n"
+        "    ) AS last_received_at"
         in sql
     )
+    assert "TIMESTAMP '2026-08-06 00:00:00' AS calculated_at" in sql
     assert (
         "account_id,\n"
         "    session_id,\n"
         "    product_id,\n"
         "    event_type"
     ) in sql
+
+    merge_sql = (
+        query.build_account_product_session_action_counts_merge_query(
+            "iceberg.silver.target",
+            datetime(2026, 8, 5, 19, tzinfo=timezone.utc),
+        )
+    )
+    assert "MERGE INTO iceberg.silver.target" in merge_sql
+    assert "target.calculated_at = TIMESTAMP '2026-08-06 00:00:00'" in merge_sql
 
 
 def test_contract_contains_schedule_schema_and_idempotent_partition():
@@ -146,19 +160,21 @@ def test_contract_contains_schedule_schema_and_idempotent_partition():
         "primary_key: "
         "calculated_at,account_id,session_id,product_id,event_type"
     ) in config
-    assert "resource_profile: large" in config
+    assert "resource_profile: small" in config
     assert "group_tag: recsys-main-page-features" in config
     assert 'schedule: "0 7,19 * * *"' in config
-    assert 'start_date: "2026-06-01T00:00:00Z"' in config
-    assert "catchup: false" in config
+    assert 'start_date: "2026-08-08T07:00:00Z"' in config
+    assert "catchup: true" in config
     assert 'catchup=dag_settings["catchup"]' in dag
     assert 'CronDataIntervalTimetable(dag_settings["schedule"], "UTC")' in dag
-    assert "PARTITIONED BY (hours(calculated_at))" in migration
+    assert "PARTITIONED BY (days(calculated_at))" in migration
     assert "'engine.hive.lock-enabled' = 'false'" in migration
-    assert "n_events BIGINT" in migration
     assert "last_received_at TIMESTAMP" in migration
     assert "category_id" not in migration
     assert "sku_id" not in migration
     assert "sku_group_id" not in migration
-    assert "отдельный контролируемый backfill" in readme
+    assert "начальный backfill за две недели" in readme
+    assert "account_id INT" in migration
+    assert "product_id INT" in migration
+    assert "snapshot" not in migration.lower()
     assert "Airflow group tag: `recsys-main-page-features`" in readme
