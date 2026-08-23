@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import reduce
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -118,11 +119,10 @@ def write_results(
 
     arrow_table = pa.Table.from_pylist(rows, schema=table.schema().as_arrow())
     values = overwrite_filter_values(ctx, meta)
+    # Фильтр собирается из того же словаря, который проверяет тест: перечисление
+    # ключей руками означало бы, что правка, роняющая partition_ts, не поймается
+    # ничем — pyiceberg в окружении нет, write_results юнит-тестом не покрыть.
     table.overwrite(
         arrow_table,
-        overwrite_filter=And(
-            EqualTo("date", values["date"]),
-            EqualTo("dag_id", values["dag_id"]),
-            EqualTo("partition_ts", values["partition_ts"]),
-        ),
+        overwrite_filter=reduce(And, (EqualTo(key, value) for key, value in values.items())),
     )

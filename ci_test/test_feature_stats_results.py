@@ -153,6 +153,13 @@ def test_overwrite_filter_pins_the_snapshot_not_just_the_day() -> None:
     assert snapshot["partition_ts"] == datetime(2026, 8, 22, 6, 0, 0, tzinfo=timezone.utc)
 
 
+def test_overwrite_filter_keys_are_exactly_the_three_that_govern_the_filter() -> None:
+    # write_results строит фильтр из этого словаря, поэтому его форма — контракт,
+    # а не деталь: лишний ключ сузит перезапись, потерянный partition_ts вернёт
+    # дефект dq/results_writer.py.
+    assert list(overwrite_filter_values(SNAPSHOT, META)) == ["date", "dag_id", "partition_ts"]
+
+
 def main() -> int:
     test_results_table_ref_comes_from_config()
     test_results_catalog_name_comes_from_config()
@@ -162,6 +169,7 @@ def main() -> int:
     test_build_rows_keeps_null_metrics_as_none()
     test_build_rows_is_empty_without_stats()
     test_overwrite_filter_pins_the_snapshot_not_just_the_day()
+    test_overwrite_filter_keys_are_exactly_the_three_that_govern_the_filter()
     print("Feature stats results tests completed successfully")
     return 0
 
