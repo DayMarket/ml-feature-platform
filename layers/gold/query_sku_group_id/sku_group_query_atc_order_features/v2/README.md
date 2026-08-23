@@ -14,6 +14,7 @@ DAG id: `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_ord
 - не преобразует запрос в `base_query`: не удаляет stopwords, не удаляет повторяющиеся токены и не меняет порядок слов;
 - использует окно до 90 дней от расчетной даты Airflow `ds`;
 - агрегирует ATC, показы и сгенерированные заказы по окнам 1, 3, 7, 14, 21, 30, 60 и 90 дней;
+- сохраняет уже рассчитанные суммы показов пары `query_skg_uniq_impressions_{1,3,7,14,21,30,60,90}`; для них используется существующая граница `date >= ds - n` и `date <= ds`;
 - считает сглаженные pairwise-конверсии `query_skg_smooth_conv_imp2atc_{1,3,7,14,21,30,60,90}` по формуле
   `(query_skg_atc_n + 100 * skg_conv_imp2atc_n) / (query_skg_impressions_n + 100)`, где
   `skg_conv_imp2atc_n` считается на уровне `sku_group_id` по всем поисковым запросам за то же окно;
@@ -48,6 +49,6 @@ DAG ждет DQ DAG-и silver-источников:
 - `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`;
 - `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq`.
 
-Версия `v2` создается как новая Iceberg-таблица. Вся схема, включая старые conversion-признаки и новые smoothed/fraction-признаки, описана в `migrations/create_table.sql`; отдельных schema-change миграций для добавления фичей в этой версии нет.
+Полная схема для новых окружений описана в `migrations/create_table.sql`. Существующие окружения получают raw impression-колонки через idempotent migration `20260814_add_raw_impression_columns.sql`.
 
 Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/query_sku_group_id/sku_group_query_atc_order_features/v2/entrypoints/get_sku_group_query_atc_order_features.py`, поэтому отдельный Docker image для этой сущности не собирается.

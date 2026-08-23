@@ -130,6 +130,33 @@ def _source_metadata(
     feature_group: dict[str, Any],
 ) -> dict[str, Any]:
     source = feature_group["source"]
+    if source.get("external") is True:
+        primary_key = [str(column) for column in source["primary_key"]]
+        date_column = "date" if "date" in primary_key else None
+        timestamp_column = source.get("timestamp_column")
+        if date_column:
+            entity_keys = [column for column in primary_key if column != date_column]
+        elif timestamp_column in primary_key:
+            if source.get("read_mode") != "latest_timestamp":
+                raise ValueError(
+                    f"External ranking upload source {source['schema']}.{source['table']} "
+                    "with timestamp primary key must use read_mode=latest_timestamp"
+                )
+            entity_keys = [
+                column for column in primary_key if column != timestamp_column
+            ]
+        else:
+            raise ValueError(
+                f"External ranking upload source {source['schema']}.{source['table']} "
+                "primary_key must contain date or configured timestamp_column"
+            )
+        return {
+            "catalog": source["catalog"],
+            "primary_key": primary_key,
+            "date_column": date_column,
+            "timestamp_column": timestamp_column,
+            "entity_keys": entity_keys,
+        }
     for config_path in sorted(Path(repo_root).glob("layers/**/config.yaml")):
         table = _read_simple_nested_config(config_path).get("table", {})
         if (

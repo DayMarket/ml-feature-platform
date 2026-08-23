@@ -10,7 +10,7 @@ ENTITY_PATH = (
     ROOT
     / "layers"
     / "silver"
-    / "calculated_at_product_id"
+    / "product_id"
     / "product_feedback_counts_12h"
     / "v1"
 )
@@ -29,10 +29,6 @@ class QuerySettings:
     feedback_table: str = "iceberg.silver_bxappdb2_foodback.public_feedback"
     published_status: str = "PUBLISHED"
     window_hours: int = 12
-    min_rating: int = 1
-    max_rating: int = 5
-    positive_rating_min: int = 4
-    negative_rating_max: int = 3
 
 
 class ProductFeedbackCountsQueryTest(unittest.TestCase):
@@ -54,11 +50,15 @@ class ProductFeedbackCountsQueryTest(unittest.TestCase):
         sql = self.build_query()
 
         self.assertIn(
-            "date_published >= TIMESTAMP '2026-08-05 07:00:00'",
+            "date_published >= TIMESTAMP '2026-08-05 12:00:00'",
             sql,
         )
         self.assertIn(
-            "date_published < TIMESTAMP '2026-08-05 19:00:00'",
+            "date_published < TIMESTAMP '2026-08-06 00:00:00'",
+            sql,
+        )
+        self.assertIn(
+            "TIMESTAMP '2026-08-06 00:00:00' AS calculated_at",
             sql,
         )
         self.assertNotIn("date_published <=", sql)
@@ -67,7 +67,7 @@ class ProductFeedbackCountsQueryTest(unittest.TestCase):
         sql = self.build_query()
 
         self.assertIn("status = 'PUBLISHED'", sql)
-        self.assertIn("CAST(product_id AS BIGINT) > 0", sql)
+        self.assertIn("CAST(product_id AS INT) > 0", sql)
         self.assertNotIn("BETWEEN 1 AND 5", sql)
         self.assertIn("CAST(rating AS INT) >= 4", sql)
         self.assertIn("CAST(rating AS INT) <= 3", sql)
@@ -136,11 +136,15 @@ class ProductFeedbackCountsRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(settings.published_status, "PUBLISHED")
         self.assertEqual(settings.window_hours, 12)
-        self.assertEqual((settings.min_rating, settings.max_rating), (1, 5))
-        self.assertEqual(
-            (settings.positive_rating_min, settings.negative_rating_max),
-            (4, 3),
-        )
+
+        config = (ENTITY_PATH / "config.yaml").read_text(encoding="utf-8")
+        for field_name in (
+            "min_rating",
+            "max_rating",
+            "positive_rating_min",
+            "negative_rating_max",
+        ):
+            self.assertNotIn(field_name, config)
 
 
 class ProductFeedbackCountsMigrationTest(unittest.TestCase):
@@ -151,7 +155,7 @@ class ProductFeedbackCountsMigrationTest(unittest.TestCase):
 
         for column in (
             "calculated_at TIMESTAMP",
-            "product_id BIGINT",
+            "product_id INT",
             "feedback_count BIGINT",
             "rating_sum BIGINT",
             "feedback_gte_4 BIGINT",
