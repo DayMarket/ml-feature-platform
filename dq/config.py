@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +76,12 @@ BASE_TESTS = (
 
 DIRECTIONS = ("both", "up", "down")
 
+# Гранулярность партиции. "date" — дневная партиция по колонке типа DATE/TIMESTAMP,
+# сравнение идёт по дню. "timestamp" — энтити-снапшот: DAG пишет несколько партиций
+# внутри суток, и проверять надо ровно записанный снапшот, а не полудописанный день.
+PARTITION_GRANULARITIES = ("date", "timestamp")
+HOURS_PER_DAY = 24
+
 
 @dataclass(frozen=True)
 class TestSpec:
@@ -98,6 +104,16 @@ class DqSettings:
     warmup_days: int
     active_from: date | None
     tests: tuple[TestSpec, ...] = field(default=())
+    partition_granularity: str = "date"
+    # Шаг между соседними снапшотами. Для date-гранулярности это сутки и параметр
+    # не настраивается; для timestamp — обязан совпадать с расписанием DAG'а, иначе
+    # row_count_growth возьмёт за базу несуществующий снапшот и всегда будет skipped.
+    snapshot_interval_hours: int = HOURS_PER_DAY
+
+
+# Владелец таблицы, если table.meta.team не задан. Совпадает с командой энтити,
+# на которых DQ обкатывался, и не даёт строкам результатов остаться без адресата.
+DEFAULT_TEAM = "team:search"
 
 
 @dataclass(frozen=True)
@@ -110,6 +126,12 @@ class RenderContext:
     partition_date: date
     scope: str
     sample_rows: int
+    team: str = DEFAULT_TEAM
+    partition_granularity: str = "date"
+    # Заполняется только при partition_granularity == "timestamp": конкретный
+    # снапшот в UTC, который записал этот запуск DAG'а.
+    partition_timestamp: datetime | None = None
+    snapshot_interval_hours: int = HOURS_PER_DAY
 
 
 DEFAULT_PARTITION_DATE_TEMPLATE = '{{ macros.ds_add(ds, -1) }}'
@@ -136,6 +158,30 @@ def load_dq_settings(config: dict[str, Any]) -> DqSettings:
     active_from_raw = raw.get("active_from")
     active_from = date.fromisoformat(str(active_from_raw)) if active_from_raw else None
 
+    granularity = str(raw.get("partition_granularity", "date"))
+    if granularity not in PARTITION_GRANULARITIES:
+        raise DqConfigError(
+            f"dq.partition_granularity должен быть одним из {PARTITION_GRANULARITIES}, "
+            f"получено {granularity!r}"
+        )
+
+    snapshot_interval_hours = HOURS_PER_DAY
+    if granularity == "timestamp":
+        if "snapshot_interval_hours" not in raw:
+            raise DqConfigError(
+                "dq.snapshot_interval_hours обязателен при partition_granularity: timestamp — "
+                "он должен повторять шаг расписания DAG'а, иначе базой роста станет "
+                "несуществующий снапшот"
+            )
+        snapshot_interval_hours = int(raw["snapshot_interval_hours"])
+        if snapshot_interval_hours <= 0:
+            raise DqConfigError("dq.snapshot_interval_hours должен быть положительным")
+        if "partition_date_template" not in raw:
+            raise DqConfigError(
+                "dq.partition_date_template обязателен при partition_granularity: timestamp — "
+                "дефолтный шаблон отдаёт дату, а снапшоту нужен полный timestamp записи"
+            )
+
     return DqSettings(
         enabled=_parse_bool(raw.get("enabled", True), "dq.enabled"),
         trino_conn_id=str(raw.get("trino_conn_id", "trino_search")),
@@ -147,6 +193,8 @@ def load_dq_settings(config: dict[str, Any]) -> DqSettings:
         warmup_days=warmup_days,
         active_from=active_from,
         tests=_build_specs(raw.get("tests") or []),
+        partition_granularity=granularity,
+        snapshot_interval_hours=snapshot_interval_hours,
     )
 
 

@@ -22,3 +22,39 @@ alerts:
   team: search
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Джоб пишет партицию за data_interval_start (partition_start[:10]).
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # По 110 парам соседних партиций рост лежит в 0%..+9.55%, но p95 |рост| = 0.2%:
+    # почти всегда таблица стоит на месте, а 9.55% — единичный выброс. Двусторонние
+    # 20% (дефолт фреймворка) оставляют запас к этому выбросу и ловят обвал остатков.
+    - name: row_count_growth
+      max_growth_ratio: 0.2
+    # Минимум за последние 30 партиций — 5.23M строк. 4M ниже всей недавней истории.
+    - name: row_count_min
+      min_rows: 4000000
+    # За 7 партиций (около 37M строк) ни одного NULL и ни одного отрицательного
+    # значения: остаток — это SUM неотрицательных EOD-остатков SKU.
+    - name: not_null
+      columns:
+        - skg_total_stock_1
+        - skg_total_stock_3
+        - skg_total_stock_7
+        - skg_total_stock_14
+        - skg_total_stock_21
+        - skg_total_stock_30
+        - skg_total_stock_60
+        - skg_total_stock_90
+    - name: non_negative
+      columns:
+        - skg_total_stock_1
+        - skg_total_stock_3
+        - skg_total_stock_7
+        - skg_total_stock_14
+        - skg_total_stock_21
+        - skg_total_stock_30
+        - skg_total_stock_60
+        - skg_total_stock_90

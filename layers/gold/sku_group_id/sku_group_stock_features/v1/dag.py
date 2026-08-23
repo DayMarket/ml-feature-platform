@@ -13,6 +13,14 @@ from airflow_commons.helpers.oncall import send_oncall_notification
 DAG_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, DAG_DIR)
 
+REPO_ROOT = os.path.abspath(os.path.join(DAG_DIR, "..", "..", "..", "..", ".."))
+sys.path.insert(0, REPO_ROOT)
+
+from dq.task import build_dq_task
+
+CONFIG_PATH = os.path.join(DAG_DIR, "config.yaml")
+DQ_PARTITION_DATE = '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+
 from config.factory import get_dag_settings, get_deployment
 
 dag_settings = get_dag_settings()
@@ -71,6 +79,10 @@ def collect_gold_sku_group_stock_features():
     )
 
     wait_for_silver_sku_stock_daily >> collect_features
+
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
+
+    collect_features >> dq_task
 
 
 dag = collect_gold_sku_group_stock_features()

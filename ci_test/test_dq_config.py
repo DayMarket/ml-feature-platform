@@ -128,6 +128,74 @@ def test_catalog_alias_from_ci_config() -> None:
     assert trino_catalog_alias(Path("."), "iceberg") == "dwh-iceberg"
 
 
+def test_timestamp_granularity_requires_interval_and_template() -> None:
+    table = {"catalog": "iceberg", "schema": "gold", "name": "t", "primary_key": "calculated_at,sku_group_id"}
+    for dq_block, expected in (
+        (
+            {"partition_granularity": "timestamp", "partition_column": "calculated_at"},
+            "snapshot_interval_hours",
+        ),
+        (
+            {
+                "partition_granularity": "timestamp",
+                "partition_column": "calculated_at",
+                "snapshot_interval_hours": 3,
+            },
+            "partition_date_template",
+        ),
+    ):
+        try:
+            load_dq_settings({"table": table, "dq": dq_block})
+        except DqConfigError as error:
+            assert expected in str(error), (dq_block, error)
+        else:
+            raise AssertionError(f"ожидали DqConfigError для {dq_block}")
+
+
+def test_timestamp_granularity_settings() -> None:
+    settings = load_dq_settings(
+        {
+            "table": {
+                "catalog": "iceberg",
+                "schema": "gold",
+                "name": "t",
+                "primary_key": "calculated_at,sku_group_id",
+            },
+            "dq": {
+                "partition_granularity": "timestamp",
+                "partition_column": "calculated_at",
+                "snapshot_interval_hours": 3,
+                "partition_date_template": "{{ data_interval_end }}",
+            },
+        }
+    )
+    assert settings.partition_granularity == "timestamp"
+    assert settings.snapshot_interval_hours == 3
+    assert settings.partition_column == "calculated_at"
+
+
+def test_date_granularity_is_the_default() -> None:
+    settings = load_dq_settings(
+        {"table": {"catalog": "iceberg", "schema": "silver", "name": "t", "primary_key": "date,sku_group_id"}}
+    )
+    assert settings.partition_granularity == "date"
+    assert settings.snapshot_interval_hours == 24
+
+
+def test_unknown_partition_granularity_rejected() -> None:
+    try:
+        load_dq_settings(
+            {
+                "table": {"catalog": "iceberg", "schema": "silver", "name": "t", "primary_key": "date,x"},
+                "dq": {"partition_granularity": "hour"},
+            }
+        )
+    except DqConfigError as error:
+        assert "partition_granularity" in str(error)
+    else:
+        raise AssertionError("ожидали DqConfigError для неизвестной гранулярности")
+
+
 def main() -> int:
     test_defaults_without_dq_block()
     test_base_test_override_and_disable()
@@ -136,6 +204,10 @@ def main() -> int:
     test_missing_required_param_rejected()
     test_bad_severity_rejected()
     test_catalog_alias_from_ci_config()
+    test_timestamp_granularity_requires_interval_and_template()
+    test_timestamp_granularity_settings()
+    test_date_granularity_is_the_default()
+    test_unknown_partition_granularity_rejected()
     print("DQ config tests completed successfully")
     return 0
 

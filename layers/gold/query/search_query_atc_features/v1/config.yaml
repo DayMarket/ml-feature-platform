@@ -22,3 +22,72 @@ alerts:
   team: search
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Джоб пишет партицию за data_interval_start (partition_start[:10]).
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # За 109 пар соседних партиций рост держится в -0.90%..+2.01%, p95 |рост| = 1.5%.
+    # 5% — 2.5x к наблюдаемому максимуму: ловит обрыв записи, но не дёргает на
+    # обычных всплесках поискового спроса.
+    - name: row_count_growth
+      max_growth_ratio: 0.05
+    # Минимум за последние 30 партиций — 30.35M строк, текущая — 32.4M.
+    # 25M ниже всей недавней истории и срабатывает только на частичной записи.
+    - name: row_count_min
+      min_rows: 25000000
+    # За 7 партиций (около 220M строк) ни одного NULL и ни одного отрицательного
+    # значения: все 24 фичи — счётчики показов, ATC и заказов за окно.
+    - name: not_null
+      columns:
+        - query_uniq_impressions_1
+        - query_uniq_atcs_1
+        - query_orders_1
+        - query_uniq_impressions_3
+        - query_uniq_atcs_3
+        - query_orders_3
+        - query_uniq_impressions_7
+        - query_uniq_atcs_7
+        - query_orders_7
+        - query_uniq_impressions_14
+        - query_uniq_atcs_14
+        - query_orders_14
+        - query_uniq_impressions_21
+        - query_uniq_atcs_21
+        - query_orders_21
+        - query_uniq_impressions_30
+        - query_uniq_atcs_30
+        - query_orders_30
+        - query_uniq_impressions_60
+        - query_uniq_atcs_60
+        - query_orders_60
+        - query_uniq_impressions_90
+        - query_uniq_atcs_90
+        - query_orders_90
+    - name: non_negative
+      columns:
+        - query_uniq_impressions_1
+        - query_uniq_atcs_1
+        - query_orders_1
+        - query_uniq_impressions_3
+        - query_uniq_atcs_3
+        - query_orders_3
+        - query_uniq_impressions_7
+        - query_uniq_atcs_7
+        - query_orders_7
+        - query_uniq_impressions_14
+        - query_uniq_atcs_14
+        - query_orders_14
+        - query_uniq_impressions_21
+        - query_uniq_atcs_21
+        - query_orders_21
+        - query_uniq_impressions_30
+        - query_uniq_atcs_30
+        - query_orders_30
+        - query_uniq_impressions_60
+        - query_uniq_atcs_60
+        - query_orders_60
+        - query_uniq_impressions_90
+        - query_uniq_atcs_90
+        - query_orders_90

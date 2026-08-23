@@ -45,3 +45,41 @@ def test_cold_start_upload_waits_for_producer_task():
         "external_task_id": "fetch_boosted_conversions_etl",
         "execution_delta_minutes": 240,
     }
+
+
+REPOSITORY_SOURCE_DAG_IDS = {
+    "feature-platform.layers.gold.query_sku_group_id."
+    "sku_group_query_atc_order_features.v2",
+    "feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features.v2",
+    "feature-platform.layers.gold.sku_group_id.sku_group_stock_features",
+    "feature-platform.layers.gold.sku_group_id.sku_group_price_features",
+    "feature-platform.layers.gold.query.search_query_atc_features",
+    "feature-platform.layers.gold.sku_group_id.feedback_sku_group_id",
+}
+
+
+def test_repository_sources_wait_for_the_dq_task():
+    """Каждая gold-таблица аплоада ждётся по своей таске dq, а не по всему DAG'у."""
+    factory = _load_factory()
+
+    dependencies = factory.get_upload_components()[0]["dependencies"]
+    waited = {
+        dependency["external_dag_id"]
+        for dependency in dependencies
+        if dependency["external_task_id"] == "dq"
+    }
+    assert waited == REPOSITORY_SOURCE_DAG_IDS, waited
+
+    for dependency in dependencies:
+        assert not dependency["external_dag_id"].startswith("dbt.source."), dependency
+
+
+def main() -> int:
+    test_cold_start_upload_waits_for_producer_task()
+    test_repository_sources_wait_for_the_dq_task()
+    print("Features service upload dependency tests completed successfully")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

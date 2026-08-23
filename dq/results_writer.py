@@ -109,6 +109,7 @@ def build_rows(
                 "catalog": ctx.catalog_alias,
                 "schema_name": ctx.schema,
                 "table_name": ctx.table,
+                "team": ctx.team,
                 "test_name": result.name,
                 "test_key": result.test_key,
                 "test_family": result.family,

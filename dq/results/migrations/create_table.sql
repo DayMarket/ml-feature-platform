@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     catalog STRING COMMENT 'Каталог целевой таблицы из config.yaml',
     schema_name STRING COMMENT 'Схема целевой таблицы',
     table_name STRING COMMENT 'Имя целевой таблицы',
+    team STRING COMMENT 'Команда-владелец целевой таблицы из table.meta.team, по умолчанию team:search',
     test_name STRING COMMENT 'Имя теста из каталога DQ',
     test_key STRING COMMENT 'Уникальный ключ теста с параметрами, например accepted_range[price]',
     test_family STRING COMMENT 'Семейство теста: null_checks, uniqueness, domain_values, referential_integrity, row_expr, consistency, recency',

@@ -69,6 +69,7 @@ def test_build_rows_maps_every_field() -> None:
     assert row["catalog"] == "dwh-iceberg"
     assert row["schema_name"] == "silver"
     assert row["table_name"] == "feature_platform_sku_group_id_prices"
+    assert row["team"] == "team:search"
     assert row["test_family"] == "consistency"
     assert row["status"] == "failed"
     assert row["failed_rows"] == 1
@@ -125,11 +126,28 @@ def test_catalog_properties_are_complete() -> None:
     assert all(str(value) for value in properties.values())
 
 
+def test_build_rows_carries_owning_team() -> None:
+    """Команда-владелец таблицы едет в результаты, чтобы Superset мог фильтровать по ней."""
+    settings = load_dq_settings({"table": {"catalog": "iceberg", "schema": "silver",
+                                           "name": "t", "primary_key": "date,id"}})
+    ctx = RenderContext(
+        catalog_alias="dwh-iceberg", schema="silver", table="t", primary_key=("date", "id"),
+        partition_column="date", partition_date=date(2026, 8, 19), scope="partition",
+        sample_rows=5, team="team:recsys",
+    )
+    outcome = DqRunOutcome(results=[
+        TestResult("row_count_min", "row_count_min", "consistency", "passed", "error", 0, 1.0,
+                   "row_count > 0", 10, "SELECT 1"),
+    ])
+    assert build_rows(outcome, ctx, settings, META)[0]["team"] == "team:recsys"
+
+
 def main() -> int:
     test_results_table_ref_comes_from_config()
     test_results_catalog_name_comes_from_config()
     test_catalog_properties_are_complete()
     test_build_rows_maps_every_field()
+    test_build_rows_carries_owning_team()
     test_build_rows_keeps_params_of_duplicate_test_names_apart()
     test_build_rows_is_empty_when_run_skipped_by_active_from()
     print("DQ results tests completed successfully")

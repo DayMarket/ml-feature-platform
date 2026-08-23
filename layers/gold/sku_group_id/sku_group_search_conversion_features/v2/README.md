@@ -112,3 +112,27 @@ skg_days_since_last_atc = ds - max(date), где sum_atc > 0
 Версия `v2` создается как новая Iceberg-таблица. Вся схема, включая старые conversion-признаки и новые recency, atc2order, return-rate, increment-rate и category-признаки, описана в `migrations/create_table.sql`; отдельных schema-change миграций для добавления фичей в этой версии нет.
 
 Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/sku_group_id/sku_group_search_conversion_features/v2/entrypoints/get_sku_group_search_conversion_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
+
+## DQ
+
+DQ-тесты выполняются таской `dq` внутри этого DAG'а сразу после записи партиции;
+каталог тестов и правила конфигурирования описаны в `dq/README.md`.
+
+Базовый набор: `primary_key_not_null`, `primary_key_unique`, `row_count_min`,
+`row_count_growth`, `freshness`.
+
+Пороги подобраны по истории таблицы в Trino (114 партиций с 2026-03-14):
+
+- `row_count_min: 1500000` — минимум за последние 30 партиций 1.92M строк;
+- `row_count_growth: 0.03` — по 111 парам соседних партиций рост держится в
+  -0.28%..+0.81%, p95 |рост| = 0.48%.
+
+`not_null` покрывает 22 плотные колонки: сглаженные и сырые `imp2order` плюс счётчики
+ATC и заказов категории. Остальные 68 разрежены by design — return rate, atc2order и
+incr rate существуют только там, где были ATC или заказы, а `category_*` пусты у
+`sku_group_id` без категории (1778 строк за 4 партиции).
+
+`non_negative` покрывает все 90 фичевых колонок: отрицательных значений за 4 партиции
+(около 7.7M строк) нет ни в одной.
+
+Аплоад ranking-фич ждёт таску `dq` этого DAG'а, а не весь DAG и не dbt-DQ-DAG.

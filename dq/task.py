@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
 
 import yaml
 
-from dq.config import RenderContext, load_dq_settings, trino_catalog_alias
+from dq.config import (
+    DEFAULT_TEAM,
+    DqConfigError,
+    RenderContext,
+    load_dq_settings,
+    trino_catalog_alias,
+)
 from dq.report import format_alert, format_log
 from dq.results_writer import RunMeta, write_results
 from dq.runner import run_dq
@@ -20,9 +26,35 @@ class DqTestsFailed(Exception):
     """Хотя бы один DQ-тест с severity error не прошёл."""
 
 
-def build_render_context(config: dict[str, Any], repo_root: Path, partition_date: date) -> RenderContext:
+def parse_partition_value(value: Any, granularity: str) -> tuple[date, datetime | None]:
+    """Разбирает отрендеренный Airflow'ом шаблон партиции в дату и, для снапшота, момент.
+
+    Дневная энтити отдаёт `YYYY-MM-DD`, снапшотная — `YYYY-MM-DD HH:MM:SS` в UTC.
+    """
+    raw = str(value).strip()
+    if granularity != "timestamp":
+        return date.fromisoformat(raw[:10]), None
+
+    normalized = raw.replace("T", " ")[:19]
+    try:
+        moment = datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S")
+    except ValueError as error:
+        raise DqConfigError(
+            f"dq.partition_date_template при partition_granularity: timestamp обязан отдавать "
+            f"'YYYY-MM-DD HH:MM:SS' в UTC, получено {raw!r}"
+        ) from error
+    return moment.date(), moment
+
+
+def build_render_context(
+    config: dict[str, Any], repo_root: Path, partition_value: Any
+) -> RenderContext:
     table = config["table"]
     settings = load_dq_settings(config)
+    meta = table.get("meta") or {}
+    partition_date, partition_timestamp = parse_partition_value(
+        partition_value, settings.partition_granularity
+    )
     return RenderContext(
         catalog_alias=trino_catalog_alias(repo_root, str(table["catalog"])),
         schema=str(table["schema"]),
@@ -34,6 +66,10 @@ def build_render_context(config: dict[str, Any], repo_root: Path, partition_date
         partition_date=partition_date,
         scope=settings.scope,
         sample_rows=settings.sample_rows,
+        team=str(meta.get("team") or DEFAULT_TEAM),
+        partition_granularity=settings.partition_granularity,
+        partition_timestamp=partition_timestamp,
+        snapshot_interval_hours=settings.snapshot_interval_hours,
     )
 
 
@@ -60,8 +96,7 @@ def build_dq_task(config_path: str, repo_root: str) -> Callable:
         import logging
 
         logger = logging.getLogger("airflow.task")
-        partition_date = date.fromisoformat(str(partition_date_value)[:10])
-        ctx = build_render_context(config, Path(repo_root), partition_date)
+        ctx = build_render_context(config, Path(repo_root), partition_date_value)
 
         hook = TrinoHook(trino_conn_id=settings.trino_conn_id)
 

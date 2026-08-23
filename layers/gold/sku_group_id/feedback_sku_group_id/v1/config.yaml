@@ -22,3 +22,60 @@ alerts:
   team: search
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Джоб пишет партицию за data_interval_start (partition_start[:10]).
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Таблица кумулятивная: каждая партиция — срез отзывов «за все время».
+    # По 233 парам соседних партиций прирост лежит в +0.04%..+0.33% и ни разу не был
+    # отрицательным. Двусторонние 2% — тот же порог, что у product-уровня этой витрины.
+    - name: row_count_growth
+      max_growth_ratio: 0.02
+    # Минимум за последние 30 партиций — 2.06M строк, объём только растёт.
+    - name: row_count_min
+      min_rows: 1700000
+    - name: not_null
+      columns:
+        - bad_reviews_count
+        - good_reviews_count
+        - total_reviews_count
+        - reviews_mark_one_count
+        - reviews_mark_two_count
+        - reviews_mark_three_count
+        - reviews_mark_four_count
+        - reviews_mark_five_count
+        - total_reviews_with_text
+        - ratio_reviews_mark_one
+        - ratio_reviews_mark_two
+        - ratio_reviews_mark_three
+        - ratio_reviews_mark_four
+        - ratio_reviews_mark_five
+        - ratio_reviews_bad
+        - ratio_reviews_good
+    # AVG(rating) пуст только если ни у одного опубликованного отзыва sku_group_id нет
+    # оценки — аномалия источника, но не повод ронять DAG. Как на product-уровне.
+    - name: not_null
+      columns:
+        - product_rating
+      severity: warn
+    - name: non_negative
+      columns:
+        - product_rating
+        - bad_reviews_count
+        - good_reviews_count
+        - total_reviews_count
+        - reviews_mark_one_count
+        - reviews_mark_two_count
+        - reviews_mark_three_count
+        - reviews_mark_four_count
+        - reviews_mark_five_count
+        - total_reviews_with_text
+        - ratio_reviews_mark_one
+        - ratio_reviews_mark_two
+        - ratio_reviews_mark_three
+        - ratio_reviews_mark_four
+        - ratio_reviews_mark_five
+        - ratio_reviews_bad
+        - ratio_reviews_good

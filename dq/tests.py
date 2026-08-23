@@ -9,10 +9,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
-from dq.config import RenderContext, TestSpec
+from dq.config import HOURS_PER_DAY, RenderContext, TestSpec
 
 
 @dataclass(frozen=True)
@@ -45,10 +45,53 @@ def table_ref(ctx: RenderContext) -> str:
     )
 
 
+def _timestamp_literal(moment: datetime) -> str:
+    # Сессия Trino живёт не в UTC (сейчас Europe/Moscow), а снапшотные колонки —
+    # timestamp with time zone. Голый TIMESTAMP '...' коэрсится по таймзоне сессии
+    # и молча указывает на соседний снапшот, поэтому литерал всегда с зоной.
+    return f"TIMESTAMP {quote_literal(moment.strftime('%Y-%m-%d %H:%M:%S') + ' UTC')}"
+
+
+def _is_snapshot(ctx: RenderContext) -> bool:
+    return ctx.partition_granularity == "timestamp" and ctx.partition_timestamp is not None
+
+
+def partition_literal(ctx: RenderContext) -> str:
+    """Литерал партиции, которую записал этот запуск DAG'а."""
+    if _is_snapshot(ctx):
+        return _timestamp_literal(ctx.partition_timestamp)
+    return f"DATE {quote_literal(ctx.partition_date.isoformat())}"
+
+
+def baseline_literal(ctx: RenderContext) -> str:
+    """Литерал предыдущей партиции: сутки назад или один снапшот назад."""
+    if _is_snapshot(ctx):
+        return _timestamp_literal(
+            ctx.partition_timestamp - timedelta(hours=ctx.snapshot_interval_hours)
+        )
+    return f"DATE {quote_literal((ctx.partition_date - timedelta(days=1)).isoformat())}"
+
+
+def baseline_description(ctx: RenderContext) -> str:
+    """Человекочитаемая предыдущая партиция для строки threshold."""
+    if _is_snapshot(ctx):
+        moment = ctx.partition_timestamp - timedelta(hours=ctx.snapshot_interval_hours)
+        return moment.strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+    return (ctx.partition_date - timedelta(days=1)).isoformat()
+
+
+def partition_expression(ctx: RenderContext) -> str:
+    """Выражение над колонкой партиции, сопоставимое с partition_literal."""
+    column = quote_identifier(ctx.partition_column)
+    if _is_snapshot(ctx):
+        return column
+    return f"CAST({column} AS DATE)"
+
+
 def scope_predicate(ctx: RenderContext) -> str:
     if ctx.scope == "table":
         return "TRUE"
-    return f"{quote_identifier(ctx.partition_column)} = DATE {quote_literal(ctx.partition_date.isoformat())}"
+    return f"{quote_identifier(ctx.partition_column)} = {partition_literal(ctx)}"
 
 
 def _where(ctx: RenderContext, spec: TestSpec, violation: str) -> str:
@@ -152,10 +195,9 @@ def _render_row_count_min(spec: TestSpec, ctx: RenderContext) -> RenderedTest:
 def _render_row_count_growth(spec: TestSpec, ctx: RenderContext) -> RenderedTest:
     ratio = float(spec.params["max_growth_ratio"])
     direction = str(spec.params["direction"])
-    baseline = ctx.partition_date - timedelta(days=1)
-    column = quote_identifier(ctx.partition_column)
-    current_literal = f"DATE {quote_literal(ctx.partition_date.isoformat())}"
-    baseline_literal = f"DATE {quote_literal(baseline.isoformat())}"
+    partition_expr = partition_expression(ctx)
+    current_literal = partition_literal(ctx)
+    previous_literal = baseline_literal(ctx)
 
     violations = []
     if direction in ("both", "up"):
@@ -171,10 +213,10 @@ def _render_row_count_growth(spec: TestSpec, ctx: RenderContext) -> RenderedTest
         "       CASE WHEN previous_row_count = 0 THEN NULL\n"
         "            ELSE CAST(current_row_count AS DOUBLE) / previous_row_count - 1 END AS observed\n"
         "FROM (\n"
-        f"  SELECT count_if(CAST({column} AS DATE) = {current_literal}) AS current_row_count,\n"
-        f"         count_if(CAST({column} AS DATE) = {baseline_literal}) AS previous_row_count\n"
+        f"  SELECT count_if({partition_expr} = {current_literal}) AS current_row_count,\n"
+        f"         count_if({partition_expr} = {previous_literal}) AS previous_row_count\n"
         f"  FROM {table_ref(ctx)}\n"
-        f"  WHERE CAST({column} AS DATE) IN ({current_literal}, {baseline_literal})\n"
+        f"  WHERE {partition_expr} IN ({current_literal}, {previous_literal})\n"
         ") AS counts"
     )
     return RenderedTest(
@@ -182,7 +224,10 @@ def _render_row_count_growth(spec: TestSpec, ctx: RenderContext) -> RenderedTest
         test_key="row_count_growth",
         sql=sql,
         sample_sql=None,
-        threshold=f"|growth| <= {ratio} (direction={direction}, baseline={baseline.isoformat()})",
+        threshold=(
+            f"|growth| <= {ratio} (direction={direction}, "
+            f"baseline={baseline_description(ctx)})"
+        ),
         needs_baseline=True,
     )
 
@@ -190,14 +235,21 @@ def _render_row_count_growth(spec: TestSpec, ctx: RenderContext) -> RenderedTest
 def _render_freshness(spec: TestSpec, ctx: RenderContext) -> RenderedTest:
     max_lag_days = int(spec.params["max_lag_days"])
     column = quote_identifier(ctx.partition_column)
-    current_literal = f"DATE {quote_literal(ctx.partition_date.isoformat())}"
+    current_literal = partition_literal(ctx)
+    # У снапшотной энтити сутки — слишком грубая единица: между снапшотами часы.
+    # Порог остаётся в днях (общий словарь с dbt), а меряем в часах.
+    if _is_snapshot(ctx):
+        unit, limit, max_expr = "hour", max_lag_days * HOURS_PER_DAY, f"max({column})"
+    else:
+        unit, limit, max_expr = "day", max_lag_days, f"max(CAST({column} AS DATE))"
+    lag = f"date_diff('{unit}', max_partition, {current_literal})"
     sql = (
         "SELECT CASE WHEN max_partition IS NULL THEN 1\n"
-        f"            WHEN date_diff('day', max_partition, {current_literal}) > {max_lag_days} THEN 1\n"
+        f"            WHEN {lag} > {limit} THEN 1\n"
         "            ELSE 0 END AS failed_rows,\n"
-        f"       CAST(date_diff('day', max_partition, {current_literal}) AS DOUBLE) AS observed\n"
+        f"       CAST({lag} AS DOUBLE) AS observed\n"
         "FROM (\n"
-        f"  SELECT max(CAST({column} AS DATE)) AS max_partition FROM {table_ref(ctx)}\n"
+        f"  SELECT {max_expr} AS max_partition FROM {table_ref(ctx)}\n"
         ") AS bounds"
     )
     return RenderedTest(
@@ -205,7 +257,7 @@ def _render_freshness(spec: TestSpec, ctx: RenderContext) -> RenderedTest:
         test_key="freshness",
         sql=sql,
         sample_sql=None,
-        threshold=f"lag <= {max_lag_days} days",
+        threshold=f"lag <= {limit} {unit}s",
     )
 
 

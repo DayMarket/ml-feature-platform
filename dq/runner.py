@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import timedelta
 from typing import Any, Callable
 
 from dq.config import DqSettings, RenderContext
-from dq.tests import quote_identifier, quote_literal, render, table_ref
+from dq.tests import (
+    baseline_description,
+    partition_expression,
+    partition_literal,
+    quote_identifier,
+    quote_literal,
+    render,
+    table_ref,
+)
 
 Query = Callable[[str], list]
 
@@ -63,11 +70,14 @@ def preflight(query: Query, ctx: RenderContext) -> None:
 
 
 def _partition_history_count(query: Query, ctx: RenderContext) -> int:
-    column = quote_identifier(ctx.partition_column)
+    # Для снапшотной энтити «прогретость» считается в снапшотах, а не в днях:
+    # у неё за сутки набегает несколько партиций, и warmup_days: 1 означал бы
+    # «прогреться за один снапшот».
+    partition_expr = partition_expression(ctx)
     sql = (
-        f"SELECT COUNT(DISTINCT CAST({column} AS DATE))\n"
+        f"SELECT COUNT(DISTINCT {partition_expr})\n"
         f"FROM {table_ref(ctx)}\n"
-        f"WHERE CAST({column} AS DATE) < DATE {quote_literal(ctx.partition_date.isoformat())}"
+        f"WHERE {partition_expr} < {partition_literal(ctx)}"
     )
     rows = query(sql)
     return int(rows[0][0]) if rows and rows[0][0] is not None else 0
@@ -103,7 +113,7 @@ def run_dq(settings: DqSettings, ctx: RenderContext, query: Query) -> DqRunOutco
         observed = float(rows[0][1]) if rows and len(rows[0]) > 1 and rows[0][1] is not None else None
 
         if failed_rows < 0:
-            baseline = (ctx.partition_date - timedelta(days=1)).isoformat()
+            baseline = baseline_description(ctx)
             outcome.results.append(
                 _result(
                     spec,

@@ -1,5 +1,5 @@
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -200,6 +200,61 @@ def test_every_configured_test_has_a_renderer() -> None:
     assert set(RENDERERS) == set(TEST_PARAMS)
 
 
+# Снапшотная энтити: партиция — не день, а конкретный TIMESTAMP calculated_at.
+SNAPSHOT_CTX = RenderContext(
+    catalog_alias="dwh-iceberg",
+    schema="gold",
+    table="feature_platform_dynamic_pricing_sku_group_price_features",
+    primary_key=("calculated_at", "sku_group_id", "promotion_id"),
+    partition_column="calculated_at",
+    partition_date=date(2026, 8, 22),
+    scope="partition",
+    sample_rows=5,
+    partition_granularity="timestamp",
+    partition_timestamp=datetime(2026, 8, 22, 6, 0, 0),
+    snapshot_interval_hours=3,
+)
+
+
+def test_snapshot_scope_predicate_pins_the_utc_instant() -> None:
+    rendered = render(spec("primary_key_not_null"), SNAPSHOT_CTX)
+    # Сессия Trino живёт в Europe/Moscow, а calculated_at — timestamp with time zone.
+    # Голый TIMESTAMP '...' молча уехал бы на другой снапшот, поэтому литерал с UTC.
+    assert "\"calculated_at\" = TIMESTAMP '2026-08-22 06:00:00 UTC'" in rendered.sql
+    assert "DATE '2026-08-22'" not in rendered.sql
+
+
+def test_snapshot_row_count_growth_compares_previous_snapshot() -> None:
+    rendered = render(spec("row_count_growth", max_growth_ratio=0.5, direction="both"), SNAPSHOT_CTX)
+    assert rendered.needs_baseline is True
+    assert "TIMESTAMP '2026-08-22 06:00:00 UTC'" in rendered.sql
+    # Предыдущий снапшот — минус snapshot_interval_hours, а не минус сутки.
+    assert "TIMESTAMP '2026-08-22 03:00:00 UTC'" in rendered.sql
+    assert "CAST(\"calculated_at\" AS DATE)" not in rendered.sql
+    assert "2026-08-22 03:00:00 UTC" in rendered.threshold
+
+
+def test_snapshot_freshness_measures_lag_in_hours() -> None:
+    rendered = render(spec("freshness", max_lag_days=1), SNAPSHOT_CTX)
+    assert "date_diff('hour'" in rendered.sql
+    # max_lag_days=1 для снапшотной энтити означает 24 часа отставания.
+    assert "> 24" in rendered.sql
+    assert "TIMESTAMP '2026-08-22 06:00:00 UTC'" in rendered.sql
+
+
+def test_snapshot_row_count_min_scans_one_snapshot() -> None:
+    rendered = render(spec("row_count_min", min_rows=12000000), SNAPSHOT_CTX)
+    assert "WHEN row_count <= 12000000 THEN 1" in rendered.sql
+    assert "\"calculated_at\" = TIMESTAMP '2026-08-22 06:00:00 UTC'" in rendered.sql
+
+
+def test_date_granularity_still_uses_date_literals() -> None:
+    rendered = render(spec("row_count_growth", max_growth_ratio=0.2, direction="both"), CTX)
+    assert "CAST(\"date\" AS DATE) = DATE '2026-08-19'" in rendered.sql
+    assert "DATE '2026-08-18'" in rendered.sql
+    assert "TIMESTAMP" not in rendered.sql
+
+
 def main() -> int:
     test_primary_key_not_null()
     test_primary_key_unique()
@@ -224,6 +279,11 @@ def main() -> int:
     test_relationships_uses_not_exists()
     test_row_count_matches_reference_skips_without_reference_rows()
     test_every_configured_test_has_a_renderer()
+    test_snapshot_scope_predicate_pins_the_utc_instant()
+    test_snapshot_row_count_growth_compares_previous_snapshot()
+    test_snapshot_freshness_measures_lag_in_hours()
+    test_snapshot_row_count_min_scans_one_snapshot()
+    test_date_granularity_still_uses_date_literals()
     print("DQ SQL tests completed successfully")
     return 0
 
