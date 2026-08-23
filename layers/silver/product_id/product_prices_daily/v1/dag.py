@@ -8,6 +8,7 @@ from datetime import timedelta
 import pendulum
 import yaml
 from airflow.sdk import dag, task
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.timetables.interval import CronDataIntervalTimetable
 from airflow_commons.helpers.oncall import send_oncall_notification
 from kubernetes.client import models as k8s
@@ -39,8 +40,8 @@ def _executor_config() -> dict:
                         image_pull_policy="Always",
                         image=CONFIG["runtime"]["image"],
                         resources=k8s.V1ResourceRequirements(
-                            requests={"memory": "8Gi", "cpu": "2"},
-                            limits={"memory": "8Gi"},
+                            requests={"memory": "4Gi", "cpu": "1"},
+                            limits={"memory": "4Gi"},
                         ),
                     )
                 ]
@@ -86,6 +87,19 @@ def get_dag_default_args() -> dict:
     catchup=CONFIG["dag"]["catchup"],
 )
 def product_prices_daily_dag() -> None:
+    wait_for_daily_sku_quantity_eod_dq = ExternalTaskSensor(
+        task_id="wait_for_daily_sku_quantity_eod_dq",
+        external_dag_id=(
+            "dbt.tests.dbt_clickhouse_dwh.daily_sku_quantity_eod.dq"
+        ),
+        allowed_states=["success"],
+        failed_states=["failed"],
+        mode="reschedule",
+        poke_interval=30,
+        timeout=6 * 60 * 60,
+        check_existence=True,
+    )
+
     @task(executor_config=_executor_config())
     def materialize(interval_end_value: str) -> None:
         runtime = _load_module("runtime.py", "product_prices_daily_runtime")
@@ -95,8 +109,7 @@ def product_prices_daily_dag() -> None:
         catalog = runtime.get_iceberg_catalog(ref)
 
         table = runtime.preflight_table(catalog, ref)
-        price_date = runtime.previous_utc_date(interval_end_value)
-        max_valid_price = config["source"]["max_valid_price"]
+        price_date = runtime.previous_tashkent_date(interval_end_value)
         conn_id = config["source"]["trino_conn_id"]
 
         metrics = runtime.query_trino(
@@ -107,14 +120,15 @@ def product_prices_daily_dag() -> None:
 
         frame = runtime.query_trino(
             conn_id,
-            query.build_query(price_date, max_valid_price),
+            query.build_query(price_date),
         )
-        runtime.write_daily_snapshot(table, frame, price_date)
+        runtime.write_daily_prices(table, frame, price_date)
 
     interval_end_value = (
-        '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
+        '{{ data_interval_end.in_timezone("UTC").isoformat() }}'
     )
-    materialize(interval_end_value)
+    materialize_prices = materialize(interval_end_value)
+    wait_for_daily_sku_quantity_eod_dq >> materialize_prices
 
 
 dag = product_prices_daily_dag()

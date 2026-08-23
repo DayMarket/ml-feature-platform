@@ -13,17 +13,16 @@ table:
 source:
   engine: trino
   trino_conn_id: trino_recsys
-  max_valid_price: 1000000000
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
 
 dag:
-  id: feature-platform.layers.silver.price_date_product_id.product_prices_daily
+  id: feature-platform.layers.silver.product_id.product_prices_daily
   group_tag: recsys-main-page-features
-  schedule: "0 0 * * *"
-  start_date: "2026-06-01T00:00:00Z"
-  catchup: false
+  schedule: "0 19 * * *"
+  start_date: "2026-08-08T19:00:00Z"
+  catchup: true
   team: recsys
   owner: team:recsys
 

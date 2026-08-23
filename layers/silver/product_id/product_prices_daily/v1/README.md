@@ -6,22 +6,29 @@
 ## Выход и оркестрация
 
 - Таблица: `iceberg.silver.feature_platform_product_prices_daily`.
-- DAG: `feature-platform.layers.silver.price_date_product_id.product_prices_daily`.
-- Путь: `layers/silver/price_date_product_id/product_prices_daily/v1`.
+- DAG: `feature-platform.layers.silver.product_id.product_prices_daily`.
+- Путь: `layers/silver/product_id/product_prices_daily/v1`.
 - Групповой тег Airflow: `recsys-main-page-features`.
-- Расписание: ежедневно в 00:00 UTC (`0 0 * * *`).
-- `price_date` — предыдущая календарная дата UTC относительно `data_interval_end`.
-- `start_date=2026-06-01T00:00:00Z`, `catchup=False`.
+- Расписание: ежедневно в 19:00 UTC (`0 19 * * *`), то есть в 00:00 `Asia/Tashkent`.
+- `price_date` — предыдущая календарная дата `Asia/Tashkent` относительно `data_interval_end`.
+- `start_date=2026-08-08T19:00:00Z`, `catchup=True`. При включении 23 августа 2026 года первый запуск рассчитывает `price_date=2026-08-09`, а initial backfill покрывает 14 завершённых EOD-дат с 9 по 22 августа.
 
-Upstream-источники внешние для feature-platform. Подтвержденный DQ DAG id для
-`marts.daily_sku_quantity_eod` отсутствует, поэтому upstream sensor не добавлен. Пустой срез
-останавливает задачу до записи.
+Перед материализацией `ExternalTaskSensor` ожидает успешный
+`dbt.tests.dbt_clickhouse_dwh.daily_sku_quantity_eod.dq`, в котором проверяются актуальные
+цены источника. Пустой срез дополнительно останавливает задачу до записи.
 
 ## Грейн и ключ
 
 Грейн и уникальный ключ: `price_date, product_id`.
 
 SKU и SKU-group используются только внутри расчета и не публикуются.
+
+Ценовые колонки:
+
+- `min_sell_price_eod`, `avg_sell_price_eod`, `max_sell_price_eod`;
+- `min_full_price_eod`, `max_full_price_eod`;
+- `min_active_sku_sell_price_eod`, `avg_active_sku_sell_price_eod`,
+  `max_active_sku_sell_price_eod`.
 
 ## Источники
 
@@ -45,8 +52,9 @@ ClickHouse dict и не выполняет избыточный cross-catalog jo
 
 ## Расчет
 
-Из EOD-источника выбираются строки с `dt = price_date`. Тип `dt` в Trino — `DATE`, поэтому
-дополнительный `toDate(dt)` не нужен.
+Из EOD-источника выбираются строки с `dt = price_date`. `price_date` вычисляется в
+`Asia/Tashkent` до построения обоих Trino-запросов. Тип `dt` в Trino — `DATE`, поэтому
+дополнительное преобразование timezone внутри SQL не требуется.
 
 Текущая доступность SKU:
 
@@ -61,9 +69,11 @@ AND (
 Сначала цены агрегируются по `price_date × product_id × sku_group_id`, затем по
 `price_date × product_id`:
 
-- `avg_sell_price_eod = AVG(sku_group.avg_sell_price_eod)`;
-- `min_full_price_eod = MIN(sku_group.min_full_price_eod)`;
 - `min_sell_price_eod = MIN(sku_group.min_sell_price_eod)`;
+- `avg_sell_price_eod = AVG(sku_group.avg_sell_price_eod)`;
+- `max_sell_price_eod = MAX(sku_group.max_sell_price_eod)`;
+- `min_full_price_eod = MIN(sku_group.min_full_price_eod)`;
+- `max_full_price_eod = MAX(sku_group.max_full_price_eod)`;
 - active-price колонки используют такую же двухэтапную агрегацию.
 
 Для SKU, отсутствующего в dict или не удовлетворяющего условию доступности, цена не входит в
@@ -80,13 +90,17 @@ active-price агрегаты. Если у товара нет доступны�
 - непустой source-срез и coverage mapping по SKU/product;
 - уникальность `price_date, product_id`;
 - `product_id > 0`;
+- неотрицательность всех заполненных цен;
+- `min_sell_price_eod <= avg_sell_price_eod <= max_sell_price_eod`;
+- `min_full_price_eod <= max_full_price_eod`;
 - согласованность active-price колонок и условие `min <= avg <= max`;
 - отсутствие дат, отличных от целевой `price_date`.
 
 До агрегации на уровень SKU-group `full_price_eod` и `sell_price_eod` фильтруются независимо.
 Значение участвует в расчете, если оно находится в диапазоне от `0` до `1_000_000_000`
-включительно. Отрицательные цены и значения выше порога заменяются на `NULL` и не участвуют в
-соответствующих `AVG`, `MIN` и `MAX`.
+включительно. Цена `0` считается валидной и сохраняется в Silver как `0`; фильтра
+`price != 0` нет. Отрицательные цены и значения выше порога заменяются на `NULL` и не
+участвуют в соответствующих `AVG`, `MIN` и `MAX`.
 
 Некорректный `full_price_eod` не исключает корректный `sell_price_eod`, и наоборот.
 Active-price агрегаты используют только валидный `sell_price_eod` доступных SKU. Если после
@@ -98,7 +112,8 @@ Active-price агрегаты используют только валидный
 
 ## Рантайм и потребители
 
-Airflow/Python + `pyiceberg`, не Spark. Образ:
+Airflow/Python + `pyiceberg`, не Spark, поэтому Spark-параметр `resource_profile` здесь не
+применяется. Задача использует компактный pod с `1 CPU` и `4 GiB` памяти. Образ:
 `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`. Партиция `price_date` идемпотентно
 перезаписывается через PyIceberg `overwrite`.
 

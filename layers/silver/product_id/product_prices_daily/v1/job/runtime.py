@@ -1,4 +1,4 @@
-"""Entity-local runtime for daily Trino-source product price snapshots."""
+"""Entity-local runtime for daily Trino-source product prices."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("airflow.task")
 
@@ -18,14 +19,26 @@ ICEBERG_WAREHOUSE = "s3a://um-prod-data-platform-landing-layer/"
 S3_ENDPOINT = "http://storage.yandexcloud.net"
 S3_REGION = "ru-central1"
 S3_CONNECTION_ID = "spark_ycs_connection"
+TASHKENT_TIME_ZONE = ZoneInfo("Asia/Tashkent")
 
 PRICE_COLUMNS = (
-    "avg_sell_price_eod",
-    "min_full_price_eod",
     "min_sell_price_eod",
+    "avg_sell_price_eod",
+    "max_sell_price_eod",
+    "min_full_price_eod",
+    "max_full_price_eod",
     "avg_active_sku_sell_price_eod",
     "min_active_sku_sell_price_eod",
     "max_active_sku_sell_price_eod",
+)
+SELL_PRICE_COLUMNS = (
+    "min_sell_price_eod",
+    "avg_sell_price_eod",
+    "max_sell_price_eod",
+)
+FULL_PRICE_COLUMNS = (
+    "min_full_price_eod",
+    "max_full_price_eod",
 )
 ACTIVE_PRICE_COLUMNS = (
     "avg_active_sku_sell_price_eod",
@@ -88,23 +101,24 @@ def table_ref(config: Mapping[str, Any]) -> TableRef:
     return TableRef(**values)
 
 
-def parse_snapshot_timestamp(value: str) -> datetime:
+def parse_interval_timestamp(value: str) -> datetime:
     text = str(value).strip()
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
         raise ValueError(
-            f"Unsupported snapshot timestamp: {value!r}. "
+            f"Unsupported interval timestamp: {value!r}. "
             "Expected an ISO datetime with timezone or 'YYYY-MM-DD HH:MM:SS'."
         ) from exc
 
-    if parsed.tzinfo is not None:
-        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
-    return parsed
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
-def previous_utc_date(value: str) -> date:
-    return parse_snapshot_timestamp(value).date() - timedelta(days=1)
+def previous_tashkent_date(value: str) -> date:
+    interval_end = parse_interval_timestamp(value)
+    return interval_end.astimezone(TASHKENT_TIME_ZONE).date() - timedelta(days=1)
 
 
 def get_iceberg_catalog(ref: TableRef):
@@ -196,30 +210,60 @@ def validate_source_metrics(
     return values
 
 
-def validate_snapshot(frame, price_date: date) -> None:
+def validate_product_prices(frame, price_date: date) -> None:
     import pandas as pd
 
     required = ("price_date", "product_id", *PRICE_COLUMNS)
     missing = [name for name in required if name not in frame.columns]
     if missing:
-        raise ValueError(f"Product price snapshot is missing columns: {missing}")
+        raise ValueError(f"Product prices are missing columns: {missing}")
     if frame.empty:
-        raise ValueError(f"Product price snapshot is empty for {price_date}")
+        raise ValueError(f"Product prices are empty for {price_date}")
 
     frame["price_date"] = pd.to_datetime(frame["price_date"]).dt.date
     if frame["price_date"].isna().any():
-        raise ValueError("Product price snapshot contains null price_date")
+        raise ValueError("Product prices contain null price_date")
     if (frame["price_date"] != price_date).any():
         raise ValueError(f"Outgoing rows contain a price_date other than {price_date}")
 
     frame["product_id"] = pd.to_numeric(frame["product_id"], errors="coerce")
     if frame["product_id"].isna().any() or (frame["product_id"] <= 0).any():
-        raise ValueError("Product price snapshot contains invalid product_id")
+        raise ValueError("Product prices contain invalid product_id")
     if frame.duplicated(subset=["price_date", "product_id"]).any():
-        raise ValueError("Product price snapshot contains duplicate primary keys")
+        raise ValueError("Product prices contain duplicate primary keys")
 
     for column in PRICE_COLUMNS:
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
+
+    if (frame.loc[:, PRICE_COLUMNS] < 0).any(axis=None):
+        raise ValueError("Product prices contain negative values")
+
+    sell = frame.loc[:, SELL_PRICE_COLUMNS]
+    partially_null_sell = sell.isna().any(axis=1) & ~sell.isna().all(axis=1)
+    if partially_null_sell.any():
+        raise ValueError(
+            "Sell price columns must be either all null or all populated"
+        )
+    populated_sell = sell.notna().all(axis=1)
+    invalid_sell_order = populated_sell & (
+        (frame["min_sell_price_eod"] > frame["avg_sell_price_eod"])
+        | (frame["avg_sell_price_eod"] > frame["max_sell_price_eod"])
+    )
+    if invalid_sell_order.any():
+        raise ValueError("Sell prices violate min <= avg <= max")
+
+    full = frame.loc[:, FULL_PRICE_COLUMNS]
+    partially_null_full = full.isna().any(axis=1) & ~full.isna().all(axis=1)
+    if partially_null_full.any():
+        raise ValueError(
+            "Full price columns must be either all null or all populated"
+        )
+    populated_full = full.notna().all(axis=1)
+    invalid_full_order = populated_full & (
+        frame["min_full_price_eod"] > frame["max_full_price_eod"]
+    )
+    if invalid_full_order.any():
+        raise ValueError("Full prices violate min <= max")
 
     active = frame.loc[:, ACTIVE_PRICE_COLUMNS]
     partially_null = active.isna().any(axis=1) & ~active.isna().all(axis=1)
@@ -265,7 +309,7 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_daily_snapshot(
+def write_daily_prices(
     table,
     frame,
     price_date: date,
@@ -273,7 +317,7 @@ def write_daily_snapshot(
     from pyiceberg.expressions import EqualTo
 
     frame = frame.copy()
-    validate_snapshot(frame, price_date)
+    validate_product_prices(frame, price_date)
     arrow_table = _to_arrow_for_table(table, frame)
     table.overwrite(
         arrow_table,
