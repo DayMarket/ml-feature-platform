@@ -18,7 +18,7 @@ from dq.tests import (
     table_ref,
 )
 
-from feature_stats.config import PERCENTILES, StatsContext
+from feature_stats.config import PERCENTILES, FeatureStatsConfigError, StatsContext
 
 # cnt, mean, min, max, pct
 VALUES_PER_COLUMN = 5
@@ -44,7 +44,12 @@ def render_columns_query(ctx: StatsContext) -> str:
 def render_stats_query(ctx: StatsContext, columns: Sequence[str]) -> str:
     """SQL профиля распределения для одной партии признаков."""
     if not columns:
-        raise ValueError("render_stats_query вызван без колонок")
+        # FeatureStatsConfigError, а не FeatureStatsError: последняя объявлена в
+        # feature_stats.runner, который сам импортирует feature_stats.query —
+        # импорт оттуда сюда завёл бы цикл. feature_stats.config уже импортирован
+        # этим модулем, поэтому ошибка того же семейства, что и остальные пакеты
+        # ошибок конфигурации, берётся без цикла.
+        raise FeatureStatsConfigError("render_stats_query вызван без колонок")
 
     percentiles = percentile_array_literal()
     projections = ["  count(*) AS rows_total"]

@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 import yaml
 
-from dq.config import RenderContext, trino_catalog_alias
+from dq.config import DqConfigError, RenderContext, trino_catalog_alias
 from dq.task import parse_partition_value
 
-from feature_stats.config import DEFAULT_TEAM, StatsContext, load_feature_stats_settings
+from feature_stats.config import (
+    DEFAULT_TEAM,
+    FeatureStatsConfigError,
+    StatsContext,
+    load_feature_stats_settings,
+)
 from feature_stats.results_writer import RunMeta, write_results
 from feature_stats.runner import run_feature_stats
 
@@ -34,9 +39,18 @@ def build_stats_context(config: dict[str, Any], repo_root: Path, partition_value
     table = config["table"]
     settings = load_feature_stats_settings(config)
     meta = table.get("meta") or {}
-    partition_date, partition_timestamp = parse_partition_value(
-        partition_value, settings.partition_granularity
-    )
+    try:
+        partition_date, partition_timestamp = parse_partition_value(
+            partition_value, settings.partition_granularity
+        )
+    except DqConfigError as error:
+        # parse_partition_value переиспользован из dq.task и говорит об ошибке
+        # словами dq.partition_date_template — на debug'е feature_stats это
+        # уводит по ложному следу, поэтому переупаковываем в свою ошибку.
+        raise FeatureStatsConfigError(
+            f"feature_stats.partition_date_template при partition_granularity: "
+            f"timestamp обязан отдавать 'YYYY-MM-DD HH:MM:SS' в UTC, получено {partition_value!r}"
+        ) from error
     render = RenderContext(
         catalog_alias=trino_catalog_alias(repo_root, str(table["catalog"])),
         schema=str(table["schema"]),
@@ -73,6 +87,10 @@ def build_feature_stats_task(config_path: str, repo_root: str) -> Callable:
     @task(
         task_id=TASK_ID,
         retries=1,
+        # query_timeout_seconds обязан реально ограничивать таску, а не только
+        # значиться в конфиге: иначе зависший запрос держит воркер-слот бессрочно,
+        # а понижение таймаута и редеплой ничего не меняют.
+        execution_timeout=timedelta(seconds=settings.query_timeout_seconds),
         on_failure_callback=send_oncall_notification(
             team=alerts["team"],
             oncall_webhook_conn_id=alerts["oncall_webhook_conn_id"],

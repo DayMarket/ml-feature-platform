@@ -1,3 +1,4 @@
+import re
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -148,16 +149,48 @@ def test_overwrite_filter_pins_the_snapshot_not_just_the_day() -> None:
     assert daily == {
         "date": date(2026, 8, 22),
         "dag_id": META.dag_id,
+        "table_name": "feature_platform_sku_group_price_features",
         "partition_ts": datetime(2026, 8, 22, tzinfo=timezone.utc),
     }
     assert snapshot["partition_ts"] == datetime(2026, 8, 22, 6, 0, 0, tzinfo=timezone.utc)
+    assert snapshot["table_name"] == "feature_platform_dynamic_pricing_sku_group_price_features"
 
 
-def test_overwrite_filter_keys_are_exactly_the_three_that_govern_the_filter() -> None:
+def test_overwrite_filter_keys_are_exactly_the_four_that_govern_the_filter() -> None:
     # write_results строит фильтр из этого словаря, поэтому его форма — контракт,
-    # а не деталь: лишний ключ сузит перезапись, потерянный partition_ts вернёт
-    # дефект dq/results_writer.py.
-    assert list(overwrite_filter_values(SNAPSHOT, META)) == ["date", "dag_id", "partition_ts"]
+    # а не деталь: лишний ключ сузит перезапись, потерянный partition_ts или
+    # table_name вернёт дефект dq/results_writer.py или откроет его в feature_stats,
+    # если однажды в одном DAG'е появится вторая build_feature_stats_task(...).
+    assert list(overwrite_filter_values(SNAPSHOT, META)) == [
+        "date",
+        "dag_id",
+        "table_name",
+        "partition_ts",
+    ]
+
+
+def test_build_rows_keys_match_the_results_table_ddl() -> None:
+    # Единственная автоматическая защита write_results: pyiceberg недоступен в этом
+    # окружении (write_results юнит-тестом не покрыть), поэтому здесь проверяется
+    # только то, что build_rows и миграция таблицы результатов не разошлись — иначе
+    # pa.Table.from_pylist(..., schema=...) молча роняет лишний ключ build_rows и
+    # молча заполняет NULL пропущенную в build_rows колонку схемы, без исключения.
+    ddl_path = (
+        Path(__file__).resolve().parents[1]
+        / "feature_stats"
+        / "results"
+        / "migrations"
+        / "create_table.sql"
+    )
+    ddl_text = ddl_path.read_text(encoding="utf-8")
+    column_line = re.compile(
+        r"^\s+([A-Za-z_][A-Za-z0-9_]*)\s+[A-Z]+(?:\([^)]*\))?\s+COMMENT\s+'", re.MULTILINE
+    )
+    ddl_columns = set(column_line.findall(ddl_text))
+    assert ddl_columns, "регулярка не нашла ни одной колонки — сама регулярка сломана"
+
+    row_keys = set(build_rows([STAT], DAILY, META)[0])
+    assert ddl_columns == row_keys
 
 
 def main() -> int:
@@ -169,7 +202,8 @@ def main() -> int:
     test_build_rows_keeps_null_metrics_as_none()
     test_build_rows_is_empty_without_stats()
     test_overwrite_filter_pins_the_snapshot_not_just_the_day()
-    test_overwrite_filter_keys_are_exactly_the_three_that_govern_the_filter()
+    test_overwrite_filter_keys_are_exactly_the_four_that_govern_the_filter()
+    test_build_rows_keys_match_the_results_table_ddl()
     print("Feature stats results tests completed successfully")
     return 0
 

@@ -117,6 +117,17 @@ def load_feature_stats_settings(config: dict[str, Any]) -> FeatureStatsSettings:
 
     columns_per_query = raw.get("columns_per_query")
     if columns_per_query is not None:
+        # bool — подкласс int в Python, а PyYAML парсит `yes`/`no` как True/False.
+        # Без явной проверки columns_per_query: yes тихо становится int(True) == 1 —
+        # один столбец на запрос вместо одного запроса на всю таблицу, то есть 89
+        # полных сканов партиции вместо одного на подключённой сейчас самой широкой
+        # таблице. int(False) == 0 и без того отбрасывается проверкой <= 0 ниже,
+        # но bool здесь запрещается явно и симметрично для обоих значений.
+        if isinstance(columns_per_query, bool):
+            raise FeatureStatsConfigError(
+                f"feature_stats.columns_per_query должен быть целым числом, получено "
+                f"булево {columns_per_query!r} — YAML yes/no парсится как bool"
+            )
         columns_per_query = int(columns_per_query)
         if columns_per_query <= 0:
             raise FeatureStatsConfigError(

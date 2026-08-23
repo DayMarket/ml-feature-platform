@@ -8,7 +8,7 @@ namespace-пакет перекрыл бы `feature_stats.results`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from functools import reduce
 from pathlib import Path
 from typing import Any, Sequence
@@ -61,10 +61,20 @@ def overwrite_filter_values(ctx: StatsContext, meta: RunMeta) -> dict[str, Any]:
     partition_ts обязателен: снапшотная энтити пишет несколько партиций в одни
     календарные сутки, и фильтр по одним date и dag_id оставил бы в таблице
     только последний снапшот дня.
+
+    table_name обязателен по той же логике, что и остальные три: он входит в
+    declared primary_key (`date,partition_ts,dag_id,table_name,feature_name`).
+    Сегодня один DAG пишет ровно одну целевую таблицу, поэтому его отсутствие
+    здесь ничего не ломает, но это удерживается инвариантом `max_active_runs=1`
+    и «одна таска feature_stats на DAG», а не самим фильтром. Если когда-нибудь
+    в одном DAG'е появится вторая build_feature_stats_task(...) для другой
+    таблицы (снапшотный DAG уже грузит второй entity-конфиг в этом же файле),
+    перезапись без table_name молча стёрла бы строки первой таблицы.
     """
     return {
         "date": ctx.render.partition_date,
         "dag_id": meta.dag_id,
+        "table_name": ctx.render.table,
         "partition_ts": ctx.partition_ts,
     }
 

@@ -56,7 +56,7 @@ collect_features >> [dq_task, stats_task]
 
 | Ключ | Тип | Дефолт | Смысл |
 |---|---|---|---|
-| `enabled` | bool | `true` | `false` выключает таску целиком |
+| `enabled` | bool | `true` | `false` — таска по-прежнему строится, планируется и запускается, но `run_feature_stats` сразу возвращает `[]`, и таска завершается успешно, ничего не считая и не записывая |
 | `trino_conn_id` | str | `trino_search` | Airflow-соединение для `TrinoHook` |
 | `partition_column` | str | `date` | колонка, по которой фильтруется партиция |
 | `partition_date_template` | str | `{{ macros.ds_add(ds, -1) }}` | Jinja-шаблон значения `partition_column` для текущего рана |
@@ -68,6 +68,11 @@ collect_features >> [dq_task, stats_task]
 
 Плюс `table.primary_key` из блока `table:` (общий с DQ) — колонки первичного ключа
 исключаются из профиля автоматически, как и `partition_column`.
+
+Ранее записанные строки этой партиции при `enabled: false` не удаляются: `write_results`
+выходит раньше, чем строит фильтр перезаписи, если строк для записи нет (пустой список из
+`build_rows`), — а не таска, поэтому старый профиль остаётся в таблице результатов и без
+предупреждения выглядит как всё ещё актуальный.
 
 Источник истины по дефолтам и валидации — `feature_stats/config.py`
 (`load_feature_stats_settings`, `KNOWN_KEYS`). Неизвестный ключ в блоке `feature_stats:`

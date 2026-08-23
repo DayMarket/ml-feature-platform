@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dq.config import RenderContext
-from feature_stats.config import PERCENTILES, StatsContext
+from feature_stats.config import PERCENTILES, FeatureStatsConfigError, StatsContext
 from feature_stats.query import (
     VALUES_PER_COLUMN,
     percentile_array_literal,
@@ -98,7 +98,7 @@ def test_stats_query_snapshot_pins_the_utc_instant() -> None:
 def test_stats_query_rejects_an_empty_column_list() -> None:
     try:
         render_stats_query(DAILY, [])
-    except ValueError as error:
+    except FeatureStatsConfigError as error:
         assert "колонок" in str(error)
     else:
         raise AssertionError("пустой список колонок обязан падать, а не рендерить голый count(*)")

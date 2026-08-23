@@ -121,6 +121,21 @@ def test_columns_per_query_must_be_positive() -> None:
         raise AssertionError("нулевой батч обязан падать: пустой список колонок не запрос")
 
 
+def test_columns_per_query_rejects_booleans() -> None:
+    # PyYAML парсит `yes` как True: int(True) == 1 молча означал бы один
+    # столбец на запрос вместо одного запроса на всю таблицу — 89 полных
+    # сканов партиции вместо одного на самой широкой подключённой таблице.
+    for value in (True, False):
+        try:
+            load_feature_stats_settings(
+                {"table": TABLE, "feature_stats": {"columns_per_query": value}}
+            )
+        except FeatureStatsConfigError as error:
+            assert "columns_per_query" in str(error)
+        else:
+            raise AssertionError(f"columns_per_query: {value!r} (bool) обязан падать")
+
+
 def test_stats_context_holds_render_context_and_partition_ts() -> None:
     render = RenderContext(
         catalog_alias="dwh-iceberg",
@@ -147,6 +162,7 @@ def main() -> int:
     test_snapshot_block_is_accepted()
     test_unknown_granularity_is_rejected()
     test_columns_per_query_must_be_positive()
+    test_columns_per_query_rejects_booleans()
     test_stats_context_holds_render_context_and_partition_ts()
     print("Feature stats config tests completed successfully")
     return 0
