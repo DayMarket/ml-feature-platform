@@ -37,6 +37,28 @@ def write_entity(root: Path, config_body: str) -> Path:
     return config_path
 
 
+def write_entity_without_readme(root: Path, config_body: str) -> Path:
+    # Вспомогательная функция для тестов enabled: false,
+    # которые должны проверить наличие README.
+    entity = root / "layers" / "gold" / "demo" / "v1"
+    entity.mkdir(parents=True)
+    config_path = entity / "config.yaml"
+    config_path.write_text(TABLE_BLOCK + config_body, encoding="utf-8")
+    return config_path
+
+
+def write_entity_with_readme(root: Path, config_body: str, readme_text: str) -> Path:
+    # Вспомогательная функция для тестов enabled: false,
+    # которые должны проверить наличие упоминания feature_stats в README.
+    entity = root / "layers" / "gold" / "demo" / "v1"
+    entity.mkdir(parents=True)
+    config_path = entity / "config.yaml"
+    config_path.write_text(TABLE_BLOCK + config_body, encoding="utf-8")
+    readme_path = entity / "README.md"
+    readme_path.write_text(readme_text, encoding="utf-8")
+    return config_path
+
+
 def test_valid_config_has_no_problems() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         config_path = write_entity(
@@ -98,6 +120,60 @@ def test_config_without_a_table_block_is_skipped() -> None:
         assert validate_config(config_path) == []
 
 
+def test_disabled_feature_stats_without_readme_is_reported() -> None:
+    # Когда feature_stats отключен (enabled: false), требуется объяснение в README,
+    # почему расчёт статистик выключен. Этот тест проверяет, что отсутствие README
+    # приводит к проблеме.
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = write_entity_without_readme(
+            Path(tmp),
+            "feature_stats:\n  enabled: false\n",
+        )
+        problems = validate_config(config_path)
+        assert len(problems) == 1
+        assert "README" in problems[0]
+
+
+def test_disabled_feature_stats_with_readme_explanation_is_accepted() -> None:
+    # Если в README упоминается feature_stats, объяснение считается достаточным,
+    # и проблема не должна быть зарегистрирована.
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = write_entity_with_readme(
+            Path(tmp),
+            "feature_stats:\n  enabled: false\n",
+            "# Why feature_stats is disabled\n\nThis entity does not support feature_stats.",
+        )
+        assert validate_config(config_path) == []
+
+
+def test_partition_key_only_in_dq_is_reported() -> None:
+    # Асимметричный случай: ключ присутствует в dq:, но отсутствует в feature_stats:.
+    # Это расхождение обязано быть обнаружено, иначе две таски смотрят на разные партиции.
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = write_entity(
+            Path(tmp),
+            "dq:\n  snapshot_interval_hours: 3\n"
+            "feature_stats:\n  exclude_columns: []\n",
+        )
+        problems = validate_config(config_path)
+        assert len(problems) == 1
+        assert "snapshot_interval_hours" in problems[0]
+
+
+def test_partition_key_only_in_feature_stats_is_reported() -> None:
+    # Обратный асимметричный случай: ключ присутствует в feature_stats:,
+    # но отсутствует в dq:. Это также расхождение.
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = write_entity(
+            Path(tmp),
+            "dq:\n  exclude_columns: []\n"
+            "feature_stats:\n  snapshot_interval_hours: 3\n",
+        )
+        problems = validate_config(config_path)
+        assert len(problems) == 1
+        assert "snapshot_interval_hours" in problems[0]
+
+
 def test_repository_configs_are_all_valid() -> None:
     problems: list[str] = []
     for config_path in discover_entity_configs(Path(".")):
@@ -112,6 +188,10 @@ def main() -> int:
     test_matching_partition_settings_are_accepted()
     test_invalid_block_is_reported_as_one_problem()
     test_config_without_a_table_block_is_skipped()
+    test_disabled_feature_stats_without_readme_is_reported()
+    test_disabled_feature_stats_with_readme_explanation_is_accepted()
+    test_partition_key_only_in_dq_is_reported()
+    test_partition_key_only_in_feature_stats_is_reported()
     test_repository_configs_are_all_valid()
     print("validate_feature_stats_configs tests completed successfully")
     return 0
