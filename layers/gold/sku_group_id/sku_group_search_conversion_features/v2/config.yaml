@@ -157,3 +157,13 @@ dq:
         - imp2order_3_to_1
         - imp2order_21_to_14
         - imp2order_30_to_21
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны смотреть
+  # на одну партицию, иначе профиль посчитан не по тем данным, что проверял DQ.
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  # category_id — идентификатор категории, а не признак: профиль распределения
+  # по нему бессмысленен. Остальные BIGINT/INT-колонки таблицы — настоящие признаки.
+  exclude_columns:
+    - category_id

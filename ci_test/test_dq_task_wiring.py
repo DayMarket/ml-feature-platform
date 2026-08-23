@@ -45,7 +45,12 @@ def test_pilot_dags_build_the_dq_task() -> None:
 def test_pilot_dags_declare_dq_as_terminal_task() -> None:
     for relative in DQ_OWNING_DAGS:
         text = Path(relative).read_text(encoding="utf-8")
-        assert ">> dq_task" in text, f"{relative}: таска dq не подключена в конце графа"
+        # У UPLOAD_SOURCE_DAGS с таской feature_stats dq_task подключается вместе
+        # со stats_task одной параллельной связкой ">> [dq_task, stats_task]" —
+        # это тот же факт "dq_task подключена и терминальна", просто в списочной
+        # форме (см. ci_test/test_feature_stats_task_wiring.py).
+        wired = ">> dq_task" in text or ">> [dq_task, stats_task]" in text
+        assert wired, f"{relative}: таска dq не подключена в конце графа"
         assert "dq_task >>" not in text, f"{relative}: таска dq не должна иметь downstream внутри DAG'а"
 
 

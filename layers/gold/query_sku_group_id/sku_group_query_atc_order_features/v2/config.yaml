@@ -139,3 +139,10 @@ dq:
         - query_skg_uniq_impressions_30
         - query_skg_uniq_impressions_60
         - query_skg_uniq_impressions_90
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны смотреть
+  # на одну партицию, иначе профиль посчитан не по тем данным, что проверял DQ.
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  exclude_columns: []

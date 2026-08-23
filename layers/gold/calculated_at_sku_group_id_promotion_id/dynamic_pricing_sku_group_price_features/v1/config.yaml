@@ -80,3 +80,13 @@ dq:
         - min_discount_fraction
         - max_discount_fraction
         - avg_discount_fraction
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Все четыре поля дословно повторяют блок dq: энтити пишет 8 партиций в сутки,
+  # и профиль обязан относиться ровно к тому снапшоту, который проверял DQ.
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 3
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
+  exclude_columns: []
