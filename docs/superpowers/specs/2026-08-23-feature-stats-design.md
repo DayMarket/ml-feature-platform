@@ -94,7 +94,7 @@ skew) сегодня в репозитории ничем не измеряет�
 | `feature_platform_sku_group_search_conversion_features_v2` | 1.90–1.97M | 89 | date |
 | `feature_platform_sku_group_stock_features` | 5.2–5.5M | 8 | date |
 | `feature_platform_sku_group_price_features` | 5.2–5.5M | 6 | date |
-| `feature_platform_sku_group_feedback_base_stats` | 2.06–2.13M | 18 | date |
+| `feature_platform_sku_group_feedback_base_stats` | 2.06–2.13M | 17 | date |
 | `feature_platform_dynamic_pricing_sku_group_price_features` | 15.1–20.6M | 9 | timestamp, шаг 3ч |
 
 Внешняя таблица `um_prod_feature_store_iceberg.cold_start_boosted_pw_convs_query_atc_order_90`
@@ -282,8 +282,8 @@ PARTITIONED BY (date)
 TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')
 ```
 
-Объём: 24 + 69 + 89 + 8 + 6 + 18 = 214 строк в сутки по дневным энтити плюс 9 × 8 = 72
-по снапшотной, итого около 286 строк в сутки.
+Объём: 24 + 69 + 89 + 8 + 6 + 17 = 213 строк в сутки по дневным энтити плюс 9 × 8 = 72
+по снапшотной, итого около 285 строк в сутки.
 
 `feature_stats/results/config.yaml` повторяет форму `dq/results/config.yaml`:
 `catalog: iceberg`, `schema: silver`, `primary_key: date,partition_ts,dag_id,table_name,feature_name`,
