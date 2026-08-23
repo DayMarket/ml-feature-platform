@@ -1,4 +1,4 @@
-"""Runtime helpers for the account demographics snapshot."""
+"""Runtime helpers for daily account demographics."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("airflow.task")
 
@@ -20,7 +20,8 @@ S3_ENDPOINT = "http://storage.yandexcloud.net"
 S3_REGION = "ru-central1"
 S3_CONNECTION_ID = "spark_ycs_connection"
 
-OUTPUT_COLUMNS = ("snapshot_date", "account_id", "gender", "age")
+TASHKENT_TIME_ZONE = ZoneInfo("Asia/Tashkent")
+OUTPUT_COLUMNS = ("dt", "account_id", "gender", "age", "city_name", "platform")
 
 
 @dataclass(frozen=True)
@@ -84,12 +85,8 @@ def parse_airflow_timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def snapshot_date_from_interval_end(value: str, timezone_name: str) -> date:
-    try:
-        business_timezone = ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError as error:
-        raise ValueError(f"Unsupported snapshot timezone: {timezone_name!r}") from error
-    return parse_airflow_timestamp(value).astimezone(business_timezone).date()
+def dt_from_interval_end(value: str) -> date:
+    return parse_airflow_timestamp(value).astimezone(TASHKENT_TIME_ZONE).date()
 
 
 def get_iceberg_catalog(ref: TableRef):
@@ -147,25 +144,23 @@ def query_trino(conn_id: str, sql: str):
     return frame
 
 
-def validate_snapshot(frame, snapshot_date: date) -> None:
+def validate_demographics(frame, dt: date) -> None:
     import pandas as pd
 
     missing = [name for name in OUTPUT_COLUMNS if name not in frame.columns]
     if missing:
-        raise ValueError(f"Account demographics snapshot is missing columns: {missing}")
+        raise ValueError(f"Account demographics output is missing columns: {missing}")
     if frame.empty:
-        raise ValueError(f"Account demographics snapshot is empty for {snapshot_date}")
+        raise ValueError(f"Account demographics output is empty for {dt}")
 
-    frame["snapshot_date"] = pd.to_datetime(
-        frame["snapshot_date"],
+    frame["dt"] = pd.to_datetime(
+        frame["dt"],
         errors="coerce",
     ).dt.date
-    if frame["snapshot_date"].isna().any():
-        raise ValueError("Account demographics snapshot contains null snapshot_date")
-    if (frame["snapshot_date"] != snapshot_date).any():
-        raise ValueError(
-            f"Outgoing rows contain a snapshot_date other than {snapshot_date}"
-        )
+    if frame["dt"].isna().any():
+        raise ValueError("Account demographics output contains null dt")
+    if (frame["dt"] != dt).any():
+        raise ValueError(f"Outgoing rows contain a dt other than {dt}")
 
     account_was_present = frame["account_id"].notna()
     frame["account_id"] = pd.to_numeric(frame["account_id"], errors="coerce")
@@ -174,52 +169,70 @@ def validate_snapshot(frame, snapshot_date: date) -> None:
         or frame.loc[account_was_present, "account_id"].isna().any()
         or (frame["account_id"] <= 0).any()
     ):
-        raise ValueError("Account demographics snapshot contains invalid account_id")
-    if frame.duplicated(subset=["snapshot_date", "account_id"]).any():
-        raise ValueError(
-            "Account demographics snapshot contains duplicate primary keys"
-        )
+        raise ValueError("Account demographics output contains invalid account_id")
+    if frame.duplicated(subset=["dt", "account_id"]).any():
+        raise ValueError("Account demographics output contains duplicate primary keys")
 
     invalid_genders = set(frame["gender"].dropna().astype(str)) - {"M", "F"}
     if invalid_genders:
         raise ValueError(
-            "Account demographics snapshot contains invalid gender values: "
+            "Account demographics output contains invalid gender values: "
             f"{sorted(invalid_genders)}"
         )
 
     age_was_present = frame["age"].notna()
     frame["age"] = pd.to_numeric(frame["age"], errors="coerce")
     if frame.loc[age_was_present, "age"].isna().any():
-        raise ValueError("Account demographics snapshot contains non-numeric age")
+        raise ValueError("Account demographics output contains non-numeric age")
     populated_age = frame.loc[frame["age"].notna(), "age"]
     if (populated_age < 0).any():
-        raise ValueError("Account demographics snapshot contains negative age")
+        raise ValueError("Account demographics output contains negative age")
     if (populated_age % 1 != 0).any():
-        raise ValueError("Account demographics snapshot contains non-integer age")
+        raise ValueError("Account demographics output contains non-integer age")
     frame["age"] = frame["age"].astype("Int64")
 
+    invalid_city_names = frame["city_name"].dropna().astype(str).str.strip() == ""
+    if invalid_city_names.any():
+        raise ValueError("Account demographics output contains empty city_name")
 
-def log_snapshot_metrics(frame, snapshot_date: date) -> None:
+    invalid_platforms = set(frame["platform"].dropna().astype(str)) - {
+        "IOS",
+        "ANDROID",
+        "WEB",
+    }
+    if invalid_platforms:
+        raise ValueError(
+            "Account demographics output contains invalid platform values: "
+            f"{sorted(invalid_platforms)}"
+        )
+
+
+def log_demographics_metrics(frame, dt: date) -> None:
     total_rows = len(frame.index)
     age_null_share = float(frame["age"].isna().mean())
     gender_null_share = float(frame["gender"].isna().mean())
+    city_null_share = float(frame["city_name"].isna().mean())
+    platform_null_share = float(frame["platform"].isna().mean())
     logger.info(
-        "Demographics coverage for snapshot_date=%s: rows=%d, "
-        "age_null_share=%.6f, gender_null_share=%.6f",
-        snapshot_date,
+        "Demographics coverage for dt=%s: rows=%d, age_null_share=%.6f, "
+        "gender_null_share=%.6f, city_null_share=%.6f, "
+        "platform_null_share=%.6f",
+        dt,
         total_rows,
         age_null_share,
         gender_null_share,
+        city_null_share,
+        platform_null_share,
     )
 
     ages = frame["age"].dropna().astype(float)
     if ages.empty:
-        logger.info("Age distribution for snapshot_date=%s is empty", snapshot_date)
+        logger.info("Age distribution for dt=%s is empty", dt)
         return
     logger.info(
-        "Age distribution for snapshot_date=%s: min=%.0f, median=%.0f, "
+        "Age distribution for dt=%s: min=%.0f, median=%.0f, "
         "p95=%.0f, p99=%.0f, max=%.0f",
-        snapshot_date,
+        dt,
         ages.min(),
         ages.quantile(0.50),
         ages.quantile(0.95),
@@ -252,20 +265,20 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_snapshot(table, frame, snapshot_date: date) -> None:
+def write_demographics(table, frame, dt: date) -> None:
     from pyiceberg.expressions import EqualTo
 
     frame = frame.copy()
-    validate_snapshot(frame, snapshot_date)
-    log_snapshot_metrics(frame, snapshot_date)
+    validate_demographics(frame, dt)
+    log_demographics_metrics(frame, dt)
     arrow_table = _to_arrow_for_table(table, frame)
     table.overwrite(
         arrow_table,
-        overwrite_filter=EqualTo("snapshot_date", snapshot_date),
+        overwrite_filter=EqualTo("dt", dt),
     )
     logger.info(
-        "Wrote %d rows to %s for snapshot_date=%s",
+        "Wrote %d rows to %s for dt=%s",
         arrow_table.num_rows,
         table.name(),
-        snapshot_date,
+        dt,
     )

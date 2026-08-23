@@ -1,9 +1,9 @@
 table:
-  key: account_demographics_snapshot
+  key: account_demographics
   catalog: iceberg
   schema: silver
-  name: feature_platform_account_demographics_snapshot
-  primary_key: snapshot_date,account_id
+  name: feature_platform_account_demographics
+  primary_key: dt,account_id
   meta:
     team: team::recsys
     create_dbt_pr: true
@@ -14,20 +14,19 @@ source:
   trino_conn_id: trino_recsys
   customer_table: '"dwh-iceberg".silver.customer'
   ecosystem_users_table: '"ch-ecosystem".ecosystem.ecosystem_users'
-  birth_date_placeholder: "1970-01-01"
-
-snapshot:
-  timezone: Asia/Tashkent
+  geo_events_table: '"dwh-clickhouse".clickstream_b2c.events'
+  platform_events_table: '"dwh-iceberg".silver_b2c_clickstream.events'
+  city_table: '"dwh-clickhouse".dict.city'
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
 
 dag:
-  id: feature-platform.layers.silver.snapshot_date_account_id.account_demographics_snapshot
+  id: feature-platform.layers.silver.account_id.account_demographics
   group_tag: recsys-main-page-features
   schedule: "0 19 * * *"
-  start_date: "2026-06-01T00:00:00Z"
-  catchup: false
+  start_date: "2026-08-08T19:00:00Z"
+  catchup: true
   team: recsys
   owner: team:recsys
 

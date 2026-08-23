@@ -1,4 +1,4 @@
-"""Write the daily account demographics snapshot to Iceberg."""
+"""Write daily account demographics to Iceberg."""
 
 import importlib.util
 import os
@@ -39,8 +39,8 @@ def _executor_config() -> dict:
                         image_pull_policy="Always",
                         image=CONFIG["runtime"]["image"],
                         resources=k8s.V1ResourceRequirements(
-                            requests={"memory": "8Gi", "cpu": "2"},
-                            limits={"memory": "8Gi"},
+                            requests={"memory": "4Gi", "cpu": "1"},
+                            limits={"memory": "4Gi"},
                         ),
                     )
                 ]
@@ -85,35 +85,34 @@ def get_dag_default_args() -> dict:
     start_date=pendulum.parse(CONFIG["dag"]["start_date"]).in_timezone("UTC"),
     catchup=CONFIG["dag"]["catchup"],
 )
-def account_demographics_snapshot_dag() -> None:
+def account_demographics_dag() -> None:
     @task(executor_config=_executor_config())
     def materialize(interval_end_value: str) -> None:
-        runtime = _load_module("runtime.py", "account_demographics_snapshot_runtime")
-        query = _load_module("query.py", "account_demographics_snapshot_query")
+        runtime = _load_module("runtime.py", "account_demographics_runtime")
+        query = _load_module("query.py", "account_demographics_query")
         config = runtime.load_config(CONFIG_PATH)
         ref = runtime.table_ref(config)
         catalog = runtime.get_iceberg_catalog(ref)
 
         table = runtime.preflight_table(catalog, ref)
-        snapshot_date = runtime.snapshot_date_from_interval_end(
-            interval_end_value,
-            config["snapshot"]["timezone"],
-        )
+        dt = runtime.dt_from_interval_end(interval_end_value)
         frame = runtime.query_trino(
             config["source"]["trino_conn_id"],
             query.build_query(
-                snapshot_date=snapshot_date,
+                dt=dt,
                 customer_table=config["source"]["customer_table"],
                 ecosystem_users_table=config["source"]["ecosystem_users_table"],
-                birth_date_placeholder=config["source"]["birth_date_placeholder"],
+                geo_events_table=config["source"]["geo_events_table"],
+                platform_events_table=config["source"]["platform_events_table"],
+                city_table=config["source"]["city_table"],
             ),
         )
-        runtime.write_snapshot(table, frame, snapshot_date)
+        runtime.write_demographics(table, frame, dt)
 
     interval_end_value = (
-        '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
+        '{{ data_interval_end.in_timezone("UTC").isoformat() }}'
     )
     materialize(interval_end_value)
 
 
-dag = account_demographics_snapshot_dag()
+dag = account_demographics_dag()
