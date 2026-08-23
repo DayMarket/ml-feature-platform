@@ -1,0 +1,34 @@
+# Trino-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+table:
+  key: buyout_online_account_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_buyout_online_account_features
+  primary_key: date,account_id
+  meta:
+    team: team:buyer
+
+source:
+  engine: trino
+  # Домена buyer среди connection нет; значение подтверждает владелец (см. README).
+  trino_conn_id: trino_bx_analytics
+  # Имя витрины-источника берётся из её config.yaml, здесь не дублируется.
+  entity_path: layers/gold/account_id/buyout_account_history_features/v1
+  # Партиция читается по остатку account_id: одна выгрузка целиком не помещается в память задачи.
+  shards: 16
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.gold.account_id.buyout_online_account_features
+  group_tag: buyout-features
+  schedule: "0 6 * * *"
+  start_date: "2026-08-20T00:00:00Z"
+  team: buyer
+  owner: team:buyer
+
+alerts:
+  team: buyer
+  severity: P2
+  oncall_webhook_conn_id: team:buyer

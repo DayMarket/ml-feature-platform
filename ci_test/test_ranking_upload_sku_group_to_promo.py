@@ -100,3 +100,24 @@ def test_sku_group_promotion_source_uses_sku_group_to_promo_proto():
         RecordingFeaturesUpdate.last_kwargs["skuGroupToPromoFeatureSet"],
         RecordingSkuGroupToPromoFeatureSet,
     )
+
+
+def test_external_source_uses_explicit_metadata():
+    upload = _load_upload_module()
+    feature_group = {
+        "source": {
+            "external": True,
+            "catalog": "iceberg",
+            "schema": "um_prod_feature_store_iceberg",
+            "table": "cold_start_boosted_pw_convs_query_atc_order_90",
+            "primary_key": ["date", "query", "sku_group_id"],
+        }
+    }
+
+    assert upload._source_metadata("/unused", feature_group) == {
+        "catalog": "iceberg",
+        "primary_key": ["date", "query", "sku_group_id"],
+        "date_column": "date",
+        "timestamp_column": None,
+        "entity_keys": ["query", "sku_group_id"],
+    }
