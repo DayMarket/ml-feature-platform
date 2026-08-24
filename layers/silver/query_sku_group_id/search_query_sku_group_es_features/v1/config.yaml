@@ -87,3 +87,14 @@ dq:
     - name: string_not_blank
       columns:
         - query
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны смотреть
+  # на одну партицию, иначе профиль посчитан не по тем данным, что проверял DQ.
+  partition_date_template: '{{ (dag_run.conf or {}).get("partition_date") or macros.ds_add(ds, -1) }}'
+  # product_id — BIGINT-идентификатор, а не признак: профиль распределения по нему
+  # бессмыслен. Остальные числовые колонки (sell_price, *_field, skg_orders,
+  # product_orders, skg_rating, product_rating, bms, total_score) — признаки и
+  # исключать их нельзя.
+  exclude_columns: ["product_id"]

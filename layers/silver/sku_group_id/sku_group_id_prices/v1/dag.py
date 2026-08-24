@@ -15,6 +15,7 @@ REPO_ROOT = os.path.abspath(os.path.join(DAG_DIR, "..", "..", "..", "..", ".."))
 sys.path.insert(0, REPO_ROOT)
 
 from dq.task import build_dq_task
+from feature_stats.task import build_feature_stats_task
 
 CONFIG_PATH = os.path.join(DAG_DIR, "config.yaml")
 DQ_PARTITION_DATE = '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
@@ -76,8 +77,11 @@ def collect_silver_sku_group_id_prices():
     )
 
     dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
+    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
 
-    wait_for_sku_eod >> collect_prices >> dq_task
+    # Статистика идёт параллельно DQ и ни на что не влияет: аплоад ждёт таску dq,
+    # поэтому падение профилей не блокирует публикацию фич.
+    wait_for_sku_eod >> collect_prices >> [dq_task, stats_task]
 
 
 dag = collect_silver_sku_group_id_prices()
