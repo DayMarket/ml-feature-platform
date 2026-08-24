@@ -328,6 +328,16 @@ Use this workflow only after confirming that the default Spark image or default 
 - Весь DQ-SQL — и рендереры в `dq/tests.py`, и выражения из `dq.tests[].expression` в конфигах энтити — пишется на диалекте Trino, а не Postgres. Предикатов `IS [NOT] TRUE`/`IS [NOT] FALSE` в Trino нет: «не вычислилось в TRUE» выражается через `IS DISTINCT FROM TRUE`. Локально диалект не исполняется ничем, поэтому новый рендерер обязан получить проверку отрендеренной строки в `ci_test/test_dq_sql.py`, а нетривиальное выражение из конфига — прогон на реальном Trino (MCP или первый запуск DAG'а) до объявления работы законченной.
 - For upstream DE-owned tables, use the source DAG/DQ contract owned by the producing team.
 
+### Отключённые базовые тесты
+
+Отключить базовый тест (`enabled: false`) можно только с письменной причиной и
+условием повторного включения, записанными и в `config.yaml` энтити, и здесь:
+
+| Энтити | Отключено | Почему | Когда включать обратно |
+|---|---|---|---|
+| `layers/gold/query_text_version/search_query_id/v1` | `freshness`, `row_count_growth` | Append-only справочник query_text/version без колонки даты; `dq/tests.py:_render_freshness` игнорирует `scope` и всегда рендерит SQL по колонке партиции — на этой таблице такой колонки нет. `scope: table` включён, чтобы остальные тесты работали по всей таблице. | Не планируется: у таблицы принципиально нет и не будет партиционной колонки. |
+| `layers/silver/sku_group_id_query_category/sku_group_install/v1` | `primary_key_not_null`, `primary_key_unique` | `table.primary_key` называет колонку `query`, которой в таблице нет (`migrations/create_table.sql`: `install_id, sku_group_id, section, uniqs, sum_atc, sum_clicks, sum_impressions, date`) — оба теста рендерят SQL по несуществующей колонке и падают `COLUMN_NOT_FOUND` в Trino с вызовом дежурного; `severity: warn` не защищает, потому что исключение возникает раньше, чем появляется результат теста. | Когда владелец энтити объявит настоящий грейн (реальный primary key) таблицы. |
+
 Automatically generated DQ tests:
 
 - `dbt_utils.unique_combination_of_columns` over all columns from `table.primary_key`.

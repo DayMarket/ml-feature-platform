@@ -158,14 +158,18 @@ def test_every_dq_dag_also_builds_feature_stats() -> None:
         )
 
 
-def _find_curried_call_arg(tree: ast.AST, func_name: str) -> ast.expr | None:
+def _find_curried_call_args(tree: ast.AST, func_name: str) -> list[ast.expr]:
     """
-    Ищем вызов вида `func_name(CONFIG_PATH, REPO_ROOT)(<arg>)` — build_dq_task и
+    Ищем ВСЕ вызовы вида `func_name(CONFIG_PATH, REPO_ROOT)(<arg>)` — build_dq_task и
     build_feature_stats_task обе фабрики, а не обычные функции: dag.py сначала
     строит таск-фабрику, потом вызывает её ровно одним позиционным аргументом —
-    значением партиции. Возвращает AST-узел этого аргумента (или None, если
-    вызова func_name в файле нет вовсе).
+    значением партиции. dag.py может строить фабрику несколько раз (например, в
+    цикле по суб-энтити), и каждый такой вызов обязан быть согласован с конфигом,
+    а не только первый найденный по ast.walk — иначе расхождение в любом вызове,
+    кроме первого, молча пройдёт CI. Возвращает список AST-узлов аргументов в
+    порядке обхода дерева (пустой список, если вызова func_name в файле нет вовсе).
     """
+    args = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -176,8 +180,8 @@ def _find_curried_call_arg(tree: ast.AST, func_name: str) -> ast.expr | None:
             and inner.func.id == func_name
             and len(node.args) == 1
         ):
-            return node.args[0]
-    return None
+            args.append(node.args[0])
+    return args
 
 
 def _resolve_string_literal(tree: ast.AST, node: ast.expr, dag_path: Path, what: str) -> str:
@@ -245,8 +249,8 @@ def test_dag_py_partition_constant_matches_the_dq_config() -> None:
         dq_template = (config.get("dq") or {}).get("partition_date_template")
         fs_template = (config.get("feature_stats") or {}).get("partition_date_template")
 
-        dq_arg = _find_curried_call_arg(tree, "build_dq_task")
-        assert dq_arg is not None, f"{relative}: не нашли вызов build_dq_task(...)(...)"
+        dq_args = _find_curried_call_args(tree, "build_dq_task")
+        assert dq_args, f"{relative}: не нашли вызов build_dq_task(...)(...)"
 
         if dq_template is None:
             # search_query_id — справочная gold-таблица без партиций: ни dq:, ни
@@ -260,17 +264,19 @@ def test_dag_py_partition_constant_matches_the_dq_config() -> None:
             checked += 1
             continue
 
-        dq_value = _resolve_string_literal(tree, dq_arg, relative, "build_dq_task(...)")
-        assert dq_value == dq_template, (
-            f"{relative}: значение, переданное в build_dq_task(...)(...) ({dq_value!r}), "
-            f"не совпадает с dq.partition_date_template из {config_path} ({dq_template!r})"
-        )
+        for dq_arg in dq_args:
+            dq_value = _resolve_string_literal(tree, dq_arg, relative, "build_dq_task(...)")
+            assert dq_value == dq_template, (
+                f"{relative}:{dq_arg.lineno}: значение, переданное в build_dq_task(...)(...) "
+                f"({dq_value!r}), не совпадает с dq.partition_date_template из "
+                f"{config_path} ({dq_template!r})"
+            )
 
-        fs_arg = _find_curried_call_arg(tree, "build_feature_stats_task")
-        if fs_arg is not None:
+        fs_args = _find_curried_call_args(tree, "build_feature_stats_task")
+        for fs_arg in fs_args:
             fs_value = _resolve_string_literal(tree, fs_arg, relative, "build_feature_stats_task(...)")
             assert fs_value == dq_template, (
-                f"{relative}: значение, переданное в build_feature_stats_task(...)(...) "
+                f"{relative}:{fs_arg.lineno}: значение, переданное в build_feature_stats_task(...)(...) "
                 f"({fs_value!r}), не совпадает с dq.partition_date_template из "
                 f"{config_path} ({dq_template!r})"
             )
