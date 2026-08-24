@@ -20,7 +20,8 @@ from dq.task import build_dq_task
 from feature_stats.task import build_feature_stats_task
 
 CONFIG_PATH = os.path.join(ENTITY_DIR, "config.yaml")
-DQ_PARTITION_DATE = '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+# Джоб пишет партицию за data_interval_end без сдвига на -1 день (Pattern DE).
+DQ_PARTITION_DATE = '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
 JOB_DIR = os.path.join(ENTITY_DIR, "job")
 
 with open(CONFIG_PATH, encoding="utf-8") as config_stream:

@@ -41,6 +41,17 @@ dq:
       severity: warn
     - name: row_count_growth
       severity: warn
+    # table.primary_key объявляет колонку query, которой в таблице нет:
+    # migrations/create_table.sql определяет install_id, sku_group_id, section,
+    # uniqs, sum_atc, sum_clicks, sum_impressions, date. Оба ключевых теста
+    # рендерят SQL по несуществующей колонке, Trino отвечает COLUMN_NOT_FOUND,
+    # и таска падает с вызовом oncall — severity: warn от этого не защищает,
+    # потому что исключение случается раньше, чем появляется результат теста.
+    # Включить обратно, когда владелец энтити объявит настоящую гранулярность.
+    - name: primary_key_not_null
+      enabled: false
+    - name: primary_key_unique
+      enabled: false
 
 feature_stats:
   trino_conn_id: trino_search

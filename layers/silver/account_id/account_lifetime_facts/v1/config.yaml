@@ -33,7 +33,9 @@ alerts:
 
 dq:
   trino_conn_id: trino_search
-  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  # Партиция вычисляется от data_interval_end без сдвига на -1 день (Pattern DE):
+  # см. dag.py, def parse_partition_date в job/runtime.py.
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
   tests:
     # Раскатка DQ идёт на витрины, часть которых пуста или отстала на недели.
     # Объёмные тесты и freshness — в warn: состояние фиксируется в
@@ -50,5 +52,5 @@ feature_stats:
   trino_conn_id: trino_search
   # Дословно совпадает с dq.partition_date_template: обе таски обязаны
   # смотреть на одну партицию, иначе профиль посчитан не по тем данным.
-  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
   exclude_columns: [first_order_id_ever]
