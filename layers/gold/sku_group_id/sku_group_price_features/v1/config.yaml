@@ -22,3 +22,50 @@ alerts:
   team: search
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Джоб пишет партицию за data_interval_start (partition_start[:10]).
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # По 78 парам соседних партиций рост лежит в +0.11%..+0.46% и ни разу не был
+    # отрицательным. Двусторонние 2% — 4x к наблюдаемому максимуму.
+    - name: row_count_growth
+      max_growth_ratio: 0.02
+    # Минимум за последние 30 партиций — 5.24M строк. 4M ниже всей недавней истории.
+    - name: row_count_min
+      min_rows: 4000000
+    # Эти четыре считаются из цен текущего дня и за 7 партиций (около 38M строк)
+    # не дали ни одного NULL.
+    - name: not_null
+      columns:
+        - category_mean_sell_price
+        - sell_price_eod
+        - abs_discount
+        - fraq_discount
+    # ratio_crnt_min_to_avg_min_full_price_* опираются на историю 14/30 дней, поэтому
+    # у молодых sku_group_id их нет: наблюдаемая доля NULL — 0.31%. Жёсткий not_null
+    # ронял бы DAG на нормальных данных, поэтому сторожим саму долю: 0.05 — это 16x
+    # к норме и срабатывает только когда история цен реально развалилась.
+    - name: null_share_below
+      column: ratio_crnt_min_to_avg_min_full_price_14
+      max_share: 0.05
+    - name: null_share_below
+      column: ratio_crnt_min_to_avg_min_full_price_30
+      max_share: 0.05
+    # Цены и доли скидки неотрицательны по контракту; за 7 партиций отрицательных нет.
+    - name: non_negative
+      columns:
+        - category_mean_sell_price
+        - sell_price_eod
+        - abs_discount
+        - fraq_discount
+        - ratio_crnt_min_to_avg_min_full_price_14
+        - ratio_crnt_min_to_avg_min_full_price_30
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны смотреть
+  # на одну партицию, иначе профиль посчитан не по тем данным, что проверял DQ.
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  exclude_columns: []

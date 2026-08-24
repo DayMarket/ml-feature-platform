@@ -1,0 +1,12 @@
+# Таблица профилей распределения признаков. Пишется таской feature_stats каждого DAG'а.
+# create_dbt_pr: false — таблица не уезжает в dbt-trino и не заводит DQ-тесты сама на себя.
+table:
+  key: feature_stats
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_feature_stats
+  primary_key: date,partition_ts,dag_id,table_name,feature_name
+  meta:
+    team: team:search
+    create_dbt_pr: false
+    create_maintenance_pr: true
