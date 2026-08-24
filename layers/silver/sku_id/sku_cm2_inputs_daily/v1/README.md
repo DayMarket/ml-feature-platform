@@ -6,14 +6,15 @@ Silver-контракт с SKU grain в цепочке CM2.
 ## Выход и оркестрация
 
 - Таблица: `iceberg.silver.feature_platform_sku_cm2_inputs_daily`.
-- DAG: `feature-platform.layers.silver.snapshot_date_sku_id.sku_cm2_inputs_daily`.
-- Путь: `layers/silver/snapshot_date_sku_id/sku_cm2_inputs_daily/v1`.
+- DAG: `feature-platform.layers.silver.sku_id.sku_cm2_inputs_daily`.
+- Путь: `layers/silver/sku_id/sku_cm2_inputs_daily/v1`.
 - Airflow group tag: `recsys-main-page-features`.
-- Расписание: ежедневно в `00:00 UTC` (`0 0 * * *`).
-- `start_date=2026-06-01T00:00:00Z`, `catchup=false`.
+- Расписание: ежедневно в `19:00 UTC`, то есть в `00:00 Asia/Tashkent`.
+- `start_date=2026-08-08T19:00:00Z`, `catchup=true`: при первом включении DAG выполняет
+  начальный backfill примерно за две недели.
 
-`calculated_at` равен `data_interval_end` в UTC, а `snapshot_date` — предыдущей календарной
-дате UTC. Повторный запуск одной партиции идемпотентно перезаписывает её через PyIceberg
+`dt` — предыдущая полная календарная дата относительно `data_interval_end` в
+`Asia/Tashkent`. Повторный запуск одной даты идемпотентно перезаписывает её через PyIceberg
 `overwrite`.
 
 Подтверждённые upstream DQ DAG id внешних источников отсутствуют, поэтому отдельные sensors не
@@ -21,15 +22,15 @@ Silver-контракт с SKU grain в цепочке CM2.
 
 ## Grain и схема
 
-Grain и уникальный ключ: `snapshot_date,sku_id`.
+Grain и уникальный ключ: `dt,sku_id`.
 
-- `snapshot_date` — дата входного снимка;
+- `dt` — предыдущая полная дата в `Asia/Tashkent`;
 - `sku_id` — SKU;
 - `product_id` — товар для финальной агрегации в Gold;
 - `dimensional_group` — `SMALL`, `MEDIUM` или `LARGE`;
 - `sell_price_uzs` — дневная sell price SKU в UZS либо `NULL`;
 - `commission_pct` — комиссия SKU в процентах либо `NULL`;
-- `n_orders_28d` — число строк заказов SKU за 28 дней.
+- `n_orders_28d` — число строк заказов SKU за предыдущие 28 полных дней.
 
 `sku_group_id`, currency rate, готовые `cm2`, `net_inflow` и `weighted_price` не публикуются.
 
@@ -44,68 +45,62 @@ Grain и уникальный ключ: `snapshot_date,sku_id`.
   `sku_id → comission`;
 - `"dwh-iceberg".silver.order_item_ue_buyer` — строки заказов SKU.
 
-В snapshot входят все строки `dict.sku` с заполненными `sku_id` и `product_id`. Цена,
-комиссия и счётчик заказов присоединяются к этой population через `LEFT JOIN` по `sku_id`.
-Контракт источников предполагает уникальность mapping, комиссии и dimensional group по
-`sku_id`, а цены — по `snapshot_date,sku_id`.
+В результат входят все строки `dict.sku` с заполненными `sku_id` и `product_id`. Цена,
+комиссия и счётчик заказов присоединяются через `LEFT JOIN` по `sku_id`. Контракт источников
+предполагает уникальность mapping, комиссии и dimensional group по `sku_id`, а цены — по
+`dt,sku_id`.
 
-Исторической относительно `snapshot_date` является только EOD-цена. Mapping,
-`dimensional_group` и комиссия читаются в фактический момент выполнения job; для backfill они
-не являются point-in-time.
+Исторической относительно `dt` является только EOD-цена. Mapping, `dimensional_group` и
+комиссия читаются в фактический момент выполнения job; для backfill они не являются
+point-in-time.
 
 ## Расчёт
 
-Цена выбирается условием:
+Цена выбирается условием `daily_sku_quantity_eod.dt = dt`. `dt` источника доступен в Trino как
+`DATE`, поэтому дополнительное преобразование не требуется.
 
-```sql
-daily_sku_quantity_eod.dt = snapshot_date
-```
+Постоянные правила зафиксированы непосредственно в расчёте:
 
-`dt` доступен в Trino как `DATE`, поэтому дополнительное преобразование `toDate(dt)` не
-требуется.
+- `dimensional_group IS NULL → SMALL`;
+- комиссия читается из колонки `comission`;
+- допустимые dimensional group: `SMALL`, `MEDIUM`, `LARGE`;
+- допустимый диапазон комиссии: `[0,100]`;
+- окно заказов: 28 дней.
 
-Отсутствующий `dimensional_group` заменяется на `SMALL`. Другие значения не
-нормализуются: допустимы только `SMALL`, `MEDIUM`, `LARGE`.
-
-Комиссия читается из колонки `comission`, приводится к `DOUBLE` и публикуется как
-`commission_pct`. Отсутствующая комиссия остаётся `NULL`.
+Отсутствующая комиссия остаётся `NULL`.
 
 `n_orders_28d` рассчитывается как `COUNT(*)` строк
-`silver.order_item_ue_buyer` по `sku_id` на полуоткрытом UTC-интервале:
-
-```text
-[calculated_at - 28 дней, calculated_at)
-```
+`silver.order_item_ue_buyer` по `sku_id` на полуоткрытом интервале
+`[data_interval_end - 28 дней, data_interval_end)` в `Asia/Tashkent`. UTC-время источника явно
+переводится в `Asia/Tashkent` внутри Trino-запроса. Дополнительные эквивалентные границы в UTC
+накладываются непосредственно на `order_created_at`, чтобы Trino мог протолкнуть временной
+фильтр в источник и не сканировал всю историю заказов.
 
 Это не `COUNT(DISTINCT order_id)`, не сумма quantity и не число уникальных покупателей. SKU
 без строк заказов получает `n_orders_28d = 0`.
 
 ## Проверки качества
 
-Источники читаются одним Trino-запросом. Отдельный metrics-запрос не выполняется, чтобы не
-сканировать повторно 28 дней заказов и остальные источники. Перед записью проверяются:
+Перед записью producer проверяет:
 
 - непустой результат;
-- `snapshot_date` равна целевой партиции;
-- уникальность `snapshot_date,sku_id`;
+- `dt` равна целевой дате;
+- уникальность `dt,sku_id`;
 - `sku_id` и `product_id` заполнены и являются целыми;
 - `sell_price_uzs >= 0` либо `NULL`;
 - `commission_pct` находится в `[0,100]` либо `NULL`;
 - `n_orders_28d` является целым, заполненным и неотрицательным;
 - `dimensional_group IN ('SMALL','MEDIUM','LARGE')`.
 
-Нарушение уникальности mapping, дневной цены или комиссии приводит к дублированию итогового
-`snapshot_date,sku_id` и останавливает запись общей проверкой уникального ключа.
-
 Логируются coverage цены и комиссии, доля SKU без заказов и распределение dimensional group.
 После merge в master стандартная синхронизация создаст dbt DQ с уникальностью ключа и
 `not_null` для ключевых колонок.
 
-## Рантайм и потребители
+## Runtime и потребители
 
-Airflow/Python + `pyiceberg`, образ
-`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`. Для финального snapshot примерно на
-9,9 млн SKU pod запрашивает `4 CPU / 24 GiB`.
+Пайплайн использует Airflow/Python + `pyiceberg`, образ
+`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` и малый pod `1 CPU / 4 GiB memory`. Для этого
+runtime Spark-параметр `resource_profile` неприменим.
 
 Потребители:
 

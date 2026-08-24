@@ -1,4 +1,4 @@
-"""Write the daily SKU CM2 input snapshot to Iceberg."""
+"""Write daily SKU CM2 inputs to Iceberg."""
 
 import importlib.util
 import os
@@ -99,36 +99,30 @@ def sku_cm2_inputs_daily_dag() -> None:
         catalog = runtime.get_iceberg_catalog(ref)
         table = runtime.preflight_table(catalog, ref)
 
-        calculated_at = runtime.parse_airflow_timestamp(interval_end_value)
-        snapshot_date = runtime.previous_utc_date(calculated_at)
+        interval_end = runtime.parse_airflow_timestamp(interval_end_value)
+        dt = runtime.previous_tashkent_date(interval_end)
         source = config["source"]
         query_args = {
-            "snapshot_date": snapshot_date,
-            "calculated_at": calculated_at,
+            "dt": dt,
+            "interval_end": interval_end,
             "sku_table": source["sku_table"],
             "prices_table": source["prices_table"],
             "commission_table": source["commission_table"],
-            "commission_column": source["commission_column"],
             "orders_table": source["orders_table"],
-            "orders_lookback_days": source["orders_lookback_days"],
-            "default_dimensional_group": source["default_dimensional_group"],
         }
 
         frame = runtime.query_trino(
             source["trino_conn_id"],
             query.build_query(**query_args),
         )
-        runtime.write_snapshot(
+        runtime.write_inputs(
             table=table,
             frame=frame,
-            snapshot_date=snapshot_date,
-            allowed_dimensional_groups=source["allowed_dimensional_groups"],
-            min_commission_pct=source["min_commission_pct"],
-            max_commission_pct=source["max_commission_pct"],
+            dt=dt,
         )
 
     interval_end_value = (
-        '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
+        '{{ data_interval_end.in_timezone("UTC").isoformat() }}'
     )
     materialize(interval_end_value)
 

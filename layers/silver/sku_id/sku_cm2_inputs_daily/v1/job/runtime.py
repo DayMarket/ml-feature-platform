@@ -1,13 +1,14 @@
-"""Runtime helpers for the daily SKU CM2 input snapshot."""
+"""Runtime helpers for daily SKU CM2 inputs."""
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("airflow.task")
 
@@ -18,9 +19,11 @@ ICEBERG_WAREHOUSE = "s3a://um-prod-data-platform-landing-layer/"
 S3_ENDPOINT = "http://storage.yandexcloud.net"
 S3_REGION = "ru-central1"
 S3_CONNECTION_ID = "spark_ycs_connection"
+TASHKENT_TIME_ZONE = ZoneInfo("Asia/Tashkent")
+ALLOWED_DIMENSIONAL_GROUPS = {"SMALL", "MEDIUM", "LARGE"}
 
 OUTPUT_COLUMNS = (
-    "snapshot_date",
+    "dt",
     "sku_id",
     "product_id",
     "dimensional_group",
@@ -91,13 +94,11 @@ def parse_airflow_timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def previous_utc_date(value: datetime | str) -> date:
+def previous_tashkent_date(value: datetime | str) -> date:
     parsed = parse_airflow_timestamp(value) if isinstance(value, str) else value
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    else:
-        parsed = parsed.astimezone(timezone.utc)
-    return parsed.date() - timedelta(days=1)
+    return parsed.astimezone(TASHKENT_TIME_ZONE).date() - timedelta(days=1)
 
 
 def get_iceberg_catalog(ref: TableRef):
@@ -161,89 +162,74 @@ def _validate_nullable_numeric(frame, column: str):
     was_present = frame[column].notna()
     converted = pd.to_numeric(frame[column], errors="coerce")
     if converted.loc[was_present].isna().any():
-        raise ValueError(f"SKU CM2 snapshot contains non-numeric {column}")
+        raise ValueError(f"S6 output contains non-numeric {column}")
     frame[column] = converted
     return converted
 
 
-def validate_snapshot(
-    frame,
-    snapshot_date: date,
-    allowed_dimensional_groups: Sequence[str],
-    min_commission_pct: float,
-    max_commission_pct: float,
-) -> None:
+def validate_inputs(frame, dt: date) -> None:
     import pandas as pd
 
     missing = [name for name in OUTPUT_COLUMNS if name not in frame.columns]
     if missing:
-        raise ValueError(f"SKU CM2 snapshot is missing columns: {missing}")
+        raise ValueError(f"S6 output is missing columns: {missing}")
     if frame.empty:
-        raise ValueError(f"SKU CM2 snapshot is empty for {snapshot_date}")
+        raise ValueError(f"S6 output is empty for {dt}")
 
-    frame["snapshot_date"] = pd.to_datetime(
-        frame["snapshot_date"],
-        errors="coerce",
-    ).dt.date
-    if frame["snapshot_date"].isna().any():
-        raise ValueError("SKU CM2 snapshot contains null snapshot_date")
-    if (frame["snapshot_date"] != snapshot_date).any():
-        raise ValueError(
-            f"Outgoing rows contain a snapshot_date other than {snapshot_date}"
-        )
+    frame["dt"] = pd.to_datetime(frame["dt"], errors="coerce").dt.date
+    if frame["dt"].isna().any():
+        raise ValueError("S6 output contains null dt")
+    if (frame["dt"] != dt).any():
+        raise ValueError(f"Outgoing rows contain a dt other than {dt}")
 
     for column in ("sku_id", "product_id"):
         converted = _validate_nullable_numeric(frame, column)
         if converted.isna().any():
-            raise ValueError(f"SKU CM2 snapshot contains null {column}")
+            raise ValueError(f"S6 output contains null {column}")
         if (converted % 1 != 0).any():
-            raise ValueError(f"SKU CM2 snapshot contains non-integer {column}")
-        frame[column] = converted.astype("int64")
+            raise ValueError(f"S6 output contains non-integer {column}")
+        frame[column] = converted.astype("int32")
 
-    if frame.duplicated(subset=["snapshot_date", "sku_id"]).any():
-        raise ValueError("SKU CM2 snapshot contains duplicate primary keys")
+    if frame.duplicated(subset=["dt", "sku_id"]).any():
+        raise ValueError("S6 output contains duplicate primary keys")
 
-    allowed_groups = set(allowed_dimensional_groups)
-    if not allowed_groups:
-        raise ValueError("allowed_dimensional_groups must not be empty")
     if frame["dimensional_group"].isna().any():
-        raise ValueError("SKU CM2 snapshot contains null dimensional_group")
+        raise ValueError("S6 output contains null dimensional_group")
     invalid_groups = (
-        set(frame["dimensional_group"].astype(str).unique()) - allowed_groups
+        set(frame["dimensional_group"].astype(str).unique())
+        - ALLOWED_DIMENSIONAL_GROUPS
     )
     if invalid_groups:
         raise ValueError(
-            "SKU CM2 snapshot contains unsupported dimensional_group values: "
+            "S6 output contains unsupported dimensional_group values: "
             f"{sorted(invalid_groups)}"
         )
 
     prices = _validate_nullable_numeric(frame, "sell_price_uzs")
     if (prices.dropna() < 0).any():
-        raise ValueError("SKU CM2 snapshot contains negative sell_price_uzs")
+        raise ValueError("S6 output contains negative sell_price_uzs")
 
     commissions = _validate_nullable_numeric(frame, "commission_pct")
     populated_commissions = commissions.dropna()
-    if (populated_commissions < float(min_commission_pct)).any() or (
-        populated_commissions > float(max_commission_pct)
-    ).any():
-        raise ValueError("SKU CM2 snapshot contains commission_pct outside [0, 100]")
+    if (populated_commissions < 0).any() or (populated_commissions > 100).any():
+        raise ValueError("S6 output contains commission_pct outside [0, 100]")
 
     orders = _validate_nullable_numeric(frame, "n_orders_28d")
     if orders.isna().any():
-        raise ValueError("SKU CM2 snapshot contains null n_orders_28d")
+        raise ValueError("S6 output contains null n_orders_28d")
     if (orders < 0).any():
-        raise ValueError("SKU CM2 snapshot contains negative n_orders_28d")
+        raise ValueError("S6 output contains negative n_orders_28d")
     if (orders % 1 != 0).any():
-        raise ValueError("SKU CM2 snapshot contains non-integer n_orders_28d")
+        raise ValueError("S6 output contains non-integer n_orders_28d")
     frame["n_orders_28d"] = orders.astype("int64")
 
 
-def log_snapshot_metrics(frame, snapshot_date: date) -> None:
+def log_metrics(frame, dt: date) -> None:
     group_counts = frame["dimensional_group"].value_counts().to_dict()
     logger.info(
-        "S6 coverage for snapshot_date=%s: rows=%d, price_null_share=%.6f, "
+        "S6 coverage for dt=%s: rows=%d, price_null_share=%.6f, "
         "commission_null_share=%.6f, zero_order_share=%.6f, groups=%s",
-        snapshot_date,
+        dt,
         len(frame.index),
         float(frame["sell_price_uzs"].isna().mean()),
         float(frame["commission_pct"].isna().mean()),
@@ -276,33 +262,19 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_snapshot(
-    *,
-    table,
-    frame,
-    snapshot_date: date,
-    allowed_dimensional_groups: Sequence[str],
-    min_commission_pct: float,
-    max_commission_pct: float,
-) -> None:
+def write_inputs(*, table, frame, dt: date) -> None:
     from pyiceberg.expressions import EqualTo
 
-    validate_snapshot(
-        frame,
-        snapshot_date,
-        allowed_dimensional_groups,
-        min_commission_pct,
-        max_commission_pct,
-    )
-    log_snapshot_metrics(frame, snapshot_date)
+    validate_inputs(frame, dt)
+    log_metrics(frame, dt)
     arrow_table = _to_arrow_for_table(table, frame)
     table.overwrite(
         arrow_table,
-        overwrite_filter=EqualTo("snapshot_date", snapshot_date),
+        overwrite_filter=EqualTo("dt", dt),
     )
     logger.info(
-        "Wrote %d rows to %s for snapshot_date=%s",
+        "Wrote %d rows to %s for dt=%s",
         arrow_table.num_rows,
         table.name(),
-        snapshot_date,
+        dt,
     )
