@@ -13,7 +13,7 @@ MAINTENANCE_CONFIG_PATH = Path(
     "dags_v3/maintenance_generator/feature_platform_config.yaml"
 )
 MAINTENANCE_DAG_PATH = Path("dags_v3/maintenance_generator/dag.py")
-TABLE_CONFIG_ROOTS = ("layers", "datasets", "dq")
+TABLE_CONFIG_ROOTS = ("layers", "datasets", "dq", "feature_stats")
 CREATE_MAINTENANCE_PR_FLAG = "create_maintenance_pr"
 
 
