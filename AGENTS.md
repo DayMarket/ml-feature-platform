@@ -130,6 +130,7 @@ Use this workflow:
 - Update the full entity surface together: `config.yaml`, `dag.py`, runtime configuration, factory or helper code when used, entrypoint/job code, migrations, and README.
 - In every changed entity README, include an explicit orchestration section with the exact DAG id and an explicit output section with the fully qualified table name. Do not make readers infer either value from a path or prose.
 - Add DQ sensor dependencies on DQ DAGs for feature-platform source tables. For external upstream tables, use the producing team's documented DAG/DQ contract.
+- Всякий раз, когда работа заводит новый DAG энтити или меняет существующий, явно скажи пользователю, какие штатные шаги в этом DAG'е окажутся: базовый набор DQ таской `dq` и профили признаков таской `feature_stats`. Для `feature_stats` назови и цену — ежедневный скан партиции в общем Trino. Оба шага добавляются по умолчанию; отказ от любого из них — осознанное решение пользователя, а не молчаливый пропуск.
 - For new Airflow/Spark jobs, pass interval boundaries with `{{ data_interval_start }}` and `{{ data_interval_end }}`-based templates instead of `{{ ds }}` and `{{ next_ds }}`. Convert them to the business timezone explicitly when the feature contract is timezone-specific.
 - When a requested DAG schedule is expressed in a business timezone, confirm or derive the actual Airflow cron timezone before writing `schedule_interval`; if Airflow schedules in UTC, convert the cron expression explicitly and document the business-time equivalent in the README or DAG comments.
 - When deriving a partition date from an interval argument in Python, parse the timestamp explicitly through a tested helper instead of using string slicing such as `partition_start[:10]` or a single-format `datetime.strptime(partition_start, "%Y-%m-%d %H:%M:%S")`. Reuse an existing entity-local helper when available; otherwise add one beside the job code. New parsers must accept Airflow/Pendulum ISO timestamps with and without timezone (`2026-06-17T00:00:00`, `2026-06-17T00:00:00+00:00`, `2026-06-17T00:00:00Z`, `2026-06-17 00:00:00+00:00`) as well as the shared-template format `YYYY-MM-DD HH:MM:SS`, and should raise a clear error that includes the unsupported value. Add or update a small regression test for these accepted formats whenever adding or touching partition-date parsing.
@@ -241,6 +242,7 @@ Implemented Spark layer pipelines generally follow this shape:
 - `migrations/create_table.sql`: Iceberg DDL with `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')` for new tables. Add extra migration files for schema changes.
 - `README.md`: Russian-language human summary of purpose, sources, grain, key formulas, and operational notes.
 - Таска `dq`: терминальная таска DAG'а, собираемая `dq.task.build_dq_task(config_path, repo_root)`. Downstream-DAG'и ждут именно её через `external_task_id="dq"`.
+- Таска `feature_stats`: вторая терминальная таска, собираемая `feature_stats.task.build_feature_stats_task(config_path, repo_root)` и подключаемая параллельно `dq` (`<upstream> >> [dq_task, stats_task]`). Штатный шаг, как и `dq`; downstream на неё не вешается. См. `## Feature Stats`.
 
 Trino/ClickHouse-source layer pipelines may use a separate Airflow/Python shape instead of SparkApplication. They should still live under `layers/<layer>/<primary_key_group>/<entity>/v1`, keep migrations and README alongside the code, read through explicitly confirmed Airflow connections, and write the output Iceberg table with `pyiceberg`. There may be no current examples in this repository; when generating one, keep the pattern explicit in README and do not reuse Spark-specific `spark`/`spark_applications` config unless Spark execution is actually used.
 
@@ -321,21 +323,7 @@ Use this workflow only after confirming that the default Spark image or default 
 - Пороги `row_count_min` и `row_count_growth` подбираются по реальной истории таблицы в Trino, а не назначаются на глаз, и каждый порог сопровождается комментарием в `config.yaml` с наблюдённым диапазоном. То же для `not_null`: колонка попадает в тест, только если история показывает, что она действительно плотная — иначе используется `null_share_below` с порогом выше нормальной доли NULL.
 - Любой SQL, который DQ-таска шлёт в Trino, адресует таблицы полным именем `"<trino-catalog>".<schema>.<table>`, включая служебные запросы к `information_schema`. Дефолтный каталог соединений `trino_*` — `hive`, поэтому неквалифицированное имя падает с `CATALOG_NOT_FOUND` ещё до первого теста. Маппинг каталога берётся из `ci_config.yaml` через `dq.config.trino_catalog_alias`, готовая ссылка на таблицу — `dq.tests.table_ref`.
 - Энтити, которая пишет несколько партиций в сутки (снапшот в колонку `TIMESTAMP`, а не дневной `date`), объявляет `dq.partition_granularity: timestamp`, `dq.partition_column`, `dq.snapshot_interval_hours` и `dq.partition_date_template` со временем в UTC. Тогда DQ проверяет ровно записанный снапшот, а базой `row_count_growth` становится предыдущий снапшот. Проверять дневную партицию у такой энтити нельзя: на момент запуска она дописана лишь частично.
-- Репозиторно-управляемая энтити, чья таблица выгружается в сервис инференса, дополнительно
-  получает таску `feature_stats` — она считает профиль распределения каждого числового
-  признака записанной партиции и пишет его в `iceberg.silver.feature_platform_feature_stats`.
-  Таска идёт параллельно `dq` (`collect_features >> [dq_task, stats_task]`) и ничего не
-  блокирует: downstream-сенсоры вешаются только на `dq`, потому что упавший профиль не
-  повод не публиковать валидные фичи.
-- Блоки `dq:` и `feature_stats:` обязаны совпадать по `partition_column`,
-  `partition_granularity`, `partition_date_template` и `snapshot_interval_hours`.
-  `scripts/validate_feature_stats_configs.py` падает при расхождении: разные партиции
-  у двух тасок одного DAG-рана означают, что профиль посчитан не по тем данным, которые
-  проверял DQ, и это не видно ни по падению, ни по пустому результату.
-- Набор перцентилей в `feature_stats` зашит в код (`0.05 0.1 0.25 0.5 0.75 0.9 0.95`)
-  и колонками `p05..p95` соответствует таблице результатов. Его изменение — это миграция
-  таблицы плюс правка `feature_stats/config.py`, а не ключ конфига. Полный контракт —
-  в `feature_stats/README.md`.
+- Профили распределения признаков считает отдельная таска `feature_stats`, штатный шаг того же DAG'а. Её контракт — в разделе `## Feature Stats`.
 - Литералы времени в DQ-SQL всегда пишутся с зоной — `TIMESTAMP '2026-08-22 06:00:00 UTC'`. Сессия Trino живёт не в UTC (сейчас `Europe/Moscow`), а снапшотные колонки — `timestamp with time zone`, поэтому голый `TIMESTAMP '...'` коэрсится по таймзоне сессии и молча указывает на соседний снапшот. Ошибка не видна ни по падению запроса, ни по пустому результату: возвращается похожее, но чужое число строк.
 - Весь DQ-SQL — и рендереры в `dq/tests.py`, и выражения из `dq.tests[].expression` в конфигах энтити — пишется на диалекте Trino, а не Postgres. Предикатов `IS [NOT] TRUE`/`IS [NOT] FALSE` в Trino нет: «не вычислилось в TRUE» выражается через `IS DISTINCT FROM TRUE`. Локально диалект не исполняется ничем, поэтому новый рендерер обязан получить проверку отрендеренной строки в `ci_test/test_dq_sql.py`, а нетривиальное выражение из конфига — прогон на реальном Trino (MCP или первый запуск DAG'а) до объявления работы законченной.
 - For upstream DE-owned tables, use the source DAG/DQ contract owned by the producing team.
@@ -357,6 +345,22 @@ Additional DQ tests may be proposed when they match the feature or dataset contr
 - Custom SQL tests for business rules that are part of the model contract.
 
 Do not add expensive high-cardinality or source-wide relationship tests blindly. Explain the tradeoff and confirm the intended contract first.
+
+## Feature Stats
+
+- Таска `feature_stats` — **штатный шаг DAG'а репозиторно-управляемой энтити, такой же обязательный, как базовый набор DQ**. Она не опциональное дополнение и не «фича для отдельных таблиц»: если у энтити есть DAG, в нём есть и `dq`, и `feature_stats`.
+- **Добавляя или меняя энтити, всегда проговаривай пользователю, что в DAG будет добавлен шаг `feature_stats`** — ровно так же, как проговаривается базовый набор DQ. Это не деталь реализации: шаг добавляет ежедневный скан партиции в общий Trino и новые строки в таблицу результатов, и пользователь должен узнать об этом до того, как DAG уедет в прод, а не из первого прогона.
+- Что считает: по каждой числовой колонке-признаку записанной партиции — `count`, `null_share`, `mean`, `min`, `max` и перцентили `0.05 0.1 0.25 0.5 0.75 0.9 0.95`, одним Trino-запросом на таблицу. Результат пишется в `iceberg.silver.feature_platform_feature_stats`.
+- Набор колонок определяется в рантайме из `information_schema`: все числовые типы Trino минус `table.primary_key`, минус колонка партиции, минус `feature_stats.exclude_columns`. Новая колонка в миграции попадает в наблюдение сама, конфиг править не нужно.
+- Собирается фабрикой `feature_stats.task.build_feature_stats_task(config_path, repo_root)` и вешается **параллельно** `dq`: `<upstream> >> [dq_task, stats_task]`.
+- Таска ничего не блокирует. Downstream-сенсоры вешаются только на `dq` (`external_task_id="dq"`), никогда на `feature_stats`: упавший профиль — не повод не публиковать валидные фичи. Вешать на неё зависимости запрещено.
+- Как и у DQ, блок `feature_stats:` в `config.yaml` необязателен — без него таска работает на дефолтах. Блок нужен, когда у энтити снапшотная гранулярность, есть числовые колонки, которые не являются признаками (`exclude_columns`), или нужен нестандартный таймаут.
+- Блоки `dq:` и `feature_stats:` обязаны совпадать по `partition_column`, `partition_granularity`, `partition_date_template` и `snapshot_interval_hours`. `scripts/validate_feature_stats_configs.py` падает при расхождении: разные партиции у двух тасок одного DAG-рана означают, что профиль посчитан не по тем данным, которые проверял DQ, и это не видно ни по падению, ни по пустому результату.
+- Набор перцентилей зашит в код (`feature_stats/config.py`) и колонками `p05..p95` позиционно соответствует таблице результатов. Его изменение — это миграция таблицы плюс правка кода, а не ключ конфига.
+- `columns_per_query` по умолчанию не задан: один запрос на таблицу. Каждая дополнительная партия колонок — это ещё один полный скан партиции. Замерено на живом Trino: 89 признаков / 446 агрегатных выражений на 1.97M строк — 18.5 с; 24 признака / 121 агрегат на 32.4M строк — 36.6 с. Первое число ограничивает ширину плана, второе — стоимость скана.
+- Стоимость шага обсуждается заранее для широких или больших таблиц. На энтити, где скан заведомо дорог, вариантов два: оставить дефолт и следить за первым прогоном, либо задать `columns_per_query`, заплатив кратными сканами. Молча включать шаг на таблице в десятки миллионов строк, не сказав об этом, нельзя.
+- Весь SQL таски — диалект Trino, с полной квалификацией имён и литералами времени с зоной; действуют те же правила, что и для DQ-SQL выше. Хелперы адресации таблицы и предиката партиции переиспользуются из `dq.tests`, чтобы обе таски одного DAG-рана физически смотрели на одну партицию.
+- Полный контракт, ключи конфига, схема таблицы результатов и известные ограничения — в `feature_stats/README.md`.
 
 ## CI Contracts
 
