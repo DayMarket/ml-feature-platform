@@ -21,8 +21,6 @@ table:
 source:
   engine: spark_iceberg
   feedback_table: iceberg.silver_bxappdb2_foodback.public_feedback
-  published_status: PUBLISHED
-  window_hours: 12
 
 dag:
   id: feature-platform.layers.silver.product_id.product_feedback_counts_12h

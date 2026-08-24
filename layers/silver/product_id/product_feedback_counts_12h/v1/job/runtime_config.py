@@ -6,8 +6,6 @@ from typing import Any
 @dataclass(frozen=True)
 class SourceSettings:
     feedback_table: str
-    published_status: str
-    window_hours: int
 
     @property
     def table_names(self) -> tuple[str, ...]:
@@ -59,23 +57,10 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
     if source.get("engine") != "spark_iceberg":
         raise ValueError(f"{config_path}: source.engine must be 'spark_iceberg'")
 
-    text_values = {}
-    for field_name in ("feedback_table", "published_status"):
-        value = str(source.get(field_name, "")).strip()
-        if not value:
-            raise ValueError(
-                f"{config_path}: source.{field_name} must be a non-empty string"
-            )
-        text_values[field_name] = value
-
-    try:
-        window_hours = int(source["window_hours"])
-    except (KeyError, TypeError, ValueError) as error:
+    feedback_table = str(source.get("feedback_table", "")).strip()
+    if not feedback_table:
         raise ValueError(
-            f"{config_path}: source.window_hours must be an integer"
-        ) from error
+            f"{config_path}: source.feedback_table must be a non-empty string"
+        )
 
-    if window_hours <= 0:
-        raise ValueError(f"{config_path}: source.window_hours must be positive")
-
-    return SourceSettings(**text_values, window_hours=window_hours)
+    return SourceSettings(feedback_table=feedback_table)
