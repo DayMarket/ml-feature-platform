@@ -19,10 +19,24 @@ LOCK_DISABLED_TABLE_PROPERTY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+MIGRATION_TEMPORAL_COLUMN_PATTERN = re.compile(
+    r"^\s*(?P<column>[A-Za-z_][A-Za-z0-9_]*)\s+"
+    r"(?:DATE|TIMESTAMP(?:_[A-Za-z0-9]+)?"
+    r"(?:\s+(?:WITH|WITHOUT)\s+TIME\s+ZONE)?)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 PRIMARY_KEY_GROUP_EXCEPTIONS = {
     ("silver", "search_query_sku_group_dssm_scores"): "query_sku_group_id",
     ("silver", "sku_group_install"): "sku_group_id_query_category",
+}
+LEGACY_TEMPORAL_PRIMARY_KEY_GROUPS = {
+    ("gold", "dynamic_pricing_price_features"): (
+        "calculated_at_sku_id_promotion_id"
+    ),
+    ("gold", "dynamic_pricing_sku_group_price_features"): (
+        "calculated_at_sku_group_id_promotion_id"
+    ),
 }
 OPTIONAL_TABLE_META_BOOL_FLAGS = ("create_dbt_pr", "create_maintenance_pr")
 
@@ -222,6 +236,18 @@ def is_bool_like(value: object) -> bool:
     return False
 
 
+def migration_temporal_columns(config_path: Path) -> set[str]:
+    create_table_path = config_path.parent / "migrations" / "create_table.sql"
+    if not create_table_path.is_file():
+        return set()
+
+    migration = create_table_path.read_text(encoding="utf-8")
+    return {
+        match.group("column")
+        for match in MIGRATION_TEMPORAL_COLUMN_PATTERN.finditer(migration)
+    }
+
+
 def validate_layer_layout(repo_root: Path) -> list[str]:
     errors = []
     for config_path in sorted(repo_root.glob("layers/**/config.yaml")):
@@ -240,10 +266,11 @@ def validate_layer_layout(repo_root: Path) -> list[str]:
 
         config = read_simple_nested_config(config_path)
         table = config.get("table", {})
+        temporal_columns = migration_temporal_columns(config_path)
         primary_key = [
             column.strip()
             for column in str(table.get("primary_key", "")).split(",")
-            if column.strip() and column.strip() != "date"
+            if column.strip() and column.strip() not in temporal_columns
         ]
         expected_group = PRIMARY_KEY_GROUP_EXCEPTIONS.get(
             (layer, entity), "_".join(primary_key)
@@ -251,7 +278,8 @@ def validate_layer_layout(repo_root: Path) -> list[str]:
         if not expected_group:
             errors.append(f"{config_path}: primary key has no non-date columns")
             continue
-        if actual_group != expected_group:
+        legacy_group = LEGACY_TEMPORAL_PRIMARY_KEY_GROUPS.get((layer, entity))
+        if actual_group != expected_group and actual_group != legacy_group:
             errors.append(
                 f"{config_path}: group {actual_group!r} must be {expected_group!r}"
             )
