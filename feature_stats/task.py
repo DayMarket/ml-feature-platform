@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -33,6 +34,27 @@ def partition_instant(partition_date: date, partition_timestamp: datetime | None
     if partition_timestamp is not None:
         return partition_timestamp.replace(tzinfo=timezone.utc)
     return datetime.combine(partition_date, time.min, tzinfo=timezone.utc)
+
+
+def fetch_rows(hook: Any, sql: str) -> list:
+    """Выполнить один SQL и вернуть все строки, минуя разбор запроса на клиенте.
+
+    Намеренно не `hook.get_records`: он идёт через `DbApiHook.run`, а тот гоняет
+    SQL через `sqlparse.split_sql_string`, чтобы разбить его на statement'ы.
+    Начиная с sqlparse 0.6.0 группировка отказывается разбирать больше 10000
+    токенов (`MAX_GROUPING_TOKENS`, защита от DoS), а запрос профиля стоит около
+    112 токенов на признак: на 89 признаках
+    (`sku_group_search_conversion_features_v2`) это 10005 токенов и
+    `SQLParseError`, поднятый на клиенте — запрос до Trino не доезжает вовсе.
+    Делить наш SQL и не требуется: `render_stats_query` всегда отдаёт ровно один
+    statement. Дробление на `columns_per_query` здесь не лечение: каждая партия —
+    это ещё один полный скан партиции, а следующая широкая таблица упрётся в тот
+    же лимит на другом числе колонок.
+    """
+    with closing(hook.get_conn()) as connection:
+        with closing(connection.cursor()) as cursor:
+            cursor.execute(sql)
+            return cursor.fetchall()
 
 
 def build_stats_context(config: dict[str, Any], repo_root: Path, partition_value: Any) -> StatsContext:
@@ -107,7 +129,7 @@ def build_feature_stats_task(config_path: str, repo_root: str) -> Callable:
 
         def query(sql: str) -> list:
             logger.info("Feature stats query:\n%s", sql)
-            return hook.get_records(sql)
+            return fetch_rows(hook, sql)
 
         stats = run_feature_stats(settings, ctx, query)
         logger.info(

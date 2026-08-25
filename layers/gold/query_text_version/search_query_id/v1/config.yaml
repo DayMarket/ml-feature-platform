@@ -44,3 +44,29 @@ alerts:
   team: search
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Справочник query_text/version: колонки даты нет вообще, партиций нет.
+  # scope: table переводит предикат в TRUE, и ключевые тесты работают по всей
+  # таблице. freshness и row_count_growth выключены осознанно: первый всегда
+  # обращается к колонке партиции (см. dq/tests.py:_render_freshness) и на
+  # этой таблице сгенерировал бы SQL по несуществующей колонке, второй
+  # сравнивает с предыдущей партицией, которой здесь нет.
+  scope: table
+  tests:
+    - name: freshness
+      enabled: false
+    - name: row_count_growth
+      enabled: false
+    - name: row_count_min
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны
+  # смотреть на одну партицию, иначе профиль посчитан не по тем данным.
+  # Таблица без числовых feature-колонок (query_id/query_text/version — STRING,
+  # updated_at — TIMESTAMP), поэтому run_feature_stats не найдёт что профилировать
+  # и не запишет строк — это ожидаемо, а не баг.
+  exclude_columns: []
