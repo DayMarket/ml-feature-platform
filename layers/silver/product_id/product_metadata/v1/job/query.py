@@ -48,6 +48,7 @@ LEFT JOIN {settings.category_table} category
 WHERE product.id IS NOT NULL
     AND (
         product.category_id IS NULL
+        OR product.category_id <= 0
         OR category.id IS NULL
         OR category.id = {settings.technical_category_root_id}
     )
@@ -69,6 +70,7 @@ WITH category_paths AS (
             FILTER(
                 ARRAY(c0.id, c1.id, c2.id, c3.id, c4.id, c5.id),
                 value -> value IS NOT NULL
+                    AND value > 0
                     AND value != {settings.technical_category_root_id}
             )
         ) AS hierarchy
