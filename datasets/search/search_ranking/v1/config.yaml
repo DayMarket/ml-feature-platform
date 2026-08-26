@@ -45,6 +45,14 @@ dq:
       severity: warn
     - name: row_count_growth
       severity: warn
+    # final_price собирается как COALESCE(final_price, seller_price, full_price).
+    # На источнике за received_at = 2026-07-01 (89 163 741 показ после фильтров
+    # джоба) строк, где все три поля пустые, не было ни одной, поэтому NULL здесь
+    # означает сломавшийся контракт event_parameters, а не редкий валидный случай.
+    # severity warn на первое время, как и у остальных тестов этой энтити.
+    - name: not_null
+      columns: [final_price]
+      severity: warn
 
 feature_stats:
   trino_conn_id: trino_search
@@ -54,3 +62,7 @@ feature_stats:
   partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
   exclude_columns:
     - sku_group_id
+    # Идентификатор рекламной ставки, а не признак: профиль min/max/перцентилей
+    # по нему бессмыслен. cpo_adv_version остается в профиле - это небольшое
+    # целое, по которому видно, поехало ли распределение рекламных показов.
+    - bid_id
