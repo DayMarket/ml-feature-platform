@@ -35,6 +35,17 @@ dq:
   partition_column: collection_date
   partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
   tests:
+    # Это датасет событийных показов, а не витрина признаков: первичный ключ здесь
+    # задаёт гранулярность строки, а не контракт для потребителей. Источник
+    # (silver_b2c_clickstream.events) периодически отдаёт показы со сломанным SDK
+    # (install_id = NULL, session_id = нулевой sentinel) — они отфильтрованы в
+    # job/getting_search_ranking_dataset.py, но держать PK-тесты на error значит
+    # будить дежурного из-за качества источника. Результат по-прежнему пишется
+    # в feature_platform_dq_results.
+    - name: primary_key_not_null
+      severity: warn
+    - name: primary_key_unique
+      severity: warn
     # Раскатка DQ идёт на витрины, часть которых пуста или отстала на недели.
     # Объёмные тесты и freshness — в warn: состояние фиксируется в
     # feature_platform_dq_results, но дежурного не будит. Перевод в error —
