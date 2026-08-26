@@ -18,7 +18,7 @@ Downstream-DAG'и ждут именно эту таску, а не отдель�
 dq:
   enabled: true                # default true
   trino_conn_id: trino_search  # default trino_search
-  scope: partition             # default partition; table — сканировать всю таблицу
+  scope: partition             # default partition; table — таблица без колонки партиции
   partition_column: date       # default date
   partition_granularity: date  # default date; timestamp — энтити-снапшот
   partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
@@ -149,6 +149,33 @@ dq:
 жизни таблицы. Пока warmup активен, все результаты severity `error` понижаются до `warn`,
 а отчёт печатает `warmup: ACTIVE` и пишет флаг `warmup_active` в таблицу результатов.
 Для энтити с долгим набором данных ставьте `warmup_days: 14` и снимайте, когда пороги устоятся.
+При `scope: table` warmup обязан быть выключен (`warmup_days: 0`) — считать нечего, см. ниже.
+
+**Таблица без партиции.** `dq.scope: table` описывает таблицу, у которой колонки партиции нет
+вообще (справочник, append-only словарь). `scope` гасит ровно одно место — предикат партиции в
+`WHERE` (`scope_predicate` возвращает `TRUE`). Всё остальное рендерит SQL по
+`dq.partition_column` независимо от `scope`: `freshness` (`_render_freshness`),
+`row_count_growth` (`_render_row_count_growth`), warmup (`runner._partition_history_count`) и
+таска `feature_stats` (`render_stats_query`). Поэтому `scope: table` требует выключить их все
+разом:
+
+```yaml
+dq:
+  scope: table
+  warmup_days: 0
+  tests:
+    - name: freshness
+      enabled: false
+    - name: row_count_growth
+      enabled: false
+
+feature_stats:
+  enabled: false
+```
+
+`load_dq_settings` и `load_feature_stats_settings` не собирают конфиг, в котором что-то из этого
+осталось включённым: иначе Trino отвечает `COLUMN_NOT_FOUND`, и таска падает с вызовом дежурного
+раньше, чем появляется хоть один результат теста.
 
 **Бэкфилл истории.** `dq.active_from: "2026-08-01"` — для партиций раньше указанной даты тесты
 не запускаются вообще. Применяйте только когда старые партиции считались другой логикой и

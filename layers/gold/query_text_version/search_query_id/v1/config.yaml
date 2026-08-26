@@ -47,13 +47,16 @@ alerts:
 
 dq:
   trino_conn_id: trino_search
-  # Справочник query_text/version: колонки даты нет вообще, партиций нет.
-  # scope: table переводит предикат в TRUE, и ключевые тесты работают по всей
-  # таблице. freshness и row_count_growth выключены осознанно: первый всегда
-  # обращается к колонке партиции (см. dq/tests.py:_render_freshness) и на
-  # этой таблице сгенерировал бы SQL по несуществующей колонке, второй
-  # сравнивает с предыдущей партицией, которой здесь нет.
+  # Справочник query_text/version: колонки даты нет вообще, дневных партиций нет
+  # (таблица партиционирована по version). scope: table переводит предикат в TRUE,
+  # и ключевые тесты работают по всей таблице. Всё, что рендерит SQL по колонке
+  # партиции, обязано быть выключено явно — это требование проверяет
+  # load_dq_settings: freshness всегда обращается к dq.partition_column
+  # (dq/tests.py:_render_freshness), row_count_growth сравнивает с предыдущей
+  # партицией, которой здесь нет, а warmup_days считает партиции до текущей
+  # (dq/runner.py:_partition_history_count).
   scope: table
+  warmup_days: 0
   tests:
     - name: freshness
       enabled: false
@@ -64,9 +67,8 @@ dq:
 
 feature_stats:
   trino_conn_id: trino_search
-  # Дословно совпадает с dq.partition_date_template: обе таски обязаны
-  # смотреть на одну партицию, иначе профиль посчитан не по тем данным.
-  # Таблица без числовых feature-колонок (query_id/query_text/version — STRING,
-  # updated_at — TIMESTAMP), поэтому run_feature_stats не найдёт что профилировать
-  # и не запишет строк — это ожидаемо, а не баг.
-  exclude_columns: []
+  # Выключен по той же причине, что и партиционные DQ-тесты: render_stats_query
+  # всегда фильтрует по колонке партиции, которой у справочника нет. Профилировать
+  # тут всё равно нечего — числовых feature-колонок в таблице нет
+  # (query_id/query_text/version — STRING, updated_at — TIMESTAMP).
+  enabled: false

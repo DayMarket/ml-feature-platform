@@ -174,6 +174,32 @@ def test_partition_key_only_in_feature_stats_is_reported() -> None:
         assert "snapshot_interval_hours" in problems[0]
 
 
+def test_unknown_partition_column_is_reported() -> None:
+    # render_stats_query всегда фильтрует по feature_stats.partition_column,
+    # поэтому опечатка в ней роняет таску на COLUMN_NOT_FOUND в проде.
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = write_entity(
+            Path(tmp),
+            "dq:\n  partition_column: dt\nfeature_stats:\n  partition_column: dt\n",
+        )
+        problems = validate_config(config_path)
+        assert len(problems) == 1
+        assert "dt" in problems[0]
+
+
+def test_feature_stats_on_partitionless_table_is_reported() -> None:
+    # dq.scope: table означает, что колонки партиции нет, а feature_stats
+    # считает профиль строго по одной партиции.
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = write_entity(
+            Path(tmp),
+            "dq:\n  scope: table\n  warmup_days: 0\nfeature_stats:\n  exclude_columns: []\n",
+        )
+        problems = validate_config(config_path)
+        assert len(problems) == 1
+        assert "scope" in problems[0]
+
+
 def test_repository_configs_are_all_valid() -> None:
     problems: list[str] = []
     for config_path in discover_entity_configs(Path(".")):
@@ -192,6 +218,8 @@ def main() -> int:
     test_disabled_feature_stats_with_readme_explanation_is_accepted()
     test_partition_key_only_in_dq_is_reported()
     test_partition_key_only_in_feature_stats_is_reported()
+    test_unknown_partition_column_is_reported()
+    test_feature_stats_on_partitionless_table_is_reported()
     test_repository_configs_are_all_valid()
     print("validate_feature_stats_configs tests completed successfully")
     return 0

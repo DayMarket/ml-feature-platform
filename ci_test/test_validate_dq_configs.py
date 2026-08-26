@@ -94,6 +94,47 @@ def test_disabled_dq_without_readme_explanation_is_reported() -> None:
         assert any("README" in problem for problem in problems)
 
 
+def test_unknown_partition_column_is_reported() -> None:
+    # Колонка партиции нигде не объявлена как параметр теста, поэтому проверка
+    # тестовых колонок её не ловит, а warmup, freshness и row_count_growth
+    # рендерят SQL именно по ней.
+    validator = load_validator()
+    bad = ENTITY_CONFIG.replace("dq:\n", "dq:\n  partition_column: dt\n")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo = Path(temp_dir)
+        config_path = write_entity(repo, bad)
+        problems = validator.validate_config(config_path, repo)
+        assert any("dt" in problem for problem in problems), problems
+
+
+def test_unknown_primary_key_column_is_reported() -> None:
+    validator = load_validator()
+    bad = ENTITY_CONFIG.replace("primary_key: date,sku_group_id", "primary_key: date,skg_id")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo = Path(temp_dir)
+        config_path = write_entity(repo, bad)
+        problems = validator.validate_config(config_path, repo)
+        assert any("skg_id" in problem for problem in problems), problems
+
+
+def test_partition_column_is_not_checked_at_table_scope() -> None:
+    # При scope: table партиционной колонки у таблицы нет и её дефолтное имя
+    # ни во что не рендерится — требовать его в миграциях было бы ложной тревогой.
+    validator = load_validator()
+    partitionless = ENTITY_CONFIG.replace(
+        "dq:\n  tests:\n    - name: non_negative\n      columns: [orders_cnt]\n",
+        "dq:\n  scope: table\n  warmup_days: 0\n  tests:\n"
+        "    - name: freshness\n      enabled: false\n"
+        "    - name: row_count_growth\n      enabled: false\n",
+    )
+    migration = MIGRATION.replace("    date DATE COMMENT 'd',\n", "")
+    partitionless = partitionless.replace("primary_key: date,sku_group_id", "primary_key: sku_group_id")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo = Path(temp_dir)
+        config_path = write_entity(repo, partitionless, migration)
+        assert validator.validate_config(config_path, repo) == []
+
+
 def test_repository_configs_are_all_valid() -> None:
     validator = load_validator()
     repo = Path(".")
@@ -108,6 +149,9 @@ def main() -> int:
     test_unknown_column_is_reported()
     test_unknown_test_name_is_reported()
     test_disabled_dq_without_readme_explanation_is_reported()
+    test_unknown_partition_column_is_reported()
+    test_unknown_primary_key_column_is_reported()
+    test_partition_column_is_not_checked_at_table_scope()
     test_repository_configs_are_all_valid()
     print("DQ config validator tests completed successfully")
     return 0
