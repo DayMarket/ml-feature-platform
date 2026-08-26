@@ -90,6 +90,20 @@ collect_features >> [dq_task, stats_task]
 `columns_per_query` — единственный ключ, который никак не связан с `dq:` и не проверяется
 этим правилом.
 
+### Таблица без партиции
+
+`render_stats_query` всегда заканчивается предикатом по `partition_column`, поэтому
+беспартиционную таблицу профилировать нечем: `dq.scope: table` и включённый `feature_stats:` —
+ошибка конфигурации, которую `load_feature_stats_settings` не собирает. У такой энтити
+ставится `feature_stats.enabled: false` с объяснением в README энтити (его наличие проверяет
+`scripts/validate_feature_stats_configs.py`). Профиль по всей таблице как замена не годится:
+полный скан на каждый DAG-ран не окупается, ровно по той же причине, по которой профиль вообще
+считается по одной партиции.
+
+`scripts/validate_feature_stats_configs.py` дополнительно сверяет `partition_column` с
+`migrations/*.sql` энтити: опечатка в ней не видна ни одним другим правилом и роняет таску в
+Trino на `COLUMN_NOT_FOUND`.
+
 ## Как определяется набор признаков
 
 Список колонок и их типов таска берёт из `information_schema.columns` целевой таблицы, в
