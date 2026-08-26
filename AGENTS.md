@@ -340,6 +340,16 @@ Use this workflow only after confirming that the default Spark image or default 
 | `layers/gold/query_text_version/search_query_id/v1` | `freshness`, `row_count_growth`, `dq.warmup_days: 0`, `feature_stats.enabled: false` | Append-only справочник query_text/version без колонки даты (партиционирован по `version`). `scope: table` гасит предикат партиции, но `_render_freshness`, `_render_row_count_growth`, `_partition_history_count` и `render_stats_query` рендерят SQL по колонке партиции независимо от `scope` — на этой таблице такой колонки нет. | Не планируется: у таблицы принципиально нет и не будет дневной партиционной колонки. |
 | `layers/silver/sku_group_id_query_category/sku_group_install/v1` | `primary_key_not_null`, `primary_key_unique` | `table.primary_key` называет колонку `query`, которой в таблице нет (`migrations/create_table.sql`: `install_id, sku_group_id, section, uniqs, sum_atc, sum_clicks, sum_impressions, date`) — оба теста рендерят SQL по несуществующей колонке и падают `COLUMN_NOT_FOUND` в Trino с вызовом дежурного; `severity: warn` не защищает, потому что исключение возникает раньше, чем появляется результат теста. | Когда владелец энтити объявит настоящий грейн (реальный primary key) таблицы. |
 
+### Отключённые базовые тесты
+
+Отключить базовый тест (`enabled: false`) можно только с письменной причиной и
+условием повторного включения, записанными и в `config.yaml` энтити, и здесь:
+
+| Энтити | Отключено | Почему | Когда включать обратно |
+|---|---|---|---|
+| `layers/gold/query_text_version/search_query_id/v1` | `freshness`, `row_count_growth` | Append-only справочник query_text/version без колонки даты; `dq/tests.py:_render_freshness` игнорирует `scope` и всегда рендерит SQL по колонке партиции — на этой таблице такой колонки нет. `scope: table` включён, чтобы остальные тесты работали по всей таблице. | Не планируется: у таблицы принципиально нет и не будет партиционной колонки. |
+| `layers/silver/sku_group_id_query_category/sku_group_install/v1` | `primary_key_not_null`, `primary_key_unique` | `table.primary_key` называет колонку `query`, которой в таблице нет (`migrations/create_table.sql`: `install_id, sku_group_id, section, uniqs, sum_atc, sum_clicks, sum_impressions, date`) — оба теста рендерят SQL по несуществующей колонке и падают `COLUMN_NOT_FOUND` в Trino с вызовом дежурного; `severity: warn` не защищает, потому что исключение возникает раньше, чем появляется результат теста. | Когда владелец энтити объявит настоящий грейн (реальный primary key) таблицы. |
+
 Automatically generated DQ tests:
 
 - `dbt_utils.unique_combination_of_columns` over all columns from `table.primary_key`.
