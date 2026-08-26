@@ -44,7 +44,7 @@ Owner metadata:
 - A dataset DAG that reads repository-managed layer or dataset tables must declare a sensor dependency on the `dq` task of every source table's owning DAG. A training dataset must not bypass DQ sensors just because it is offline-only.
 - When adding or changing DAG schedules, `start_date`, backfill ranges, or partition intervals, ask the user to confirm the launch time in UTC and propose UTC times by default. Keep Airflow `start_date`/`end_date` timezone-aware UTC, and generate job partition boundaries from Airflow `data_interval_start`/`data_interval_end` converted to UTC.
 - When adding or changing Spark layer or dataset DAGs, ask the user which Spark resource profile to use or what driver/executor resources are expected. Use `config/spark/resources.yaml` profiles and reference them from the entity `config.yaml`; add a new named profile only after the resource contract is confirmed.
-- Spark memory overhead must always be pinned explicitly. Every resource profile and local `config/resources.yaml` must define `driver_memory_overhead` and `executor_memory_overhead`, and every SparkApplication template must render them as `memoryOverhead`. Without an explicit value, Spark on Kubernetes applies the non-JVM default `spark.kubernetes.memoryOverheadFactor` of 0.4, so a 16g executor silently requests ~22.4g. Total pod memory is `memory + memoryOverhead`; size the overhead for Python worker processes, not to zero. `ci_test/test_spark_resources.py` enforces this.
+- Spark memory overhead must always be pinned explicitly. Every resource profile and local `config/resources.yaml` must define `driver_memory_overhead` and `executor_memory_overhead`, and every SparkApplication template must render them as `memoryOverhead`. Without an explicit value, Spark on Kubernetes applies the non-JVM default `spark.kubernetes.memoryOverheadFactor` of 0.4, so a 16g executor silently requests ~22.4g. Total pod memory is `memory + memoryOverhead`; size the overhead for Python worker processes, not to zero. `ci_test/test_spark_resources.py` enforces this — including that every `config/factory.py` fills the `<driver_memory_overhead>`/`<executor_memory_overhead>` placeholders: profile and factory are two halves of one contract, and a profile without the keys makes the DAG fail to import with `KeyError`, while a factory that skips them renders the placeholder into the SparkApplication verbatim.
 - New Spark layer and dataset jobs should use the shared Spark image plus `git-sync`. Add a custom Spark image only when runtime dependencies cannot be delivered by `git-sync`.
 - Trino-source DAGs have two supported Airflow connections: `trino_search` for search-domain workloads and `trino_recsys` for recommendation-system workloads. Propose the connection that matches the source and workload context; if the context does not determine it unambiguously, present both options and use the user's final choice. Do not silently lock in a connection when the contract has not been confirmed.
 - For ClickHouse-source DAGs, always ask the user for the Airflow connection id before scaffolding or editing files, because ClickHouse access is RBAC-sensitive. Do not infer the connection from nearby DAGs.
@@ -467,6 +467,10 @@ Configuration rules:
 Run relevant checks before finishing changes:
 
 ```bash
+python3 -m pytest ci_test
+
+# Отдельные проверки, если pytest недоступен. Список не полон: часть файлов в
+# ci_test/ написана в стиле pytest, и запуск интерпретатором их не выполняет.
 python3 ci_test/test_script.py
 python3 ci_test/test_sync_dbt_sources.py
 python3 ci_test/test_sync_iceberg_maintenance.py
@@ -488,6 +492,7 @@ python3 ci_test/test_feature_stats_results.py
 python3 ci_test/test_feature_stats_task.py
 python3 ci_test/test_feature_stats_task_wiring.py
 python3 ci_test/test_validate_feature_stats_configs.py
+python3 ci_test/test_spark_resources.py
 git diff --check
 ```
 
