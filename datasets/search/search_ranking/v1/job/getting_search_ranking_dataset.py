@@ -151,6 +151,14 @@ sessions_raw AS (
         AND query IS NOT NULL
         AND trim(query) != ''
         AND COALESCE(is_full_catpred, false) = false
+        -- Клиент, у которого не проинициализировался SDK, шлёт install_id = NULL
+        -- вместе с session_id = нулевым sentinel'ом. Совпадение 100%: за
+        -- received_at = 2026-08-11 таких показов 166, все с одного устройства, и
+        -- event_properties.event_parameters.event_validation_info.validationStatus
+        -- у них FAILED. Такая строка не атрибутируется к заказу (LEFT JOIN orders
+        -- идёт по install_id и session_id) и ломает первичный ключ витрины.
+        AND install_id IS NOT NULL
+        AND session_id != '00000000-0000-0000-0000-000000000000'
 ),
 sessions_with_duplicate_stats AS (
     SELECT
