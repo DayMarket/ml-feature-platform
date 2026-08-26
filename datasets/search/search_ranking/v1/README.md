@@ -49,6 +49,31 @@
 
 Запрос нормализуется как `trim(lower(query))`.
 
+## Рекламные и ценовые поля показа
+
+`cpo_adv_version`, `bid_id`, `seller_price` и `final_price` берутся из того же события показа.
+
+- `bid_id` читается из плоской колонки `iceberg.silver_b2c_clickstream.events.bid_id`, а не из JSON.
+  На срезе `received_at = 2026-07-01` (89 163 741 показ после фильтров джоба) плоская колонка
+  совпала с `event_properties.event_parameters.bid_id` на всех строках, включая совпадение `NULL`.
+- `cpo_adv_version` и `seller_price` читаются из `event_properties.event_parameters` через
+  `get_json_object`. `seller_price` нельзя подменить плоской колонкой `events.sell_price`:
+  на том же срезе значения расходятся на 12.3% показов.
+- `final_price` пишется как `COALESCE(final_price, seller_price, full_price)` из
+  `event_parameters`. Сырой `final_price` присутствует только у 43.1% показов, и когда он
+  присутствует, он всегда строго меньше `seller_price` - случай `final_price = seller_price`
+  в источнике не встречается. Поэтому COALESCE не теряет информацию: строки, где поле не
+  логировалось, распознаются условием `final_price = seller_price`. Покрытие после COALESCE
+  полное: строк, где пусты все три источника, на срезе не было.
+- `cpo_adv_version` и `bid_id` сохраняются как есть, включая `NULL` (15.6% и 22.7% показов
+  соответственно). `NULL` здесь означает "поле не логировалось этим событием" и не
+  схлопывается в `0`: `cpo_adv_version = 0` и `bid_id = 0` - валидные значения со своим
+  смыслом (нет CPO-версии, нет рекламной ставки). Пропуски у обоих полей - один и тот же
+  пласт событий: там, где `cpo_adv_version IS NULL`, `bid_id` пуст в 99.1% случаев.
+
+Колонки добавлены без backfill истории: в партициях, записанных до этого изменения, они
+остаются `NULL`.
+
 Перед join с заказами показы дедуплицируются по position key:
 
 - `event_date`;
@@ -105,11 +130,21 @@ Score-поля берутся из `iceberg.silver.ranking_analytics_events` з�
 - `deduplicate_rank` - порядковый номер показа внутри `event_date, install_id, session_id, query`.
 - `position_duplicate_count` - количество сырых кандидатов position key до дедупликации.
 - `widget_section_name`, `widget_space_name` - контекст виджета.
+- `cpo_adv_version` - версия CPO рекламной кампании показа; `NULL`, если поле не логировалось.
+- `bid_id` - идентификатор рекламной ставки показа; `0` - ставки не было, `NULL` - поле не логировалось.
+- `seller_price` - цена продавца из `event_parameters.seller_price`.
+- `final_price` - итоговая цена показа, `COALESCE(final_price, seller_price, full_price)`.
 - `normalized_linear_score` - средний `normalized_linear_score` по `query, sku_group_id` из ranking analytics за `event_date`.
 - `linear_score` - средний `linear_score` по `query, sku_group_id` из ranking analytics за `event_date`.
 - `dssm_score` - средний `dssm_score` по `query, sku_group_id` из ranking analytics за `event_date`.
 - `is_generated_order` - binary label.
 
 ## DQ
+
+Таска `dq` проверяет `final_price` тестом `not_null` с severity `warn`: после COALESCE поле
+должно быть заполнено всегда, поэтому `NULL` в нём - признак сломавшегося контракта
+`event_parameters`. `cpo_adv_version`, `bid_id` и `seller_price` под `not_null` не заводятся:
+у них пропуски штатны. В профиле `feature_stats` `bid_id` исключён как идентификатор,
+`cpo_adv_version` оставлен.
 
 Автогенерируемый dbt DQ должен проверить `not_null` и уникальность по primary key. Табличные DQ проверки для распределения label, полноты партиций, допустимых значений `is_generated_order` или score-диапазонов не добавлены в этой версии, чтобы сначала накопить статистику по объему и стабильности источников.
