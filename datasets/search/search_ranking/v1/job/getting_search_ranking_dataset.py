@@ -80,7 +80,7 @@ order_items_enhanced AS (
     WHERE
         oi.order_item_status NOT IN ('CREATED', 'NOT_CREATED')
         AND oi.generated_at >= DATE_SUB(p.event_date, 15)
-        AND oi.generated_at < DATE_ADD(p.event_date, 1)
+        AND oi.generated_at < DATE_ADD(p.event_date, 15)
 ),
 orders AS (
     SELECT
