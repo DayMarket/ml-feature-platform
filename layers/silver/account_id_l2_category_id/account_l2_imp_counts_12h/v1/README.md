@@ -1,10 +1,10 @@
 # 12-часовые показы account/L2
 
-DAG id: `feature-platform.layers.silver.account_id_l2_category_id.account_l2_impression_counts_12h`.
+DAG id: `feature-platform.layers.silver.account_id_l2_category_id.account_l2_imp_counts_12h`.
 
 Airflow group tag: `recsys-main-page-features`.
 
-Целевая таблица: `iceberg.silver.feature_platform_account_l2_impression_counts_12h`.
+Целевая таблица: `iceberg.silver.feature_platform_account_l2_imp_counts_12h`.
 
 ## Контракт
 

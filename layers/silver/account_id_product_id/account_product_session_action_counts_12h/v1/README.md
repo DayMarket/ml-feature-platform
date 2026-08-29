@@ -1,8 +1,8 @@
 # 12-часовые product action counts
 
-DAG id: `feature-platform.layers.silver.account_id_session_id_product_id_event_type.account_product_session_action_counts_12h`.
+DAG id: `feature-platform.layers.silver.account_id_product_id.account_product_session_action_counts_12h`.
 
-Airflow group tag: `recsys-main-page-features`.
+Airflow group tag: `recsys-featuresrecsys-features`.
 
 Целевая таблица: `iceberg.silver.feature_platform_account_product_session_action_counts_12h`.
 

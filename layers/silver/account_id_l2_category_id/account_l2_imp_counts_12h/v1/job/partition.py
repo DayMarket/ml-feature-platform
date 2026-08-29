@@ -5,7 +5,7 @@ def parse_airflow_timestamp(value: str) -> datetime:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(
             "Unsupported partition timestamp for "
-            f"account_l2_impression_counts_12h: {value!r}"
+            f"account_l2_imp_counts_12h: {value!r}"
         )
 
     normalized = value.strip()
@@ -17,7 +17,7 @@ def parse_airflow_timestamp(value: str) -> datetime:
     except ValueError as error:
         raise ValueError(
             "Unsupported partition timestamp for "
-            f"account_l2_impression_counts_12h: {value!r}"
+            f"account_l2_imp_counts_12h: {value!r}"
         ) from error
 
     if parsed.tzinfo is None:

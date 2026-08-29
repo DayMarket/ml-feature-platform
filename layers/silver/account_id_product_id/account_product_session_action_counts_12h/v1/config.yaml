@@ -4,7 +4,7 @@ resources:
 spark:
   template_path: ../../../../../config/spark/layer_spark_application.yaml
   application_name: fetch-silver-account-product-session-action-counts-12h
-  main_application_file: local:///git/repo/layers/silver/account_id_session_id_product_id_event_type/account_product_session_action_counts_12h/v1/entrypoints/get_account_product_session_action_counts_12h.py
+  main_application_file: local:///git/repo/layers/silver/account_id_product_id/account_product_session_action_counts_12h/v1/entrypoints/get_account_product_session_action_counts_12h.py
   resource_profile: small
 
 table:
@@ -25,8 +25,8 @@ source:
   window_hours: 12
 
 dag:
-  id: feature-platform.layers.silver.account_id_session_id_product_id_event_type.account_product_session_action_counts_12h
-  group_tag: recsys-main-page-features
+  id: feature-platform.layers.silver.account_id_product_id.account_product_session_action_counts_12h
+  group_tag: recsys-features
   schedule: "0 7,19 * * *"
   start_date: "2026-08-08T07:00:00Z"
   catchup: true

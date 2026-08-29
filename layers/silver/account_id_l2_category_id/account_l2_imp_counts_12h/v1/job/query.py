@@ -15,29 +15,29 @@ class SourceSettings(Protocol):
     window_hours: int
 
 
-def _category_joins(settings: SourceSettings) -> str:
+def _parent_category_joins(settings: SourceSettings) -> str:
     return f"""
-LEFT JOIN {settings.category_table} c1
-    ON c0.parent_id = c1.id
-LEFT JOIN {settings.category_table} c2
-    ON c1.parent_id = c2.id
-LEFT JOIN {settings.category_table} c3
-    ON c2.parent_id = c3.id
-LEFT JOIN {settings.category_table} c4
-    ON c3.parent_id = c4.id
-LEFT JOIN {settings.category_table} c5
-    ON c4.parent_id = c5.id
+LEFT JOIN {settings.category_table} parent_1
+    ON leaf_category.parent_id = parent_1.id
+LEFT JOIN {settings.category_table} parent_2
+    ON parent_1.parent_id = parent_2.id
+LEFT JOIN {settings.category_table} parent_3
+    ON parent_2.parent_id = parent_3.id
+LEFT JOIN {settings.category_table} parent_4
+    ON parent_3.parent_id = parent_4.id
+LEFT JOIN {settings.category_table} parent_5
+    ON parent_4.parent_id = parent_5.id
 """
 
 
 def build_category_depth_validation_query(settings: SourceSettings) -> str:
     return f"""
-SELECT c0.id
-FROM {settings.category_table} c0
-{_category_joins(settings)}
-WHERE c5.parent_id IS NOT NULL
-    AND c5.parent_id > 0
-    AND c5.parent_id != {settings.technical_category_root_id}
+SELECT leaf_category.id
+FROM {settings.category_table} leaf_category
+{_parent_category_joins(settings)}
+WHERE parent_5.parent_id IS NOT NULL
+    AND parent_5.parent_id > 0
+    AND parent_5.parent_id != {settings.technical_category_root_id}
 LIMIT 1
 """
 
@@ -60,7 +60,7 @@ def _sql_string(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def build_account_l1_impression_counts_query(
+def build_account_l2_imp_counts_query(
     settings: SourceSettings,
     calculated_at: datetime,
 ) -> str:
@@ -71,29 +71,42 @@ def build_account_l1_impression_counts_query(
     event_type_sql = _sql_string(settings.impression_event_type)
 
     return f"""
-WITH category_paths AS (
+WITH category_ancestors AS (
     SELECT
-        CAST(c0.id AS INT) AS category_id,
+        CAST(leaf_category.id AS INT) AS category_id,
         REVERSE(
             FILTER(
-                ARRAY(c0.id, c1.id, c2.id, c3.id, c4.id, c5.id),
+                ARRAY(
+                    leaf_category.id,
+                    parent_1.id,
+                    parent_2.id,
+                    parent_3.id,
+                    parent_4.id,
+                    parent_5.id
+                ),
                 value -> value IS NOT NULL
+                    AND value > 0
                     AND value != {settings.technical_category_root_id}
             )
-        ) AS hierarchy
-    FROM {settings.category_table} c0
-    {_category_joins(settings)}
+        ) AS root_to_leaf_category_ids
+    FROM {settings.category_table} leaf_category
+    {_parent_category_joins(settings)}
 ),
 category_levels AS (
     SELECT
         category_id,
-        CAST(TRY_ELEMENT_AT(hierarchy, 1) AS INT) AS l1_category_id
-    FROM category_paths
+        CAST(
+            COALESCE(
+                TRY_ELEMENT_AT(root_to_leaf_category_ids, 2),
+                TRY_ELEMENT_AT(root_to_leaf_category_ids, 1)
+            ) AS INT
+        ) AS l2_category_id
+    FROM category_ancestors
 ),
 product_categories AS (
     SELECT
         CAST(product.id AS INT) AS product_id,
-        category.l1_category_id
+        category.l2_category_id
     FROM {settings.product_table} product
     LEFT JOIN category_levels category
         ON product.category_id = category.category_id
@@ -104,7 +117,7 @@ resolved_events AS (
         CAST(event.account_id AS INT) AS account_id,
         event.session_id,
         CAST(event.product_id AS INT) AS product_id,
-        product_category.l1_category_id
+        product_category.l2_category_id
     FROM {settings.events_table} event
     LEFT JOIN product_categories product_category
         ON event.product_id = product_category.product_id
@@ -119,28 +132,28 @@ session_counts AS (
     SELECT
         account_id,
         session_id,
-        l1_category_id,
-        CAST(COUNT(DISTINCT product_id) AS INT) AS n_impressions
+        l2_category_id,
+        COUNT(DISTINCT product_id) AS n_impressions
     FROM resolved_events
-    WHERE l1_category_id IS NOT NULL
+    WHERE l2_category_id IS NOT NULL
     GROUP BY
         account_id,
         session_id,
-        l1_category_id
+        l2_category_id
 )
 SELECT
     TIMESTAMP '{calculated_at_tashkent_sql}' AS calculated_at,
     account_id,
-    l1_category_id,
-    CAST(SUM(n_impressions) AS INT) AS n_impressions
+    l2_category_id,
+    SUM(n_impressions) AS n_impressions
 FROM session_counts
 GROUP BY
     account_id,
-    l1_category_id
+    l2_category_id
 """
 
 
-def build_account_l1_impression_counts_merge_query(
+def build_account_l2_imp_counts_merge_query(
     target_table: str,
     calculated_at: datetime,
 ) -> str:
@@ -148,21 +161,21 @@ def build_account_l1_impression_counts_merge_query(
 
     return f"""
 MERGE INTO {target_table} AS target
-USING account_l1_impression_counts_for_calculated_at AS source
+USING account_l2_imp_counts_for_calculated_at AS source
     ON target.calculated_at = source.calculated_at
     AND target.account_id = source.account_id
-    AND target.l1_category_id = source.l1_category_id
+    AND target.l2_category_id = source.l2_category_id
 WHEN MATCHED THEN UPDATE SET
     target.n_impressions = source.n_impressions
 WHEN NOT MATCHED THEN INSERT (
     calculated_at,
     account_id,
-    l1_category_id,
+    l2_category_id,
     n_impressions
 ) VALUES (
     source.calculated_at,
     source.account_id,
-    source.l1_category_id,
+    source.l2_category_id,
     source.n_impressions
 )
 WHEN NOT MATCHED BY SOURCE

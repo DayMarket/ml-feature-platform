@@ -8,12 +8,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PARTITION_MODULES = (
     ROOT
     / "layers/silver/account_id_l1_category_id"
-    / "account_l1_impression_counts_12h/v1/job/partition.py",
+    / "account_l1_imp_counts_12h/v1/job/partition.py",
     ROOT
     / "layers/silver/account_id_l2_category_id"
-    / "account_l2_impression_counts_12h/v1/job/partition.py",
+    / "account_l2_imp_counts_12h/v1/job/partition.py",
     ROOT
-    / "layers/silver/account_id_session_id_product_id_event_type"
+    / "layers/silver/account_id_product_id"
     / "account_product_session_action_counts_12h/v1/job/partition.py",
 )
 

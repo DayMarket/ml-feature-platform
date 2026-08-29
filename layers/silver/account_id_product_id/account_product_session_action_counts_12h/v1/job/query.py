@@ -66,7 +66,7 @@ SELECT
     session_id,
     product_id,
     event_type,
-    CAST(COUNT(*) AS INT) AS n_events,
+    COUNT(*) AS n_events,
     FROM_UTC_TIMESTAMP(
         MAX(received_at),
         'Asia/Tashkent'

@@ -55,14 +55,14 @@ default_args = {
     start_date=pendulum.parse(dag_settings["start_date"]).in_timezone("UTC"),
     dag_id=dag_settings["dag_id"],
 )
-def collect_silver_account_l1_impression_counts_12h():
+def collect_silver_account_l1_imp_counts_12h():
     SparkKubernetesOperator(
         execution_timeout=timedelta(hours=10),
-        task_id="getting_account_l1_impression_counts_12h",
+        task_id="getting_account_l1_imp_counts_12h",
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(),
         kubernetes_conn_id="spark_k8s",
     )
 
 
-dag = collect_silver_account_l1_impression_counts_12h()
+dag = collect_silver_account_l1_imp_counts_12h()

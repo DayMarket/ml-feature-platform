@@ -8,7 +8,7 @@
 - [`city_id_dimensional_group`](city_id_dimensional_group/README.md) — стоимость логистики по городу и габаритной группе;
 - [`account_id_l1_category_id`](account_id_l1_category_id/README.md) — 12-часовые показы account/L1;
 - [`account_id_l2_category_id`](account_id_l2_category_id/README.md) — 12-часовые показы account/L2;
-- [`account_id_session_id_product_id_event_type`](account_id_session_id_product_id_event_type/README.md) — 12-часовые product action counts;
+- [`account_id_product_id`](account_id_product_id/README.md) — 12-часовые product action counts;
 - [`h3_index`](h3_index/README.md) — географические и локационные предагрегаты;
 - [`order_city_id`](order_city_id/README.md) — агрегаты по городу доставки заказа;
 - [`order_region_id`](order_region_id/README.md) — агрегаты по региону доставки заказа;

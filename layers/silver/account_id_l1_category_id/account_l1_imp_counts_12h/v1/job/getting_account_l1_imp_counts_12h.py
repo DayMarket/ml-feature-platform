@@ -3,8 +3,8 @@ from pyspark.sql import DataFrame, SparkSession
 from job.entities import Arguments
 from job.partition import parse_airflow_timestamp
 from job.query import (
-    build_account_l2_impression_counts_merge_query,
-    build_account_l2_impression_counts_query,
+    build_account_l1_imp_counts_merge_query,
+    build_account_l1_imp_counts_query,
     build_category_depth_validation_query,
 )
 from job.runtime_config import SourceSettings, load_source_settings
@@ -39,18 +39,18 @@ def _validate_category_depth(
         )
 
 
-def build_account_l2_impression_counts(
+def build_account_l1_imp_counts(
     spark: SparkSession,
     partition_end: str,
     settings: SourceSettings,
 ) -> DataFrame:
     calculated_at = parse_airflow_timestamp(partition_end)
     return spark.sql(
-        build_account_l2_impression_counts_query(settings, calculated_at)
+        build_account_l1_imp_counts_query(settings, calculated_at)
     )
 
 
-def save_account_l2_impression_counts(
+def save_account_l1_imp_counts(
     spark: SparkSession,
     partition_end: str,
     target_table: str,
@@ -64,13 +64,13 @@ def save_account_l2_impression_counts(
 
     calculated_at = parse_airflow_timestamp(partition_end)
     features = spark.sql(
-        build_account_l2_impression_counts_query(settings, calculated_at)
+        build_account_l1_imp_counts_query(settings, calculated_at)
     )
     features.createOrReplaceTempView(
-        "account_l2_impression_counts_for_calculated_at"
+        "account_l1_imp_counts_for_calculated_at"
     )
     spark.sql(
-        build_account_l2_impression_counts_merge_query(
+        build_account_l1_imp_counts_merge_query(
             target_table,
             calculated_at,
         )
@@ -78,7 +78,7 @@ def save_account_l2_impression_counts(
 
 
 def run(spark: SparkSession, arguments: Arguments) -> None:
-    save_account_l2_impression_counts(
+    save_account_l1_imp_counts(
         spark,
         arguments.partition_end,
         arguments.table_name,
