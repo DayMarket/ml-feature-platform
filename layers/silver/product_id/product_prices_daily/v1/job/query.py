@@ -11,13 +11,13 @@ def _date_literal(value: date) -> str:
     return f"DATE '{value.isoformat()}'"
 
 
-def build_query(price_date: date) -> str:
-    date_sql = _date_literal(price_date)
+def build_query(dt: date) -> str:
+    date_sql = _date_literal(dt)
 
     return f"""
 WITH sku_prices AS (
     SELECT
-        {date_sql} AS price_date,
+        {date_sql} AS dt,
         CAST(s.product_id AS INTEGER) AS product_id,
         CAST(s.sku_group_id AS INTEGER) AS sku_group_id,
         CASE
@@ -44,7 +44,7 @@ WITH sku_prices AS (
 ),
 sku_group_prices AS (
     SELECT
-        price_date,
+        dt,
         product_id,
         sku_group_id,
         MIN(sell_price_eod) AS min_sell_price_eod,
@@ -63,12 +63,12 @@ sku_group_prices AS (
         ) AS max_active_sku_sell_price_eod
     FROM sku_prices
     GROUP BY
-        price_date,
+        dt,
         product_id,
         sku_group_id
 )
 SELECT
-    price_date,
+    dt,
     product_id,
     MIN(min_sell_price_eod) AS min_sell_price_eod,
     AVG(avg_sell_price_eod) AS avg_sell_price_eod,
@@ -86,13 +86,13 @@ SELECT
     ) AS max_active_sku_sell_price_eod
 FROM sku_group_prices
 GROUP BY
-    price_date,
+    dt,
     product_id
 """
 
 
-def build_source_metrics_query(price_date: date) -> str:
-    date_sql = _date_literal(price_date)
+def build_source_metrics_query(dt: date) -> str:
+    date_sql = _date_literal(dt)
 
     return f"""
 WITH price_skus AS (

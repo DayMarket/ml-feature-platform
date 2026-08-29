@@ -178,28 +178,28 @@ def query_trino(conn_id: str, sql: str):
 
 def validate_source_metrics(
     metrics,
-    price_date: date,
+    dt: date,
 ) -> dict[str, int]:
     missing = [name for name in SOURCE_METRIC_COLUMNS if name not in metrics.columns]
     if missing:
         raise ValueError(f"Source metrics are missing columns: {missing}")
     if len(metrics.index) != 1:
         raise ValueError(
-            f"Expected one source-metrics row for {price_date}, got {len(metrics.index)}"
+            f"Expected one source-metrics row for {dt}, got {len(metrics.index)}"
         )
 
     values = {name: int(metrics.iloc[0][name]) for name in SOURCE_METRIC_COLUMNS}
     if values["source_rows"] <= 0:
-        raise ValueError(f"No EOD price rows found for price_date={price_date}")
+        raise ValueError(f"No EOD price rows found for dt={dt}")
     if values["source_skus"] <= 0 or values["source_products"] <= 0:
-        raise ValueError(f"No valid SKU/product coverage for price_date={price_date}")
+        raise ValueError(f"No valid SKU/product coverage for dt={dt}")
     if values["mapped_skus"] <= 0 or values["mapped_source_products"] <= 0:
-        raise ValueError(f"No EOD prices could be mapped for price_date={price_date}")
+        raise ValueError(f"No EOD prices could be mapped for dt={dt}")
 
     logger.info(
-        "Source coverage for price_date=%s: rows=%d, skus=%d/%d, "
+        "Source coverage for dt=%s: rows=%d, skus=%d/%d, "
         "products=%d/%d, product_mapping_mismatches=%d",
-        price_date,
+        dt,
         values["source_rows"],
         values["mapped_skus"],
         values["source_skus"],
@@ -210,26 +210,26 @@ def validate_source_metrics(
     return values
 
 
-def validate_product_prices(frame, price_date: date) -> None:
+def validate_product_prices(frame, dt: date) -> None:
     import pandas as pd
 
-    required = ("price_date", "product_id", *PRICE_COLUMNS)
+    required = ("dt", "product_id", *PRICE_COLUMNS)
     missing = [name for name in required if name not in frame.columns]
     if missing:
         raise ValueError(f"Product prices are missing columns: {missing}")
     if frame.empty:
-        raise ValueError(f"Product prices are empty for {price_date}")
+        raise ValueError(f"Product prices are empty for {dt}")
 
-    frame["price_date"] = pd.to_datetime(frame["price_date"]).dt.date
-    if frame["price_date"].isna().any():
-        raise ValueError("Product prices contain null price_date")
-    if (frame["price_date"] != price_date).any():
-        raise ValueError(f"Outgoing rows contain a price_date other than {price_date}")
+    frame["dt"] = pd.to_datetime(frame["dt"]).dt.date
+    if frame["dt"].isna().any():
+        raise ValueError("Product prices contain null dt")
+    if (frame["dt"] != dt).any():
+        raise ValueError(f"Outgoing rows contain a dt other than {dt}")
 
     frame["product_id"] = pd.to_numeric(frame["product_id"], errors="coerce")
     if frame["product_id"].isna().any() or (frame["product_id"] <= 0).any():
         raise ValueError("Product prices contain invalid product_id")
-    if frame.duplicated(subset=["price_date", "product_id"]).any():
+    if frame.duplicated(subset=["dt", "product_id"]).any():
         raise ValueError("Product prices contain duplicate primary keys")
 
     for column in PRICE_COLUMNS:
@@ -312,20 +312,20 @@ def _to_arrow_for_table(table, frame):
 def write_daily_prices(
     table,
     frame,
-    price_date: date,
+    dt: date,
 ) -> None:
     from pyiceberg.expressions import EqualTo
 
     frame = frame.copy()
-    validate_product_prices(frame, price_date)
+    validate_product_prices(frame, dt)
     arrow_table = _to_arrow_for_table(table, frame)
     table.overwrite(
         arrow_table,
-        overwrite_filter=EqualTo("price_date", price_date),
+        overwrite_filter=EqualTo("dt", dt),
     )
     logger.info(
-        "Wrote %d rows to %s for price_date=%s",
+        "Wrote %d rows to %s for dt=%s",
         arrow_table.num_rows,
         table.name(),
-        price_date,
+        dt,
     )

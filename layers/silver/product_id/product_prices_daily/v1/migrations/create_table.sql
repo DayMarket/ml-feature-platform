@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS {target_table} (
-    price_date DATE COMMENT 'Дата исторического EOD-среза цен в часовом поясе Asia/Tashkent',
+    dt DATE COMMENT 'Дата исторического EOD-среза цен в часовом поясе Asia/Tashkent',
     product_id INT COMMENT 'Идентификатор товара',
     min_sell_price_eod DOUBLE COMMENT 'Минимальная валидная sell price товара на конец дня после двухэтапной агрегации через SKU-group',
     avg_sell_price_eod DOUBLE COMMENT 'Среднее sell price по SKU-group товара на конец дня',
@@ -12,5 +12,5 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 )
 USING iceberg
 COMMENT 'Silver: дневные price-факты на уровне товара'
-PARTITIONED BY (price_date)
+PARTITIONED BY (dt)
 TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

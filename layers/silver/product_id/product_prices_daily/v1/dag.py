@@ -98,6 +98,7 @@ def product_prices_daily_dag() -> None:
         poke_interval=30,
         timeout=6 * 60 * 60,
         check_existence=True,
+        execution_delta=timedelta(hours=13),
     )
 
     @task(executor_config=_executor_config())
@@ -109,20 +110,20 @@ def product_prices_daily_dag() -> None:
         catalog = runtime.get_iceberg_catalog(ref)
 
         table = runtime.preflight_table(catalog, ref)
-        price_date = runtime.previous_tashkent_date(interval_end_value)
+        dt = runtime.previous_tashkent_date(interval_end_value)
         conn_id = config["source"]["trino_conn_id"]
 
         metrics = runtime.query_trino(
             conn_id,
-            query.build_source_metrics_query(price_date),
+            query.build_source_metrics_query(dt),
         )
-        runtime.validate_source_metrics(metrics, price_date)
+        runtime.validate_source_metrics(metrics, dt)
 
         frame = runtime.query_trino(
             conn_id,
-            query.build_query(price_date),
+            query.build_query(dt),
         )
-        runtime.write_daily_prices(table, frame, price_date)
+        runtime.write_daily_prices(table, frame, dt)
 
     interval_end_value = (
         '{{ data_interval_end.in_timezone("UTC").isoformat() }}'

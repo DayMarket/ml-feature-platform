@@ -4,7 +4,7 @@ table:
   catalog: iceberg
   schema: silver
   name: feature_platform_product_prices_daily
-  primary_key: price_date,product_id
+  primary_key: dt,product_id
   meta:
     team: team::recsys
     create_dbt_pr: true

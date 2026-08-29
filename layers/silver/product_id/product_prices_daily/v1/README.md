@@ -1,6 +1,6 @@
 # product_prices_daily
 
-Дневные price-факты товара. Исторические цены относятся к `price_date`, а доступность SKU
+Дневные price-факты товара. Исторические цены относятся к `dt`, а доступность SKU
 определяется по текущему состоянию на момент выполнения job.
 
 ## Выход и оркестрация
@@ -10,16 +10,18 @@
 - Путь: `layers/silver/product_id/product_prices_daily/v1`.
 - Групповой тег Airflow: `recsys-main-page-features`.
 - Расписание: ежедневно в 19:00 UTC (`0 19 * * *`), то есть в 00:00 `Asia/Tashkent`.
-- `price_date` — предыдущая календарная дата `Asia/Tashkent` относительно `data_interval_end`.
-- `start_date=2026-08-08T19:00:00Z`, `catchup=True`. При включении 23 августа 2026 года первый запуск рассчитывает `price_date=2026-08-09`, а initial backfill покрывает 14 завершённых EOD-дат с 9 по 22 августа.
+- `dt` — предыдущая календарная дата `Asia/Tashkent` относительно `data_interval_end`.
+- `start_date=2026-08-08T19:00:00Z`, `catchup=True`. При включении 23 августа 2026 года первый запуск рассчитывает `dt=2026-08-09`, а initial backfill покрывает 14 завершённых EOD-дат с 9 по 22 августа.
 
 Перед материализацией `ExternalTaskSensor` ожидает успешный
 `dbt.tests.dbt_clickhouse_dwh.daily_sku_quantity_eod.dq`, в котором проверяются актуальные
-цены источника. Пустой срез дополнительно останавливает задачу до записи.
+цены источника. DQ DAG запускается ежедневно в `06:00 UTC`, поэтому S3 с расписанием
+`19:00 UTC` использует `execution_delta=13 часов` и ждёт соответствующий запуск того же дня.
+Пустой срез дополнительно останавливает задачу до записи.
 
 ## Грейн и ключ
 
-Грейн и уникальный ключ: `price_date, product_id`.
+Грейн и уникальный ключ: `dt, product_id`.
 
 SKU и SKU-group используются только внутри расчета и не публикуются.
 
@@ -35,7 +37,7 @@ SKU и SKU-group используются только внутри расчет
 Чтение выполняется через Trino connection `trino_recsys`:
 
 - `"dwh-clickhouse".marts.daily_sku_quantity_eod` — `full_price_eod` и
-  `sell_price_eod` за `price_date`;
+  `sell_price_eod` за `dt`;
 - `"dwh-clickhouse".dict.sku` — mapping `sku_id → sku_group_id → product_id` и текущее
   состояние `status`, `quantity_active`, `quantity_fbs`.
 
@@ -52,9 +54,9 @@ ClickHouse dict и не выполняет избыточный cross-catalog jo
 
 ## Расчет
 
-Из EOD-источника выбираются строки с `dt = price_date`. `price_date` вычисляется в
-`Asia/Tashkent` до построения обоих Trino-запросов. Тип `dt` в Trino — `DATE`, поэтому
-дополнительное преобразование timezone внутри SQL не требуется.
+Из EOD-источника выбираются строки, у которых исходная `dt` равна целевой дате расчёта.
+Целевая `dt` вычисляется в `Asia/Tashkent` до построения обоих Trino-запросов. Тип `dt` в
+Trino — `DATE`, поэтому дополнительное преобразование timezone внутри SQL не требуется.
 
 Текущая доступность SKU:
 
@@ -66,8 +68,8 @@ AND (
 )
 ```
 
-Сначала цены агрегируются по `price_date × product_id × sku_group_id`, затем по
-`price_date × product_id`:
+Сначала цены агрегируются по `dt × product_id × sku_group_id`, затем по
+`dt × product_id`:
 
 - `min_sell_price_eod = MIN(sku_group.min_sell_price_eod)`;
 - `avg_sell_price_eod = AVG(sku_group.avg_sell_price_eod)`;
@@ -80,7 +82,7 @@ AND (
 active-price агрегаты. Если у товара нет доступных SKU, все три active-price колонки равны
 `NULL`. Нули вместо `NULL` не подставляются.
 
-Историческая цена является point-in-time относительно `price_date`, текущая доступность — нет.
+Историческая цена является point-in-time относительно `dt`, текущая доступность — нет.
 При backfill также используется current-state dict на фактический момент запуска.
 
 ## Проверки качества
@@ -88,13 +90,13 @@ active-price агрегаты. Если у товара нет доступны�
 Перед записью проверяются:
 
 - непустой source-срез и coverage mapping по SKU/product;
-- уникальность `price_date, product_id`;
+- уникальность `dt, product_id`;
 - `product_id > 0`;
 - неотрицательность всех заполненных цен;
 - `min_sell_price_eod <= avg_sell_price_eod <= max_sell_price_eod`;
 - `min_full_price_eod <= max_full_price_eod`;
 - согласованность active-price колонок и условие `min <= avg <= max`;
-- отсутствие дат, отличных от целевой `price_date`.
+- отсутствие дат, отличных от целевой `dt`.
 
 До агрегации на уровень SKU-group `full_price_eod` и `sell_price_eod` фильтруются независимо.
 Значение участвует в расчете, если оно находится в диапазоне от `0` до `1_000_000_000`
@@ -114,7 +116,7 @@ Active-price агрегаты используют только валидный
 
 Airflow/Python + `pyiceberg`, не Spark, поэтому Spark-параметр `resource_profile` здесь не
 применяется. Задача использует компактный pod с `1 CPU` и `4 GiB` памяти. Образ:
-`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`. Партиция `price_date` идемпотентно
+`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`. Партиция `dt` идемпотентно
 перезаписывается через PyIceberg `overwrite`.
 
 Потребители: product price-фичи, ranks/percentiles, discount-фичи, last-clicked и
