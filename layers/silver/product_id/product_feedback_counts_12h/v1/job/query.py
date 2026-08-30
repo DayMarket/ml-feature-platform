@@ -28,14 +28,12 @@ def build_product_feedback_counts_query(
 SELECT
     TIMESTAMP '{calculated_at_sql}' AS calculated_at,
     CAST(product_id AS INT) AS product_id,
-    COUNT(rating) AS feedback_count,
-    COALESCE(SUM(CAST(rating AS INT)), 0) AS rating_sum,
-    COUNT(*) FILTER (
-        WHERE CAST(rating AS INT) >= 4
-    ) AS feedback_gte_4,
-    COUNT(*) FILTER (
-        WHERE CAST(rating AS INT) <= 3
-    ) AS feedback_lte_3
+    COUNT(*) FILTER (WHERE rating = 1) AS n_feedbacks_1,
+    COUNT(*) FILTER (WHERE rating = 2) AS n_feedbacks_2,
+    COUNT(*) FILTER (WHERE rating = 3) AS n_feedbacks_3,
+    COUNT(*) FILTER (WHERE rating = 4) AS n_feedbacks_4,
+    COUNT(*) FILTER (WHERE rating = 5) AS n_feedbacks_5,
+    COUNT(rating) AS _n_feedbacks_with_rating
 FROM {settings.feedback_table}
 WHERE status = 'PUBLISHED'
     AND CAST(product_id AS INT) > 0

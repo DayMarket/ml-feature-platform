@@ -20,17 +20,20 @@ def _require_tables(spark: SparkSession, table_names: tuple[str, ...]) -> None:
 
 
 def _validate_feedback_counts(features: DataFrame) -> None:
+    valid_feedback_count = (
+        F.col("n_feedbacks_1")
+        + F.col("n_feedbacks_2")
+        + F.col("n_feedbacks_3")
+        + F.col("n_feedbacks_4")
+        + F.col("n_feedbacks_5")
+    )
     invalid_rows = features.filter(
-        (F.col("feedback_count") < 0)
-        | (F.col("rating_sum") < 0)
-        | (F.col("feedback_gte_4") < 0)
-        | (F.col("feedback_lte_3") < 0)
-        | (
-            F.col("feedback_gte_4") + F.col("feedback_lte_3")
-            != F.col("feedback_count")
-        )
-        | (F.col("rating_sum") < F.col("feedback_count"))
-        | (F.col("rating_sum") > F.lit(5) * F.col("feedback_count"))
+        (F.col("n_feedbacks_1") < 0)
+        | (F.col("n_feedbacks_2") < 0)
+        | (F.col("n_feedbacks_3") < 0)
+        | (F.col("n_feedbacks_4") < 0)
+        | (F.col("n_feedbacks_5") < 0)
+        | (valid_feedback_count != F.col("_n_feedbacks_with_rating"))
     ).take(1)
     if invalid_rows:
         row = invalid_rows[0]
@@ -65,7 +68,18 @@ def save_product_feedback_counts(
         settings,
     )
     _validate_feedback_counts(features)
-    features.writeTo(target_table).overwritePartitions()
+    calculated_at = parse_airflow_timestamp(partition_end)
+    features.select(
+        "calculated_at",
+        "product_id",
+        "n_feedbacks_1",
+        "n_feedbacks_2",
+        "n_feedbacks_3",
+        "n_feedbacks_4",
+        "n_feedbacks_5",
+    ).writeTo(target_table).overwrite(
+        F.col("calculated_at") == F.lit(calculated_at)
+    )
 
 
 def run(spark: SparkSession, arguments: Arguments) -> None:
