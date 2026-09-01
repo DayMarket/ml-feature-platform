@@ -942,6 +942,71 @@ def test_query_left_joins_every_enrichment():
     assert query.count("LEFT JOIN") == 3
 
 
+def final_select_projection(query: str) -> str:
+    """Текст верхнеуровневого SELECT-списка (без 'FROM ...' и ниже). Та же
+    логика среза, что final_select_aliases: последний SELECT ... FROM."""
+    tail = query[query.rindex("SELECT") :]
+    return tail[: tail.index("\nFROM ")]
+
+
+def test_query_casts_index_reads_with_their_exact_alias():
+    """Пин на маппинг выражение -> алиас для всех тринадцати индексных чтений
+    (5 model_output + 8 cm2_features), а не только на порядок алиасов: swap
+    cm2_features[0]/cm2_features[1] или порча алиаса проходит мимо
+    test_query_projects_ddl_columns_in_order, но не мимо этого теста."""
+    query = build_query()
+    exact_projections = (
+        "CAST(c.candidate.model_output[1] AS DOUBLE) AS model_probability",
+        "CAST(c.candidate.model_output[2] AS DOUBLE) AS alpha_component",
+        "CAST(c.candidate.model_output[3] AS DOUBLE) AS beta_component",
+        "CAST(c.candidate.model_output[4] AS DOUBLE) AS gamma_component",
+        "CAST(c.candidate.model_output[5] AS DOUBLE) AS delta_component",
+        "CAST(c.candidate.cm2_features[0] AS DOUBLE) AS commission_percent",
+        "CAST(c.candidate.cm2_features[1] AS DOUBLE) AS seller_price",
+        "CAST(c.candidate.cm2_features[2] AS DOUBLE) AS logistics_fee",
+        "CAST(c.candidate.cm2_features[3] AS DOUBLE) AS cpi_cost",
+        "CAST(c.candidate.cm2_features[4] AS DOUBLE) AS cpm_bid",
+        "CAST(c.candidate.cm2_features[5] AS DOUBLE) AS cpo_percent",
+        "CAST(c.candidate.cm2_features[6] AS DOUBLE) AS vat_rate",
+        "CAST(c.candidate.cm2_features[7] AS DOUBLE) AS items_quantity",
+    )
+    for projection in exact_projections:
+        assert projection in query, projection
+
+
+def test_query_dereferences_every_candidate_field_by_its_real_name():
+    """Каждое из девяти полей exploded-структуры candidate (по одному на
+    массив, зазипованный в arrays_zip) должно быть прочитано под своим
+    настоящим именем внутри финального SELECT — не просто где-то в тексте
+    запроса, иначе опечатка вроде dssm_scores -> dssm_score (зелёный тест,
+    падение на анализе плана в Spark) прошла бы незамеченной. Срез именно
+    финального SELECT (та же логика, что у final_select_aliases) гарантирует,
+    что проверка не удовлетворяется списком аргументов arrays_zip: там колонки
+    названы s.<field>, а не candidate.<field>."""
+    query = build_query()
+    projection = final_select_projection(query)
+    fields_read_in_final_select = (
+        "final_scores",
+        "model_output",
+        "cm2_features",
+        "dssm_scores",
+        "linear_scores",
+        "normalized_linear_scores",
+        "cpo_adv_percents",
+        "bid_amounts",
+    )
+    for field in fields_read_in_final_select:
+        assert f"c.candidate.{field}" in projection, field
+    # ranking_candidates — единственное из девяти полей, чей CAST переехал в
+    # CTE candidates (в sku_group_id, чинка #3): финальный SELECT берёт уже
+    # готовое c.sku_group_id, а не c.candidate.ranking_candidates напрямую.
+    # Подстрока "candidate.ranking_candidates" всё равно однозначно ловит
+    # опечатку в имени поля независимо от того, к какой версии запроса
+    # применяется тест (до или после чинки #3), и не может совпасть со
+    # списком arrays_zip: там колонка называется s.ranking_candidates.
+    assert "candidate.ranking_candidates" in query
+
+
 def test_sample_threshold_scales_with_percent():
     query_module = load_module("query")
     assert query_module.sample_threshold(1) == 100
@@ -1007,26 +1072,39 @@ sampled_events AS (
         e.model_output AS model_output,
         e.model_input['cm2_features'] AS cm2_features,
         e.common_external_features AS common_external_features,
-        COALESCE(
-            from_json(get_json_object(e.external_features, '$.dssm_score'), 'ARRAY<DOUBLE>'),
-            array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
-        ) AS dssm_scores,
-        COALESCE(
-            from_json(get_json_object(e.external_features, '$.linear_score'), 'ARRAY<DOUBLE>'),
-            array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
-        ) AS linear_scores,
-        COALESCE(
-            from_json(get_json_object(e.external_features, '$.normalized_linear_score'), 'ARRAY<DOUBLE>'),
-            array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
-        ) AS normalized_linear_scores,
-        COALESCE(
-            from_json(get_json_object(e.external_features, '$.cpo_adv_percents'), 'ARRAY<DOUBLE>'),
-            array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
-        ) AS cpo_adv_percents,
-        COALESCE(
-            from_json(get_json_object(e.external_features, '$.bid_amounts'), 'ARRAY<DOUBLE>'),
-            array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
-        ) AS bid_amounts
+        -- Длина JSON-массивов не проверена на живых данных для dssm_score,
+        -- normalized_linear_score, cpo_adv_percents и bid_amounts, поэтому при
+        -- рассогласовании колонка обнуляется, а строка лога сохраняется.
+        CASE
+            WHEN size(from_json(get_json_object(e.external_features, '$.dssm_score'), 'ARRAY<DOUBLE>'))
+                 = size(e.ranking_candidates)
+            THEN from_json(get_json_object(e.external_features, '$.dssm_score'), 'ARRAY<DOUBLE>')
+            ELSE array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
+        END AS dssm_scores,
+        CASE
+            WHEN size(from_json(get_json_object(e.external_features, '$.linear_score'), 'ARRAY<DOUBLE>'))
+                 = size(e.ranking_candidates)
+            THEN from_json(get_json_object(e.external_features, '$.linear_score'), 'ARRAY<DOUBLE>')
+            ELSE array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
+        END AS linear_scores,
+        CASE
+            WHEN size(from_json(get_json_object(e.external_features, '$.normalized_linear_score'), 'ARRAY<DOUBLE>'))
+                 = size(e.ranking_candidates)
+            THEN from_json(get_json_object(e.external_features, '$.normalized_linear_score'), 'ARRAY<DOUBLE>')
+            ELSE array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
+        END AS normalized_linear_scores,
+        CASE
+            WHEN size(from_json(get_json_object(e.external_features, '$.cpo_adv_percents'), 'ARRAY<DOUBLE>'))
+                 = size(e.ranking_candidates)
+            THEN from_json(get_json_object(e.external_features, '$.cpo_adv_percents'), 'ARRAY<DOUBLE>')
+            ELSE array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
+        END AS cpo_adv_percents,
+        CASE
+            WHEN size(from_json(get_json_object(e.external_features, '$.bid_amounts'), 'ARRAY<DOUBLE>'))
+                 = size(e.ranking_candidates)
+            THEN from_json(get_json_object(e.external_features, '$.bid_amounts'), 'ARRAY<DOUBLE>')
+            ELSE array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
+        END AS bid_amounts
     FROM iceberg.silver.ranking_analytics_events e
     CROSS JOIN params p
     WHERE
@@ -1036,6 +1114,11 @@ sampled_events AS (
         AND e.ranking_candidates IS NOT NULL
         AND size(e.ranking_candidates) > 0
         AND e.model_input IS NOT NULL
+        -- arrays_zip дополняет короткие массивы NULL'ами до самого длинного, из-за
+        -- чего кандидат и его скоры разъезжаются по индексу. Событие с рассогласованной
+        -- длиной родных массивов — сломанный контракт лога, его дешевле выбросить.
+        AND size(e.final_scores) = size(e.ranking_candidates)
+        AND size(e.model_output) = size(e.ranking_candidates)
         AND size(e.model_input['cm2_features']) = size(e.ranking_candidates)
         -- Отбор по запросу, не по строке: попавший запрос берётся со всеми
         -- кандидатами. pmod, а не abs: xxhash64 может вернуть Long.MIN_VALUE,
@@ -1054,7 +1137,8 @@ candidates AS (
         s.promo_id AS promo_id,
         s.common_external_features AS common_external_features,
         candidate_index + 1 AS candidate_position,
-        candidate AS candidate
+        candidate AS candidate,
+        CAST(candidate.ranking_candidates AS BIGINT) AS sku_group_id
     FROM sampled_events s
     LATERAL VIEW posexplode(
         arrays_zip(
@@ -1098,11 +1182,18 @@ feedback AS (
     SELECT
         m.event_date AS event_date,
         f.sku_group_id AS sku_group_id,
-        f.product_rating AS product_rating,
-        f.total_reviews_count AS total_reviews_count
+        MAX(f.product_rating) AS product_rating,
+        MAX(f.total_reviews_count) AS total_reviews_count
     FROM feedback_date_map m
     JOIN iceberg.gold.feature_platform_sku_group_feedback_base_stats f
         ON f.date = m.snapshot_date
+    -- Статические границы повторяют окно feedback_snapshot_dates: без них
+    -- джойн по значению из CTE может не включить partition pruning и утащить
+    -- всю историю витрины.
+    WHERE
+        f.date >= date_sub(DATE '{event_date_start.isoformat()}', 30)
+        AND f.date < DATE '{event_date_end.isoformat()}'
+    GROUP BY m.event_date, f.sku_group_id
 ),
 frequency_snapshot_dates AS (
     SELECT DISTINCT g.analyze_date AS snapshot_date
@@ -1124,12 +1215,19 @@ frequency AS (
     SELECT
         m.event_date AS event_date,
         trim(lower(g.query_text)) AS query,
-        g.frequency_group AS frequency_group,
-        g.users_total AS users_total,
-        g.query_rank AS query_rank
+        MAX(g.frequency_group) AS frequency_group,
+        MAX(g.users_total) AS users_total,
+        MAX(g.query_rank) AS query_rank
     FROM frequency_date_map m
     JOIN iceberg.silver.search_queries_frequency_groups_30d g
         ON g.analyze_date = m.snapshot_date
+    WHERE
+        g.analyze_date >= date_sub(DATE '{event_date_start.isoformat()}', 30)
+        AND g.analyze_date < DATE '{event_date_end.isoformat()}'
+    -- Схлопывание обязательно: trim(lower(...)) склеивает запросы, различающиеся
+    -- только регистром или пробелами, и без GROUP BY такой дубль размножил бы
+    -- каждую строку лога.
+    GROUP BY m.event_date, trim(lower(g.query_text))
 )
 SELECT
     DATE '{collection_date.isoformat()}' AS collection_date,
@@ -1139,10 +1237,10 @@ SELECT
     c.request_id AS request_id,
     c.install_id AS install_id,
     c.search_query AS search_query,
-    c.category_id AS category_id,
+    CAST(c.category_id AS INT) AS category_id,
     c.promo_id AS promo_id,
     CAST(c.candidate_position AS INT) AS `position`,
-    CAST(c.candidate.ranking_candidates AS BIGINT) AS sku_group_id,
+    c.sku_group_id AS sku_group_id,
     CAST(c.candidate.final_scores AS DOUBLE) AS final_score,
     CAST(c.candidate.model_output[1] AS DOUBLE) AS model_probability,
     CAST(c.candidate.model_output[2] AS DOUBLE) AS alpha_component,
@@ -1174,10 +1272,10 @@ SELECT
     CAST(fq.query_rank AS BIGINT) AS query_rank
 FROM candidates c
 LEFT JOIN sku_group_created sg
-    ON sg.sku_group_id = c.candidate.ranking_candidates
+    ON sg.sku_group_id = c.sku_group_id
 LEFT JOIN feedback fb
     ON fb.event_date = c.event_date
-    AND fb.sku_group_id = c.candidate.ranking_candidates
+    AND fb.sku_group_id = c.sku_group_id
 LEFT JOIN frequency fq
     ON fq.event_date = c.event_date
     AND fq.query = trim(lower(c.search_query))

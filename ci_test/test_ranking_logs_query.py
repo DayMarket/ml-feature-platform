@@ -137,6 +137,71 @@ def test_query_left_joins_every_enrichment():
     assert query.count("LEFT JOIN") == 3
 
 
+def final_select_projection(query: str) -> str:
+    """Текст верхнеуровневого SELECT-списка (без 'FROM ...' и ниже). Та же
+    логика среза, что final_select_aliases: последний SELECT ... FROM."""
+    tail = query[query.rindex("SELECT") :]
+    return tail[: tail.index("\nFROM ")]
+
+
+def test_query_casts_index_reads_with_their_exact_alias():
+    """Пин на маппинг выражение -> алиас для всех тринадцати индексных чтений
+    (5 model_output + 8 cm2_features), а не только на порядок алиасов: swap
+    cm2_features[0]/cm2_features[1] или порча алиаса проходит мимо
+    test_query_projects_ddl_columns_in_order, но не мимо этого теста."""
+    query = build_query()
+    exact_projections = (
+        "CAST(c.candidate.model_output[1] AS DOUBLE) AS model_probability",
+        "CAST(c.candidate.model_output[2] AS DOUBLE) AS alpha_component",
+        "CAST(c.candidate.model_output[3] AS DOUBLE) AS beta_component",
+        "CAST(c.candidate.model_output[4] AS DOUBLE) AS gamma_component",
+        "CAST(c.candidate.model_output[5] AS DOUBLE) AS delta_component",
+        "CAST(c.candidate.cm2_features[0] AS DOUBLE) AS commission_percent",
+        "CAST(c.candidate.cm2_features[1] AS DOUBLE) AS seller_price",
+        "CAST(c.candidate.cm2_features[2] AS DOUBLE) AS logistics_fee",
+        "CAST(c.candidate.cm2_features[3] AS DOUBLE) AS cpi_cost",
+        "CAST(c.candidate.cm2_features[4] AS DOUBLE) AS cpm_bid",
+        "CAST(c.candidate.cm2_features[5] AS DOUBLE) AS cpo_percent",
+        "CAST(c.candidate.cm2_features[6] AS DOUBLE) AS vat_rate",
+        "CAST(c.candidate.cm2_features[7] AS DOUBLE) AS items_quantity",
+    )
+    for projection in exact_projections:
+        assert projection in query, projection
+
+
+def test_query_dereferences_every_candidate_field_by_its_real_name():
+    """Каждое из девяти полей exploded-структуры candidate (по одному на
+    массив, зазипованный в arrays_zip) должно быть прочитано под своим
+    настоящим именем внутри финального SELECT — не просто где-то в тексте
+    запроса, иначе опечатка вроде dssm_scores -> dssm_score (зелёный тест,
+    падение на анализе плана в Spark) прошла бы незамеченной. Срез именно
+    финального SELECT (та же логика, что у final_select_aliases) гарантирует,
+    что проверка не удовлетворяется списком аргументов arrays_zip: там колонки
+    названы s.<field>, а не candidate.<field>."""
+    query = build_query()
+    projection = final_select_projection(query)
+    fields_read_in_final_select = (
+        "final_scores",
+        "model_output",
+        "cm2_features",
+        "dssm_scores",
+        "linear_scores",
+        "normalized_linear_scores",
+        "cpo_adv_percents",
+        "bid_amounts",
+    )
+    for field in fields_read_in_final_select:
+        assert f"c.candidate.{field}" in projection, field
+    # ranking_candidates — единственное из девяти полей, чей CAST переехал в
+    # CTE candidates (в sku_group_id, чинка #3): финальный SELECT берёт уже
+    # готовое c.sku_group_id, а не c.candidate.ranking_candidates напрямую.
+    # Подстрока "candidate.ranking_candidates" всё равно однозначно ловит
+    # опечатку в имени поля независимо от того, к какой версии запроса
+    # применяется тест (до или после чинки #3), и не может совпасть со
+    # списком arrays_zip: там колонка называется s.ranking_candidates.
+    assert "candidate.ranking_candidates" in query
+
+
 def test_sample_threshold_scales_with_percent():
     query_module = load_module("query")
     assert query_module.sample_threshold(1) == 100
