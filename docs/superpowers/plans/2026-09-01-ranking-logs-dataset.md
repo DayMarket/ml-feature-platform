@@ -60,8 +60,10 @@ ENTITY_DIR = Path("datasets/search/ranking_logs/v1")
 CONFIG_PATH = ENTITY_DIR / "config.yaml"
 DDL_PATH = ENTITY_DIR / "migrations/create_table.sql"
 
-# Порядок колонок — контракт между DDL и SELECT'ом джоба: writeTo() сопоставляет
-# их позиционно, поэтому расхождение молча перепутает значения местами.
+# Порядок колонок — контракт между DDL и SELECT'ом джоба. overwritePartitions()
+# строит OverwritePartitionsDynamic.byName, то есть резолвит колонки по имени:
+# переименованный или пропущенный алиас валит запись. Порядок всё равно
+# закрепляем, чтобы схема и запрос читались рядом и не разъезжались.
 EXPECTED_COLUMNS = [
     "collection_date",
     "event_date",
@@ -162,7 +164,7 @@ def test_all_dq_tests_are_warn_and_growth_is_absent():
 def test_dataset_parameters_are_declared_in_config():
     dataset = load_config()["dataset"]
     assert dataset["model_name"] == "search_unified_model_v9_cold_start"
-    assert dataset["sample_percent"] == 7
+    assert dataset["sample_percent"] == 1
 
 
 def test_ddl_columns_match_the_agreed_order():
@@ -219,7 +221,7 @@ dataset:
   # Доля запросов (не строк-кандидатов): попавший в выборку запрос берётся
   # целиком, со всеми кандидатами. В среднем ~837 кандидатов на запрос, поэтому
   # 7% дают ~28 млн строк в сутки и ~200 млн за недельный ран.
-  sample_percent: 7
+  sample_percent: 1
 
 dag:
   team: search
@@ -965,9 +967,9 @@ def test_query_filters_the_configured_model_only():
 
 def test_query_samples_requests_deterministically():
     query = build_query()
-    # sample_percent = 7 -> порог 700 из 10000. pmod, а не abs: xxhash64 может
+    # sample_percent = 1 -> порог 100 из 10000. pmod, а не abs: xxhash64 может
     # вернуть Long.MIN_VALUE, у которого abs отрицателен и условие отсечёт всё.
-    assert "pmod(xxhash64(e.request_id), 10000) < 700" in query
+    assert "pmod(xxhash64(e.request_id), 10000) < 100" in query
     assert "abs(xxhash64" not in query
 
 
