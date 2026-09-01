@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 MAX_VALID_PRICE = 1_000_000_000
 
@@ -11,13 +11,18 @@ def _date_literal(value: date) -> str:
     return f"DATE '{value.isoformat()}'"
 
 
-def build_query(dt: date) -> str:
-    date_sql = _date_literal(dt)
+def _timestamp_literal(value: datetime) -> str:
+    return f"TIMESTAMP '{value.isoformat(sep=' ', timespec='seconds')}'"
+
+
+def build_query(dt: datetime) -> str:
+    dt_sql = _timestamp_literal(dt)
+    date_sql = _date_literal(dt.date())
 
     return f"""
 WITH sku_prices AS (
     SELECT
-        {date_sql} AS dt,
+        {dt_sql} AS dt,
         CAST(s.product_id AS INTEGER) AS product_id,
         CAST(s.sku_group_id AS INTEGER) AS sku_group_id,
         CASE

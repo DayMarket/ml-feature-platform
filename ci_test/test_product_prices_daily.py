@@ -1,7 +1,7 @@
 import importlib.util
 import sys
 import unittest
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,11 +26,11 @@ class ProductPricesDailyTimestampTest(unittest.TestCase):
         runtime = load_runtime()
 
         self.assertEqual(
-            runtime.previous_tashkent_date("2026-06-17T19:00:00Z"),
-            date(2026, 6, 17),
+            runtime.previous_tashkent_dt("2026-06-17T19:00:00Z"),
+            datetime(2026, 6, 17, 0, 0),
         )
         with self.assertRaisesRegex(ValueError, "not-a-timestamp"):
-            runtime.previous_tashkent_date("not-a-timestamp")
+            runtime.previous_tashkent_dt("not-a-timestamp")
 
 
 if __name__ == "__main__":

@@ -8,9 +8,9 @@
 - Таблица: `iceberg.silver.feature_platform_product_prices_daily`.
 - DAG: `feature-platform.layers.silver.product_id.product_prices_daily`.
 - Путь: `layers/silver/product_id/product_prices_daily/v1`.
-- Групповой тег Airflow: `recsys-main-page-features`.
+- Групповой тег Airflow: `recsys-features`.
 - Расписание: ежедневно в 19:00 UTC (`0 19 * * *`), то есть в 00:00 `Asia/Tashkent`.
-- `dt` — предыдущая календарная дата `Asia/Tashkent` относительно `data_interval_end`.
+- `dt` — `TIMESTAMP` начала предыдущей календарной даты (`00:00:00 Asia/Tashkent`) относительно `data_interval_end`.
 - `start_date=2026-08-08T19:00:00Z`, `catchup=True`. При включении 23 августа 2026 года первый запуск рассчитывает `dt=2026-08-09`, а initial backfill покрывает 14 завершённых EOD-дат с 9 по 22 августа.
 
 Перед материализацией `ExternalTaskSensor` ожидает успешный
@@ -55,8 +55,9 @@ ClickHouse dict и не выполняет избыточный cross-catalog jo
 ## Расчет
 
 Из EOD-источника выбираются строки, у которых исходная `dt` равна целевой дате расчёта.
-Целевая `dt` вычисляется в `Asia/Tashkent` до построения обоих Trino-запросов. Тип `dt` в
-Trino — `DATE`, поэтому дополнительное преобразование timezone внутри SQL не требуется.
+Целевая `dt` вычисляется в `Asia/Tashkent` до построения обоих Trino-запросов и сохраняется
+как `TIMESTAMP` локальной полуночи. Для фильтра источника используется только календарная
+часть `dt`, поскольку `daily_sku_quantity_eod.dt` имеет тип `DATE`.
 
 Текущая доступность SKU:
 

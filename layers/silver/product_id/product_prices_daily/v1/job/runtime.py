@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -116,9 +116,13 @@ def parse_interval_timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def previous_tashkent_date(value: str) -> date:
+def previous_tashkent_dt(value: str) -> datetime:
     interval_end = parse_interval_timestamp(value)
-    return interval_end.astimezone(TASHKENT_TIME_ZONE).date() - timedelta(days=1)
+    local_date = (
+        interval_end.astimezone(TASHKENT_TIME_ZONE).date()
+        - timedelta(days=1)
+    )
+    return datetime.combine(local_date, time.min)
 
 
 def get_iceberg_catalog(ref: TableRef):
@@ -210,7 +214,7 @@ def validate_source_metrics(
     return values
 
 
-def validate_product_prices(frame, dt: date) -> None:
+def validate_product_prices(frame, dt: datetime) -> None:
     import pandas as pd
 
     required = ("dt", "product_id", *PRICE_COLUMNS)
@@ -220,7 +224,7 @@ def validate_product_prices(frame, dt: date) -> None:
     if frame.empty:
         raise ValueError(f"Product prices are empty for {dt}")
 
-    frame["dt"] = pd.to_datetime(frame["dt"]).dt.date
+    frame["dt"] = pd.to_datetime(frame["dt"], errors="coerce")
     if frame["dt"].isna().any():
         raise ValueError("Product prices contain null dt")
     if (frame["dt"] != dt).any():
@@ -312,7 +316,7 @@ def _to_arrow_for_table(table, frame):
 def write_daily_prices(
     table,
     frame,
-    dt: date,
+    dt: datetime,
 ) -> None:
     from pyiceberg.expressions import EqualTo
 
