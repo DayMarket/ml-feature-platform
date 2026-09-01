@@ -44,7 +44,7 @@
 
 **Interfaces:**
 - Consumes: ничего.
-- Produces: `config.yaml` с блоками `table`, `dag`, `alerts`, `dq`, `feature_stats`, `spark`, `resources`, `dataset`; DDL из 40 колонок в фиксированном порядке — Task 3 обязан выдать `SELECT` ровно в этом порядке.
+- Produces: `config.yaml` с блоками `table`, `dag`, `alerts`, `dq`, `feature_stats`, `spark`, `resources`, `dataset`; DDL из 38 колонок в фиксированном порядке — Task 3 обязан выдать `SELECT` ровно в этом порядке.
 
 - [ ] **Step 1: Написать падающий тест**
 
@@ -1042,7 +1042,7 @@ def test_query_casts_index_reads_with_their_exact_alias():
 
 
 def test_query_dereferences_every_candidate_field_by_its_real_name():
-    """Каждое из девяти полей exploded-структуры candidate (по одному на
+    """Каждое из семи полей exploded-структуры candidate (по одному на
     массив, зазипованный в arrays_zip) должно быть прочитано под своим
     настоящим именем внутри финального SELECT — не просто где-то в тексте
     запроса, иначе опечатка вроде dssm_scores -> dssm_score (зелёный тест,
@@ -1062,7 +1062,7 @@ def test_query_dereferences_every_candidate_field_by_its_real_name():
     )
     for field in fields_read_in_final_select:
         assert f"c.candidate.{field}" in projection, field
-    # ranking_candidates — единственное из девяти полей, чей CAST переехал в
+    # ranking_candidates — единственное из семи полей, чей CAST переехал в
     # CTE candidates (в sku_group_id, чинка #3): финальный SELECT берёт уже
     # готовое c.sku_group_id, а не c.candidate.ranking_candidates напрямую.
     # Подстрока "candidate.ranking_candidates" всё равно однозначно ловит
@@ -1870,12 +1870,17 @@ git commit -m "feat(datasets): DAG ranking_logs v1 и регистрация в 
 Эти проверки требуют доступа к Trino (MCP-сервер `trino` на момент написания
 плана был отключён) и выполняются до снятия DAG'а с паузы.
 
-- [x] **ВЫПОЛНЕНО (2026-09-01): совпадают полностью, дублирующие колонки удалены
-  из схемы (40 → 38). Подробности — в разделе 7 спеки.** Исходная формулировка:
-  совпадают ли `cm2_features[5]` и `external_features.cpo_adv_percents`,
-  `cm2_features[4]` и `external_features.bid_amounts`.** Если совпадают на всех
-  строках — убрать дублирующие колонки `cpo_percent` и `cpm_bid` отдельной
-  миграцией, а не задним числом в `create_table.sql`.
+- [x] **ВЫПОЛНЕНО (2026-09-01).** Совпадают полностью на 2 599 871 кандидате.
+  Из схемы удалены `cpo_adv_percent` и `bid_amount` — копии из
+  `external_features`; оставлены `cpo_percent` и `cpm_bid` из `cm2_features`
+  (фактические входы формулы, полное покрытие). 40 → 38 колонок, правкой
+  `create_table.sql`, потому что таблица ещё не создавалась и мигрировать
+  нечего. Подробности — в разделе 7 спеки.
+
+  *Исходная формулировка плана называла кандидатами на удаление другую пару —
+  `cpo_percent` и `cpm_bid` — и не учитывала, что покрытие у копий разное:
+  `cpo_adv_percents` не логируется в 8.6% событий. Оставлено здесь как есть,
+  чтобы расхождение плана с фактом было видно.*
 
 ```sql
 SELECT

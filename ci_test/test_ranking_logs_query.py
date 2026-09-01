@@ -168,7 +168,7 @@ def test_query_casts_index_reads_with_their_exact_alias():
 
 
 def test_query_dereferences_every_candidate_field_by_its_real_name():
-    """Каждое из девяти полей exploded-структуры candidate (по одному на
+    """Каждое из семи полей exploded-структуры candidate (по одному на
     массив, зазипованный в arrays_zip) должно быть прочитано под своим
     настоящим именем внутри финального SELECT — не просто где-то в тексте
     запроса, иначе опечатка вроде dssm_scores -> dssm_score (зелёный тест,
@@ -188,7 +188,7 @@ def test_query_dereferences_every_candidate_field_by_its_real_name():
     )
     for field in fields_read_in_final_select:
         assert f"c.candidate.{field}" in projection, field
-    # ranking_candidates — единственное из девяти полей, чей CAST переехал в
+    # ranking_candidates — единственное из семи полей, чей CAST переехал в
     # CTE candidates (в sku_group_id, чинка #3): финальный SELECT берёт уже
     # готовое c.sku_group_id, а не c.candidate.ranking_candidates напрямую.
     # Подстрока "candidate.ranking_candidates" всё равно однозначно ловит
