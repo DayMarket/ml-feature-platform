@@ -803,6 +803,7 @@ git commit -m "feat(datasets): окно партиции и параметры �
 Создать `ci_test/test_ranking_logs_query.py`:
 
 ```python
+import contextlib
 import importlib.util
 import re
 import sys
