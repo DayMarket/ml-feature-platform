@@ -1,0 +1,81 @@
+resources:
+  path: ../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-dataset-ranking-logs-v1
+  main_application_file: local:///git/repo/datasets/search/ranking_logs/v1/entrypoints/get_ranking_logs_dataset.py
+  resource_profile: search_dataset
+
+table:
+  key: dataset_ranking_logs_v1
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_ranking_logs_dataset_v1
+  primary_key: collection_date,event_date,request_id,sku_group_id
+  meta:
+    team: team:search
+
+# Параметры сбора. Джоб читает этот блок из config.yaml рядом с собой, чтобы
+# значения не пришлось дублировать в общем spark-шаблоне: шаблон
+# config/spark/layer_spark_application.yaml общий для всех энтити и передаёт
+# только partition_start, partition_end и table_name.
+dataset:
+  # Одна модель на ран. В источнике их 11; на 2026-08-25 целевая дала 481 982
+  # запроса за сутки.
+  model_name: search_unified_model_v9_cold_start
+  # Доля запросов (не строк-кандидатов): попавший в выборку запрос берётся
+  # целиком, со всеми кандидатами. В среднем ~837 кандидатов на запрос, поэтому
+  # 7% дают ~28 млн строк в сутки и ~200 млн за недельный ран.
+  sample_percent: 7
+
+dag:
+  team: search
+  group_tag: ranking-logs-dataset
+  schedule: "0 12 * * 0"
+  start_date: "2026-09-07T12:00:00Z"
+
+alerts:
+  team: search
+  severity: P4
+  oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Партиция — collection_date, и она считается от data_interval_end: это дата
+  # фактического запуска DAG'а (воскресенье), тогда как data_interval_start —
+  # первый день собираемого окна. Оба шаблона ниже обязаны совпадать дословно.
+  partition_column: collection_date
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Датасет событийных показов: первичный ключ задаёт гранулярность строки, а
+    # не контракт для потребителей, и качество источника не должно будить
+    # дежурного. Результат по-прежнему пишется в feature_platform_dq_results.
+    - name: primary_key_not_null
+      severity: warn
+    - name: primary_key_unique
+      severity: warn
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    # row_count_growth сознательно отсутствует: dq/tests.py берёт baseline как
+    # partition_date - 1 day, а у недельной партиции предыдущих суток не
+    # существует, поэтому тест на каждом ране возвращал бы "нет baseline".
+    - name: not_null
+      columns: [final_score, sku_group_id]
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq: обе таски обязаны смотреть на одну партицию.
+  partition_column: collection_date
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  exclude_columns:
+    # Идентификаторы и свободный текст: профиль min/max/перцентилей по ним
+    # бессмыслен.
+    - sku_group_id
+    - request_id
+    - install_id
+    - promo_id
+    - search_query
