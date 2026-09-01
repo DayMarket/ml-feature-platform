@@ -2,7 +2,7 @@
 
 DAG id: `feature-platform.layers.silver.product_id.product_feedback_counts_12h`.
 
-Airflow group tag: `recsys-main-page-features`.
+Airflow group tag: `recsys-features`.
 
 Целевая таблица: `iceberg.silver.feature_platform_product_feedback_counts_12h`.
 
@@ -89,7 +89,7 @@ All-time показатели не рассчитываются через S4. �
 ## Оркестрация и хранение
 
 DAG запускается в `07:00` и `19:00 UTC`, синхронно с другими 12-часовыми Silver-срезами группы
-`recsys-main-page-features`. `calculated_at` равен `data_interval_end`, переведённому из UTC в
+`recsys-features`. `calculated_at` равен `data_interval_end`, переведённому из UTC в
 `Asia/Tashkent`.
 
 `start_date = 2026-08-08 07:00 UTC`, `catchup=true`: при первом включении DAG выполняет
