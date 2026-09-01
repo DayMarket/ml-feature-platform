@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import pendulum
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.sdk import dag
 from airflow.timetables.interval import CronDataIntervalTimetable
 from airflow_commons.helpers.oncall import send_oncall_notification
@@ -31,6 +32,21 @@ dag_settings = get_dag_settings()
 logger = logging.getLogger("airflow.task")
 logger.setLevel("INFO")
 
+
+def _feedback_dq_logical_date(logical_date, **_):
+    """Прогон feedback_sku_group_id, записавший партицию за последний собираемый день.
+
+    Наше окно — [logical_date, logical_date + 7 дней), последняя закрытая дата в
+    нём — суббота. feedback_sku_group_id идёт по расписанию 10 3 * * * UTC и пишет
+    date = date(data_interval_start), поэтому нужен прогон с логической датой
+    «эта суббота, 03:10 UTC». Она позже нашей логической даты, и положительным
+    execution_delta не выражается — отсюда execution_date_fn.
+    """
+    return logical_date.in_timezone("UTC").add(days=6).replace(
+        hour=3, minute=10, second=0, microsecond=0
+    )
+
+
 # DAG собирает недельный датасет логов ранжирования для подбора параметров формулы
 default_args = {
     "owner": dag_settings["owner"],
@@ -56,6 +72,26 @@ default_args = {
     dag_id="feature-platform.datasets.search.ranking_logs.v1",
 )
 def collect_ranking_logs_dataset_v1():
+    # AGENTS.md: датасет читает feature_platform_sku_group_feedback_base_stats
+    # (owned by feature-platform.layers.gold.sku_group_id.feedback_sku_group_id),
+    # поэтому обязан ждать её dq-таску — иначе feedback CTE молча подставит
+    # устаревший снапшот вместо честного fail/wait. Остальные три источника
+    # (silver.ranking_analytics_events, silver.sku,
+    # silver.search_queries_frequency_groups_30d) — upstream DE-таблицы без
+    # feature_platform_-префикса, сенсоры на них не нужны.
+    wait_for_sku_group_feedback = ExternalTaskSensor(
+        task_id="wait_for_sku_group_feedback_dq",
+        external_dag_id="feature-platform.layers.gold.sku_group_id.feedback_sku_group_id",
+        external_task_id="dq",
+        allowed_states=["success"],
+        failed_states=["failed"],
+        mode="poke",
+        poke_interval=60,
+        timeout=6 * 60 * 60,
+        check_existence=True,
+        execution_date_fn=_feedback_dq_logical_date,
+    )
+
     collect_dataset = SparkKubernetesOperator(
         execution_timeout=timedelta(hours=10),
         task_id="collect_ranking_logs_dataset",
@@ -72,7 +108,7 @@ def collect_ranking_logs_dataset_v1():
 
     # Статистика идёт параллельно DQ и ни на что не влияет: downstream ждёт
     # таску dq, поэтому падение профилей не блокирует потребителей.
-    collect_dataset >> [dq_task, stats_task]
+    wait_for_sku_group_feedback >> collect_dataset >> [dq_task, stats_task]
 
 
 dag = collect_ranking_logs_dataset_v1()

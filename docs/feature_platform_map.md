@@ -13,7 +13,7 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **38**. Внутренних зависимостей: **9**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **25**. P4: **5**.
+Всего DAG: **38**. Внутренних зависимостей: **10**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **25**. P4: **5**.
 
 Таска `dq`: **36** из **38**. Таска `feature_stats`: **36** из **38** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
 
@@ -209,7 +209,9 @@ manual · P3 · airflow-python`"]
 UTC 01:00 · P3 · large`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
-    x2["elasticsearch_collect"]
+    x2["feedback_sku_group_id"]
+    x3["elasticsearch_collect"]
+    x2 -->|"dq"| d0
     d12 -.->|"dbt DQ (legacy) Δ26h"| d2
     d2 -.->|"dbt DQ (legacy) Δ2h"| d3
     d13 -.->|"dbt DQ (legacy) Δ3h"| d4
@@ -224,11 +226,11 @@ UTC 01:00 · P3 · large`"]
     x1 -.->|"dbt DQ (legacy) Δ2h"| d9
     x0 -.->|"dbt DQ (legacy) Δ1h"| d10
     d5 -.->|"dbt DQ (legacy) Δ3h"| d11
-    x2 -->|"sensor"| d16
+    x3 -->|"sensor"| d16
     class d12,d13,d14,d15,d16,d17 silver
     class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold
     class d0,d1 datasets
-    class x0,x1,x2 external
+    class x0,x1,x2,x3 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
     classDef datasets fill:#dcfce7,stroke:#16a34a,color:#052e16

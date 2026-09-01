@@ -1428,7 +1428,7 @@ git commit -m "feat(datasets): построитель SQL, джоб и entrypoin
 
 **Interfaces:**
 - Consumes: `config.yaml` (Task 1), entrypoint (Task 3), `dq.task.build_dq_task`, `feature_stats.task.build_feature_stats_task`.
-- Produces: DAG `feature-platform.datasets.search.ranking_logs.v1` с графом `collect_ranking_logs_dataset >> [dq_task, stats_task]`.
+- Produces: DAG `feature-platform.datasets.search.ranking_logs.v1` с графом `wait_for_sku_group_feedback >> collect_ranking_logs_dataset >> [dq_task, stats_task]` (AGENTS.md line 44: сенсор на `dq`-таску DAG'а-владельца `feature_platform_sku_group_feedback_base_stats`).
 
 - [ ] **Step 1: Написать падающие тесты**
 
@@ -1436,12 +1436,15 @@ git commit -m "feat(datasets): построитель SQL, джоб и entrypoin
 
 ```python
 import ast
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
 
 ENTITY_DIR = Path("datasets/search/ranking_logs/v1")
 DAG_PATH = ENTITY_DIR / "dag.py"
+
+FEEDBACK_DAG_ID = "feature-platform.layers.gold.sku_group_id.feedback_sku_group_id"
 
 
 def dag_source():
@@ -1487,6 +1490,99 @@ def test_dag_is_paused_on_creation_and_single_run():
 
 def test_dag_is_tagged_as_dataset():
     assert '"dataset"' in dag_source()
+
+
+# --- AGENTS.md line 44: sensor on the owning DAG's dq task for
+# feature_platform_sku_group_feedback_base_stats -----------------------------
+
+
+def _external_task_sensor_calls(tree):
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "ExternalTaskSensor"
+    ]
+
+
+def _keyword_value(call, name):
+    for keyword in call.keywords:
+        if keyword.arg == name:
+            return ast.literal_eval(keyword.value)
+    return None
+
+
+def test_dag_declares_a_sensor_on_the_feedback_dq_task():
+    tree = ast.parse(dag_source())
+    sensors = _external_task_sensor_calls(tree)
+    assert len(sensors) == 1, "expected exactly one ExternalTaskSensor (feedback_sku_group_id.dq)"
+
+
+def test_sensor_waits_on_feedback_dag_dq_task():
+    tree = ast.parse(dag_source())
+    (sensor,) = _external_task_sensor_calls(tree)
+    assert _keyword_value(sensor, "external_dag_id") == FEEDBACK_DAG_ID
+    assert _keyword_value(sensor, "external_task_id") == "dq"
+
+
+def test_sensor_is_upstream_of_collect_dataset():
+    source = dag_source()
+    assert "wait_for_sku_group_feedback >> collect_dataset >> [dq_task, stats_task]" in source
+
+
+def _extract_function_source(function_name):
+    tree = ast.parse(dag_source())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            return ast.get_source_segment(dag_source(), node)
+    raise AssertionError(f"{function_name} not found in {DAG_PATH}")
+
+
+class _PendulumLikeDateTime:
+    """Minimal stand-in for pendulum.DateTime covering the chain the DAG uses.
+
+    Airflow/pendulum are not installed in this environment (ci_test's other
+    dag.py tests never import dag.py either — they work off source text/AST),
+    so _feedback_dq_logical_date's arithmetic is exercised by pulling its
+    source out of dag.py with ast and exec'ing it against this stand-in
+    rather than importing pendulum.
+    """
+
+    def __init__(self, dt):
+        self._dt = dt
+
+    def in_timezone(self, tz):
+        assert tz == "UTC"
+        return _PendulumLikeDateTime(self._dt.astimezone(timezone.utc))
+
+    def add(self, **kwargs):
+        return _PendulumLikeDateTime(self._dt + timedelta(**kwargs))
+
+    def replace(self, **kwargs):
+        return _PendulumLikeDateTime(self._dt.replace(**kwargs))
+
+    def __eq__(self, other):
+        if isinstance(other, _PendulumLikeDateTime):
+            return self._dt == other._dt
+        return NotImplemented
+
+
+def _load_feedback_dq_logical_date():
+    source = _extract_function_source("_feedback_dq_logical_date")
+    namespace = {}
+    exec(compile(source, str(DAG_PATH), "exec"), namespace)
+    return namespace["_feedback_dq_logical_date"]
+
+
+def test_feedback_dq_logical_date_maps_window_open_to_that_weeks_saturday_0310():
+    feedback_dq_logical_date = _load_feedback_dq_logical_date()
+    # Наше окно открывается в воскресенье 12:00 UTC 2026-09-06; последняя
+    # собираемая дата в нём — суббота 2026-09-12. feedback_sku_group_id пишет
+    # партицию в 03:10 UTC того дня.
+    window_open = _PendulumLikeDateTime(datetime(2026, 9, 6, 12, 0, 0, tzinfo=timezone.utc))
+    expected = _PendulumLikeDateTime(datetime(2026, 9, 12, 3, 10, 0, tzinfo=timezone.utc))
+    assert feedback_dq_logical_date(window_open) == expected
 ```
 
 - [ ] **Step 2: Запустить тесты и убедиться, что они падают**
@@ -1525,6 +1621,7 @@ from datetime import timedelta
 
 import pendulum
 from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import SparkKubernetesOperator
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.sdk import dag
 from airflow.timetables.interval import CronDataIntervalTimetable
 from airflow_commons.helpers.oncall import send_oncall_notification
@@ -1551,6 +1648,21 @@ dag_settings = get_dag_settings()
 logger = logging.getLogger("airflow.task")
 logger.setLevel("INFO")
 
+
+def _feedback_dq_logical_date(logical_date, **_):
+    """Прогон feedback_sku_group_id, записавший партицию за последний собираемый день.
+
+    Наше окно — [logical_date, logical_date + 7 дней), последняя закрытая дата в
+    нём — суббота. feedback_sku_group_id идёт по расписанию 10 3 * * * UTC и пишет
+    date = date(data_interval_start), поэтому нужен прогон с логической датой
+    «эта суббота, 03:10 UTC». Она позже нашей логической даты, и положительным
+    execution_delta не выражается — отсюда execution_date_fn.
+    """
+    return logical_date.in_timezone("UTC").add(days=6).replace(
+        hour=3, minute=10, second=0, microsecond=0
+    )
+
+
 # DAG собирает недельный датасет логов ранжирования для подбора параметров формулы
 default_args = {
     "owner": dag_settings["owner"],
@@ -1576,6 +1688,26 @@ default_args = {
     dag_id="feature-platform.datasets.search.ranking_logs.v1",
 )
 def collect_ranking_logs_dataset_v1():
+    # AGENTS.md: датасет читает feature_platform_sku_group_feedback_base_stats
+    # (owned by feature-platform.layers.gold.sku_group_id.feedback_sku_group_id),
+    # поэтому обязан ждать её dq-таску — иначе feedback CTE молча подставит
+    # устаревший снапшот вместо честного fail/wait. Остальные три источника
+    # (silver.ranking_analytics_events, silver.sku,
+    # silver.search_queries_frequency_groups_30d) — upstream DE-таблицы без
+    # feature_platform_-префикса, сенсоры на них не нужны.
+    wait_for_sku_group_feedback = ExternalTaskSensor(
+        task_id="wait_for_sku_group_feedback_dq",
+        external_dag_id="feature-platform.layers.gold.sku_group_id.feedback_sku_group_id",
+        external_task_id="dq",
+        allowed_states=["success"],
+        failed_states=["failed"],
+        mode="poke",
+        poke_interval=60,
+        timeout=6 * 60 * 60,
+        check_existence=True,
+        execution_date_fn=_feedback_dq_logical_date,
+    )
+
     collect_dataset = SparkKubernetesOperator(
         execution_timeout=timedelta(hours=10),
         task_id="collect_ranking_logs_dataset",
@@ -1592,7 +1724,7 @@ def collect_ranking_logs_dataset_v1():
 
     # Статистика идёт параллельно DQ и ни на что не влияет: downstream ждёт
     # таску dq, поэтому падение профилей не блокирует потребителей.
-    collect_dataset >> [dq_task, stats_task]
+    wait_for_sku_group_feedback >> collect_dataset >> [dq_task, stats_task]
 
 
 dag = collect_ranking_logs_dataset_v1()
@@ -1601,7 +1733,8 @@ dag = collect_ranking_logs_dataset_v1()
 - [ ] **Step 5: Запустить тесты и убедиться, что они проходят**
 
 Run: `python3 -m pytest ci_test/test_ranking_logs_dag.py -v`
-Expected: PASS, 6 тестов.
+Expected: PASS, 10 тестов (6 из исходного плана + 4 из fix round 1: сенсор на
+`feedback_sku_group_id.dq` и его `execution_date_fn`).
 
 - [ ] **Step 6: Перегенерировать карту платформы**
 

@@ -195,9 +195,28 @@ sku_group_age_days = date_diff('day', date(min(sku.created_at)), event_date)
 
 ## 6. Качество и наблюдаемость
 
-Штатные шаги DAG'а: `collect_ranking_logs_dataset >> [dq_task, stats_task]`. DQ и feature_stats
-идут параллельно и на цену скана источника не влияют — обе таски читают уже записанную партицию
-целевой таблицы через Trino.
+Граф DAG'а: `wait_for_sku_group_feedback >> collect_ranking_logs_dataset >> [dq_task, stats_task]`.
+DQ и feature_stats идут параллельно и на цену скана источника не влияют — обе таски читают уже
+записанную партицию целевой таблицы через Trino.
+
+`wait_for_sku_group_feedback` — `ExternalTaskSensor` на таску `dq` DAG'а
+`feature-platform.layers.gold.sku_group_id.feedback_sku_group_id`, владельца
+`iceberg.gold.feature_platform_sku_group_feedback_base_stats` (раздел 5.2). Обязателен по
+AGENTS.md: «датасет, читающий repository-managed layer/dataset таблицу, обязан объявить
+сенсор на `dq`-таску DAG'а-владельца» — то, что этот датасет offline-only, не освобождает
+от сенсора. Это не формальность: `feedback` CTE берёт последнюю партицию `<= event_date` с
+30-дневным окном отката, поэтому отсутствие свежей партиции не роняет джоб — оно молча
+подставляет более старый снапшот рейтинга. Сенсор превращает эту тихую деградацию в
+видимое ожидание вместо тихой порчи данных.
+
+Остальные три источника (`silver.ranking_analytics_events`, `silver.sku`,
+`silver.search_queries_frequency_groups_30d`) — upstream DE-таблицы без префикса
+`feature_platform_`, сенсоры на них не нужны.
+
+`feedback_sku_group_id` идёт по `10 3 * * * UTC` и пишет партицию `date = data_interval_start`.
+Наше окно открывается в `logical_date` (воскресенье) и закрывается субботой (`logical_date + 6
+дней`) — то есть нужный прогон feedback имеет логическую дату позже нашей, что не выражается
+положительным `execution_delta`; отсюда `execution_date_fn=_feedback_dq_logical_date`.
 
 ### DQ
 

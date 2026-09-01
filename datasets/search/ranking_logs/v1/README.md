@@ -51,6 +51,13 @@ DAG идёт раз в неделю, `0 12 * * 0` UTC. `data_interval` неде�
 | Рейтинг и отзывы | `iceberg.gold.feature_platform_sku_group_feedback_base_stats` |
 | Частотность запроса | `iceberg.silver.search_queries_frequency_groups_30d` |
 
+`feature_platform_sku_group_feedback_base_stats` — repository-managed таблица,
+владелец DAG `feature-platform.layers.gold.sku_group_id.feedback_sku_group_id`.
+Наш DAG ждёт его таску `dq` сенсором `wait_for_sku_group_feedback` (AGENTS.md,
+раздел про DQ-сенсоры) до `collect_ranking_logs_dataset`; остальные три
+источника — upstream DE-таблицы без `feature_platform_`-префикса и сенсоров не
+требуют.
+
 Все массивы источника выровнены 1:1 с `ranking_candidates` — проверено на 7424
 событиях. Разворот идёт общим `posexplode(arrays_zip(...))`.
 
