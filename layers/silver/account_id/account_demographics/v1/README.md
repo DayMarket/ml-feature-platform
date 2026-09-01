@@ -53,7 +53,8 @@ UM и Ecosystem объединяются через `FULL OUTER JOIN` по
 Gender из UM имеет приоритет над Ecosystem после нормализации:
 
 ```text
-UM и Ecosystem: MAN/M -> MALE, WOMAN/F -> FEMALE, остальные значения -> NULL
+UM: MAN -> MALE, WOMAN -> FEMALE, NULL -> NULL
+Ecosystem: M -> MALE, F -> FEMALE, пустая строка -> NULL
 gender = COALESCE(um_gender, ecosystem_gender)
 ```
 

@@ -42,11 +42,9 @@ WITH params AS (
 um AS (
     SELECT
         account_id,
-        CASE UPPER(TRIM(CAST(sex AS VARCHAR)))
+        CASE sex
             WHEN 'MAN' THEN 'MALE'
-            WHEN 'M' THEN 'MALE'
             WHEN 'WOMAN' THEN 'FEMALE'
-            WHEN 'F' THEN 'FEMALE'
         END AS gender,
         NULLIF(
             CAST(AT_TIMEZONE(birth_date, 'Asia/Tashkent') AS DATE),
@@ -58,10 +56,8 @@ um AS (
 ecosystem AS (
     SELECT
         last_user_id_m AS account_id,
-        CASE UPPER(TRIM(CAST(last_gender_ub AS VARCHAR)))
-            WHEN 'MAN' THEN 'MALE'
+        CASE last_gender_ub
             WHEN 'M' THEN 'MALE'
-            WHEN 'WOMAN' THEN 'FEMALE'
             WHEN 'F' THEN 'FEMALE'
         END AS gender
     FROM {ecosystem_users_table}
