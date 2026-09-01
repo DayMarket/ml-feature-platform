@@ -73,31 +73,41 @@ def build_account_l1_imp_counts_query(
     return f"""
 WITH category_ancestors AS (
     SELECT
-        CAST(leaf_category.id AS INT) AS category_id,
-        REVERSE(
-            FILTER(
-                ARRAY(
-                    leaf_category.id,
-                    parent_1.id,
-                    parent_2.id,
-                    parent_3.id,
-                    parent_4.id,
-                    parent_5.id
-                ),
-                value -> value IS NOT NULL
-                    AND value > 0
-                    AND value != {settings.technical_category_root_id}
-            )
-        ) AS root_to_leaf_category_ids
+        leaf_category.id AS category_id,
+        parent_1.id AS parent_1_id,
+        parent_2.id AS parent_2_id,
+        parent_3.id AS parent_3_id,
+        parent_4.id AS parent_4_id,
+        parent_5.id AS parent_5_id,
+        CASE
+            WHEN parent_5.id > 0
+             AND parent_5.id != {settings.technical_category_root_id} THEN 6
+            WHEN parent_4.id > 0
+             AND parent_4.id != {settings.technical_category_root_id} THEN 5
+            WHEN parent_3.id > 0
+             AND parent_3.id != {settings.technical_category_root_id} THEN 4
+            WHEN parent_2.id > 0
+             AND parent_2.id != {settings.technical_category_root_id} THEN 3
+            WHEN parent_1.id > 0
+             AND parent_1.id != {settings.technical_category_root_id} THEN 2
+            ELSE 1
+        END AS category_depth
     FROM {settings.category_table} leaf_category
     {_parent_category_joins(settings)}
+    WHERE leaf_category.id > 0
+      AND leaf_category.id != {settings.technical_category_root_id}
 ),
 category_levels AS (
     SELECT
         category_id,
-        CAST(
-            TRY_ELEMENT_AT(root_to_leaf_category_ids, 1) AS INT
-        ) AS l1_category_id
+        CASE category_depth
+            WHEN 6 THEN parent_5_id
+            WHEN 5 THEN parent_4_id
+            WHEN 4 THEN parent_3_id
+            WHEN 3 THEN parent_2_id
+            WHEN 2 THEN parent_1_id
+            ELSE category_id
+        END AS l1_category_id
     FROM category_ancestors
 ),
 product_categories AS (

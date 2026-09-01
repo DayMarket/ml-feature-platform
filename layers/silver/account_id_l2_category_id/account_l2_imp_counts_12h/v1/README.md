@@ -2,7 +2,7 @@
 
 DAG id: `feature-platform.layers.silver.account_id_l2_category_id.account_l2_imp_counts_12h`.
 
-Airflow group tag: `recsys-main-page-features`.
+Airflow group tag: `recsys-features`.
 
 Целевая таблица: `iceberg.silver.feature_platform_account_l2_imp_counts_12h`.
 

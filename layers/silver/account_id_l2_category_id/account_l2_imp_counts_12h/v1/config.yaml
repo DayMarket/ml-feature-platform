@@ -30,7 +30,7 @@ source:
 
 dag:
   id: feature-platform.layers.silver.account_id_l2_category_id.account_l2_imp_counts_12h
-  group_tag: recsys-main-page-features
+  group_tag: recsys-features
   schedule: "0 7,19 * * *"
   start_date: "2026-08-08T07:00:00Z"
   catchup: true
