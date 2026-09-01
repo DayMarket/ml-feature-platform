@@ -13,6 +13,10 @@ def _date_literal(value: date) -> str:
     return f"DATE '{value.isoformat()}'"
 
 
+def _timestamp_literal(value: datetime) -> str:
+    return f"TIMESTAMP '{value.isoformat(sep=' ', timespec='seconds')}'"
+
+
 def _tashkent_timestamp_literal(value: datetime) -> str:
     normalized = (
         value.replace(tzinfo=timezone.utc)
@@ -33,15 +37,15 @@ def _utc_timestamp_literal(value: datetime) -> str:
 
 def build_query(
     *,
-    dt: date,
+    dt: datetime,
     interval_end: datetime,
     sku_table: str,
     prices_table: str,
     commission_table: str,
     orders_table: str,
 ) -> str:
-    dt_sql = _date_literal(dt)
-    price_dt_sql = _date_literal(dt - timedelta(days=1))
+    dt_sql = _timestamp_literal(dt)
+    price_dt_sql = _date_literal(dt.date() - timedelta(days=1))
     window_start = interval_end - timedelta(days=ORDERS_LOOKBACK_DAYS)
     window_end_sql = _tashkent_timestamp_literal(interval_end)
     window_start_sql = _tashkent_timestamp_literal(window_start)

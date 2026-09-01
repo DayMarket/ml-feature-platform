@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import datetime, time, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -94,11 +94,12 @@ def parse_airflow_timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def tashkent_date(value: datetime | str) -> date:
+def tashkent_dt(value: datetime | str) -> datetime:
     parsed = parse_airflow_timestamp(value) if isinstance(value, str) else value
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(TASHKENT_TIME_ZONE).date()
+    local_date = parsed.astimezone(TASHKENT_TIME_ZONE).date()
+    return datetime.combine(local_date, time.min)
 
 
 def get_iceberg_catalog(ref: TableRef):
@@ -167,7 +168,7 @@ def _validate_nullable_numeric(frame, column: str):
     return converted
 
 
-def validate_inputs(frame, dt: date) -> None:
+def validate_inputs(frame, dt: datetime) -> None:
     import pandas as pd
 
     missing = [name for name in OUTPUT_COLUMNS if name not in frame.columns]
@@ -176,7 +177,7 @@ def validate_inputs(frame, dt: date) -> None:
     if frame.empty:
         raise ValueError(f"S6 output is empty for {dt}")
 
-    frame["dt"] = pd.to_datetime(frame["dt"], errors="coerce").dt.date
+    frame["dt"] = pd.to_datetime(frame["dt"], errors="coerce")
     if frame["dt"].isna().any():
         raise ValueError("S6 output contains null dt")
     if (frame["dt"] != dt).any():
@@ -224,7 +225,7 @@ def validate_inputs(frame, dt: date) -> None:
     frame["n_orders_28d"] = orders.astype("int64")
 
 
-def log_metrics(frame, dt: date) -> None:
+def log_metrics(frame, dt: datetime) -> None:
     group_counts = frame["dimensional_group"].value_counts().to_dict()
     logger.info(
         "S6 coverage for dt=%s: rows=%d, price_null_share=%.6f, "
@@ -262,7 +263,7 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_inputs(*, table, frame, dt: date) -> None:
+def write_inputs(*, table, frame, dt: datetime) -> None:
     from pyiceberg.expressions import EqualTo
 
     validate_inputs(frame, dt)

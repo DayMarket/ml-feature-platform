@@ -1,7 +1,7 @@
 import importlib.util
 import sys
 import unittest
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,11 +26,11 @@ class SkuCm2InputsDailyTimestampTest(unittest.TestCase):
         runtime = load_runtime()
 
         self.assertEqual(
-            runtime.tashkent_date("2026-08-23T19:00:00Z"),
-            date(2026, 8, 24),
+            runtime.tashkent_dt("2026-08-23T19:00:00Z"),
+            datetime(2026, 8, 24, 0, 0),
         )
         with self.assertRaisesRegex(ValueError, "not-a-timestamp"):
-            runtime.tashkent_date("not-a-timestamp")
+            runtime.tashkent_dt("not-a-timestamp")
 
 
 if __name__ == "__main__":
