@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **37**. Внутренних зависимостей: **9**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **25**. P4: **4**.
+Всего DAG: **38**. Внутренних зависимостей: **10**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **25**. P4: **5**.
 
-Таска `dq`: **35** из **37**. Таска `feature_stats`: **35** из **37** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
+Таска `dq`: **36** из **38**. Таска `feature_stats`: **36** из **38** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
 
 Severity policy:
 
@@ -171,62 +171,66 @@ standalone-подготовка данных. P3 в этом графе — ка
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 220}, "htmlLabels": false, "markdownAutoWrap": false}}%%
 flowchart LR
-    d0["`search_ranking.v1
+    d0["`ranking_logs.v1
+UTC cron 0 12 * * 0 · P4 · search_dataset`"]
+    d1["`search_ranking.v1
 UTC 10:00 · P4 · search_dataset`"]
-    d1["`buyout_account_history_features
+    d2["`buyout_account_history_features
 UTC 04:00 · P2 · large`"]
-    d2["`buyout_online_account_features
+    d3["`buyout_online_account_features
 UTC 06:00 · P2 · airflow-python`"]
-    d3["`buyout_online_city_features
+    d4["`buyout_online_city_features
 UTC 06:00 · P2 · airflow-python`"]
-    d4["`buyout_item_signal_features
+    d5["`buyout_item_signal_features
 UTC 03:00 · P2 · airflow-python`"]
-    d5["`search_query_atc_features_qid
+    d6["`search_query_atc_features_qid
 UTC 06:00 · P4 · small`"]
-    d6["`sku_group_query_atc_order_features_qid
+    d7["`sku_group_query_atc_order_features_qid
 UTC 06:00 · P4 · search_qid_features`"]
-    d7["`search_query_id
+    d8["`search_query_id
 UTC 05:00 · P3 · airflow-python`"]
-    d8["`sku_group_search_conversion_features
+    d9["`sku_group_search_conversion_features
 UTC 03:00 · P3 · large`"]
-    d9["`sku_group_query_atc_features
+    d10["`sku_group_query_atc_features
 UTC 02:00 · P3 · large`"]
-    d10["`buyout_online_sku_features
+    d11["`buyout_online_sku_features
 UTC 06:00 · P2 · airflow-python`"]
-    d11["`account_lifetime_facts
+    d12["`account_lifetime_facts
 UTC 02:00 · P2 · airflow-python`"]
-    d12["`delivery_cpi_city_features
+    d13["`delivery_cpi_city_features
 UTC 03:00 · P2 · airflow-python`"]
-    d13["`backfill
+    d14["`backfill
 UTC 03:00 · P2 · airflow-python`"]
-    d14["`product_search_queries
+    d15["`product_search_queries
 UTC 03:00 · P4 · search_product`"]
-    d15["`search_query_sku_group_es_features
+    d16["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
-    d16["`sku_group_orders
+    d17["`sku_group_orders
 UTC 01:00 · P3 · large`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
-    x2["elasticsearch_collect"]
-    d11 -.->|"dbt DQ (legacy) Δ26h"| d1
-    d1 -.->|"dbt DQ (legacy) Δ2h"| d2
-    d12 -.->|"dbt DQ (legacy) Δ3h"| d3
-    x0 -.->|"dbt DQ (legacy) Δ5h"| d5
-    x1 -.->|"dbt DQ (legacy) Δ5h"| d5
-    d7 -->|"sensor Δ1h"| d5
+    x2["feedback_sku_group_id"]
+    x3["elasticsearch_collect"]
+    x2 -->|"dq"| d0
+    d12 -.->|"dbt DQ (legacy) Δ26h"| d2
+    d2 -.->|"dbt DQ (legacy) Δ2h"| d3
+    d13 -.->|"dbt DQ (legacy) Δ3h"| d4
     x0 -.->|"dbt DQ (legacy) Δ5h"| d6
     x1 -.->|"dbt DQ (legacy) Δ5h"| d6
-    d7 -->|"sensor Δ1h"| d6
-    x0 -.->|"dbt DQ (legacy) Δ4h"| d7
-    x0 -.->|"dbt DQ (legacy) Δ2h"| d8
-    x1 -.->|"dbt DQ (legacy) Δ2h"| d8
-    x0 -.->|"dbt DQ (legacy) Δ1h"| d9
-    d4 -.->|"dbt DQ (legacy) Δ3h"| d10
-    x2 -->|"sensor"| d15
-    class d11,d12,d13,d14,d15,d16 silver
-    class d1,d2,d3,d4,d5,d6,d7,d8,d9,d10 gold
-    class d0 datasets
-    class x0,x1,x2 external
+    d8 -->|"sensor Δ1h"| d6
+    x0 -.->|"dbt DQ (legacy) Δ5h"| d7
+    x1 -.->|"dbt DQ (legacy) Δ5h"| d7
+    d8 -->|"sensor Δ1h"| d7
+    x0 -.->|"dbt DQ (legacy) Δ4h"| d8
+    x0 -.->|"dbt DQ (legacy) Δ2h"| d9
+    x1 -.->|"dbt DQ (legacy) Δ2h"| d9
+    x0 -.->|"dbt DQ (legacy) Δ1h"| d10
+    d5 -.->|"dbt DQ (legacy) Δ3h"| d11
+    x3 -->|"sensor"| d16
+    class d12,d13,d14,d15,d16,d17 silver
+    class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold
+    class d0,d1 datasets
+    class x0,x1,x2,x3 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
     classDef datasets fill:#dcfce7,stroke:#16a34a,color:#052e16

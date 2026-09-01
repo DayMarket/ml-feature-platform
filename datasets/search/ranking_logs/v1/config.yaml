@@ -1,0 +1,111 @@
+resources:
+  path: ../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-dataset-ranking-logs-v1
+  main_application_file: local:///git/repo/datasets/search/ranking_logs/v1/entrypoints/get_ranking_logs_dataset.py
+  resource_profile: search_dataset
+
+table:
+  key: dataset_ranking_logs_v1
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_ranking_logs_dataset_v1
+  primary_key: collection_date,event_date,request_id,sku_group_id
+  meta:
+    team: team:search
+
+# Параметры сбора. Джоб читает этот блок из config.yaml рядом с собой, чтобы
+# значения не пришлось дублировать в общем spark-шаблоне: шаблон
+# config/spark/layer_spark_application.yaml общий для всех энтити и передаёт
+# только partition_start, partition_end и table_name.
+dataset:
+  # Одна модель на ран. В источнике их 11; на 2026-08-25 целевая дала 481 982
+  # запроса за сутки.
+  model_name: search_unified_model_v9_cold_start
+  # Доля запросов (не строк-кандидатов): попавший в выборку запрос берётся
+  # целиком, со всеми кандидатами. В среднем ~837 кандидатов на запрос, поэтому
+  # плановые 7% дают ~28 млн строк в сутки и ~200 млн за недельный ран.
+  #
+  # На первый ран доля намеренно снижена до 1%, чтобы первое исполнение было
+  # измерением, а не ставкой вслепую: ~4 млн строк в сутки и ~28 млн за ран
+  # (~837 кандидатов × ~482 тыс. запросов в сутки × 1% × 7 дней). Поднимать до
+  # 7% только после того, как на первом ране измерены реальные метрики Spark и
+  # пересмотрен профиль ресурсов search_dataset — см. README, раздел «Отбор».
+  sample_percent: 1
+
+dag:
+  team: search
+  group_tag: ranking-logs-dataset
+  schedule: "0 12 * * 0"
+  # 2026-09-07 — понедельник, а schedule — "0 12 * * 0" (воскресенье): с ним
+  # первый data_interval открылся бы только 2026-09-13 и первый ран стартовал
+  # бы неделей позже задуманного. 2026-09-06 — воскресенье, совпадает с cron.
+  start_date: "2026-09-06T12:00:00Z"
+
+alerts:
+  team: search
+  severity: P4
+  oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Партиция — collection_date, и она считается от data_interval_end: это дата
+  # фактического запуска DAG'а (воскресенье), тогда как data_interval_start —
+  # первый день собираемого окна. Оба шаблона ниже обязаны совпадать дословно.
+  partition_column: collection_date
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Датасет событийных показов: первичный ключ задаёт гранулярность строки, а
+    # не контракт для потребителей, и качество источника не должно будить
+    # дежурного. Результат по-прежнему пишется в feature_platform_dq_results.
+    - name: primary_key_not_null
+      severity: warn
+    - name: primary_key_unique
+      severity: warn
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    # row_count_growth сознательно отключён: dq/config.py подставляет базовые
+    # тесты ("base tests") автоматически, и любой базовый тест, отсутствующий в
+    # явном списке, получает severity: error по умолчанию. Поэтому выключаем его
+    # явным enabled: false, а не умолчанием: dq/tests.py берёт baseline как
+    # partition_date - 1 day, у недельной партиции предыдущего дня не существует,
+    # и тест на каждом ране возвращал бы "нет baseline".
+    # Когда включать обратно: когда dq/ научится настраиваемому интервалу
+    # baseline (недельному), чтобы сравнение шло с предыдущей партицией энтити,
+    # а не с календарным вчера. Дубликат этой записи — в реестре отключённых
+    # базовых тестов в AGENTS.md.
+    - name: row_count_growth
+      enabled: false
+    - name: not_null
+      columns: [final_score, sku_group_id]
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq: обе таски обязаны смотреть на одну партицию.
+  partition_column: collection_date
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  exclude_columns:
+    # Идентификаторы и свободный текст: профиль min/max/перцентилей по ним
+    # бессмыслен.
+    - sku_group_id
+    - request_id
+    - install_id
+    - promo_id
+    - search_query
+  # Значение рассчитано на плановую долю выборки 7% (~200 млн строк в партиции),
+  # а не на разведочный первый ран с sample_percent: 1 (~28 млн строк) — чтобы
+  # таймаут не пришлось поднимать заново вместе с процентом.
+  # Дефолт feature_stats/config.py:DEFAULT_QUERY_TIMEOUT_SECONDS = 600 для
+  # планового объёма опасен: у этой энтити 28 числовых не-excluded колонок.
+  # Единственный живой замер в AGENTS.md (раздел Feature Stats) — 121 агрегат /
+  # 32.4M строк = 36.6 с. Плановая партиция ~6x по строкам и ~3x по числу
+  # агрегатов (28 колонок * 7 функций), то есть ~16x по цене: 36.6 с * 16 ≈
+  # 590 с — уже близко к дефолту. 3600 с даёт запас. feature_stats не знает
+  # severity: исключение валит таску и будит дежурного, поэтому значение нужно
+  # пересмотреть по факту первого рана на полном объёме.
+  query_timeout_seconds: 3600
