@@ -85,8 +85,6 @@ EXPECTED_COLUMNS = [
     "dssm_score",
     "linear_score",
     "normalized_linear_score",
-    "cpo_adv_percent",
-    "bid_amount",
     "commission_percent",
     "seller_price",
     "logistics_fee",
@@ -316,8 +314,6 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     dssm_score DOUBLE COMMENT 'external_features.dssm_score[position]',
     linear_score DOUBLE COMMENT 'external_features.linear_score[position]',
     normalized_linear_score DOUBLE COMMENT 'external_features.normalized_linear_score[position]',
-    cpo_adv_percent DOUBLE COMMENT 'external_features.cpo_adv_percents[position]',
-    bid_amount DOUBLE COMMENT 'external_features.bid_amounts[position]',
     commission_percent DOUBLE COMMENT 'Комиссия в процентах 0-100: cm2_features[position][0]',
     seller_price DOUBLE COMMENT 'Цена продажи, на которой считалась формула: cm2_features[position][1]',
     logistics_fee DOUBLE COMMENT 'Логистический сбор: cm2_features[position][2]',
@@ -473,7 +469,7 @@ sku-группе из `silver.sku_eod`: формула считалась име
   (`job/query.py`).
 - Рассогласование длины массива, **раскодированного из JSON**
   (`external_features.dssm_score`, `.linear_score`,
-  `.normalized_linear_score`, `.cpo_adv_percents`, `.bid_amounts`) — строка
+  `.normalized_linear_score`) — строка
   лога сохраняется, а сама колонка **обнуляется** для всех кандидатов этого
   события, это `CASE`-блоки в `sampled_events`.
 
@@ -999,8 +995,6 @@ def test_query_explodes_all_aligned_arrays_together():
         "dssm_scores",
         "linear_scores",
         "normalized_linear_scores",
-        "cpo_adv_percents",
-        "bid_amounts",
     ):
         assert array_name in query
 
@@ -1065,8 +1059,6 @@ def test_query_dereferences_every_candidate_field_by_its_real_name():
         "dssm_scores",
         "linear_scores",
         "normalized_linear_scores",
-        "cpo_adv_percents",
-        "bid_amounts",
     )
     for field in fields_read_in_final_select:
         assert f"c.candidate.{field}" in projection, field
@@ -1145,9 +1137,10 @@ sampled_events AS (
         e.model_output AS model_output,
         e.model_input['cm2_features'] AS cm2_features,
         e.common_external_features AS common_external_features,
-        -- Длина JSON-массивов не проверена на живых данных для dssm_score,
-        -- normalized_linear_score, cpo_adv_percents и bid_amounts, поэтому при
-        -- рассогласовании колонка обнуляется, а строка лога сохраняется.
+        -- Замер на 7424 событиях (2026-08-25): все три массива выровнены с
+        -- ranking_candidates 1:1 без исключений. Проверка длины оставлена как
+        -- страховка на случай изменения контракта: при рассогласовании колонка
+        -- обнуляется, а строка лога сохраняется.
         CASE
             WHEN size(from_json(get_json_object(e.external_features, '$.dssm_score'), 'ARRAY<DOUBLE>'))
                  = size(e.ranking_candidates)
@@ -1165,19 +1158,7 @@ sampled_events AS (
                  = size(e.ranking_candidates)
             THEN from_json(get_json_object(e.external_features, '$.normalized_linear_score'), 'ARRAY<DOUBLE>')
             ELSE array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
-        END AS normalized_linear_scores,
-        CASE
-            WHEN size(from_json(get_json_object(e.external_features, '$.cpo_adv_percents'), 'ARRAY<DOUBLE>'))
-                 = size(e.ranking_candidates)
-            THEN from_json(get_json_object(e.external_features, '$.cpo_adv_percents'), 'ARRAY<DOUBLE>')
-            ELSE array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
-        END AS cpo_adv_percents,
-        CASE
-            WHEN size(from_json(get_json_object(e.external_features, '$.bid_amounts'), 'ARRAY<DOUBLE>'))
-                 = size(e.ranking_candidates)
-            THEN from_json(get_json_object(e.external_features, '$.bid_amounts'), 'ARRAY<DOUBLE>')
-            ELSE array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
-        END AS bid_amounts
+        END AS normalized_linear_scores
     FROM iceberg.silver.ranking_analytics_events e
     WHERE
         -- Статические границы, не значения из params: без них джойн/фильтр по
@@ -1227,9 +1208,7 @@ candidates AS (
             s.cm2_features,
             s.dssm_scores,
             s.linear_scores,
-            s.normalized_linear_scores,
-            s.cpo_adv_percents,
-            s.bid_amounts
+            s.normalized_linear_scores
         )
     ) exploded AS candidate_index, candidate
 ),
@@ -1336,8 +1315,6 @@ SELECT
     CAST(c.candidate.dssm_scores AS DOUBLE) AS dssm_score,
     CAST(c.candidate.linear_scores AS DOUBLE) AS linear_score,
     CAST(c.candidate.normalized_linear_scores AS DOUBLE) AS normalized_linear_score,
-    CAST(c.candidate.cpo_adv_percents AS DOUBLE) AS cpo_adv_percent,
-    CAST(c.candidate.bid_amounts AS DOUBLE) AS bid_amount,
     CAST(c.candidate.cm2_features[0] AS DOUBLE) AS commission_percent,
     CAST(c.candidate.cm2_features[1] AS DOUBLE) AS seller_price,
     CAST(c.candidate.cm2_features[2] AS DOUBLE) AS logistics_fee,
@@ -1893,7 +1870,9 @@ git commit -m "feat(datasets): DAG ranking_logs v1 и регистрация в 
 Эти проверки требуют доступа к Trino (MCP-сервер `trino` на момент написания
 плана был отключён) и выполняются до снятия DAG'а с паузы.
 
-- [ ] **Совпадают ли `cm2_features[5]` и `external_features.cpo_adv_percents`,
+- [x] **ВЫПОЛНЕНО (2026-09-01): совпадают полностью, дублирующие колонки удалены
+  из схемы (40 → 38). Подробности — в разделе 7 спеки.** Исходная формулировка:
+  совпадают ли `cm2_features[5]` и `external_features.cpo_adv_percents`,
   `cm2_features[4]` и `external_features.bid_amounts`.** Если совпадают на всех
   строках — убрать дублирующие колонки `cpo_percent` и `cpm_bid` отдельной
   миграцией, а не задним числом в `create_table.sql`.
@@ -1916,7 +1895,10 @@ FROM (
 ) t
 ```
 
-- [ ] **Есть ли ежедневные партиции `feature_platform_sku_group_feedback_base_stats`.**
+- [x] **ВЫПОЛНЕНО (2026-09-01): партиции ежедневные, 21 день подряд без пропусков,
+  ~2.1 млн строк на дату. Fallback остаётся, но на практике не срабатывает.**
+  Исходная формулировка: есть ли ежедневные партиции
+  `feature_platform_sku_group_feedback_base_stats`.
   Если в окне есть дни без партиции, fallback «последняя `date <= event_date`»
   уже реализован; проверка нужна, чтобы знать, насколько часто он срабатывает.
 

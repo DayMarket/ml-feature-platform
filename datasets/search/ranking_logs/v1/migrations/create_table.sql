@@ -23,8 +23,6 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     dssm_score DOUBLE COMMENT 'external_features.dssm_score[position]',
     linear_score DOUBLE COMMENT 'external_features.linear_score[position]',
     normalized_linear_score DOUBLE COMMENT 'external_features.normalized_linear_score[position]',
-    cpo_adv_percent DOUBLE COMMENT 'external_features.cpo_adv_percents[position]',
-    bid_amount DOUBLE COMMENT 'external_features.bid_amounts[position]',
     commission_percent DOUBLE COMMENT 'Комиссия в процентах 0-100: cm2_features[position][0]',
     seller_price DOUBLE COMMENT 'Цена продажи, на которой считалась формула: cm2_features[position][1]',
     logistics_fee DOUBLE COMMENT 'Логистический сбор: cm2_features[position][2]',

@@ -11,7 +11,7 @@
 
 Датасет разворачивает лог до уровня «запрос × кандидат», добавляет разложение формулы
 (alpha/beta/gamma/delta-составляющие), её входы (`cm2_features`) и внешние скоры
-(`dssm_score`, `linear_score`, `normalized_linear_score`, `cpo_adv_percents`, `bid_amounts`),
+(`dssm_score`, `linear_score`, `normalized_linear_score`),
 после чего обогащает данные возрастом sku-группы, рейтингом и частотностью запроса.
 
 Датасет предназначен только для офлайн-подбора параметров и анализа. Он не выгружается
@@ -144,8 +144,6 @@ reduce-таск на одно ядро.
 | `dssm_score` | DOUBLE | `external_features.dssm_score[position]` |
 | `linear_score` | DOUBLE | `external_features.linear_score[position]` |
 | `normalized_linear_score` | DOUBLE | `external_features.normalized_linear_score[position]` |
-| `cpo_adv_percent` | DOUBLE | `external_features.cpo_adv_percents[position]` |
-| `bid_amount` | DOUBLE | `external_features.bid_amounts[position]` |
 | `commission_percent` | DOUBLE | `cm2_features[position][1]` |
 | `seller_price` | DOUBLE | `cm2_features[position][2]` |
 | `logistics_fee` | DOUBLE | `cm2_features[position][3]` |
@@ -260,11 +258,26 @@ AGENTS.md: «датасет, читающий repository-managed layer/dataset �
 `exclude_columns`: `sku_group_id`, `request_id`, `install_id`, `promo_id`, `search_query` —
 идентификаторы и текст, профиль min/max/перцентилей по ним бессмыслен.
 
-## 7. Проверить на этапе реализации
+## 7. Проверки на живых данных
 
-1. `cm2_features.cpo_percent` против `external_features.cpo_adv_percents` и
-   `cm2_features.cpm_bid` против `external_features.bid_amounts`: если это одни и те же
-   величины, дублирующие колонки убираются из схемы.
-2. Наличие ежедневных партиций `feature_platform_sku_group_feedback_base_stats`; при пропусках
-   применяется fallback «последняя `date <= event_date`» из 5.2.
-3. Фактические ресурсы Spark на первом ране и необходимость отдельного профиля.
+Выполнены через Trino на окне `fired_at` 2026-08-25 12:00–12:10 UTC по целевой модели
+(7424 события, 2 599 871 кандидат в срезе для поэлементных сверок).
+
+1. **Дубли колонок — подтверждены, копии убраны.** `cm2_features[6]` совпадает с
+   `external_features.cpo_adv_percents`, а `cm2_features[5]` — с `bid_amounts` на всех
+   2 599 871 кандидатах. Совпадение не вырожденное: ненулевых значений 927 540 по CPO и
+   21 500 по ставке. Оставлены `cpo_percent` и `cpm_bid` из `cm2_features` — это
+   фактические входы формулы, и у них полное покрытие; колонки `cpo_adv_percent` и
+   `bid_amount` из схемы удалены (40 → 38 колонок).
+2. **Выравнивание массивов.** `final_scores`, `model_output`, `cm2_features`,
+   `dssm_score`, `linear_score`, `normalized_linear_score` и `bid_amounts` выровнены с
+   `ranking_candidates` 1:1 во всех 7424 событиях. `cpo_adv_percents` в 639 событиях
+   (8.6%) не логируется вовсе — это отсутствующий ключ, а не рассинхрон длины; на
+   выбранную схему это больше не влияет, потому что колонка удалена.
+3. **Партиции `feature_platform_sku_group_feedback_base_stats` — ежедневные без
+   пропусков.** 21 день подряд, ~2.1 млн строк на дату. Fallback «последняя
+   `date <= event_date`» остаётся, но на практике всегда попадает в точную дату.
+4. **`request_id`** — пустых значений в срезе нет. Гард `IS NOT NULL` остаётся как
+   страховка: `xxhash64(NULL)` даёт константу, попадающую в порог выборки.
+5. Не проверено и остаётся на первый ран: фактические ресурсы Spark и необходимость
+   отдельного профиля (см. раздел 3 про `model_input` как `map`).

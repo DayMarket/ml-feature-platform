@@ -121,8 +121,6 @@ def test_query_explodes_all_aligned_arrays_together():
         "dssm_scores",
         "linear_scores",
         "normalized_linear_scores",
-        "cpo_adv_percents",
-        "bid_amounts",
     ):
         assert array_name in query
 
@@ -187,8 +185,6 @@ def test_query_dereferences_every_candidate_field_by_its_real_name():
         "dssm_scores",
         "linear_scores",
         "normalized_linear_scores",
-        "cpo_adv_percents",
-        "bid_amounts",
     )
     for field in fields_read_in_final_select:
         assert f"c.candidate.{field}" in projection, field

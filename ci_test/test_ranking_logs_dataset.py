@@ -39,8 +39,6 @@ EXPECTED_COLUMNS = [
     "dssm_score",
     "linear_score",
     "normalized_linear_score",
-    "cpo_adv_percent",
-    "bid_amount",
     "commission_percent",
     "seller_price",
     "logistics_fee",

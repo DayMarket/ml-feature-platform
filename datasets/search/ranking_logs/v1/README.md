@@ -124,7 +124,7 @@ sku-группе из `silver.sku_eod`: формула считалась име
   (`job/query.py`).
 - Рассогласование длины массива, **раскодированного из JSON**
   (`external_features.dssm_score`, `.linear_score`,
-  `.normalized_linear_score`, `.cpo_adv_percents`, `.bid_amounts`) — строка
+  `.normalized_linear_score`) — строка
   лога сохраняется, а сама колонка **обнуляется** для всех кандидатов этого
   события, это `CASE`-блоки в `sampled_events`.
 
