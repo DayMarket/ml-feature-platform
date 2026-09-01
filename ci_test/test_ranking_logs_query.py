@@ -89,9 +89,9 @@ def test_query_filters_the_configured_model_only():
 
 def test_query_samples_requests_deterministically():
     query = build_query()
-    # sample_percent = 7 -> порог 700 из 10000. pmod, а не abs: xxhash64 может
+    # sample_percent = 1 -> порог 100 из 10000. pmod, а не abs: xxhash64 может
     # вернуть Long.MIN_VALUE, у которого abs отрицателен и условие отсечёт всё.
-    assert "pmod(xxhash64(e.request_id), 10000) < 700" in query
+    assert "pmod(xxhash64(e.request_id), 10000) < 100" in query
     assert "abs(xxhash64" not in query
 
 

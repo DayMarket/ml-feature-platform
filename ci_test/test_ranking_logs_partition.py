@@ -137,8 +137,11 @@ def test_load_settings_survives_poisoned_cache():
         # Несмотря на отравленный кэш, наш загрузчик должен всё ещё работать
         settings_module = load_module("settings")
         settings = settings_module.load_dataset_settings(ENTITY_DIR / "config.yaml")
-        # Этот вызов должен вернуть DatasetSettings из нашей энтити, не из подделки
-        assert settings.sample_percent == 7
+        # Этот вызов должен вернуть DatasetSettings из нашей энтити, не из подделки.
+        # Сверяемся с самим config.yaml, а не с литералом: sample_percent —
+        # настраиваемый параметр, и тест не должен падать при его изменении.
+        raw = yaml.safe_load((ENTITY_DIR / "config.yaml").read_text(encoding="utf-8"))
+        assert settings.sample_percent == int(raw["dataset"]["sample_percent"])
     finally:
         # Уборка
         for name in list(sys.modules.keys()):
