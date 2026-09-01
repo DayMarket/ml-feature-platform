@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -94,11 +94,11 @@ def parse_airflow_timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def previous_tashkent_date(value: datetime | str) -> date:
+def tashkent_date(value: datetime | str) -> date:
     parsed = parse_airflow_timestamp(value) if isinstance(value, str) else value
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(TASHKENT_TIME_ZONE).date() - timedelta(days=1)
+    return parsed.astimezone(TASHKENT_TIME_ZONE).date()
 
 
 def get_iceberg_catalog(ref: TableRef):

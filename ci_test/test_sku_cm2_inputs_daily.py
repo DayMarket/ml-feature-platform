@@ -26,11 +26,11 @@ class SkuCm2InputsDailyTimestampTest(unittest.TestCase):
         runtime = load_runtime()
 
         self.assertEqual(
-            runtime.previous_tashkent_date("2026-08-07T00:00:00+05:00"),
-            date(2026, 8, 6),
+            runtime.tashkent_date("2026-08-23T19:00:00Z"),
+            date(2026, 8, 24),
         )
         with self.assertRaisesRegex(ValueError, "not-a-timestamp"):
-            runtime.previous_tashkent_date("not-a-timestamp")
+            runtime.tashkent_date("not-a-timestamp")
 
 
 if __name__ == "__main__":

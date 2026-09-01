@@ -41,6 +41,7 @@ def build_query(
     orders_table: str,
 ) -> str:
     dt_sql = _date_literal(dt)
+    price_dt_sql = _date_literal(dt - timedelta(days=1))
     window_start = interval_end - timedelta(days=ORDERS_LOOKBACK_DAYS)
     window_end_sql = _tashkent_timestamp_literal(interval_end)
     window_start_sql = _tashkent_timestamp_literal(window_start)
@@ -62,7 +63,7 @@ daily_prices AS (
         CAST(sku_id AS INTEGER) AS sku_id,
         CAST(sell_price_eod AS DOUBLE) AS sell_price_uzs
     FROM {prices_table}
-    WHERE dt = {dt_sql}
+    WHERE dt = {price_dt_sql}
 ),
 commissions AS (
     SELECT

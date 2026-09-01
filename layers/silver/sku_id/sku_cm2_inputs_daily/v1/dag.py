@@ -100,7 +100,7 @@ def sku_cm2_inputs_daily_dag() -> None:
         table = runtime.preflight_table(catalog, ref)
 
         interval_end = runtime.parse_airflow_timestamp(interval_end_value)
-        dt = runtime.previous_tashkent_date(interval_end)
+        dt = runtime.tashkent_date(interval_end)
         source = config["source"]
         query_args = {
             "dt": dt,
