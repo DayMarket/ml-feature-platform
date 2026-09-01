@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import datetime, time, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -85,8 +85,13 @@ def parse_airflow_timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def dt_from_interval_end(value: str) -> date:
-    return parse_airflow_timestamp(value).astimezone(TASHKENT_TIME_ZONE).date()
+def dt_from_interval_end(value: str) -> datetime:
+    local_date = (
+        parse_airflow_timestamp(value)
+        .astimezone(TASHKENT_TIME_ZONE)
+        .date()
+    )
+    return datetime.combine(local_date, time.min)
 
 
 def get_iceberg_catalog(ref: TableRef):
@@ -144,7 +149,7 @@ def query_trino(conn_id: str, sql: str):
     return frame
 
 
-def validate_demographics(frame, dt: date) -> None:
+def validate_demographics(frame, dt: datetime) -> None:
     import pandas as pd
 
     missing = [name for name in OUTPUT_COLUMNS if name not in frame.columns]
@@ -156,7 +161,7 @@ def validate_demographics(frame, dt: date) -> None:
     frame["dt"] = pd.to_datetime(
         frame["dt"],
         errors="coerce",
-    ).dt.date
+    )
     if frame["dt"].isna().any():
         raise ValueError("Account demographics output contains null dt")
     if (frame["dt"] != dt).any():
@@ -204,7 +209,7 @@ def validate_demographics(frame, dt: date) -> None:
         )
 
 
-def log_demographics_metrics(frame, dt: date) -> None:
+def log_demographics_metrics(frame, dt: datetime) -> None:
     total_rows = len(frame.index)
     age_null_share = float(frame["age"].isna().mean())
     gender_null_share = float(frame["gender"].isna().mean())
@@ -262,7 +267,7 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_demographics(table, frame, dt: date) -> None:
+def write_demographics(table, frame, dt: datetime) -> None:
     from pyiceberg.expressions import EqualTo
 
     frame = frame.copy()

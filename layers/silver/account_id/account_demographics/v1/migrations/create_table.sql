@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS {target_table} (
-    dt DATE COMMENT 'Дата расчёта в часовом поясе Asia/Tashkent; часть уникального ключа dt, account_id',
+    dt TIMESTAMP COMMENT 'Начало даты расчёта (00:00:00 Asia/Tashkent); часть уникального ключа dt, account_id',
     account_id INT COMMENT 'Положительный идентификатор пользователя; часть уникального ключа dt, account_id',
     gender STRING COMMENT 'Нормализованный gender пользователя: MALE, FEMALE или NULL; приоритет имеет значение из UM',
     age INTEGER COMMENT 'Возраст пользователя в полных годах на dt с учётом месяца и дня рождения либо NULL',
@@ -8,5 +8,5 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 )
 USING iceberg
 COMMENT 'Silver: ежедневные демографические и контекстные атрибуты пользователя'
-PARTITIONED BY (dt)
+PARTITIONED BY (days(dt))
 TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

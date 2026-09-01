@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 
 def _date_literal(value: date) -> str:
     return f"DATE '{value.isoformat()}'"
+
+
+def _timestamp_literal(value: datetime) -> str:
+    return f"TIMESTAMP '{value.isoformat(sep=' ', timespec='seconds')}'"
 
 
 def _tashkent_timestamp_literal(value: date) -> str:
@@ -14,7 +18,7 @@ def _tashkent_timestamp_literal(value: date) -> str:
 
 
 def build_query(
-    dt: date,
+    dt: datetime,
     customer_table: str,
     ecosystem_users_table: str,
     geo_events_table: str,
@@ -25,16 +29,19 @@ def build_query(
     if lookback_days <= 0:
         raise ValueError("lookback_days must be positive")
 
-    dt_sql = _date_literal(dt)
-    window_start_date = dt - timedelta(days=lookback_days)
+    calculation_date = dt.date()
+    dt_sql = _timestamp_literal(dt)
+    calculation_date_sql = _date_literal(calculation_date)
+    window_start_date = calculation_date - timedelta(days=lookback_days)
     window_start_date_sql = _date_literal(window_start_date)
     window_start_sql = _tashkent_timestamp_literal(window_start_date)
-    window_end_sql = _tashkent_timestamp_literal(dt)
+    window_end_sql = _tashkent_timestamp_literal(calculation_date)
 
     return f"""
 WITH params AS (
     SELECT
         {dt_sql} AS dt,
+        {calculation_date_sql} AS calculation_date,
         {window_start_date_sql} AS window_start_date,
         {window_start_sql} AS window_start,
         {window_end_sql} AS window_end
@@ -200,7 +207,7 @@ platform_events AS (
             'WEB'
           )
       AND session.date_uz >= params.window_start_date
-      AND session.date_uz < params.dt
+      AND session.date_uz < params.calculation_date
       AND AT_TIMEZONE(
             session.started_at,
             'Asia/Tashkent'
@@ -237,10 +244,10 @@ SELECT
     demographics.gender,
     CASE
         WHEN demographics.birth_date IS NULL
-          OR demographics.birth_date > params.dt
+          OR demographics.birth_date > params.calculation_date
         THEN NULL
         ELSE CAST(
-            DATE_DIFF('year', demographics.birth_date, params.dt)
+            DATE_DIFF('year', demographics.birth_date, params.calculation_date)
             AS INTEGER
         )
     END AS age,

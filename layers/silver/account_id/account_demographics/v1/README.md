@@ -10,14 +10,15 @@
 - `start_date=2026-08-08T19:00:00Z`, `catchup=true`: при первом включении DAG выполняет
   начальный backfill примерно за две недели.
 
-`dt` рассчитывается как локальная дата `data_interval_end` в `Asia/Tashkent`. Повторный запуск
-одной даты идемпотентно перезаписывает её через PyIceberg `overwrite`.
+`dt` рассчитывается как `TIMESTAMP` начала локальной даты `data_interval_end`
+(`00:00:00 Asia/Tashkent`). Повторный запуск одного `dt` идемпотентно перезаписывает его через
+PyIceberg `overwrite`.
 
 ## Grain и схема
 
 Grain и уникальный ключ: `dt,account_id`.
 
-- `dt` — дата расчёта в `Asia/Tashkent`;
+- `dt` — `TIMESTAMP` начала даты расчёта (`00:00:00 Asia/Tashkent`);
 - `account_id` — положительный идентификатор пользователя;
 - `gender` — `MALE`, `FEMALE` или `NULL`;
 - `age` — полное количество лет пользователя на `dt` либо `NULL`;
@@ -71,7 +72,7 @@ NULLIF(
 Возраст считается в полных годах:
 
 ```sql
-CAST(DATE_DIFF('year', birth_date, dt) AS INTEGER)
+CAST(DATE_DIFF('year', birth_date, DATE(dt)) AS INTEGER)
 ```
 
 В Trino `DATE_DIFF('year', ...)` учитывает месяц и день: до дня рождения текущий неполный год
@@ -130,7 +131,7 @@ CAST(DATE_DIFF('year', birth_date, dt) AS INTEGER)
 G5 выбирает последнюю запись, удовлетворяющую условию:
 
 ```sql
-dt <= DATE(calculated_at AT TIME ZONE 'Asia/Tashkent')
+dt <= CAST(DATE(calculated_at AT TIME ZONE 'Asia/Tashkent') AS TIMESTAMP)
 ```
 
 Age buckets определяются в Gold и не являются частью Silver-контракта. Прямой ranking-service

@@ -1,7 +1,7 @@
 import importlib.util
 import sys
 import unittest
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +27,7 @@ class AccountDemographicsTimestampTest(unittest.TestCase):
 
         self.assertEqual(
             runtime.dt_from_interval_end("2026-08-04T19:00:00Z"),
-            date(2026, 8, 5),
+            datetime(2026, 8, 5, 0, 0),
         )
         with self.assertRaisesRegex(ValueError, "not-a-timestamp"):
             runtime.dt_from_interval_end("not-a-timestamp")

@@ -24,7 +24,7 @@ runtime:
 
 dag:
   id: feature-platform.layers.silver.account_id.account_demographics
-  group_tag: recsys-main-page-features
+  group_tag: recsys-features
   schedule: "0 19 * * *"
   start_date: "2026-08-08T19:00:00Z"
   catchup: true
