@@ -1,3 +1,4 @@
+import contextlib
 import importlib.util
 import sys
 from datetime import date
@@ -8,14 +9,37 @@ import yaml
 ENTITY_DIR = Path("datasets/search/ranking_logs/v1")
 
 
+@contextlib.contextmanager
+def _isolated_job_package():
+    """Имя пакета `job` занято десятком энтити репозитория, и соседний тест
+    (ci_test/test_query_id_features.py) кэширует в sys.modules своё
+    `job.entities` без уборки. Снимаем чужой кэш на время загрузки и
+    возвращаем его на место, чтобы не сломать ни себя, ни соседей."""
+    saved = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "job" or name.startswith("job.")
+    }
+    for name in saved:
+        del sys.modules[name]
+    saved_path = list(sys.path)
+    sys.path.insert(0, str(ENTITY_DIR))
+    try:
+        yield
+    finally:
+        sys.path[:] = saved_path
+        for name in [n for n in sys.modules if n == "job" or n.startswith("job.")]:
+            del sys.modules[name]
+        sys.modules.update(saved)
+
+
 def load_module(name):
-    if str(ENTITY_DIR) not in sys.path:
-        sys.path.insert(0, str(ENTITY_DIR))
-    spec = importlib.util.spec_from_file_location(
-        f"ranking_logs_{name}", ENTITY_DIR / "job" / f"{name}.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    with _isolated_job_package():
+        spec = importlib.util.spec_from_file_location(
+            f"ranking_logs_{name}", ENTITY_DIR / "job" / f"{name}.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
     return module
 
 
@@ -89,3 +113,35 @@ def test_load_dataset_settings_rejects_out_of_range_percent(tmp_path):
     except ValueError:
         return
     raise AssertionError("ожидался ValueError на sample_percent вне (0, 100]")
+
+
+def test_load_settings_survives_poisoned_cache():
+    """Регрессионный тест: проверяет, что наш загрузчик не зависит от кэша
+    других энтити. Сосед ci_test/test_query_id_features.py кэширует свой
+    job.entities в sys.modules без уборки, и это должно нас не ломать."""
+    # Отравим кэш фиктивным модулем, который не имеет DatasetSettings
+    fake_job = type(sys)("job")
+    fake_entities = type(sys)("job.entities")
+    fake_entities.SomeOtherClass = type("SomeOtherClass", (), {})
+    fake_job.entities = fake_entities
+
+    saved = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "job" or name.startswith("job.")
+    }
+    sys.modules["job"] = fake_job
+    sys.modules["job.entities"] = fake_entities
+
+    try:
+        # Несмотря на отравленный кэш, наш загрузчик должен всё ещё работать
+        settings_module = load_module("settings")
+        settings = settings_module.load_dataset_settings(ENTITY_DIR / "config.yaml")
+        # Этот вызов должен вернуть DatasetSettings из нашей энтити, не из подделки
+        assert settings.sample_percent == 7
+    finally:
+        # Уборка
+        for name in list(sys.modules.keys()):
+            if name == "job" or name.startswith("job."):
+                del sys.modules[name]
+        sys.modules.update(saved)

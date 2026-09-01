@@ -477,6 +477,7 @@ git commit -m "feat(datasets): контракт и DDL датасета ranking_
 Создать `ci_test/test_ranking_logs_partition.py`:
 
 ```python
+import contextlib
 import importlib.util
 import sys
 from datetime import date
@@ -487,14 +488,37 @@ import yaml
 ENTITY_DIR = Path("datasets/search/ranking_logs/v1")
 
 
+@contextlib.contextmanager
+def _isolated_job_package():
+    """Имя пакета `job` занято десятком энтити репозитория, и соседний тест
+    (ci_test/test_query_id_features.py) кэширует в sys.modules своё
+    `job.entities` без уборки. Снимаем чужой кэш на время загрузки и
+    возвращаем его на место, чтобы не сломать ни себя, ни соседей."""
+    saved = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "job" or name.startswith("job.")
+    }
+    for name in saved:
+        del sys.modules[name]
+    saved_path = list(sys.path)
+    sys.path.insert(0, str(ENTITY_DIR))
+    try:
+        yield
+    finally:
+        sys.path[:] = saved_path
+        for name in [n for n in sys.modules if n == "job" or n.startswith("job.")]:
+            del sys.modules[name]
+        sys.modules.update(saved)
+
+
 def load_module(name):
-    if str(ENTITY_DIR) not in sys.path:
-        sys.path.insert(0, str(ENTITY_DIR))
-    spec = importlib.util.spec_from_file_location(
-        f"ranking_logs_{name}", ENTITY_DIR / "job" / f"{name}.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    with _isolated_job_package():
+        spec = importlib.util.spec_from_file_location(
+            f"ranking_logs_{name}", ENTITY_DIR / "job" / f"{name}.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
     return module
 
 
@@ -771,6 +795,9 @@ git commit -m "feat(datasets): окно партиции и параметры �
 протестировать. Тот же приём уже применён в
 `layers/silver/query_sku_group_id/search_query_sku_group_dssm_scores/v1/job/partition.py`.
 
+
+**Изоляция пакета `job` при загрузке модулей в тестах:** Имя пакета `job` используется во всех энтити репозитория. Соседний тест `ci_test/test_query_id_features.py` кэширует своё `job.entities` в `sys.modules` без уборки, и при запуске тестов в естественном порядке это отравляет кэш для последующих тестов. Поэтому оба файла `test_ranking_logs_partition.py` и `test_ranking_logs_query.py` используют контекстный менеджер `_isolated_job_package()` для сохранения и восстановления кэша вокруг загрузки модулей — это гарантирует, что каждый тест работает с правильной версией пакета и не ломает соседей.
+
 - [ ] **Step 1: Написать падающие тесты**
 
 Создать `ci_test/test_ranking_logs_query.py`:
@@ -790,14 +817,37 @@ COLUMN_DEFINITION = re.compile(
 )
 
 
+@contextlib.contextmanager
+def _isolated_job_package():
+    """Имя пакета `job` занято десятком энтити репозитория, и соседний тест
+    (ci_test/test_query_id_features.py) кэширует в sys.modules своё
+    `job.entities` без уборки. Снимаем чужой кэш на время загрузки и
+    возвращаем его на место, чтобы не сломать ни себя, ни соседей."""
+    saved = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "job" or name.startswith("job.")
+    }
+    for name in saved:
+        del sys.modules[name]
+    saved_path = list(sys.path)
+    sys.path.insert(0, str(ENTITY_DIR))
+    try:
+        yield
+    finally:
+        sys.path[:] = saved_path
+        for name in [n for n in sys.modules if n == "job" or n.startswith("job.")]:
+            del sys.modules[name]
+        sys.modules.update(saved)
+
+
 def load_module(name):
-    if str(ENTITY_DIR) not in sys.path:
-        sys.path.insert(0, str(ENTITY_DIR))
-    spec = importlib.util.spec_from_file_location(
-        f"ranking_logs_{name}", ENTITY_DIR / "job" / f"{name}.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    with _isolated_job_package():
+        spec = importlib.util.spec_from_file_location(
+            f"ranking_logs_{name}", ENTITY_DIR / "job" / f"{name}.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
     return module
 
 
