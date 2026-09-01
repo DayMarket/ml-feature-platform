@@ -28,6 +28,15 @@ SKU_PRICE_CONFIG_PATH = os.path.join(
 
 from config.factory import get_deployment
 
+sys.path.insert(0, REPO_ROOT)
+
+from dq.task import build_dq_task
+from feature_stats.task import build_feature_stats_task
+
+# Снапшотная энтити: DQ проверяет ровно тот calculated_at, который записал этот запуск,
+# то есть data_interval_end, а не дневную партицию.
+DQ_PARTITION_TIMESTAMP = '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
+
 
 def _read_config(path: str) -> dict:
     with open(path, encoding="utf-8") as config_stream:
@@ -98,7 +107,12 @@ def dynamic_pricing_sku_group_price_features_dag() -> None:
         kubernetes_conn_id="spark_k8s",
     )
 
-    wait_for_sku_price_dag >> aggregate_task
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_TIMESTAMP)
+    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_TIMESTAMP)
+
+    # Статистика идёт параллельно DQ и ни на что не влияет: аплоад ждёт таску dq,
+    # поэтому падение профилей не блокирует публикацию фич.
+    wait_for_sku_price_dag >> aggregate_task >> [dq_task, stats_task]
 
 
 dag = dynamic_pricing_sku_group_price_features_dag()

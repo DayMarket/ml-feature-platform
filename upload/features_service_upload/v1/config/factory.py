@@ -176,6 +176,22 @@ def _build_model_components(config: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(components, key=lambda component: model_names.index(component["models"][0]))
 
 
+def _dependency_task_id(source: dict[str, Any]) -> str | None:
+    """Таска upstream-DAG'а, которую ждёт сенсор аплоада.
+
+    Репозиторная gold-таблица всегда ждётся по своей таске `dq`: успешная запись
+    без прошедшего DQ не даёт права публиковать фичи. Внешние источники живут по
+    контракту команды-владельца и называют свою таску сами; если они её не назвали,
+    ждём весь их DAG.
+    """
+    declared = source.get("dependency_task_id")
+    if declared:
+        return str(declared)
+    if source.get("external") is True:
+        return None
+    return "dq"
+
+
 def _source_dependencies(
     component_id: str,
     feature_groups: list[dict[str, Any]],
@@ -196,6 +212,7 @@ def _source_dependencies(
                     f"{_sanitize_task_id(str(source['table']))}"
                 ),
                 "external_dag_id": str(source["dependency_dag_id"]),
+                "external_task_id": _dependency_task_id(source),
                 "execution_delta_minutes": int(
                     source["dependency_execution_delta_minutes"]
                 ),
@@ -270,12 +287,14 @@ def get_deployment(
         "<hive_metastore_uris>": str(resources["hive_metastore_uris"]),
         "<driver_cores>": str(resources["driver_cores"]),
         "<driver_memory>": str(resources["driver_memory"]),
+        "<driver_memory_overhead>": str(resources["driver_memory_overhead"]),
         "<executor_cores>": str(resources["executor_cores"]),
         "<executor_core_request>": str(
             resources.get("executor_core_request", resources["executor_cores"])
         ),
         "<executor_instances>": str(resources["executor_instances"]),
         "<executor_memory>": str(resources["executor_memory"]),
+        "<executor_memory_overhead>": str(resources["executor_memory_overhead"]),
         "<s3_secret_key>": str(s3_connection["aws_secret_access_key"]),
         "<s3_access_key>": str(s3_connection["aws_access_key_id"]),
         "<run_date>": "{{ ds }}",

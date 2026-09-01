@@ -32,6 +32,20 @@ steps:
       - echo "=== validate ranking upload configs ==="
       - python scripts/validate_ranking_upload_configs.py
 
+  - name: validate dq configs
+    image: python:3.11-slim
+    commands:
+      - echo "=== validate dq configs ==="
+      - pip install --no-cache-dir PyYAML==6.0.2
+      - python scripts/validate_dq_configs.py
+
+  - name: validate feature stats configs
+    image: python:3.11-slim
+    commands:
+      - echo "=== validate feature stats configs ==="
+      - pip install --no-cache-dir PyYAML==6.0.2
+      - python scripts/validate_feature_stats_configs.py
+
   - name: validate pyspark migrations
     image: ghcr.io/daymarket/spark:v3.5.5-scala2.12-java17-ubuntu-python3
     commands:

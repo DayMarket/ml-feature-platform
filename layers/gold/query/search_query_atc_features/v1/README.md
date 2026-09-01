@@ -40,3 +40,22 @@ DAG ждет DQ DAG silver-источников:
 Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/query/search_query_atc_features/v1/entrypoints/get_search_query_atc_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
 
 Ranking upload для этой таблицы не настроен.
+
+## DQ
+
+DQ-тесты выполняются таской `dq` внутри этого DAG'а сразу после записи партиции;
+каталог тестов и правила конфигурирования описаны в `dq/README.md`.
+
+Базовый набор: `primary_key_not_null`, `primary_key_unique`, `row_count_min`,
+`row_count_growth`, `freshness`.
+
+Пороги подобраны по истории таблицы в Trino (113 партиций с 2026-03-15):
+
+- `row_count_min: 25000000` — минимум за последние 30 партиций 30.35M строк;
+- `row_count_growth: 0.05` — по 109 парам соседних партиций рост держится в
+  -0.90%..+2.01%, p95 |рост| = 1.5%.
+
+Дополнительно `not_null` и `non_negative` по всем 24 фичевым колонкам: за 7 партиций
+(около 220M строк) ни одного NULL и ни одного отрицательного значения.
+
+Аплоад ranking-фич ждёт таску `dq` этого DAG'а, а не весь DAG и не dbt-DQ-DAG.

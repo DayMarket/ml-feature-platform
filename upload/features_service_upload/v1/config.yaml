@@ -68,51 +68,10 @@
           ]
         },
         {
-          "name": "fs_search_query_skg_atc_order_features_v3",
+          "name": "fs_search_query_skg_atc_order_features_cold_start",
           "features": [
             "query_skg_conv_imp2atc_90",
-            "query_skg_conv_imp2order_90",
-            "query_skg_smooth_conv_imp2atc_1",
-            "query_skg_smooth_conv_imp2order_1",
-            "query_skg_atc_frac_all_skg_atc_1",
-            "query_skg_orders_frac_all_skg_orders_1",
-            "query_skg_smooth_conv_imp2atc_3",
-            "query_skg_smooth_conv_imp2order_3",
-            "query_skg_atc_frac_all_skg_atc_3",
-            "query_skg_orders_frac_all_skg_orders_3",
-            "query_skg_uniq_orders_7",
-            "query_skg_conv_imp2atc_7",
-            "query_skg_smooth_conv_imp2atc_7",
-            "query_skg_smooth_conv_imp2order_7",
-            "query_skg_atc_frac_all_skg_atc_7",
-            "query_skg_orders_frac_all_skg_orders_7",
-            "query_skg_conv_imp2order_7",
-            "query_skg_uniq_orders_14",
-            "query_skg_conv_imp2atc_14",
-            "query_skg_smooth_conv_imp2atc_14",
-            "query_skg_smooth_conv_imp2order_14",
-            "query_skg_atc_frac_all_skg_atc_14",
-            "query_skg_orders_frac_all_skg_orders_14",
-            "query_skg_conv_imp2order_14",
-            "query_skg_uniq_orders_21",
-            "query_skg_conv_imp2atc_21",
-            "query_skg_smooth_conv_imp2atc_21",
-            "query_skg_smooth_conv_imp2order_21",
-            "query_skg_atc_frac_all_skg_atc_21",
-            "query_skg_orders_frac_all_skg_orders_21",
-            "query_skg_conv_imp2order_21",
-            "query_skg_uniq_orders_30",
-            "query_skg_conv_imp2atc_30",
-            "query_skg_smooth_conv_imp2atc_30",
-            "query_skg_smooth_conv_imp2order_30",
-            "query_skg_atc_frac_all_skg_atc_30",
-            "query_skg_orders_frac_all_skg_orders_30",
-            "query_skg_conv_imp2order_30",
-            "query_skg_imp2atc_3_to_1",
-            "query_skg_imp2atc_7_to_3",
-            "query_skg_imp2atc_14_to_7",
-            "query_skg_imp2atc_30_to_14",
-            "query_skg_imp2order_30_to_14"
+            "query_skg_conv_imp2order_90"
           ]
         },
         {
@@ -249,7 +208,8 @@
         "schema": "gold",
         "table": "feature_platform_search_sku_group_id_query_atc_order_features_v2",
         "dependency_dag_id": "feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features.v2",
-        "dependency_execution_delta_minutes": 60
+        "dependency_execution_delta_minutes": 60,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_query_skg_atc_order_features_v2",
       "features": [
@@ -298,56 +258,30 @@
     },
     {
       "source": {
-        "schema": "gold",
-        "table": "feature_platform_search_sku_group_id_query_atc_order_features_v2",
-        "dependency_dag_id": "feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features.v2",
-        "dependency_execution_delta_minutes": 60
+        "external": true,
+        "catalog": "iceberg",
+        "schema": "um_prod_feature_store_iceberg",
+        "table": "cold_start_boosted_pw_convs_query_atc_order_90",
+        "primary_key": [
+          "date",
+          "query",
+          "sku_group_id"
+        ],
+        "columns": [
+          "date",
+          "query",
+          "sku_group_id",
+          "query_skg_conv_imp2atc_90",
+          "query_skg_conv_imp2order_90"
+        ],
+        "dependency_dag_id": "spark.pyspark_feature_store_dag",
+        "dependency_task_id": "fetch_boosted_conversions_etl",
+        "dependency_execution_delta_minutes": 240
       },
-      "name": "fs_search_query_skg_atc_order_features_v3",
+      "name": "fs_search_query_skg_atc_order_features_cold_start",
       "features": [
         "query_skg_conv_imp2atc_90",
-        "query_skg_conv_imp2order_90",
-        "query_skg_smooth_conv_imp2atc_1",
-        "query_skg_smooth_conv_imp2order_1",
-        "query_skg_atc_frac_all_skg_atc_1",
-        "query_skg_orders_frac_all_skg_orders_1",
-        "query_skg_smooth_conv_imp2atc_3",
-        "query_skg_smooth_conv_imp2order_3",
-        "query_skg_atc_frac_all_skg_atc_3",
-        "query_skg_orders_frac_all_skg_orders_3",
-        "query_skg_uniq_orders_7",
-        "query_skg_conv_imp2atc_7",
-        "query_skg_smooth_conv_imp2atc_7",
-        "query_skg_smooth_conv_imp2order_7",
-        "query_skg_atc_frac_all_skg_atc_7",
-        "query_skg_orders_frac_all_skg_orders_7",
-        "query_skg_conv_imp2order_7",
-        "query_skg_uniq_orders_14",
-        "query_skg_conv_imp2atc_14",
-        "query_skg_smooth_conv_imp2atc_14",
-        "query_skg_smooth_conv_imp2order_14",
-        "query_skg_atc_frac_all_skg_atc_14",
-        "query_skg_orders_frac_all_skg_orders_14",
-        "query_skg_conv_imp2order_14",
-        "query_skg_uniq_orders_21",
-        "query_skg_conv_imp2atc_21",
-        "query_skg_smooth_conv_imp2atc_21",
-        "query_skg_smooth_conv_imp2order_21",
-        "query_skg_atc_frac_all_skg_atc_21",
-        "query_skg_orders_frac_all_skg_orders_21",
-        "query_skg_conv_imp2order_21",
-        "query_skg_uniq_orders_30",
-        "query_skg_conv_imp2atc_30",
-        "query_skg_smooth_conv_imp2atc_30",
-        "query_skg_smooth_conv_imp2order_30",
-        "query_skg_atc_frac_all_skg_atc_30",
-        "query_skg_orders_frac_all_skg_orders_30",
-        "query_skg_conv_imp2order_30",
-        "query_skg_imp2atc_3_to_1",
-        "query_skg_imp2atc_7_to_3",
-        "query_skg_imp2atc_14_to_7",
-        "query_skg_imp2atc_30_to_14",
-        "query_skg_imp2order_30_to_14"
+        "query_skg_conv_imp2order_90"
       ]
     },
     {
@@ -355,7 +289,8 @@
         "schema": "gold",
         "table": "feature_platform_sku_group_search_conversion_features_v2",
         "dependency_dag_id": "feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features.v2",
-        "dependency_execution_delta_minutes": 60
+        "dependency_execution_delta_minutes": 60,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_skg_conversion_features_v2",
       "features": [
@@ -435,7 +370,8 @@
         "schema": "gold",
         "table": "feature_platform_sku_group_stock_features",
         "dependency_dag_id": "feature-platform.layers.gold.sku_group_id.sku_group_stock_features",
-        "dependency_execution_delta_minutes": 60
+        "dependency_execution_delta_minutes": 60,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_skg_stock_features_v1",
       "features": [
@@ -452,7 +388,8 @@
         "schema": "gold",
         "table": "feature_platform_sku_group_price_features",
         "dependency_dag_id": "feature-platform.layers.gold.sku_group_id.sku_group_price_features",
-        "dependency_execution_delta_minutes": 120
+        "dependency_execution_delta_minutes": 120,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_skg_price_features_v1",
       "features": [
@@ -469,7 +406,8 @@
         "schema": "gold",
         "table": "feature_platform_search_query_atc_features",
         "dependency_dag_id": "feature-platform.layers.gold.query.search_query_atc_features",
-        "dependency_execution_delta_minutes": 60
+        "dependency_execution_delta_minutes": 60,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_query_atc_features_v1",
       "features": [
@@ -498,7 +436,8 @@
         "schema": "gold",
         "table": "feature_platform_sku_group_feedback_base_stats",
         "dependency_dag_id": "feature-platform.layers.gold.sku_group_id.feedback_sku_group_id",
-        "dependency_execution_delta_minutes": 50
+        "dependency_execution_delta_minutes": 50,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_skg_rating_v1",
       "features": [
