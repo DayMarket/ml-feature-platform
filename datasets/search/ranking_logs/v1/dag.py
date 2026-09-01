@@ -70,6 +70,10 @@ default_args = {
     schedule=CronDataIntervalTimetable(dag_settings["schedule"], "UTC"),
     start_date=pendulum.parse(dag_settings["start_date"]).in_timezone("UTC"),
     dag_id="feature-platform.datasets.search.ranking_logs.v1",
+    # DAG создаётся на паузе (is_paused_upon_creation=True); catchup=False
+    # исключает случайный многонедельный backfill при первом снятии с паузы —
+    # без явного значения используется дефолт Airflow.
+    catchup=False,
 )
 def collect_ranking_logs_dataset_v1():
     # AGENTS.md: датасет читает feature_platform_sku_group_feedback_base_stats

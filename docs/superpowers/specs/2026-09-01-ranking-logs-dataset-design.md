@@ -91,9 +91,25 @@ abs(xxhash64(to_utf8(request_id))) % 10000 < sample_percent * 100
 | `sample_percent = 7` | ~28 млн/день, **~200 млн за ран** |
 
 Строка узкая (~35 скалярных колонок), 145-мерный `model_input['input']` в датасет не пишется.
+
+Это решение сужает только **выходную** строку, не скан источника. `model_input` в
+`silver.ranking_analytics_events` — `MAP(VARCHAR, ARRAY(ARRAY(DOUBLE)))`, а не STRUCT
+(подтверждено на живой схеме); Parquet не умеет проецировать отдельное значение
+MAP-колонки, поэтому каждый ран всё равно читает весь `model_input` целиком, включая
+145-мерный `input`, из `iceberg.silver.ranking_analytics_events`. Отказ от записи
+`input` не снижает цену скана — это факт для пересмотра ресурсного профиля, а не
+решённый вопрос.
+
 Профиль `search_dataset` берётся как стартовый; объём на порядок больше существующего
 `search_ranking/v1`, поэтому после первого рана метрики Spark пересматриваются и, вероятно,
-заводится отдельный профиль в `config/spark/resources.yaml`.
+заводится отдельный профиль в `config/spark/resources.yaml` — с учётом факта выше о
+цене чтения `model_input`.
+
+Таблица `PARTITIONED BY (collection_date)` и явно ставит `write.distribution-mode =
+'none'` в `TBLPROPERTIES`: Iceberg 1.5.2 по умолчанию распределяет запись в unsorted
+partitioned table по `HASH`, а на ран приходится ровно одно значение
+`collection_date` — без `'none'` вся запись (~200 млн строк) схлопнулась бы в один
+reduce-таск на одно ядро.
 
 ## 4. Схема
 

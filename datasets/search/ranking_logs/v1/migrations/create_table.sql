@@ -1,3 +1,7 @@
+-- Индексация в комментариях колонок ниже: `position` — позиция кандидата в
+-- ranking_candidates, 1-based, как и в спеке; индексы внутри массивов
+-- model_output[...] и cm2_features[...] — 0-based, Spark array indexing.
+-- Это единственное расхождение со спекой, и оно намеренное.
 CREATE TABLE IF NOT EXISTS {target_table} (
     collection_date DATE COMMENT 'Дата фактического запуска DAG в UTC (воскресенье); партиция таблицы',
     event_date DATE COMMENT 'Дата события из лога; в партиции ровно 7 значений, воскресенье-суббота',
@@ -43,4 +47,12 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Training dataset v1: развёрнутый лог ранжирования запрос x кандидат для подбора параметров формулы'
 PARTITIONED BY (collection_date)
-TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')
+-- write.distribution-mode = 'none': Iceberg 1.5.2 default для unsorted
+-- partitioned table — HASH, а это перед записью репартиционирует по
+-- collection_date. У этой таблицы на ран приходится ровно одно значение
+-- collection_date, поэтому HASH согнал бы все ~200 млн строк в один reduce-таск
+-- на одно ядро. 'none' убирает репартиционирование: каждая input-таска Spark
+-- пишет свои файлы сама. Оверхед fanout-памяти, ради которого существует HASH
+-- при множестве партиций в одной записи, здесь не возникает — партиция всегда
+-- одна.
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false', 'write.distribution-mode' = 'none')

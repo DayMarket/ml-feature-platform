@@ -78,10 +78,12 @@ sampled_events AS (
             ELSE array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
         END AS bid_amounts
     FROM iceberg.silver.ranking_analytics_events e
-    CROSS JOIN params p
     WHERE
-        e.fired_at >= p.event_date_start
-        AND e.fired_at < p.event_date_end
+        -- Статические границы, не значения из params: без них джойн/фильтр по
+        -- значению из CTE может не включить partition pruning на самом дорогом
+        -- скане джоба (см. тот же приём и комментарий у feedback/frequency ниже).
+        e.fired_at >= DATE '{event_date_start.isoformat()}'
+        AND e.fired_at < DATE '{event_date_end.isoformat()}'
         AND e.model_name = '{settings.model_name}'
         AND e.ranking_candidates IS NOT NULL
         AND size(e.ranking_candidates) > 0
@@ -96,6 +98,10 @@ sampled_events AS (
         -- кандидатами. pmod, а не abs: xxhash64 может вернуть Long.MIN_VALUE,
         -- у которого abs отрицателен и условие молча отсечёт всё.
         AND pmod(xxhash64(e.request_id), {HASH_BUCKETS}) < {threshold}
+        -- xxhash64(NULL) — константа-сид 42, а pmod(42, 10000) = 42 всегда
+        -- меньше любого положительного порога: без этого фильтра каждая строка
+        -- лога с NULL request_id проходила бы сэмплирование со 100% вероятностью.
+        AND e.request_id IS NOT NULL
 ),
 candidates AS (
     SELECT
@@ -126,6 +132,9 @@ candidates AS (
         )
     ) exploded AS candidate_index, candidate
 ),
+-- Полный скан iceberg.silver.sku ради MIN(created_at) на группу: silver.sku —
+-- снапшот без истории, партиции/даты для сужения скана у него нет, поэтому
+-- цена этой агрегации неотделима от самого приёма (см. 5.1 дизайн-документа).
 sku_group_created AS (
     SELECT
         sku_group_id,
@@ -137,10 +146,9 @@ sku_group_created AS (
 feedback_snapshot_dates AS (
     SELECT DISTINCT f.date AS snapshot_date
     FROM iceberg.gold.feature_platform_sku_group_feedback_base_stats f
-    CROSS JOIN params p
     WHERE
-        f.date < p.event_date_end
-        AND f.date >= date_sub(p.event_date_start, 30)
+        f.date < DATE '{event_date_end.isoformat()}'
+        AND f.date >= date_sub(DATE '{event_date_start.isoformat()}', 30)
 ),
 feedback_date_map AS (
     SELECT
@@ -170,10 +178,9 @@ feedback AS (
 frequency_snapshot_dates AS (
     SELECT DISTINCT g.analyze_date AS snapshot_date
     FROM iceberg.silver.search_queries_frequency_groups_30d g
-    CROSS JOIN params p
     WHERE
-        g.analyze_date < p.event_date_end
-        AND g.analyze_date >= date_sub(p.event_date_start, 30)
+        g.analyze_date < DATE '{event_date_end.isoformat()}'
+        AND g.analyze_date >= date_sub(DATE '{event_date_start.isoformat()}', 30)
 ),
 frequency_date_map AS (
     SELECT
@@ -187,6 +194,12 @@ frequency AS (
     SELECT
         m.event_date AS event_date,
         trim(lower(g.query_text)) AS query,
+        -- MAX() трёх колонок независимо друг от друга: на схлопнутом дубле
+        -- (тот же snapshot_date + нормализованный query_text) значения могут
+        -- прийти из разных исходных строк. MAX(frequency_group) вдобавок
+        -- лексикографический по значениям HF/MF/LF, а не по частотности — не
+        -- читать как авторитетное значение на дубле, только как способ не
+        -- размножить строки лога.
         MAX(g.frequency_group) AS frequency_group,
         MAX(g.users_total) AS users_total,
         MAX(g.query_rank) AS query_rank

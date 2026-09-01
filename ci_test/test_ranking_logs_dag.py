@@ -51,6 +51,13 @@ def test_dag_is_paused_on_creation_and_single_run():
     assert "max_active_runs=1" in source
 
 
+def test_dag_disables_catchup():
+    # DAG создаётся на паузе (is_paused_upon_creation=True); catchup=False
+    # исключает случайный многонедельный backfill при первом снятии с паузы.
+    # Без явного значения Airflow использует свой дефолт вместо этого решения.
+    assert "catchup=False" in dag_source()
+
+
 def test_dag_is_tagged_as_dataset():
     assert '"dataset"' in dag_source()
 

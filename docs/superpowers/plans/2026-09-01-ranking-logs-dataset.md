@@ -225,7 +225,10 @@ dag:
   team: search
   group_tag: ranking-logs-dataset
   schedule: "0 12 * * 0"
-  start_date: "2026-09-07T12:00:00Z"
+  # 2026-09-07 — понедельник, а schedule — "0 12 * * 0" (воскресенье): с ним
+  # первый data_interval открылся бы только 2026-09-13 и первый ран стартовал
+  # бы неделей позже задуманного. 2026-09-06 — воскресенье, совпадает с cron.
+  start_date: "2026-09-06T12:00:00Z"
 
 alerts:
   team: search
@@ -271,11 +274,25 @@ feature_stats:
     - install_id
     - promo_id
     - search_query
+  # Дефолт feature_stats/config.py:DEFAULT_QUERY_TIMEOUT_SECONDS = 600 здесь
+  # опасен: у этой энтити 30 числовых не-excluded колонок над партицией
+  # ~200 млн строк. Единственный живой замер в AGENTS.md (раздел Feature
+  # Stats) — 121 агрегат / 32.4M строк = 36.6 с. Эта партиция ~6x по строкам
+  # и ~3x по числу агрегатов (30 колонок * 7 функций), то есть примерно
+  # 18x по цене (6 * 3): 36.6 с * 18 ≈ 660 с — уже выше дефолтного таймаута.
+  # 3600 с даёт запас; feature_stats не знает severity, исключение валит
+  # таску и будит дежурного, поэтому значение нужно пересмотреть по факту
+  # первого реального рана, а не оставлять как окончательное.
+  query_timeout_seconds: 3600
 ```
 
 - [ ] **Step 4: Создать `migrations/create_table.sql`**
 
 ```sql
+-- Индексация в комментариях колонок ниже: `position` (позиция кандидата в
+-- ranking_candidates) — 1-based, как и в спеке; индексы внутри массивов
+-- model_output[...] и cm2_features[...] — 0-based (Spark array indexing),
+-- это единственное расхождение со спекой, и оно намеренное.
 CREATE TABLE IF NOT EXISTS {target_table} (
     collection_date DATE COMMENT 'Дата фактического запуска DAG в UTC (воскресенье); партиция таблицы',
     event_date DATE COMMENT 'Дата события из лога; в партиции ровно 7 значений, воскресенье-суббота',
@@ -321,7 +338,15 @@ CREATE TABLE IF NOT EXISTS {target_table} (
 USING iceberg
 COMMENT 'Training dataset v1: развёрнутый лог ранжирования запрос x кандидат для подбора параметров формулы'
 PARTITIONED BY (collection_date)
-TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')
+-- write.distribution-mode = 'none': Iceberg 1.5.2 default для unsorted
+-- partitioned table — HASH, а это перед записью репартиционирует по
+-- collection_date. У этой таблицы на ран приходится ровно одно значение
+-- collection_date, поэтому HASH согнал бы все ~200 млн строк в один reduce-таск
+-- на одно ядро. 'none' убирает репартиционирование: каждая input-таска Spark
+-- пишет свои файлы сама. Оверхед fanout-памяти, ради которого существует HASH
+-- при множестве партиций в одной записи, здесь не возникает — партиция всегда
+-- одна.
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false', 'write.distribution-mode' = 'none')
 ```
 
 - [ ] **Step 5: Создать пустой `migrations/__init__.py`**
@@ -343,7 +368,10 @@ touch datasets/search/ranking_logs/v1/migrations/__init__.py
 
 - Таблица: `iceberg.silver.feature_platform_ranking_logs_dataset_v1`
 - DAG: `feature-platform.datasets.search.ranking_logs.v1`
+- Group tag: `ranking-logs-dataset`
 - Путь энтити: `datasets/search/ranking_logs/v1`
+- Primary key: `collection_date, event_date, request_id, sku_group_id`. Грейн —
+  одна строка на кандидата сэмплированного запроса (запрос × кандидат).
 - Назначение: офлайн-подбор параметров формулы и анализ. В ranking-service,
   inference-сервисы и любой онлайн-контур не выгружается.
 
@@ -396,6 +424,15 @@ DAG идёт раз в неделю, `0 12 * * 0` UTC. `data_interval` неде�
 `model_output[0]` тоже не пишется отдельной колонкой — он равен
 `final_scores[position]`.
 
+`model_input` в источнике — `MAP(VARCHAR, ARRAY(ARRAY(DOUBLE)))`, а не STRUCT
+(подтверждено на живой схеме). Parquet не умеет проецировать отдельное значение
+MAP-колонки, поэтому то, что датасет не пишет `model_input['input']`, сужает
+только **выходную** строку — на сам скан это не влияет: каждый ран читает весь
+`model_input` целиком, включая 145-мерный `input`, из
+`iceberg.silver.ranking_analytics_events`. Профиль Spark `search_dataset` взят
+как стартовый (design doc, раздел 3) и должен быть пересмотрен по факту первого
+рана с учётом этого факта.
+
 `alpha`/`beta`/`gamma`/`delta` лежат в источнике дважды — в
 `common_external_features` и в хвосте `cm2_features` (позиции 8–11) с теми же
 значениями. Берётся `common_external_features` как явный request-level контракт.
@@ -406,6 +443,40 @@ sku-группе из `silver.sku_eod`: формула считалась име
 Если частотный справочник не знает запрос, `frequency_group = 'LF'`, а
 `users_total` и `query_rank` — NULL. Это безопасный дефолт: на 2026-08-31 в LF
 было 12,6 млн запросов против 9013 в MF и 1000 в HF.
+
+## Leakage boundary и обработка сломанных строк лога
+
+Две колонки одной строки живут в разных временных контрактах, и это не видно без
+чтения `job/query.py`:
+
+- `sku_group_age_days` считается по **текущему, неисторическому** снапшоту
+  `silver.sku` (`MIN(created_at)` по `sku_group_id`, без версии на дату),
+  применённому к событиям недельной давности: для `event_date` из середины
+  собираемого окна возраст вычисляется относительно состояния `silver.sku` на
+  момент сбора, а не на сам `event_date`.
+- `product_rating` и `total_reviews_count`, напротив, берутся из **последнего
+  доступного** снапшота `feature_platform_sku_group_feedback_base_stats` с
+  `date <= event_date` — честный контракт «как было на дату события».
+
+Подбор параметров формулы не должен интерпретировать `sku_group_age_days` как
+признак «на момент события» наравне с рейтингом: это разные temporal-контракты
+в одной строке.
+
+Джоб также по-разному реагирует на рассогласование длины массива-кандидата в
+зависимости от того, откуда массив взят:
+
+- Рассогласование длины **нативного** массива источника (`final_scores`,
+  `model_output`, `model_input['cm2_features']`) с `ranking_candidates` —
+  событие **выбрасывается целиком**, это `WHERE`-guard'ы в `sampled_events`
+  (`job/query.py`).
+- Рассогласование длины массива, **раскодированного из JSON**
+  (`external_features.dssm_score`, `.linear_score`,
+  `.normalized_linear_score`, `.cpo_adv_percents`, `.bid_amounts`) — строка
+  лога сохраняется, а сама колонка **обнуляется** для всех кандидатов этого
+  события, это `CASE`-блоки в `sampled_events`.
+
+Оба режима — молчаливая потеря данных: сколько событий выброшено и сколько
+колонок обнулено, нигде не считается и не проверяется DQ-тестом.
 
 ## Качество
 
@@ -1106,10 +1177,12 @@ sampled_events AS (
             ELSE array_repeat(CAST(NULL AS DOUBLE), size(e.ranking_candidates))
         END AS bid_amounts
     FROM iceberg.silver.ranking_analytics_events e
-    CROSS JOIN params p
     WHERE
-        e.fired_at >= p.event_date_start
-        AND e.fired_at < p.event_date_end
+        -- Статические границы, не значения из params: без них джойн/фильтр по
+        -- значению из CTE может не включить partition pruning на самом дорогом
+        -- скане джоба (см. тот же приём и комментарий у feedback/frequency ниже).
+        e.fired_at >= DATE '{event_date_start.isoformat()}'
+        AND e.fired_at < DATE '{event_date_end.isoformat()}'
         AND e.model_name = '{settings.model_name}'
         AND e.ranking_candidates IS NOT NULL
         AND size(e.ranking_candidates) > 0
@@ -1124,6 +1197,10 @@ sampled_events AS (
         -- кандидатами. pmod, а не abs: xxhash64 может вернуть Long.MIN_VALUE,
         -- у которого abs отрицателен и условие молча отсечёт всё.
         AND pmod(xxhash64(e.request_id), {HASH_BUCKETS}) < {threshold}
+        -- xxhash64(NULL) — константа-сид 42, а pmod(42, 10000) = 42 всегда
+        -- меньше любого положительного порога: без этого фильтра каждая строка
+        -- лога с NULL request_id проходила бы сэмплирование со 100% вероятностью.
+        AND e.request_id IS NOT NULL
 ),
 candidates AS (
     SELECT
@@ -1154,6 +1231,9 @@ candidates AS (
         )
     ) exploded AS candidate_index, candidate
 ),
+-- Полный скан iceberg.silver.sku ради MIN(created_at) на группу: silver.sku —
+-- снапшот без истории, партиции/даты для сужения скана у него нет, поэтому
+-- цена этой агрегации неотделима от самого приёма (см. 5.1 дизайн-документа).
 sku_group_created AS (
     SELECT
         sku_group_id,
@@ -1165,10 +1245,9 @@ sku_group_created AS (
 feedback_snapshot_dates AS (
     SELECT DISTINCT f.date AS snapshot_date
     FROM iceberg.gold.feature_platform_sku_group_feedback_base_stats f
-    CROSS JOIN params p
     WHERE
-        f.date < p.event_date_end
-        AND f.date >= date_sub(p.event_date_start, 30)
+        f.date < DATE '{event_date_end.isoformat()}'
+        AND f.date >= date_sub(DATE '{event_date_start.isoformat()}', 30)
 ),
 feedback_date_map AS (
     SELECT
@@ -1198,10 +1277,9 @@ feedback AS (
 frequency_snapshot_dates AS (
     SELECT DISTINCT g.analyze_date AS snapshot_date
     FROM iceberg.silver.search_queries_frequency_groups_30d g
-    CROSS JOIN params p
     WHERE
-        g.analyze_date < p.event_date_end
-        AND g.analyze_date >= date_sub(p.event_date_start, 30)
+        g.analyze_date < DATE '{event_date_end.isoformat()}'
+        AND g.analyze_date >= date_sub(DATE '{event_date_start.isoformat()}', 30)
 ),
 frequency_date_map AS (
     SELECT
@@ -1215,6 +1293,12 @@ frequency AS (
     SELECT
         m.event_date AS event_date,
         trim(lower(g.query_text)) AS query,
+        -- MAX() трёх колонок независимо друг от друга: на схлопнутом дубле
+        -- (тот же snapshot_date + нормализованный query_text) значения могут
+        -- прийти из разных исходных строк. MAX(frequency_group) вдобавок
+        -- лексикографический по значениям HF/MF/LF, а не по частотности — не
+        -- читать как авторитетное значение на дубле, только как способ не
+        -- размножить строки лога.
         MAX(g.frequency_group) AS frequency_group,
         MAX(g.users_total) AS users_total,
         MAX(g.query_rank) AS query_rank
@@ -1488,6 +1572,13 @@ def test_dag_is_paused_on_creation_and_single_run():
     assert "max_active_runs=1" in source
 
 
+def test_dag_disables_catchup():
+    # DAG создаётся на паузе (is_paused_upon_creation=True); catchup=False
+    # исключает случайный многонедельный backfill при первом снятии с паузы.
+    # Без явного значения Airflow использует свой дефолт вместо этого решения.
+    assert "catchup=False" in dag_source()
+
+
 def test_dag_is_tagged_as_dataset():
     assert '"dataset"' in dag_source()
 
@@ -1686,6 +1777,10 @@ default_args = {
     schedule=CronDataIntervalTimetable(dag_settings["schedule"], "UTC"),
     start_date=pendulum.parse(dag_settings["start_date"]).in_timezone("UTC"),
     dag_id="feature-platform.datasets.search.ranking_logs.v1",
+    # DAG создаётся на паузе (is_paused_upon_creation=True); catchup=False
+    # исключает случайный многонедельный backfill при первом снятии с паузы —
+    # без явного значения используется дефолт Airflow.
+    catchup=False,
 )
 def collect_ranking_logs_dataset_v1():
     # AGENTS.md: датасет читает feature_platform_sku_group_feedback_base_stats
@@ -1733,8 +1828,9 @@ dag = collect_ranking_logs_dataset_v1()
 - [ ] **Step 5: Запустить тесты и убедиться, что они проходят**
 
 Run: `python3 -m pytest ci_test/test_ranking_logs_dag.py -v`
-Expected: PASS, 10 тестов (6 из исходного плана + 4 из fix round 1: сенсор на
-`feedback_sku_group_id.dq` и его `execution_date_fn`).
+Expected: PASS, 11 тестов (6 из исходного плана + 4 из fix round 1: сенсор на
+`feedback_sku_group_id.dq` и его `execution_date_fn` + 1 из финальной ревизии:
+`catchup=False`).
 
 - [ ] **Step 6: Перегенерировать карту платформы**
 

@@ -6,7 +6,10 @@
 
 - Таблица: `iceberg.silver.feature_platform_ranking_logs_dataset_v1`
 - DAG: `feature-platform.datasets.search.ranking_logs.v1`
+- Group tag: `ranking-logs-dataset`
 - Путь энтити: `datasets/search/ranking_logs/v1`
+- Primary key: `collection_date, event_date, request_id, sku_group_id`. Грейн —
+  одна строка на кандидата сэмплированного запроса (запрос × кандидат).
 - Назначение: офлайн-подбор параметров формулы и анализ. В ranking-service,
   inference-сервисы и любой онлайн-контур не выгружается.
 
@@ -66,6 +69,15 @@ DAG идёт раз в неделю, `0 12 * * 0` UTC. `data_interval` неде�
 `model_output[0]` тоже не пишется отдельной колонкой — он равен
 `final_scores[position]`.
 
+`model_input` в источнике — `MAP(VARCHAR, ARRAY(ARRAY(DOUBLE)))`, а не STRUCT
+(подтверждено на живой схеме). Parquet не умеет проецировать отдельное значение
+MAP-колонки, поэтому то, что датасет не пишет `model_input['input']`, сужает
+только **выходную** строку — на сам скан это не влияет: каждый ран читает весь
+`model_input` целиком, включая 145-мерный `input`, из
+`iceberg.silver.ranking_analytics_events`. Профиль Spark `search_dataset` взят
+как стартовый (design doc, раздел 3) и должен быть пересмотрен по факту первого
+рана с учётом этого факта.
+
 `alpha`/`beta`/`gamma`/`delta` лежат в источнике дважды — в
 `common_external_features` и в хвосте `cm2_features` (позиции 8–11) с теми же
 значениями. Берётся `common_external_features` как явный request-level контракт.
@@ -76,6 +88,40 @@ sku-группе из `silver.sku_eod`: формула считалась име
 Если частотный справочник не знает запрос, `frequency_group = 'LF'`, а
 `users_total` и `query_rank` — NULL. Это безопасный дефолт: на 2026-08-31 в LF
 было 12,6 млн запросов против 9013 в MF и 1000 в HF.
+
+## Leakage boundary и обработка сломанных строк лога
+
+Две колонки одной строки живут в разных временных контрактах, и это не видно без
+чтения `job/query.py`:
+
+- `sku_group_age_days` считается по **текущему, неисторическому** снапшоту
+  `silver.sku` (`MIN(created_at)` по `sku_group_id`, без версии на дату),
+  применённому к событиям недельной давности: для `event_date` из середины
+  собираемого окна возраст вычисляется относительно состояния `silver.sku` на
+  момент сбора, а не на сам `event_date`.
+- `product_rating` и `total_reviews_count`, напротив, берутся из **последнего
+  доступного** снапшота `feature_platform_sku_group_feedback_base_stats` с
+  `date <= event_date` — честный контракт «как было на дату события».
+
+Подбор параметров формулы не должен интерпретировать `sku_group_age_days` как
+признак «на момент события» наравне с рейтингом: это разные temporal-контракты
+в одной строке.
+
+Джоб также по-разному реагирует на рассогласование длины массива-кандидата в
+зависимости от того, откуда массив взят:
+
+- Рассогласование длины **нативного** массива источника (`final_scores`,
+  `model_output`, `model_input['cm2_features']`) с `ranking_candidates` —
+  событие **выбрасывается целиком**, это `WHERE`-guard'ы в `sampled_events`
+  (`job/query.py`).
+- Рассогласование длины массива, **раскодированного из JSON**
+  (`external_features.dssm_score`, `.linear_score`,
+  `.normalized_linear_score`, `.cpo_adv_percents`, `.bid_amounts`) — строка
+  лога сохраняется, а сама колонка **обнуляется** для всех кандидатов этого
+  события, это `CASE`-блоки в `sampled_events`.
+
+Оба режима — молчаливая потеря данных: сколько событий выброшено и сколько
+колонок обнулено, нигде не считается и не проверяется DQ-тестом.
 
 ## Качество
 
