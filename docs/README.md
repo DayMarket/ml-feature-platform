@@ -22,9 +22,11 @@
 - `layers/gold/<primary_key_group>/*/v1` - финальные признаки для моделей или downstream-сервисов.
 - `config/spark` - общий SparkApplication template и resource profiles для Spark layer DAG-ов.
 - `upload/features_service_upload/v1` - загрузка feature groups в Kafka-топик сервиса ранжирования.
+- `dq/` - DQ-тесты, раннер и таска `dq`, которую получает каждый DAG репозиторно-управляемой энтити.
+- `feature_stats/` - расчёт профилей числовых признаков таской `feature_stats`, параллельным штатным шагом того же DAG'а.
 - `scripts/` - CI-синхронизация миграций, dbt sources, Iceberg maintenance и валидации.
 - `ci_test/` - локальные regression-тесты для CI-логики.
-- [`feature_platform_map.md`](feature_platform_map.md) - автоматически обновляемая карта DAG-зависимостей, расписаний и resource profiles.
+- [`feature_platform_map.md`](feature_platform_map.md) - автоматически обновляемая карта DAG-зависимостей, расписаний, resource profiles и статуса переноса DQ-сенсоров.
 - `docs/feature_platform_guide.md` - подробная инструкция по созданию, изменению, удалению и публикации признаков.
 
 ## Где лежит контракт таблицы

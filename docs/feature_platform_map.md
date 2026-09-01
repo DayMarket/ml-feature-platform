@@ -13,13 +13,17 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **29**. Внутренних зависимостей: **8**. Внешних зависимостей: **26**. P3: **25**. P4: **4**.
+Всего DAG: **37**. Внутренних зависимостей: **9**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **25**. P4: **4**.
+
+Таска `dq`: **35** из **37**. Таска `feature_stats`: **35** из **37** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
 
 Severity policy:
 
-- `P3` — production upload и все repository DAG, транзитивно питающие его через sensors/DQ.
-- `P4` — training datasets и отдельные backfill DAG.
-- Для остальных DAG карта показывает настроенную severity без автоматической переклассификации.
+- Жёсткое требование одно: `alerts.severity` объявлена и лежит в шкале P1–P4.
+- Базовое ожидание: `P3` — production upload и все DAG, транзитивно питающие его;
+  `P4` — training datasets и отдельные backfill DAG.
+- Более строгая severity (например `P2` на production-цепочке) — осознанное решение
+  владельца энтити, а не нарушение: карта её не переклассифицирует.
 
 ## 1. Production-critical DAGs — Search
 
@@ -54,14 +58,15 @@ UTC 04:00 · P3 · spark-custom`"]
     x0["dwh_trino.sku_eod"]
     x1["events.dq"]
     x2["sessions.dq"]
-    d6 -->|"DQ Δ2h"| d0
-    d8 -->|"DQ Δ2h"| d0
-    d6 -->|"DQ Δ2h"| d1
-    d8 -->|"DQ Δ2h"| d1
-    d7 -->|"DQ Δ1h"| d3
-    d6 -->|"DQ Δ2h"| d4
-    d8 -->|"DQ Δ2h"| d4
-    d9 -->|"DQ Δ2h"| d5
+    x3["spark.pyspark_feature_store_dag"]
+    d6 -.->|"dbt DQ (legacy) Δ2h"| d0
+    d8 -.->|"dbt DQ (legacy) Δ2h"| d0
+    d6 -.->|"dbt DQ (legacy) Δ2h"| d1
+    d8 -.->|"dbt DQ (legacy) Δ2h"| d1
+    d7 -->|"dq Δ1h"| d3
+    d6 -.->|"dbt DQ (legacy) Δ2h"| d4
+    d8 -.->|"dbt DQ (legacy) Δ2h"| d4
+    d9 -.->|"dbt DQ (legacy) Δ2h"| d5
     x0 -->|"sensor Δ1h"| d7
     x1 -->|"sensor"| d8
     x2 -->|"sensor"| d8
@@ -72,10 +77,11 @@ UTC 04:00 · P3 · spark-custom`"]
     d3 -->|"upload-sensor Δ2h"| d10
     d4 -->|"upload-sensor Δ1h"| d10
     d5 -->|"upload-sensor Δ1h"| d10
+    x3 -->|"upload-sensor Δ4h"| d10
     class d6,d7,d8,d9 silver
     class d0,d1,d2,d3,d4,d5 gold
     class d10 upload
-    class x0,x1,x2 external
+    class x0,x1,x2,x3 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
     classDef datasets fill:#dcfce7,stroke:#16a34a,color:#052e16
@@ -129,11 +135,11 @@ UTC 00:00 · P3 · airflow-python`"]
 UTC 03:00 · P3 · airflow-python`"]
     d8["`order_completion_region_features
 UTC 03:00 · P3 · airflow-python`"]
-    d2 -->|"DQ Δ1h"| d0
-    d3 -->|"DQ Δ1h"| d0
-    d4 -->|"DQ Δ1h"| d0
-    d5 -->|"DQ Δ1h"| d0
-    d6 -->|"DQ Δ1h"| d0
+    d2 -.->|"dbt DQ (legacy) Δ1h"| d0
+    d3 -.->|"dbt DQ (legacy) Δ1h"| d0
+    d4 -.->|"dbt DQ (legacy) Δ1h"| d0
+    d5 -.->|"dbt DQ (legacy) Δ1h"| d0
+    d6 -.->|"dbt DQ (legacy) Δ1h"| d0
     class d1,d2,d3,d4,d5,d6,d7,d8 silver
     class d0 gold
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
@@ -167,38 +173,58 @@ standalone-подготовка данных. P3 в этом графе — ка
 flowchart LR
     d0["`search_ranking.v1
 UTC 10:00 · P4 · search_dataset`"]
-    d1["`search_query_atc_features_qid
+    d1["`buyout_account_history_features
+UTC 04:00 · P2 · large`"]
+    d2["`buyout_online_account_features
+UTC 06:00 · P2 · airflow-python`"]
+    d3["`buyout_online_city_features
+UTC 06:00 · P2 · airflow-python`"]
+    d4["`buyout_item_signal_features
+UTC 03:00 · P2 · airflow-python`"]
+    d5["`search_query_atc_features_qid
 UTC 06:00 · P4 · small`"]
-    d2["`sku_group_query_atc_order_features_qid
+    d6["`sku_group_query_atc_order_features_qid
 UTC 06:00 · P4 · search_qid_features`"]
-    d3["`search_query_id
+    d7["`search_query_id
 UTC 05:00 · P3 · airflow-python`"]
-    d4["`sku_group_search_conversion_features
+    d8["`sku_group_search_conversion_features
 UTC 03:00 · P3 · large`"]
-    d5["`sku_group_query_atc_features
+    d9["`sku_group_query_atc_features
 UTC 02:00 · P3 · large`"]
-    d6["`product_search_queries
-UTC 03:00 · P4 · large`"]
-    d7["`search_query_sku_group_es_features
+    d10["`buyout_online_sku_features
+UTC 06:00 · P2 · airflow-python`"]
+    d11["`account_lifetime_facts
+UTC 02:00 · P2 · airflow-python`"]
+    d12["`delivery_cpi_city_features
+UTC 03:00 · P2 · airflow-python`"]
+    d13["`backfill
+UTC 03:00 · P2 · airflow-python`"]
+    d14["`product_search_queries
+UTC 03:00 · P4 · search_product`"]
+    d15["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
-    d8["`sku_group_orders
+    d16["`sku_group_orders
 UTC 01:00 · P3 · large`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
     x2["elasticsearch_collect"]
-    x0 -->|"sensor Δ5h"| d1
-    x1 -->|"sensor Δ5h"| d1
-    d3 -->|"sensor Δ1h"| d1
-    x0 -->|"sensor Δ5h"| d2
-    x1 -->|"sensor Δ5h"| d2
-    d3 -->|"sensor Δ1h"| d2
-    x0 -->|"sensor Δ4h"| d3
-    x0 -->|"sensor Δ2h"| d4
-    x1 -->|"sensor Δ2h"| d4
-    x0 -->|"sensor Δ1h"| d5
-    x2 -->|"sensor"| d7
-    class d6,d7,d8 silver
-    class d1,d2,d3,d4,d5 gold
+    d11 -.->|"dbt DQ (legacy) Δ26h"| d1
+    d1 -.->|"dbt DQ (legacy) Δ2h"| d2
+    d12 -.->|"dbt DQ (legacy) Δ3h"| d3
+    x0 -.->|"dbt DQ (legacy) Δ5h"| d5
+    x1 -.->|"dbt DQ (legacy) Δ5h"| d5
+    d7 -->|"sensor Δ1h"| d5
+    x0 -.->|"dbt DQ (legacy) Δ5h"| d6
+    x1 -.->|"dbt DQ (legacy) Δ5h"| d6
+    d7 -->|"sensor Δ1h"| d6
+    x0 -.->|"dbt DQ (legacy) Δ4h"| d7
+    x0 -.->|"dbt DQ (legacy) Δ2h"| d8
+    x1 -.->|"dbt DQ (legacy) Δ2h"| d8
+    x0 -.->|"dbt DQ (legacy) Δ1h"| d9
+    d4 -.->|"dbt DQ (legacy) Δ3h"| d10
+    x2 -->|"sensor"| d15
+    class d11,d12,d13,d14,d15,d16 silver
+    class d1,d2,d3,d4,d5,d6,d7,d8,d9,d10 gold
     class d0 datasets
     class x0,x1,x2 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
@@ -219,13 +245,79 @@ gantt
     section Training
     10h00 · 1 DAG · search_dataset×1 :milestone, s0_0600, 10:00, 0m
     section Backfill
+    03h00 · 1 DAG · airflow-python×1 :milestone, s1_0180, 03:00, 0m
     section Other
     01h00 · 1 DAG · large×1 :milestone, s2_0060, 01:00, 0m
-    02h00 · 1 DAG · large×1 :milestone, s2_0120, 02:00, 0m
-    03h00 · 2 DAG · large×2 :milestone, s2_0180, 03:00, 0m
+    02h00 · 2 DAG · large×1 · airflow-python×1 :milestone, s2_0120, 02:00, 0m
+    03h00 · 4 DAG · large×1 · airflow-python×2 · search_product×1 :milestone, s2_0180, 03:00, 0m
+    04h00 · 1 DAG · large×1 :milestone, s2_0240, 04:00, 0m
     05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
-    06h00 · 2 DAG · small×1 · search_qid_features×1 :milestone, s2_0360, 06:00, 0m
+    06h00 · 5 DAG · small×1 · airflow-python×3 · search_qid_features×1 :milestone, s2_0360, 06:00, 0m
 ```
+
+## 4. DQ, feature_stats и статус миграции сенсоров
+
+DQ и профили признаков считаются внутри DAG'а энтити: `dq` — гейт для
+downstream, `feature_stats` — параллельный шаг, на который зависимости вешать
+запрещено. Контракт целиком — в `AGENTS.md`, разделы `## DQ And Source Sync` и
+`## Feature Stats`.
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 220}, "htmlLabels": false, "markdownAutoWrap": false}}%%
+flowchart LR
+    up["upstream DAG"]
+    job["job task"]
+    dq["dq"]
+    stats["feature_stats"]
+    down["downstream DAG / upload"]
+    results["iceberg.silver.feature_platform_dq_results"]
+    profiles["iceberg.silver.feature_platform_feature_stats"]
+    up -->|"sensor на таску dq"| job
+    job --> dq
+    job --> stats
+    dq --> results
+    stats --> profiles
+    dq -->|"downstream ждёт только dq"| down
+    class up,down external
+    class dq gate
+    class stats profile
+    classDef external fill:#f3f4f6,stroke:#6b7280,color:#111827
+    classDef gate fill:#fee2e2,stroke:#dc2626,color:#450a0a
+    classDef profile fill:#dcfce7,stroke:#16a34a,color:#052e16
+```
+
+Таска `dq` есть во всех DAG'ах энтити.
+
+Таска `feature_stats` есть во всех DAG'ах энтити.
+
+Сенсоров на устаревшем dbt-DQ-контракте: **24**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
+
+| Downstream DAG | Ждёт |
+|---|---|
+| `feature-platform.layers.gold.account_id.buyout_online_account_features` | `dbt.source.trino.ml_feature_platform_gold.feature_platform_buyout_account_history_features.dq` |
+| `feature-platform.layers.gold.sku_id.buyout_online_sku_features` | `dbt.source.trino.ml_feature_platform_gold.feature_platform_buyout_item_signal_features.dq` |
+| `feature-platform.layers.gold.account_id.buyout_account_history_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_account_lifetime_facts.dq` |
+| `feature-platform.layers.gold.city_id_dimensional_group.buyout_online_city_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_delivery_cpi_city_features.dq` |
+| `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_dp_neighbor_order_features.dq` |
+| `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_geo_geointellect_features.dq` |
+| `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_geo_user_activity_features.dq` |
+| `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_geo_user_location_features.dq` |
+| `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_geo_yandex_poi_features.dq` |
+| `feature-platform.layers.gold.query.search_query_atc_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
+| `feature-platform.layers.gold.query.search_query_atc_features_qid` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
+| `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features.v2` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
+| `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features_qid` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
+| `feature-platform.layers.gold.query_text_version.search_query_id` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
+| `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
+| `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features.v2` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
+| `feature-platform.layers.gold.sku_group_id_query_text.sku_group_query_atc_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
+| `feature-platform.layers.gold.query.search_query_atc_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
+| `feature-platform.layers.gold.query.search_query_atc_features_qid` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
+| `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features.v2` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
+| `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features_qid` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
+| `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
+| `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features.v2` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
+| `feature-platform.layers.gold.sku_group_id.sku_group_stock_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_stock_daily.dq` |
 
 ## Reading the map
 
@@ -233,5 +325,7 @@ gantt
   `config/spark/resources.yaml`.
 - `spark-custom` is a Spark DAG with a local resources file rather than a named shared profile.
 - `airflow-python` is an Airflow/Python job, including Trino/ClickHouse/Elasticsearch jobs.
+- Сплошная стрелка `dq` — актуальный контракт: сенсор ждёт таску `dq` DAG'а-владельца.
+- Пунктирная стрелка `dbt DQ (legacy)` — сенсор всё ещё ждёт внешний dbt-DQ-DAG.
 - External dbt/DQ/producer DAGs are shown as grey nodes and do not belong to this repository.
 - The graph records declared orchestration dependencies, not every table read visible in job code.

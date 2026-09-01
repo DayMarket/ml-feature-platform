@@ -71,6 +71,7 @@ Use repository files as the source of truth. Do not duplicate their contents in 
 - Spark runtime template and resource profiles: `config/spark/layer_spark_application.yaml`, `config/spark/resources.yaml`, and each entity's `config.yaml` `spark` or `spark_applications` block. These are Spark-specific and should not be forced onto Trino/ClickHouse-source Airflow/Python jobs.
 - Ranking-service publication: `upload/features_service_upload/v1/config.yaml` and `upload/features_service_upload/v1/ranking_service_input.yaml`.
 - CI and generated downstream sync behavior: `.drone.yaml`, `scripts/`, and `ci_test/`.
+- Сводная карта DAG-зависимостей, расписаний и статуса миграции DQ-сенсоров: `docs/feature_platform_map.md`. Файл генерируется из `dag.py`, `config.yaml` и upload-конфигов и охраняется CI, поэтому его нельзя править руками — только перегенерировать. Источником правды остаются сами файлы энтити: карта показывает объявленные зависимости, а не фактические времена прогонов в Airflow.
 
 Useful discovery commands:
 
@@ -320,7 +321,7 @@ Use this workflow only after confirming that the default Spark image or default 
 - Каждая репозиторно-управляемая энтити получает DQ-тесты внутри собственного DAG'а, таской `dq`.
 - Базовый набор (`primary_key_not_null`, `primary_key_unique`, `row_count_min`, `row_count_growth`, `freshness`) работает всегда, даже без блока `dq:` в конфиге.
 - Дополнительные тесты объявляются именами в `dq.tests`; полный каталог — в `dq/README.md`.
-- Downstream-DAG'и ждут таску `dq` DAG'а-владельца таблицы: `external_dag_id=<dag id владельца>`, `external_task_id="dq"`. Ссылки на `dbt.source.trino.ml_feature_platform_*.dq` — устаревший контракт, они убираются на фазе 3 миграции.
+- Downstream-DAG'и ждут таску `dq` DAG'а-владельца таблицы: `external_dag_id=<dag id владельца>`, `external_task_id="dq"`. Ссылки на `dbt.source.trino.ml_feature_platform_*.dq` — устаревший контракт, они убираются на фазе 3 миграции. Актуальный список оставшихся легаси-сенсоров — в разделе `## 4` файла `docs/feature_platform_map.md`; в графах карты такие рёбра нарисованы пунктиром.
 - Результаты прогонов пишутся в `iceberg.silver.feature_platform_dq_results`; аналитика строится в Superset поверх неё.
 - Пороги `row_count_min` и `row_count_growth` подбираются по реальной истории таблицы в Trino, а не назначаются на глаз, и каждый порог сопровождается комментарием в `config.yaml` с наблюдённым диапазоном. То же для `not_null`: колонка попадает в тест, только если история показывает, что она действительно плотная — иначе используется `null_share_below` с порогом выше нормальной доли NULL.
 - Любой SQL, который DQ-таска шлёт в Trino, адресует таблицы полным именем `"<trino-catalog>".<schema>.<table>`, включая служебные запросы к `information_schema`. Дефолтный каталог соединений `trino_*` — `hive`, поэтому неквалифицированное имя падает с `CATALOG_NOT_FOUND` ещё до первого теста. Маппинг каталога берётся из `ci_config.yaml` через `dq.config.trino_catalog_alias`, готовая ссылка на таблицу — `dq.tests.table_ref`.
@@ -391,6 +392,7 @@ Do not add expensive high-cardinality or source-wide relationship tests blindly.
 
 Drone currently:
 
+- Runs `scripts/generate_feature_platform_map.py --check`: падает, когда `docs/feature_platform_map.md` расходится с кодом DAG'ов или у энтити нет `alerts.severity` из шкалы P1–P4. Незнакомую идиому в `dag.py` шаг не роняет — она попадает в раздел «Что генератор не смог прочитать» самой карты.
 - Runs `scripts/validate_dq_configs.py`.
 - Runs `scripts/validate_feature_stats_configs.py`.
 - Runs `scripts/validate_ranking_upload_configs.py`.
@@ -495,6 +497,9 @@ python3 ci_test/test_feature_stats_task.py
 python3 ci_test/test_feature_stats_task_wiring.py
 python3 ci_test/test_validate_feature_stats_configs.py
 python3 ci_test/test_spark_resources.py
+python3 scripts/generate_feature_platform_map.py
+python3 scripts/generate_feature_platform_map.py --check
+python3 ci_test/test_generate_feature_platform_map.py
 git diff --check
 ```
 

@@ -16,6 +16,34 @@ DAG_ROOTS = ("layers", "datasets", "upload")
 DEFAULT_OUTPUT = Path("docs/feature_platform_map.md")
 MAP_CONFIG = Path("config/feature_platform_map.json")
 DAILY_CRON = re.compile(r"^(?P<minute>\d{1,2})\s+(?P<hour>\d{1,2}|\*/\d{1,2})\s+\*\s+\*\s+\*$")
+# Устаревший контракт: сенсор ждёт dbt-DQ-DAG вместо таски `dq` DAG'а-владельца.
+LEGACY_DQ_DAG_ID = re.compile(
+    r"dbt\.source\.trino\.ml_feature_platform_(?P<schema>[^.]+)\.(?P<table>[^.]+)\.dq"
+)
+# Severity согласуется с владельцем энтити (AGENTS.md), поэтому карта проверяет
+# только то, что значение вообще из шкалы, а не диктует конкретный уровень.
+KNOWN_SEVERITIES = ("P1", "P2", "P3", "P4")
+SEVERITY_RANK = {severity: rank for rank, severity in enumerate(KNOWN_SEVERITIES)}
+EDGE_LABELS = {
+    "dq": "dq",
+    "legacy-dq": "dbt DQ (legacy)",
+    "sensor": "sensor",
+    "upload-sensor": "upload-sensor",
+    "trigger": "trigger",
+}
+
+
+@dataclass(frozen=True)
+class ParseNote:
+    """Место, которое генератор не смог прочитать статически."""
+
+    path: str
+    line: int
+    message: str
+
+    def render(self) -> str:
+        location = f"{self.path}:{self.line}" if self.line else self.path
+        return f"`{location}` — {self.message}"
 
 
 @dataclass(frozen=True)
@@ -39,6 +67,8 @@ class DagRecord:
     is_backfill: bool = False
     workload: str = "other"
     expected_severity: str | None = None
+    has_dq: bool = False
+    has_feature_stats: bool = False
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,8 +90,11 @@ def main() -> int:
     if not output_path.is_absolute():
         output_path = repo_root / output_path
 
-    records = discover_dags(repo_root)
-    rendered = render_repository_map(repo_root, records)
+    notes: list[ParseNote] = []
+    records = discover_dags(repo_root, notes)
+    rendered = render_repository_map(repo_root, records, notes)
+    for note in notes:
+        print(f"warning: {note.path}:{note.line} — {note.message}", file=sys.stderr)
     if args.check:
         violations = severity_policy_violations(records)
         if violations:
@@ -88,8 +121,12 @@ def main() -> int:
 def render_repository_map(
     repo_root: Path,
     records: list[DagRecord] | None = None,
+    notes: list[ParseNote] | None = None,
 ) -> str:
-    records = records or discover_dags(repo_root)
+    if records is None:
+        notes = [] if notes is None else notes
+        records = discover_dags(repo_root, notes)
+    notes = notes or []
     if not records:
         raise ValueError("No Airflow DAG definitions found")
     logistics_group_tags = _critical_group_tags(repo_root, "Logistics")
@@ -131,14 +168,24 @@ def render_repository_map(
         f"Всего DAG: **{len(records)}**. "
         f"Внутренних зависимостей: **{_internal_dependency_count(records)}**. "
         f"Внешних зависимостей: **{_external_dependency_count(records)}**. "
-        f"P3: **{sum(record.severity == 'P3' for record in records)}**. "
-        f"P4: **{sum(record.severity == 'P4' for record in records)}**.",
+        + ". ".join(
+            f"{severity}: **{sum(record.severity == severity for record in records)}**"
+            for severity in KNOWN_SEVERITIES
+        )
+        + ".",
+        "",
+        f"Таска `dq`: **{sum(record.has_dq for record in records)}** из **{len(records)}**. "
+        f"Таска `feature_stats`: **{sum(record.has_feature_stats for record in records)}** "
+        f"из **{len(records)}** (upload и backfill их не имеют по построению). "
+        f"Рёбер на устаревшем dbt-DQ-контракте: **{len(_legacy_dq_edges(records))}**.",
         "",
         "Severity policy:",
         "",
-        "- `P3` — production upload и все repository DAG, транзитивно питающие его через sensors/DQ.",
-        "- `P4` — training datasets и отдельные backfill DAG.",
-        "- Для остальных DAG карта показывает настроенную severity без автоматической переклассификации.",
+        "- Жёсткое требование одно: `alerts.severity` объявлена и лежит в шкале P1–P4.",
+        "- Базовое ожидание: `P3` — production upload и все DAG, транзитивно питающие его;",
+        "  `P4` — training datasets и отдельные backfill DAG.",
+        "- Более строгая severity (например `P2` на production-цепочке) — осознанное решение",
+        "  владельца энтити, а не нарушение: карта её не переклассифицирует.",
         "",
         "## 1. Production-critical DAGs — Search",
         "",
@@ -200,27 +247,38 @@ def render_repository_map(
         ),
         "```",
         "",
+        "## 4. DQ, feature_stats и статус миграции сенсоров",
+        "",
+        *_render_dq_status(records),
+        "",
         "## Reading the map",
         "",
         "- `small`, `medium`, `large` are shared Spark resource profiles from",
         "  `config/spark/resources.yaml`.",
         "- `spark-custom` is a Spark DAG with a local resources file rather than a named shared profile.",
         "- `airflow-python` is an Airflow/Python job, including Trino/ClickHouse/Elasticsearch jobs.",
+        "- Сплошная стрелка `dq` — актуальный контракт: сенсор ждёт таску `dq` DAG'а-владельца.",
+        "- Пунктирная стрелка `dbt DQ (legacy)` — сенсор всё ещё ждёт внешний dbt-DQ-DAG.",
         "- External dbt/DQ/producer DAGs are shown as grey nodes and do not belong to this repository.",
         "- The graph records declared orchestration dependencies, not every table read visible in job code.",
+        *_render_parse_notes(notes),
         "",
     ]
     return "\n".join(lines)
 
 
-def discover_dags(repo_root: Path) -> list[DagRecord]:
+def discover_dags(
+    repo_root: Path,
+    notes: list[ParseNote] | None = None,
+) -> list[DagRecord]:
+    notes = [] if notes is None else notes
     records: list[DagRecord] = []
     for root_name in DAG_ROOTS:
         root = repo_root / root_name
         if not root.exists():
             continue
         for dag_path in sorted(root.glob("**/dag*.py")):
-            records.extend(_parse_dag_file(repo_root, dag_path))
+            records.extend(_parse_dag_file(repo_root, dag_path, notes))
 
     dag_ids = [record.dag_id for record in records]
     duplicates = sorted({dag_id for dag_id in dag_ids if dag_ids.count(dag_id) > 1})
@@ -228,11 +286,15 @@ def discover_dags(repo_root: Path) -> list[DagRecord]:
         raise ValueError(f"Duplicate DAG ids in generated map: {duplicates}")
 
     exclusions = _map_exclusions(repo_root)
-    unknown_exclusions = sorted(set(exclusions) - set(dag_ids))
-    if unknown_exclusions:
-        raise ValueError(
-            "Feature Platform map excludes unknown DAG ids: "
-            f"{unknown_exclusions}"
+    # Удалённый DAG в списке пауз — устаревшая запись конфига, а не повод
+    # уронить сборку карты: она попадает в раздел непрочитанного.
+    for unknown in sorted(set(exclusions) - set(dag_ids)):
+        notes.append(
+            ParseNote(
+                MAP_CONFIG.as_posix(),
+                0,
+                f"`excluded_dags` содержит несуществующий DAG `{unknown}` — запись пора удалить",
+            )
         )
 
     normalized_records = _normalize_trigger_dependencies(
@@ -305,16 +367,43 @@ def _critical_dag_ids(repo_root: Path, team: str) -> set[str]:
     return set(dag_ids)
 
 
-def _parse_dag_file(repo_root: Path, dag_path: Path) -> list[DagRecord]:
+def _parse_dag_file(
+    repo_root: Path,
+    dag_path: Path,
+    notes: list[ParseNote],
+) -> list[DagRecord]:
     source = dag_path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=dag_path.as_posix())
+    return _records_from_tree(tree, repo_root, dag_path, notes)
+
+
+def _records_from_tree(
+    tree: ast.Module,
+    repo_root: Path,
+    dag_path: Path,
+    notes: list[ParseNote],
+) -> list[DagRecord]:
+    """Собрать записи DAG'ов из разобранного файла.
+
+    Незнакомая идиома не поднимает исключение: карта — документация, а не гейт
+    на стиль кода. Всё, что не прочиталось статически, уходит в `notes` и
+    печатается отдельным разделом карты, чтобы пробел был виден, а CI-шаг
+    `--check` оставался про актуальность файла, а не про traceback.
+    """
     config_path = dag_path.parent / "config.yaml"
     config = _read_config(config_path) if config_path.exists() else {}
-    config_env = _config_environment(repo_root, dag_path, tree, config)
+    config_env = {
+        **_module_environment(tree),
+        **_config_environment(repo_root, dag_path, tree, config),
+    }
     referenced_configs = _referenced_configs(repo_root, tree)
     area = _area_for_path(repo_root, dag_path)
     resource = _resource_label(config, dag_path.parent)
     table = _table_name(config)
+    try:
+        rel_path = dag_path.relative_to(repo_root).as_posix()
+    except ValueError:
+        rel_path = dag_path.as_posix()
     records = []
 
     for node in tree.body:
@@ -326,7 +415,14 @@ def _parse_dag_file(repo_root: Path, dag_path: Path) -> list[DagRecord]:
         keywords = {keyword.arg: keyword.value for keyword in decorator.keywords if keyword.arg}
         dag_id = _eval_string(keywords.get("dag_id"), config_env)
         if not dag_id:
-            raise ValueError(f"Cannot resolve dag_id in {dag_path}:{node.lineno}")
+            notes.append(
+                ParseNote(
+                    rel_path,
+                    node.lineno,
+                    "dag_id не вычисляется статически — DAG не попал в карту",
+                )
+            )
+            continue
         schedule_expression = keywords.get("schedule")
         schedule = _eval_schedule(schedule_expression, config_env)
         if (
@@ -337,8 +433,12 @@ def _parse_dag_file(repo_root: Path, dag_path: Path) -> list[DagRecord]:
                 and schedule_expression.value is None
             )
         ):
-            raise ValueError(
-                f"Cannot resolve schedule in {dag_path}:{node.lineno}"
+            notes.append(
+                ParseNote(
+                    rel_path,
+                    node.lineno,
+                    f"schedule DAG'а `{dag_id}` не вычисляется статически — показан как manual",
+                )
             )
         dependencies = _dependencies_for_function(
             node,
@@ -346,12 +446,14 @@ def _parse_dag_file(repo_root: Path, dag_path: Path) -> list[DagRecord]:
             config,
             referenced_configs,
             area,
+            notes,
+            rel_path,
         )
         record_table = table if _owns_output_table(dag_id, config) else None
         records.append(
             DagRecord(
                 dag_id=dag_id,
-                path=dag_path.relative_to(repo_root).as_posix(),
+                path=rel_path,
                 area=area,
                 schedule=schedule,
                 resource=resource,
@@ -360,9 +462,41 @@ def _parse_dag_file(repo_root: Path, dag_path: Path) -> list[DagRecord]:
                 dependencies=tuple(sorted(set(dependencies), key=lambda dep: (dep.upstream_dag_id, dep.kind))),
                 group_tag=_configured_group_tag(config),
                 is_backfill=_contains_backfill(node),
+                has_dq=_calls_factory(node, "build_dq_task"),
+                has_feature_stats=_calls_factory(node, "build_feature_stats_task"),
             )
         )
     return records
+
+
+def _calls_factory(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
+    return any(
+        _call_name(node.func) == name
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+    )
+
+
+def _module_environment(tree: ast.Module) -> dict[str, Any]:
+    """Строковые и timedelta-константы уровня модуля.
+
+    DAG'и выносят id upstream-DAG'а и execution_delta в константы рядом с
+    комментарием, объясняющим дельту. Без их разбора сенсор не резолвится и
+    ребро молча пропадает из карты.
+    """
+    env: dict[str, Any] = {}
+    for assignment in (node for node in tree.body if isinstance(node, ast.Assign)):
+        targets = [target.id for target in assignment.targets if isinstance(target, ast.Name)]
+        if not targets:
+            continue
+        value = _eval_value(assignment.value, env)
+        if value is None:
+            minutes = _timedelta_minutes(assignment.value, env)
+            value = minutes or None
+        if isinstance(value, (str, int)):
+            for target in targets:
+                env.setdefault(target, value)
+    return env
 
 
 def _dag_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Call | None:
@@ -378,24 +512,36 @@ def _dependencies_for_function(
     config: dict[str, Any],
     referenced_configs: list[dict[str, Any]],
     area: str,
+    notes: list[ParseNote],
+    path: str,
 ) -> list[Dependency]:
     dependencies: list[Dependency] = []
     unresolved_dq_sensor = False
     unresolved_dq_delta = 0
-    unresolved_upload_sensor = False
     for call in (node for node in ast.walk(function) if isinstance(node, ast.Call)):
         call_name = _call_name(call.func)
         if call_name == "ExternalTaskSensor":
             expression = _keyword(call, "external_dag_id")
             upstream = _eval_string(expression, config_env)
             delta_minutes = _timedelta_minutes(_keyword(call, "execution_delta"), config_env)
+            external_task_id = _eval_string(_keyword(call, "external_task_id"), config_env)
             if upstream:
-                dependencies.append(Dependency(upstream, "sensor", delta_minutes))
+                dependencies.append(
+                    Dependency(upstream, _sensor_kind(upstream, external_task_id), delta_minutes)
+                )
             elif isinstance(expression, ast.Call) and _call_name(expression.func) == "_dq_dag_id":
                 unresolved_dq_sensor = True
                 unresolved_dq_delta = delta_minutes
+            elif area == "upload":
+                dependencies.extend(_upload_dependencies(config))
             else:
-                unresolved_upload_sensor = True
+                notes.append(
+                    ParseNote(
+                        path,
+                        call.lineno,
+                        "external_dag_id сенсора не вычисляется статически — ребро не попало в карту",
+                    )
+                )
         elif call_name == "TriggerDagRunOperator":
             upstream = _eval_string(_keyword(call, "trigger_dag_id"), config_env)
             if upstream:
@@ -405,13 +551,23 @@ def _dependencies_for_function(
         for referenced_config in referenced_configs:
             dq_dag_id = _dq_dag_id(referenced_config)
             if dq_dag_id:
-                dependencies.append(Dependency(dq_dag_id, "sensor", unresolved_dq_delta))
+                dependencies.append(Dependency(dq_dag_id, "legacy-dq", unresolved_dq_delta))
 
-    if unresolved_upload_sensor and area == "upload":
-        dependencies.extend(_upload_dependencies(config))
-    elif unresolved_upload_sensor:
-        raise ValueError("Cannot resolve ExternalTaskSensor.external_dag_id")
     return dependencies
+
+
+def _sensor_kind(upstream_dag_id: str, external_task_id: str | None) -> str:
+    """Различить актуальный и устаревший DQ-контракт.
+
+    Актуальный: сенсор ждёт таску `dq` DAG'а-владельца таблицы. Устаревший:
+    сенсор ждёт отдельный dbt-DQ-DAG, которого после переноса DQ в репозиторий
+    быть не должно (AGENTS.md, фаза 3 миграции).
+    """
+    if LEGACY_DQ_DAG_ID.fullmatch(upstream_dag_id):
+        return "legacy-dq"
+    if external_task_id == "dq":
+        return "dq"
+    return "sensor"
 
 
 def _normalize_trigger_dependencies(records: list[DagRecord]) -> list[DagRecord]:
@@ -493,26 +649,40 @@ def _apply_severity_policy(records: list[DagRecord]) -> list[DagRecord]:
 
 
 def severity_policy_violations(records: list[DagRecord]) -> list[str]:
+    """Жёсткая часть политики: severity вообще объявлена и лежит в шкале P1–P4.
+
+    Конкретный уровень владелец энтити подтверждает явно (AGENTS.md), поэтому
+    карта не имеет права требовать P3 там, где команда осознанно поставила P2.
+    """
     violations = []
     for record in records:
-        if record.severity not in {"P3", "P4"}:
+        if record.severity not in KNOWN_SEVERITIES:
             violations.append(
-                f"{record.dag_id}: alerts.severity must be P3 or P4, got {record.severity or 'missing'}"
-            )
-        elif record.expected_severity and record.severity != record.expected_severity:
-            violations.append(
-                f"{record.dag_id}: {record.workload} workload must be "
-                f"{record.expected_severity}, got {record.severity}"
+                f"{record.dag_id}: alerts.severity must be one of "
+                f"{', '.join(KNOWN_SEVERITIES)}, got {record.severity or 'missing'}"
             )
     return violations
 
 
+def severity_policy_notes(records: list[DagRecord]) -> list[str]:
+    """Мягкая часть: severity слабее, чем ожидает workload DAG'а.
+
+    Более строгая severity (P2 на production-цепочке) нарушением не считается.
+    """
+    notes = []
+    for record in records:
+        if not record.expected_severity or record.severity not in SEVERITY_RANK:
+            continue
+        if SEVERITY_RANK[record.severity] > SEVERITY_RANK[record.expected_severity]:
+            notes.append(
+                f"`{record.dag_id}` — {record.workload} workload, "
+                f"ожидается {record.expected_severity}, настроена {record.severity}"
+            )
+    return notes
+
+
 def _table_from_dq_dag_id(dag_id: str) -> str | None:
-    match = re.fullmatch(
-        r"dbt\.source\.trino\.ml_feature_platform_(?P<schema>[^.]+)\."
-        r"(?P<table>[^.]+)\.dq",
-        dag_id,
-    )
+    match = LEGACY_DQ_DAG_ID.fullmatch(dag_id)
     if not match:
         return None
     return f"iceberg.{match.group('schema')}.{match.group('table')}"
@@ -666,6 +836,20 @@ def _eval_value(expression: ast.AST | None, env: dict[str, Any]) -> Any:
         left = _eval_value(expression.left, env)
         right = _eval_value(expression.right, env)
         return left + right if left is not None and right is not None else None
+    if isinstance(expression, ast.JoinedStr):
+        parts = []
+        for value in expression.values:
+            if isinstance(value, ast.Constant):
+                parts.append(str(value.value))
+                continue
+            resolved = _eval_value(
+                value.value if isinstance(value, ast.FormattedValue) else value,
+                env,
+            )
+            if resolved is None:
+                return None
+            parts.append(str(resolved))
+        return "".join(parts)
     if isinstance(expression, ast.Subscript):
         container = _eval_value(expression.value, env)
         key = _eval_value(expression.slice, env)
@@ -681,6 +865,9 @@ def _eval_value(expression: ast.AST | None, env: dict[str, Any]) -> Any:
 
 
 def _timedelta_minutes(expression: ast.AST | None, env: dict[str, Any]) -> int:
+    if isinstance(expression, ast.Name):
+        value = env.get(expression.id)
+        return int(value) if isinstance(value, int) and not isinstance(value, bool) else 0
     if not isinstance(expression, ast.Call) or _call_name(expression.func) != "timedelta":
         return 0
     values = {keyword.arg: _eval_value(keyword.value, env) for keyword in expression.keywords if keyword.arg}
@@ -782,6 +969,112 @@ def _expanded_daily_times(schedule: str | None) -> list[int]:
     return [hour * 60 + minute for hour in hours]
 
 
+def _legacy_dq_edges(records: list[DagRecord]) -> list[tuple[str, str]]:
+    """Рёбра, которые всё ещё ждут внешний dbt-DQ-DAG вместо таски `dq`."""
+    return sorted(
+        (dependency.upstream_dag_id, record.dag_id)
+        for record in records
+        for dependency in record.dependencies
+        if dependency.kind == "legacy-dq"
+    )
+
+
+def _render_dq_status(records: list[DagRecord]) -> list[str]:
+    """Анатомия одного DAG-рана и прогресс переноса сенсоров на таску `dq`."""
+    # dq и feature_stats обязательны для DAG'а энтити. Upload ничего не пишет в
+    # Iceberg, а backfill перезаливает уже проверенную партицию, поэтому их
+    # отсутствие в этих DAG'ах — не пробел.
+    entity_records = [
+        record
+        for record in records
+        if record.area != "upload" and not record.is_backfill
+    ]
+    without_dq = sorted(record.dag_id for record in entity_records if not record.has_dq)
+    without_stats = sorted(
+        record.dag_id for record in entity_records if not record.has_feature_stats
+    )
+    legacy_edges = _legacy_dq_edges(records)
+    lines = [
+        "DQ и профили признаков считаются внутри DAG'а энтити: `dq` — гейт для",
+        "downstream, `feature_stats` — параллельный шаг, на который зависимости вешать",
+        "запрещено. Контракт целиком — в `AGENTS.md`, разделы `## DQ And Source Sync` и",
+        "`## Feature Stats`.",
+        "",
+        "```mermaid",
+        '%%{init: {"flowchart": {"wrappingWidth": 220}, "htmlLabels": false, "markdownAutoWrap": false}}%%',
+        "flowchart LR",
+        '    up["upstream DAG"]',
+        '    job["job task"]',
+        '    dq["dq"]',
+        '    stats["feature_stats"]',
+        '    down["downstream DAG / upload"]',
+        '    results["iceberg.silver.feature_platform_dq_results"]',
+        '    profiles["iceberg.silver.feature_platform_feature_stats"]',
+        '    up -->|"sensor на таску dq"| job',
+        "    job --> dq",
+        "    job --> stats",
+        "    dq --> results",
+        "    stats --> profiles",
+        '    dq -->|"downstream ждёт только dq"| down',
+        "    class up,down external",
+        "    class dq gate",
+        "    class stats profile",
+        "    classDef external fill:#f3f4f6,stroke:#6b7280,color:#111827",
+        "    classDef gate fill:#fee2e2,stroke:#dc2626,color:#450a0a",
+        "    classDef profile fill:#dcfce7,stroke:#16a34a,color:#052e16",
+        "```",
+        "",
+    ]
+    if without_dq:
+        lines.append("DAG энтити без таски `dq`:")
+        lines.append("")
+        lines.extend(f"- `{dag_id}`" for dag_id in without_dq)
+    else:
+        lines.append("Таска `dq` есть во всех DAG'ах энтити.")
+    lines.append("")
+    if without_stats:
+        lines.append("DAG энтити без таски `feature_stats`:")
+        lines.append("")
+        lines.extend(f"- `{dag_id}`" for dag_id in without_stats)
+    else:
+        lines.append("Таска `feature_stats` есть во всех DAG'ах энтити.")
+    lines.append("")
+    if legacy_edges:
+        lines.append(
+            f"Сенсоров на устаревшем dbt-DQ-контракте: **{len(legacy_edges)}**. "
+            "Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать "
+            "`external_dag_id=<DAG-владелец>` и `external_task_id=\"dq\"`:"
+        )
+        lines.append("")
+        lines.append("| Downstream DAG | Ждёт |")
+        lines.append("|---|---|")
+        lines.extend(
+            f"| `{downstream}` | `{upstream}` |" for upstream, downstream in legacy_edges
+        )
+    else:
+        lines.append("Все сенсоры переведены на таску `dq` DAG'а-владельца.")
+    return lines
+
+
+def _render_parse_notes(notes: list[ParseNote]) -> list[str]:
+    """Места, которые генератор не прочитал.
+
+    Раздел появляется только когда есть что показать: пустой список молча
+    ничего не печатает, чтобы карта не обрастала шумом.
+    """
+    if not notes:
+        return []
+    return [
+        "",
+        "## Что генератор не смог прочитать",
+        "",
+        "Статический разбор `dag.py` не покрывает произвольный Python. Ниже — места,",
+        "где карта заведомо неполна; это не ошибка сборки, а список для правки.",
+        "",
+        *(f"- {note.render()}" for note in notes),
+    ]
+
+
 def _render_mermaid(records: list[DagRecord]) -> list[str]:
     internal_ids = {record.dag_id for record in records}
     node_ids = {record.dag_id: f"d{index}" for index, record in enumerate(records)}
@@ -827,10 +1120,14 @@ def _render_mermaid(records: list[DagRecord]) -> list[str]:
             upstream_node = node_ids.get(dependency.upstream_dag_id)
             if upstream_node is None:
                 upstream_node = external_node_ids[dependency.upstream_dag_id]
-            edge_label = dependency.kind
+            edge_label = EDGE_LABELS.get(dependency.kind, dependency.kind)
             if dependency.delta_minutes:
                 edge_label += f" Δ{_format_delta(dependency.delta_minutes)}"
-            lines.append(f'    {upstream_node} -->|"{edge_label}"| {node_ids[record.dag_id]}')
+            # Пунктир — устаревший dbt-DQ-контракт, сплошная — актуальный.
+            arrow = "-.->" if dependency.kind == "legacy-dq" else "-->"
+            lines.append(
+                f'    {upstream_node} {arrow}|"{edge_label}"| {node_ids[record.dag_id]}'
+            )
     for area in ("silver", "gold", "datasets", "upload"):
         members = ",".join(node_ids[record.dag_id] for record in records if record.area == area)
         if members:
@@ -867,7 +1164,7 @@ def _visual_dependency(
     upstream_table = _table_from_dq_dag_id(dependency.upstream_dag_id)
     producer_id = table_producers.get(upstream_table or "")
     if producer_id:
-        return Dependency(producer_id, "DQ", dependency.delta_minutes)
+        return Dependency(producer_id, "legacy-dq", dependency.delta_minutes)
     return dependency
 
 
