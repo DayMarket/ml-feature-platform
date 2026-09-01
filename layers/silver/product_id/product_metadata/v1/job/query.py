@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import datetime
 from typing import Protocol
 
 
@@ -14,27 +14,27 @@ class SourceSettings(Protocol):
 
 def _category_joins(settings: SourceSettings) -> str:
     return f"""
-LEFT JOIN {settings.category_table} c1
-    ON c0.parent_id = c1.id
-LEFT JOIN {settings.category_table} c2
-    ON c1.parent_id = c2.id
-LEFT JOIN {settings.category_table} c3
-    ON c2.parent_id = c3.id
-LEFT JOIN {settings.category_table} c4
-    ON c3.parent_id = c4.id
-LEFT JOIN {settings.category_table} c5
-    ON c4.parent_id = c5.id
+LEFT JOIN {settings.category_table} parent_1
+    ON leaf_category.parent_id = parent_1.id
+LEFT JOIN {settings.category_table} parent_2
+    ON parent_1.parent_id = parent_2.id
+LEFT JOIN {settings.category_table} parent_3
+    ON parent_2.parent_id = parent_3.id
+LEFT JOIN {settings.category_table} parent_4
+    ON parent_3.parent_id = parent_4.id
+LEFT JOIN {settings.category_table} parent_5
+    ON parent_4.parent_id = parent_5.id
 """
 
 
 def build_category_depth_validation_query(settings: SourceSettings) -> str:
     return f"""
-SELECT c0.id
-FROM {settings.category_table} c0
+SELECT leaf_category.id
+FROM {settings.category_table} leaf_category
 {_category_joins(settings)}
-WHERE c5.parent_id IS NOT NULL
-    AND c5.parent_id > 0
-    AND c5.parent_id != {settings.technical_category_root_id}
+WHERE parent_5.parent_id IS NOT NULL
+    AND parent_5.parent_id > 0
+    AND parent_5.parent_id != {settings.technical_category_root_id}
 LIMIT 1
 """
 
@@ -58,61 +58,72 @@ LIMIT 1
 
 def build_product_metadata_query(
     settings: SourceSettings,
-    dt: str,
+    dt: datetime,
 ) -> str:
-    normalized_dt = date.fromisoformat(dt).isoformat()
+    normalized_dt = dt.isoformat(sep=" ", timespec="seconds")
 
     return f"""
-WITH category_paths AS (
+WITH category_ancestors AS (
     SELECT
-        c0.id AS category_id,
-        REVERSE(
-            FILTER(
-                ARRAY(c0.id, c1.id, c2.id, c3.id, c4.id, c5.id),
-                value -> value IS NOT NULL
-                    AND value > 0
-                    AND value != {settings.technical_category_root_id}
-            )
-        ) AS hierarchy
-    FROM {settings.category_table} c0
+        leaf_category.id AS category_id,
+        parent_1.id AS parent_1_id,
+        parent_2.id AS parent_2_id,
+        parent_3.id AS parent_3_id,
+        parent_4.id AS parent_4_id,
+        parent_5.id AS parent_5_id,
+        CASE
+            WHEN parent_5.id > 0
+             AND parent_5.id != {settings.technical_category_root_id} THEN 6
+            WHEN parent_4.id > 0
+             AND parent_4.id != {settings.technical_category_root_id} THEN 5
+            WHEN parent_3.id > 0
+             AND parent_3.id != {settings.technical_category_root_id} THEN 4
+            WHEN parent_2.id > 0
+             AND parent_2.id != {settings.technical_category_root_id} THEN 3
+            WHEN parent_1.id > 0
+             AND parent_1.id != {settings.technical_category_root_id} THEN 2
+            ELSE 1
+        END AS category_depth
+    FROM {settings.category_table} leaf_category
     {_category_joins(settings)}
+    WHERE leaf_category.id > 0
+      AND leaf_category.id != {settings.technical_category_root_id}
 ),
 category_hierarchy AS (
     SELECT
         category_id,
-        CAST(TRY_ELEMENT_AT(hierarchy, 1) AS INT) AS l1_category_id,
-        CAST(
-            COALESCE(
-                TRY_ELEMENT_AT(hierarchy, 2),
-                TRY_ELEMENT_AT(hierarchy, 1)
-            ) AS INT
-        ) AS l2_category_id,
-        CAST(
-            COALESCE(
-                TRY_ELEMENT_AT(hierarchy, 3),
-                TRY_ELEMENT_AT(hierarchy, 2),
-                TRY_ELEMENT_AT(hierarchy, 1)
-            ) AS INT
-        ) AS l3_category_id,
-        CAST(
-            COALESCE(
-                TRY_ELEMENT_AT(hierarchy, 4),
-                TRY_ELEMENT_AT(hierarchy, 3),
-                TRY_ELEMENT_AT(hierarchy, 2),
-                TRY_ELEMENT_AT(hierarchy, 1)
-            ) AS INT
-        ) AS l4_category_id,
-        CAST(
-            COALESCE(
-                TRY_ELEMENT_AT(hierarchy, 5),
-                TRY_ELEMENT_AT(hierarchy, 4),
-                TRY_ELEMENT_AT(hierarchy, 3),
-                TRY_ELEMENT_AT(hierarchy, 2),
-                TRY_ELEMENT_AT(hierarchy, 1)
-            ) AS INT
-        ) AS l5_category_id,
-        CAST(category_id AS INT) AS l6_category_id
-    FROM category_paths
+        CASE category_depth
+            WHEN 6 THEN parent_5_id
+            WHEN 5 THEN parent_4_id
+            WHEN 4 THEN parent_3_id
+            WHEN 3 THEN parent_2_id
+            WHEN 2 THEN parent_1_id
+            ELSE category_id
+        END AS l1_category_id,
+        CASE category_depth
+            WHEN 6 THEN parent_4_id
+            WHEN 5 THEN parent_3_id
+            WHEN 4 THEN parent_2_id
+            WHEN 3 THEN parent_1_id
+            ELSE category_id
+        END AS l2_category_id,
+        CASE category_depth
+            WHEN 6 THEN parent_3_id
+            WHEN 5 THEN parent_2_id
+            WHEN 4 THEN parent_1_id
+            ELSE category_id
+        END AS l3_category_id,
+        CASE category_depth
+            WHEN 6 THEN parent_2_id
+            WHEN 5 THEN parent_1_id
+            ELSE category_id
+        END AS l4_category_id,
+        CASE category_depth
+            WHEN 6 THEN parent_1_id
+            ELSE category_id
+        END AS l5_category_id,
+        category_id AS l6_category_id
+    FROM category_ancestors
 ),
 product_brands AS (
     SELECT
@@ -133,7 +144,7 @@ category_genders AS (
     FROM {settings.category_gender_table}
 )
 SELECT
-    DATE '{normalized_dt}' AS dt,
+    TIMESTAMP '{normalized_dt}' AS dt,
     CAST(product.id AS INT) AS product_id,
     CAST(product.category_id AS INT) AS category_id,
     hierarchy.l1_category_id,
@@ -157,8 +168,8 @@ WHERE product.id IS NOT NULL
 """
 
 
-def build_product_metadata_merge_query(target_table: str, dt: str) -> str:
-    normalized_dt = date.fromisoformat(dt).isoformat()
+def build_product_metadata_merge_query(target_table: str, dt: datetime) -> str:
+    normalized_dt = dt.isoformat(sep=" ", timespec="seconds")
 
     return f"""
 MERGE INTO {target_table} AS target
@@ -207,6 +218,6 @@ WHEN NOT MATCHED THEN INSERT (
     source.category_gender
 )
 WHEN NOT MATCHED BY SOURCE
-    AND target.dt = DATE '{normalized_dt}'
+    AND target.dt = TIMESTAMP '{normalized_dt}'
 THEN DELETE
 """

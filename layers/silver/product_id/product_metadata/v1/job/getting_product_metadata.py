@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pyspark.sql import DataFrame, SparkSession
 
 from job.entities import Arguments
@@ -58,7 +60,7 @@ def _validate_required_l6(
 
 def build_product_metadata(
     spark: SparkSession,
-    dt: str,
+    dt: datetime,
     settings: SourceSettings,
 ) -> DataFrame:
     return spark.sql(build_product_metadata_query(settings, dt))
@@ -69,7 +71,7 @@ def save_product_metadata(
     partition_end: str,
     target_table: str,
 ) -> None:
-    spark.conf.set("spark.sql.session.timeZone", "UTC")
+    spark.conf.set("spark.sql.session.timeZone", "Asia/Tashkent")
     spark.conf.set("spark.sql.ansi.enabled", "true")
     settings = load_source_settings()
     _require_tables(spark, settings.table_names)
@@ -77,7 +79,7 @@ def save_product_metadata(
     _validate_category_depth(spark, settings)
     _validate_required_l6(spark, settings)
 
-    dt = dt_from_partition_end(partition_end).isoformat()
+    dt = dt_from_partition_end(partition_end)
     metadata = build_product_metadata(
         spark,
         dt,

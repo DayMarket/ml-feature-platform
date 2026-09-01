@@ -30,7 +30,7 @@ source:
 
 dag:
   id: feature-platform.layers.silver.product_id.product_metadata
-  group_tag: recsys-main-page-features
+  group_tag: recsys-features
   schedule: "0 19 * * *"
   start_date: "2026-08-07T19:00:00Z"
   catchup: true

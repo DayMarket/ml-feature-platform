@@ -2,7 +2,7 @@
 
 DAG id: `feature-platform.layers.silver.product_id.product_metadata`.
 
-Airflow group tag: `recsys-main-page-features`.
+Airflow group tag: `recsys-features`.
 
 Целевая таблица: `iceberg.silver.feature_platform_product_metadata`.
 
@@ -14,7 +14,7 @@ Grain и primary key: `dt,product_id`.
 
 Колонки:
 
-- `dt` — дата актуальности метаданных товара в `Asia/Tashkent`, рассчитанная из `data_interval_end`;
+- `dt` — `TIMESTAMP` начала локальной даты актуальности метаданных товара (`00:00:00 Asia/Tashkent`), рассчитанный из `data_interval_end`;
 - `product_id` — идентификатор карточки товара;
 - `category_id` — листовая категория из `product.category_id`;
 - `l1_category_id` — верхняя содержательная категория, без технического корня `1`;
@@ -61,7 +61,7 @@ Iceberg-таблица партиционирована по `months(dt)`. Дн�
 
 DAG запускается ежедневно в `19:00 UTC`, что соответствует `00:00 Asia/Tashkent`. Стартовая дата — `2026-08-07T19:00:00Z`, `catchup=true`; при включении 22 августа 2026 года рассчитываются 14 локальных дат `dt` с 9 по 22 августа.
 
-`dt` равна локальной дате `data_interval_end` в `Asia/Tashkent`. Например, `data_interval_end = 2026-08-04 19:00:00 UTC` записывает `dt = 2026-08-05`.
+`dt` равен началу локальной даты `data_interval_end` в `Asia/Tashkent`. Например, `data_interval_end = 2026-08-04 19:00:00 UTC` записывает `dt = 2026-08-05 00:00:00`.
 
 Стандартный dbt DQ-контракт проверяет уникальность `dt,product_id` и `not_null` для обеих колонок ключа. Producer дополнительно проверяет максимальную глубину категорий, обязательную листовую категорию и переполнение `INT`. Допустимые gender-значения и исключение технического бренда обеспечиваются самой трансформацией.
 
