@@ -96,16 +96,21 @@ def account_demographics_dag() -> None:
 
         table = runtime.preflight_table(catalog, ref)
         dt = runtime.dt_from_interval_end(interval_end_value)
+        source = config["source"]
+        history_table = (
+            f'{source["trino_iceberg_catalog"]}.{ref.schema}.{ref.name}'
+        )
         frame = runtime.query_trino(
-            config["source"]["trino_conn_id"],
+            source["trino_conn_id"],
             query.build_query(
                 dt=dt,
-                customer_table=config["source"]["customer_table"],
-                ecosystem_users_table=config["source"]["ecosystem_users_table"],
-                geo_events_table=config["source"]["geo_events_table"],
-                platform_sessions_table=config["source"]["platform_sessions_table"],
-                city_table=config["source"]["city_table"],
-                lookback_days=config["source"]["lookback_days"],
+                customer_table=source["customer_table"],
+                ecosystem_users_table=source["ecosystem_users_table"],
+                geo_events_table=source["geo_events_table"],
+                platform_sessions_table=source["platform_sessions_table"],
+                city_table=source["city_table"],
+                history_table=history_table,
+                lookback_days=source["lookback_days"],
             ),
         )
         runtime.write_demographics(table, frame, dt)

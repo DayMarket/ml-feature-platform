@@ -24,6 +24,7 @@ def build_query(
     geo_events_table: str,
     platform_sessions_table: str,
     city_table: str,
+    history_table: str,
     lookback_days: int,
 ) -> str:
     if lookback_days <= 0:
@@ -237,6 +238,22 @@ account_platform AS (
         )[1] AS platform
     FROM platform_counts
     GROUP BY account_id
+),
+previous_dt AS (
+    SELECT
+        MAX(history.dt) AS dt
+    FROM {history_table} history
+    CROSS JOIN params
+    WHERE history.dt < params.dt
+),
+previous_context AS (
+    SELECT
+        history.account_id,
+        history.city_name,
+        history.platform
+    FROM {history_table} history
+    INNER JOIN previous_dt
+        ON history.dt = previous_dt.dt
 )
 SELECT
     params.dt AS dt,
@@ -251,12 +268,20 @@ SELECT
             AS INTEGER
         )
     END AS age,
-    account_city.city_name,
-    account_platform.platform
+    COALESCE(
+        account_city.city_name,
+        previous_context.city_name
+    ) AS city_name,
+    COALESCE(
+        account_platform.platform,
+        previous_context.platform
+    ) AS platform
 FROM demographics
 CROSS JOIN params
 LEFT JOIN account_city
     ON demographics.account_id = account_city.account_id
 LEFT JOIN account_platform
     ON demographics.account_id = account_platform.account_id
+LEFT JOIN previous_context
+    ON demographics.account_id = previous_context.account_id
 """

@@ -17,6 +17,7 @@ source:
   geo_events_table: '"dwh-clickhouse".clickstream_b2c.events'
   platform_sessions_table: '"dwh-iceberg".silver.sessions_with_attribution'
   city_table: '"dwh-clickhouse".dict.city'
+  trino_iceberg_catalog: '"dwh-iceberg"'
   lookback_days: 28
 
 runtime:
