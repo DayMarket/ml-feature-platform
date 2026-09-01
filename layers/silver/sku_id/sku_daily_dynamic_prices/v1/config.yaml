@@ -1,0 +1,33 @@
+# ClickHouse-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+# Runtime/source contract is documented here; the Spark `spark`/`resources`
+# blocks are intentionally absent (see AGENTS.md Trino/ClickHouse-source pattern).
+table:
+  key: sku_daily_dynamic_prices
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_sku_daily_dynamic_prices
+  primary_key: date,sku_id
+  meta:
+    team: team:pricing
+
+source:
+  engine: clickhouse
+  # Коннекшн заводится DE по конвенции clickhouse_<dag>_dag; заявка — в PR.
+  clickhouse_conn_id: clickhouse_sku_daily_dynamic_prices_dag
+  table: pricing.dynamic_discount
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.silver.sku_id.sku_daily_dynamic_prices
+  group_tag: sku-dynamic-prices
+  schedule: "0 1 * * *"
+  start_date: "2026-02-01T00:00:00Z"
+  team: pricing
+  owner: team:pricing
+
+alerts:
+  team: pricing
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_pricing

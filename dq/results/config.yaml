@@ -1,0 +1,12 @@
+# Таблица истории DQ-прогонов. Пишется таской dq каждого DAG'а, читается Superset.
+# create_dbt_pr: false — таблица не уезжает в dbt-trino и не заводит DQ-тесты сама на себя.
+table:
+  key: dq_results
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_dq_results
+  primary_key: date,dag_id,test_key
+  meta:
+    team: team:search
+    create_dbt_pr: false
+    create_maintenance_pr: true

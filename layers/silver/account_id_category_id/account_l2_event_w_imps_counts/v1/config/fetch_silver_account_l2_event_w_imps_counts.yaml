@@ -71,6 +71,7 @@ spec:
       app: "spark"
     cores: <driver_cores>
     memory: <driver_memory>
+    memoryOverhead: <driver_memory_overhead>
     serviceAccount: spark-operator-spark
     tolerations:
       - key: "app_type"
@@ -123,6 +124,7 @@ spec:
     coreRequest: "<executor_core_request>"
     instances: <executor_instances>
     memory: <executor_memory>
+    memoryOverhead: <executor_memory_overhead>
     serviceAccount: spark-operator-spark
     tolerations:
       - key: "app_type"

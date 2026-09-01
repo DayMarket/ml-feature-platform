@@ -162,18 +162,15 @@ def validate_demographics(frame, dt: date) -> None:
     if (frame["dt"] != dt).any():
         raise ValueError(f"Outgoing rows contain a dt other than {dt}")
 
-    account_was_present = frame["account_id"].notna()
-    frame["account_id"] = pd.to_numeric(frame["account_id"], errors="coerce")
-    if (
-        (~account_was_present).any()
-        or frame.loc[account_was_present, "account_id"].isna().any()
-        or (frame["account_id"] <= 0).any()
-    ):
+    if frame["account_id"].isna().any() or (frame["account_id"] <= 0).any():
         raise ValueError("Account demographics output contains invalid account_id")
     if frame.duplicated(subset=["dt", "account_id"]).any():
         raise ValueError("Account demographics output contains duplicate primary keys")
 
-    invalid_genders = set(frame["gender"].dropna().astype(str)) - {"M", "F"}
+    invalid_genders = set(frame["gender"].dropna().astype(str)) - {
+        "MALE",
+        "FEMALE",
+    }
     if invalid_genders:
         raise ValueError(
             "Account demographics output contains invalid gender values: "

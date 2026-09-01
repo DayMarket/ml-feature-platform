@@ -4,3 +4,4 @@
 в имя директории не включаются.
 
 - [`account_demographics`](account_demographics/v1/README.md) — ежедневные демографические и контекстные атрибуты пользователя.
+- [`account_lifetime_facts`](account_lifetime_facts/v1/README.md) — пожизненные факты аккаунта (первый заказ, регистрация, привлечение) из ClickHouse.

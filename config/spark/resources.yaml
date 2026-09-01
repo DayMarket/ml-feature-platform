@@ -6,26 +6,60 @@
     "small": {
       "driver_cores": "1",
       "driver_memory": "4g",
+      "driver_memory_overhead": "1g",
       "executor_cores": "4",
       "executor_core_request": "3",
       "executor_instances": "3",
-      "executor_memory": "8g"
+      "executor_memory": "8g",
+      "executor_memory_overhead": "2g"
     },
     "medium": {
       "driver_cores": "1",
       "driver_memory": "8g",
+      "driver_memory_overhead": "2g",
       "executor_cores": "6",
       "executor_core_request": "4",
       "executor_instances": "4",
-      "executor_memory": "12g"
+      "executor_memory": "12g",
+      "executor_memory_overhead": "2g"
     },
     "large": {
       "driver_cores": "1",
       "driver_memory": "10g",
+      "driver_memory_overhead": "2g",
       "executor_cores": "8",
       "executor_core_request": "6",
       "executor_instances": "5",
-      "executor_memory": "16g"
+      "executor_memory": "16g",
+      "executor_memory_overhead": "3g"
+    },
+    "search_product": {
+      "driver_cores": "1",
+      "driver_memory": "12g",
+      "executor_cores": "8",
+      "executor_core_request": "6",
+      "executor_instances": "5",
+      "executor_memory": "20g"
+    },
+    "search_dataset": {
+      "driver_cores": "1",
+      "driver_memory": "10g",
+      "driver_memory_overhead": "2g",
+      "executor_cores": "4",
+      "executor_core_request": "4",
+      "executor_instances": "5",
+      "executor_memory": "12g",
+      "executor_memory_overhead": "2g"
+    },
+    "search_qid_features": {
+      "driver_cores": "1",
+      "driver_memory": "10g",
+      "driver_memory_overhead": "2g",
+      "executor_cores": "4",
+      "executor_core_request": "4",
+      "executor_instances": "5",
+      "executor_memory": "12g",
+      "executor_memory_overhead": "2g"
     }
   }
 }

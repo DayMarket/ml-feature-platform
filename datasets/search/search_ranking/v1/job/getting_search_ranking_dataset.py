@@ -40,7 +40,7 @@ def build_search_ranking_dataset(
     partition_start: str,
 ):
     collection_date = _collection_date(partition_start)
-    event_date = collection_date - timedelta(days=20)
+    event_date = collection_date - timedelta(days=14)
 
     return spark.sql(
         f"""

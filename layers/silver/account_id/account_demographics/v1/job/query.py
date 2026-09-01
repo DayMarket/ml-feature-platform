@@ -18,58 +18,70 @@ def build_query(
     customer_table: str,
     ecosystem_users_table: str,
     geo_events_table: str,
-    platform_events_table: str,
+    platform_sessions_table: str,
     city_table: str,
+    lookback_days: int,
 ) -> str:
+    if lookback_days <= 0:
+        raise ValueError("lookback_days must be positive")
+
     dt_sql = _date_literal(dt)
-    window_start_sql = _tashkent_timestamp_literal(dt - timedelta(days=28))
+    window_start_date = dt - timedelta(days=lookback_days)
+    window_start_date_sql = _date_literal(window_start_date)
+    window_start_sql = _tashkent_timestamp_literal(window_start_date)
     window_end_sql = _tashkent_timestamp_literal(dt)
 
     return f"""
 WITH params AS (
     SELECT
         {dt_sql} AS dt,
+        {window_start_date_sql} AS window_start_date,
         {window_start_sql} AS window_start,
         {window_end_sql} AS window_end
 ),
 um AS (
     SELECT
-        TRY_CAST(account_id AS INTEGER) AS account_id,
+        account_id,
         CASE UPPER(TRIM(CAST(sex AS VARCHAR)))
-            WHEN 'MAN' THEN 'M'
-            WHEN 'WOMAN' THEN 'F'
-        END AS gender
+            WHEN 'MAN' THEN 'MALE'
+            WHEN 'M' THEN 'MALE'
+            WHEN 'WOMAN' THEN 'FEMALE'
+            WHEN 'F' THEN 'FEMALE'
+        END AS gender,
+        NULLIF(
+            CAST(AT_TIMEZONE(birth_date, 'Asia/Tashkent') AS DATE),
+            DATE '1970-01-01'
+        ) AS birth_date
     FROM {customer_table}
-    WHERE TRY_CAST(account_id AS INTEGER) > 0
+    WHERE account_id > 0
 ),
 ecosystem AS (
     SELECT
-        TRY_CAST(last_user_id_m AS INTEGER) AS account_id,
+        last_user_id_m AS account_id,
         CASE UPPER(TRIM(CAST(last_gender_ub AS VARCHAR)))
-            WHEN 'M' THEN 'M'
-            WHEN 'F' THEN 'F'
-        END AS gender,
-        NULLIF(
-            TRY_CAST(birth_year_UB AS DATE),
-            DATE '1970-01-01'
-        ) AS birth_date
+            WHEN 'MAN' THEN 'MALE'
+            WHEN 'M' THEN 'MALE'
+            WHEN 'WOMAN' THEN 'FEMALE'
+            WHEN 'F' THEN 'FEMALE'
+        END AS gender
     FROM {ecosystem_users_table}
-    WHERE TRY_CAST(last_user_id_m AS INTEGER) > 0
+    WHERE last_user_id_m > 0
 ),
 demographics AS (
     SELECT
         COALESCE(um.account_id, ecosystem.account_id) AS account_id,
         COALESCE(um.gender, ecosystem.gender) AS gender,
-        ecosystem.birth_date
+        um.birth_date
     FROM um
     FULL OUTER JOIN ecosystem
         ON um.account_id = ecosystem.account_id
 ),
 geo_events_raw AS (
     SELECT
-        TRY_CAST(event.account_id AS INTEGER) AS account_id,
+        event.event_id,
+        event.account_id,
         AT_TIMEZONE(
-            WITH_TIMEZONE(CAST(event.received_at AS TIMESTAMP), 'UTC'),
+            event.received_at,
             'Asia/Tashkent'
         ) AS received_at_tashkent,
         TRY_CAST(
@@ -87,30 +99,27 @@ geo_events_raw AS (
     FROM {geo_events_table} event
     CROSS JOIN params
     WHERE event.event_type = 'GEO_INFO'
-      AND TRY_CAST(event.account_id AS INTEGER) > 0
+      AND event.event_id IS NOT NULL
+      AND event.account_id > 0
       AND AT_TIMEZONE(
-            WITH_TIMEZONE(CAST(event.received_at AS TIMESTAMP), 'UTC'),
+            event.received_at,
             'Asia/Tashkent'
           ) >= params.window_start
       AND AT_TIMEZONE(
-            WITH_TIMEZONE(CAST(event.received_at AS TIMESTAMP), 'UTC'),
+            event.received_at,
             'Asia/Tashkent'
           ) < params.window_end
 ),
-geo_points AS (
+valid_geo_events AS (
     SELECT
+        event_id,
         account_id,
+        received_at_tashkent,
         latitude,
-        longitude,
-        COUNT(*) AS geo_event_count,
-        MAX(received_at_tashkent) AS last_received_at
+        longitude
     FROM geo_events_raw
     WHERE latitude BETWEEN -90 AND 90
       AND longitude BETWEEN -180 AND 180
-    GROUP BY
-        account_id,
-        latitude,
-        longitude
 ),
 city_locations AS (
     SELECT
@@ -125,16 +134,13 @@ city_locations AS (
 city_candidates AS (
     SELECT
         geo.account_id,
-        geo.latitude,
-        geo.longitude,
-        geo.geo_event_count,
-        geo.last_received_at,
+        geo.event_id,
+        geo.received_at_tashkent,
         city.city_name,
         ROW_NUMBER() OVER (
             PARTITION BY
                 geo.account_id,
-                geo.latitude,
-                geo.longitude
+                geo.event_id
             ORDER BY
                 GREAT_CIRCLE_DISTANCE(
                     geo.latitude,
@@ -144,15 +150,15 @@ city_candidates AS (
                 ),
                 city.city_name
         ) AS distance_rank
-    FROM geo_points geo
+    FROM valid_geo_events geo
     CROSS JOIN city_locations city
 ),
 city_counts AS (
     SELECT
         account_id,
         city_name,
-        SUM(geo_event_count) AS geo_event_count,
-        MAX(last_received_at) AS last_received_at
+        COUNT(*) AS geo_event_count,
+        MAX(received_at_tashkent) AS last_received_at
     FROM city_candidates
     WHERE distance_rank = 1
     GROUP BY
@@ -181,28 +187,30 @@ account_city AS (
 ),
 platform_events AS (
     SELECT
-        TRY_CAST(event.account_id AS INTEGER) AS account_id,
-        event.session_id,
-        UPPER(TRIM(CAST(event.platform AS VARCHAR))) AS platform,
+        session.account_id,
+        session.session_id,
+        UPPER(TRIM(session.platform)) AS platform,
         AT_TIMEZONE(
-            WITH_TIMEZONE(CAST(event.received_at AS TIMESTAMP), 'UTC'),
+            session.started_at,
             'Asia/Tashkent'
         ) AS received_at_tashkent
-    FROM {platform_events_table} event
+    FROM {platform_sessions_table} session
     CROSS JOIN params
-    WHERE TRY_CAST(event.account_id AS INTEGER) > 0
-      AND event.session_id IS NOT NULL
-      AND UPPER(TRIM(CAST(event.platform AS VARCHAR))) IN (
+    WHERE session.account_id > 0
+      AND session.session_id IS NOT NULL
+      AND UPPER(TRIM(session.platform)) IN (
             'IOS',
             'ANDROID',
             'WEB'
           )
+      AND session.date_uz >= params.window_start_date
+      AND session.date_uz < params.dt
       AND AT_TIMEZONE(
-            WITH_TIMEZONE(CAST(event.received_at AS TIMESTAMP), 'UTC'),
+            session.started_at,
             'Asia/Tashkent'
           ) >= params.window_start
       AND AT_TIMEZONE(
-            WITH_TIMEZONE(CAST(event.received_at AS TIMESTAMP), 'UTC'),
+            session.started_at,
             'Asia/Tashkent'
           ) < params.window_end
 ),
@@ -217,25 +225,15 @@ platform_counts AS (
         account_id,
         platform
 ),
-ranked_platforms AS (
-    SELECT
-        account_id,
-        platform,
-        ROW_NUMBER() OVER (
-            PARTITION BY account_id
-            ORDER BY
-                session_count DESC,
-                last_received_at DESC,
-                platform
-        ) AS platform_rank
-    FROM platform_counts
-),
 account_platform AS (
     SELECT
         account_id,
-        platform
-    FROM ranked_platforms
-    WHERE platform_rank = 1
+        ARRAY_AGG(
+            platform
+            ORDER BY session_count DESC, last_received_at DESC, platform
+        )[1] AS platform
+    FROM platform_counts
+    GROUP BY account_id
 )
 SELECT
     params.dt AS dt,

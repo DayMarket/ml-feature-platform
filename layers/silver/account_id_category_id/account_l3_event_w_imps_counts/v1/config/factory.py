@@ -133,12 +133,14 @@ def _fill_arguments(deployment_content: str, deployment_name: Optional[str] = No
     resources_values = {
         "<driver_cores>": str(task_resources["driver_cores"]),
         "<driver_memory>": str(task_resources["driver_memory"]),
+        "<driver_memory_overhead>": str(task_resources["driver_memory_overhead"]),
         "<executor_cores>": str(task_resources["executor_cores"]),
         "<executor_core_request>": str(
             task_resources.get("executor_core_request", task_resources["executor_cores"])
         ),
         "<executor_instances>": str(task_resources["executor_instances"]),
         "<executor_memory>": str(task_resources["executor_memory"]),
+        "<executor_memory_overhead>": str(task_resources["executor_memory_overhead"]),
     }
     random_string = "".join(
         random.choices(string.ascii_letters + string.digits, k=10)

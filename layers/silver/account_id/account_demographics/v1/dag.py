@@ -103,8 +103,9 @@ def account_demographics_dag() -> None:
                 customer_table=config["source"]["customer_table"],
                 ecosystem_users_table=config["source"]["ecosystem_users_table"],
                 geo_events_table=config["source"]["geo_events_table"],
-                platform_events_table=config["source"]["platform_events_table"],
+                platform_sessions_table=config["source"]["platform_sessions_table"],
                 city_table=config["source"]["city_table"],
+                lookback_days=config["source"]["lookback_days"],
             ),
         )
         runtime.write_demographics(table, frame, dt)
