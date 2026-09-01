@@ -1,7 +1,11 @@
 import re
+import sys
 from pathlib import Path
 
 import yaml
+
+sys.path.insert(0, ".")
+from dq.config import load_dq_settings
 
 ENTITY_DIR = Path("datasets/search/ranking_logs/v1")
 CONFIG_PATH = ENTITY_DIR / "config.yaml"
@@ -95,15 +99,30 @@ def test_dq_and_feature_stats_look_at_the_same_partition():
     assert "data_interval_end" in dq["partition_date_template"]
 
 
-def test_all_dq_tests_are_warn_and_growth_is_absent():
-    tests = load_config()["dq"]["tests"]
-    names = [test["name"] for test in tests]
-    # row_count_growth берёт baseline как partition_date - 1 day (dq/tests.py),
-    # у недельной партиции предыдущего дня не существует — тест бесполезен.
-    assert "row_count_growth" not in names
-    assert {"primary_key_not_null", "primary_key_unique", "freshness", "row_count_min"} <= set(names)
-    for test in tests:
-        assert test["severity"] == "warn", test["name"]
+def test_resolved_dq_settings_are_all_warn_and_growth_is_disabled():
+    """Проверяет разрешённые (resolved) параметры DQ, не только YAML.
+    
+    dq/config.py инъецирует базовые тесты (base tests) в разрешённые параметры:
+    любой базовый тест, отсутствующий из явного списка, получает severity: error
+    по умолчанию. Это тесто проверяет, что row_count_growth явно отключен
+    (enabled: false), а все остальные тесты имеют severity: warn.
+    """
+    config = load_config()
+    settings = load_dq_settings(config)
+    
+    specs = settings.tests
+    names = [spec.name for spec in specs]
+    
+    # row_count_growth должен быть отключён (enabled: false)
+    assert "row_count_growth" not in names, (
+        "row_count_growth should be disabled via enabled: false, "
+        "but found in resolved specs. This means the framework's BASE_TESTS "
+        "auto-injected it at severity error."
+    )
+    
+    # Все остальные тесты должны иметь severity warn
+    for spec in specs:
+        assert spec.severity == "warn", f"Test {spec.name} has severity {spec.severity}, expected warn"
 
 
 def test_dataset_parameters_are_declared_in_config():

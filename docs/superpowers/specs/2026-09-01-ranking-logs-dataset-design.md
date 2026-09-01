@@ -214,7 +214,7 @@ sku_group_age_days = date_diff('day', date(min(sku.created_at)), event_date)
 | `primary_key_unique` | warn | дублей `sku_group_id` внутри запроса в источнике нет — проверено на 1098 запросах (919 022 кандидата, `array_distinct` даёт ту же длину) |
 | `freshness` | warn | |
 | `row_count_min` | warn | порог по факту первых ранов |
-| `row_count_growth` | warn | |
+| `row_count_growth` | disabled | явно отключен через `enabled: false` в config.yaml, так как `dq/tests.py` жёстко берёт baseline как `partition_date - 1 day`, для недельной партиции это не работает |
 | `not_null` на `final_score`, `sku_group_id` | warn | |
 
 ### feature_stats

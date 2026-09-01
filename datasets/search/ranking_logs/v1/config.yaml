@@ -59,9 +59,14 @@ dq:
       severity: warn
     - name: row_count_min
       severity: warn
-    # row_count_growth сознательно отсутствует: dq/tests.py берёт baseline как
-    # partition_date - 1 day, а у недельной партиции предыдущих суток не
-    # существует, поэтому тест на каждом ране возвращал бы "нет baseline".
+    # row_count_growth сознательно отключен: dq/config.py inyect базовые тесты
+    # ("base tests") в разрешённые параметры, и любой базовый тест, отсутствующий
+    # из явного списка, получает severity: error по умолчанию. Здесь явно
+    # отключаем его с enabled: false, потому что dq/tests.py берёт baseline как
+    # partition_date - 1 day, у недельной партиции предыдущего дня не существует,
+    # и тест на каждом ране был бы "нет baseline".
+    - name: row_count_growth
+      enabled: false
     - name: not_null
       columns: [final_score, sku_group_id]
       severity: warn
