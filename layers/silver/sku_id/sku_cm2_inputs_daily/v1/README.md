@@ -98,8 +98,14 @@ Grain и уникальный ключ: `dt,sku_id`.
 - `dimensional_group IN ('SMALL','MEDIUM','LARGE')`.
 
 Логируются coverage цены и комиссии, доля SKU без заказов и распределение dimensional group.
-После merge в master стандартная синхронизация создаст dbt DQ с уникальностью ключа и
-`not_null` для ключевых колонок.
+После записи параллельно запускаются внутренние `dq` и `feature_stats` для целевой `dt`.
+DQ блокирует downstream при NULL или дублях ключа `dt,sku_id`; freshness, минимальный объём
+и изменение объёма во время первичной раскатки имеют severity `warn`. `feature_stats`
+исключает технический `product_id` и одним полным Trino-сканом дневной партиции считает
+распределения цены, комиссии и `n_orders_28d`; это один дополнительный полный скан в сутки.
+
+`table.meta.create_dbt_pr: false`: CI не создаёт для таблицы новый DQ-PR в `dbt-trino`;
+Iceberg maintenance остаётся включённым.
 
 ## Runtime и потребители
 
@@ -122,5 +128,5 @@ USD rate присоединяются или применяются в Gold. П�
 `table.meta.team = team::recsys`; DAG/alerts team `recsys`; severity `P3`; webhook
 `oncall_webhook_recsys`.
 
-После merge в master нужно проверить автоматически созданные PR для dbt-trino DQ и
-регистрации Iceberg maintenance в `DayMarket/pyspark-etl`.
+После merge в master нужно проверить автоматически созданный PR регистрации Iceberg
+maintenance в `DayMarket/pyspark-etl`.
