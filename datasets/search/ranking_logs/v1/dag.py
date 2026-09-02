@@ -61,7 +61,7 @@ default_args = {
     ),
 }
 
-#decrease sample percent to 0.01
+
 @dag(
     default_args=default_args,
     max_active_runs=1,
