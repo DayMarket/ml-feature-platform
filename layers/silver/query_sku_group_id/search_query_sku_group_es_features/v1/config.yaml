@@ -26,6 +26,8 @@ source:
     # Scoring fields of the production search query, without its boosts: every field is
     # collected with boost 1 so production weights can be applied downstream.
     fields:
+      - sku.title
+      - sku.title.synonym
       - sku.title_discovery
       - sku.title_discovery.synonym
       - sku.title_discovery_without_excluded_filters
