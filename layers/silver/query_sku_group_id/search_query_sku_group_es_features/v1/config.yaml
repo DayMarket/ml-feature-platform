@@ -53,8 +53,8 @@ raw_storage:
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
-  cpu: "16"
-  memory: 32Gi
+  cpu: "20"
+  memory: 48Gi
 
 elasticsearch_collect_dag:
   id: feature-platform.layers.silver.query_sku_group_id.search_query_sku_group_es_features.elasticsearch_collect
