@@ -8,6 +8,8 @@ import unittest
 from datetime import date
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTITY_DIR = (
@@ -952,14 +954,14 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             "date",
             "query",
             "bm25_sku_title_discovery",
-            "bm25_skus_title",
             "bm25_skus_filter_values_title_ru",
+            "bm25_skus_filter_values_title_uz",
         ]
         present = ["date", "query", "bm25_sku_title_discovery"]
 
         self.assertEqual(
             self.runtime._retired_bm25_columns(expected, present),
-            ["bm25_skus_title", "bm25_skus_filter_values_title_ru"],
+            ["bm25_skus_filter_values_title_ru", "bm25_skus_filter_values_title_uz"],
         )
         # A missing non-BM25 column stays an error rather than being silently filled.
         self.assertEqual(
@@ -974,7 +976,7 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
             [
                 pa.field("query", pa.string()),
                 pa.field("bm25_sku_title_discovery", pa.list_(pa.float64())),
-                pa.field("bm25_skus_title", pa.list_(pa.float64())),
+                pa.field("bm25_skus_filter_values_title_ru", pa.list_(pa.float64())),
             ]
         )
         arrow_table = pa.table(
@@ -986,8 +988,10 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
 
         filled = self.runtime._add_retired_bm25_arrow_columns(arrow_table, arrow_schema)
 
-        self.assertIn("bm25_skus_title", filled.column_names)
-        self.assertEqual(filled.column("bm25_skus_title").to_pylist(), [None])
+        self.assertIn("bm25_skus_filter_values_title_ru", filled.column_names)
+        self.assertEqual(
+            filled.column("bm25_skus_filter_values_title_ru").to_pylist(), [None]
+        )
         self.assertEqual(
             filled.column("bm25_sku_title_discovery").to_pylist(), [[1.5]]
         )
@@ -995,6 +999,8 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
     def test_sku_title_discovery_fields_map_to_migration_columns(self):
         columns = self.analyze.bm25_columns(
             [
+                "sku.title",
+                "sku.title.synonym",
                 "sku.title_discovery",
                 "sku.title_discovery.synonym",
                 "sku.title_discovery_without_excluded_filters",
@@ -1004,6 +1010,8 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         self.assertEqual(
             columns,
             [
+                "bm25_skus_title",
+                "bm25_skus_title_synonym",
                 "bm25_sku_title_discovery",
                 "bm25_sku_title_discovery_synonym",
                 "bm25_sku_title_discovery_without_excluded_filters",
@@ -1012,7 +1020,175 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         )
 
         config_text = (ENTITY_DIR / "config.yaml").read_text(encoding="utf-8")
-        self.assertIn("endpoint_path: /search-sku-index-tag-v0.0.5/_search", config_text)
+        self.assertIn("endpoint_path: /search-sku-index/_search", config_text)
+
+    def test_sku_title_fields_reuse_legacy_skus_title_columns(self):
+        """sku.title/sku.title.synonym - переименованные skus.*, пишутся в старые колонки."""
+        fields = ["sku.title", "sku.title.synonym"]
+        self.assertEqual(
+            self.analyze.bm25_columns(fields),
+            ["bm25_skus_title", "bm25_skus_title_synonym"],
+        )
+
+        config = yaml.safe_load((ENTITY_DIR / "config.yaml").read_text(encoding="utf-8"))
+        configured = config["source"]["elasticsearch"]["fields"]
+        self.assertIn("sku.title", configured)
+        self.assertIn("sku.title.synonym", configured)
+
+        with self.assertRaises(ValueError):
+            self.analyze.bm25_columns(["sku.title", "skus.title"])
+
+    @staticmethod
+    def _fake_requests_module(get_impl):
+        class FakeRequestException(Exception):
+            def __init__(self, message, response=None):
+                super().__init__(message)
+                self.response = response
+
+        class FakeSession:
+            instances = []
+
+            def __init__(self):
+                self.closed = False
+                FakeSession.instances.append(self)
+
+            def get(self, **kwargs):
+                return get_impl(kwargs)
+
+            def close(self):
+                self.closed = True
+
+        module = types.ModuleType("requests")
+        module.RequestException = FakeRequestException
+        module.Session = FakeSession
+        return module, FakeSession, FakeRequestException
+
+    def _run_execute_search(self, module, **kwargs):
+        """Прогнать execute_search на подменённом requests, не оставляя сессию потока в тестах."""
+        original_sleep = self.search.time.sleep
+        sleeps = []
+        self.search.time.sleep = sleeps.append
+        sys.modules["requests"] = module
+        self.search._drop_session()
+        try:
+            return self.search.execute_search(**kwargs), sleeps
+        finally:
+            self.search._drop_session()
+            self.search.time.sleep = original_sleep
+            sys.modules.pop("requests", None)
+
+    def test_execute_search_reports_elasticsearch_status_and_body(self):
+        """Ошибку ES видно только по телу ответа, поэтому оно обязано попасть в лог и в исключение."""
+        calls = []
+
+        def get_impl(kwargs):
+            calls.append(kwargs["url"])
+
+            class FakeResponse:
+                status_code = 400
+                text = json.dumps(
+                    {"error": {"type": "query_shard_exception", "reason": "of type object"}}
+                )
+
+                def raise_for_status(self):
+                    raise module.RequestException("400 Client Error", self)
+
+                def json(self):
+                    raise AssertionError("json() must not be called for a failed response")
+
+            return FakeResponse()
+
+        module, fake_session, _ = self._fake_requests_module(get_impl)
+        fake_session.instances = []
+
+        with self.assertRaises(RuntimeError) as caught:
+            self._run_execute_search(
+                module,
+                url="https://es.example.com/search-sku-index/_search",
+                body={"query": "futbolka"},
+                auth=None,
+                headers={},
+                timeout_seconds=60,
+                retry_count=3,
+            )
+
+        message = str(caught.exception)
+        self.assertIn("https://es.example.com/search-sku-index/_search", message)
+        self.assertIn("HTTP 400", message)
+        self.assertIn("query_shard_exception", message)
+        self.assertEqual(len(calls), 3)
+
+    def test_execute_search_reports_connection_errors_without_response(self):
+        def get_impl(kwargs):
+            raise module.RequestException("Connection to 10.111.0.9 timed out")
+
+        module, fake_session, _ = self._fake_requests_module(get_impl)
+        fake_session.instances = []
+
+        with self.assertRaises(RuntimeError) as caught:
+            self._run_execute_search(
+                module,
+                url="https://es.example.com/search-sku-index/_search",
+                body={},
+                auth=None,
+                headers={},
+                timeout_seconds=60,
+                retry_count=2,
+            )
+
+        message = str(caught.exception)
+        self.assertIn("RequestException", message)
+        self.assertIn("Connection to 10.111.0.9 timed out", message)
+        # Сетевой сбой обязан выбросить сессию: в пуле остался мёртвый коннект.
+        self.assertTrue(all(session.closed for session in fake_session.instances))
+        self.assertGreaterEqual(len(fake_session.instances), 2)
+
+    def test_execute_search_reuses_one_session_and_caps_connect_timeout(self):
+        """Keep-alive на поток и короткий connect-таймаут - защита от ConnectTimeout под нагрузкой."""
+        timeouts = []
+
+        def get_impl(kwargs):
+            timeouts.append(kwargs["timeout"])
+
+            class FakeResponse:
+                status_code = 200
+
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return {"hits": {"hits": []}}
+
+            return FakeResponse()
+
+        module, fake_session, _ = self._fake_requests_module(get_impl)
+        fake_session.instances = []
+
+        original_sleep = self.search.time.sleep
+        self.search.time.sleep = lambda seconds: None
+        sys.modules["requests"] = module
+        self.search._drop_session()
+        try:
+            for _ in range(3):
+                self.search.execute_search(
+                    url="https://es.example.com/search-sku-index/_search",
+                    body={},
+                    auth=None,
+                    headers={},
+                    timeout_seconds=60,
+                    retry_count=3,
+                )
+        finally:
+            self.search._drop_session()
+            self.search.time.sleep = original_sleep
+            sys.modules.pop("requests", None)
+
+        self.assertEqual(len(fake_session.instances), 1)
+        self.assertEqual(
+            timeouts,
+            [(self.search.CONNECT_TIMEOUT_SECONDS, 60)] * 3,
+        )
+        self.assertLess(self.search.CONNECT_TIMEOUT_SECONDS, 60)
 
     def test_collapse_truncation_warning_uses_sku_group_cardinality(self):
         warnings = []

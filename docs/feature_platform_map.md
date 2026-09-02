@@ -34,7 +34,7 @@ Upload DAG и все repository DAG, транзитивно питающие pro
 %%{init: {"flowchart": {"wrappingWidth": 220}, "htmlLabels": false, "markdownAutoWrap": false}}%%
 flowchart LR
     d0["`search_query_atc_features
-UTC 03:00 · P3 · small`"]
+UTC 03:00 · P3 · medium`"]
     d1["`sku_group_query_atc_order_features.v2
 UTC 03:00 · P3 · large`"]
     d2["`feedback_sku_group_id
@@ -46,11 +46,11 @@ UTC 03:00 · P3 · large`"]
     d5["`sku_group_stock_features
 UTC 03:00 · P3 · small`"]
     d6["`sku_group_query_search_orders
-UTC 01:00 · P3 · large`"]
+UTC 01:00 · P3 · medium`"]
     d7["`sku_group_id_prices
 UTC 01:00 · P3 · small`"]
     d8["`sku_group_install
-UTC 01:00 · P3 · large`"]
+UTC 01:00 · P3 · mem_heavy`"]
     d9["`sku_stock_daily
 UTC 00:00 · P3 · small`"]
     d10["`ranking_features_upload_dag
@@ -102,9 +102,9 @@ gantt
     tickInterval 1hour
     section Production-critical
     00h00 · 1 DAG · small×1 :milestone, s0_0000, 00:00, 0m
-    01h00 · 3 DAG · large×2 · small×1 :milestone, s0_0060, 01:00, 0m
+    01h00 · 3 DAG · medium×1 · small×1 · mem_heavy×1 :milestone, s0_0060, 01:00, 0m
     02h00 · 1 DAG · small×1 :milestone, s0_0120, 02:00, 0m
-    03h00 · 4 DAG · large×2 · small×2 :milestone, s0_0180, 03:00, 0m
+    03h00 · 4 DAG · large×2 · medium×1 · small×1 :milestone, s0_0180, 03:00, 0m
     03h10 · 1 DAG · small×1 :milestone, s0_0190, 03:10, 0m
     04h00 · 1 DAG · spark-custom×1 :milestone, s0_0240, 04:00, 0m
 ```
@@ -186,7 +186,7 @@ UTC 03:00 · P2 · airflow-python`"]
     d6["`search_query_atc_features_qid
 UTC 06:00 · P4 · small`"]
     d7["`sku_group_query_atc_order_features_qid
-UTC 06:00 · P4 · search_qid_features`"]
+UTC 06:00 · P4 · search_dataset`"]
     d8["`search_query_id
 UTC 05:00 · P3 · airflow-python`"]
     d9["`sku_group_search_conversion_features
@@ -202,7 +202,7 @@ UTC 03:00 · P2 · airflow-python`"]
     d14["`backfill
 UTC 03:00 · P2 · airflow-python`"]
     d15["`product_search_queries
-UTC 03:00 · P4 · search_product`"]
+UTC 09:00 · P4 · search_product`"]
     d16["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
     d17["`sku_group_orders
@@ -253,10 +253,11 @@ gantt
     section Other
     01h00 · 1 DAG · large×1 :milestone, s2_0060, 01:00, 0m
     02h00 · 2 DAG · large×1 · airflow-python×1 :milestone, s2_0120, 02:00, 0m
-    03h00 · 4 DAG · large×1 · airflow-python×2 · search_product×1 :milestone, s2_0180, 03:00, 0m
+    03h00 · 3 DAG · large×1 · airflow-python×2 :milestone, s2_0180, 03:00, 0m
     04h00 · 1 DAG · large×1 :milestone, s2_0240, 04:00, 0m
     05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
-    06h00 · 5 DAG · small×1 · airflow-python×3 · search_qid_features×1 :milestone, s2_0360, 06:00, 0m
+    06h00 · 5 DAG · small×1 · airflow-python×3 · search_dataset×1 :milestone, s2_0360, 06:00, 0m
+    09h00 · 1 DAG · search_product×1 :milestone, s2_0540, 09:00, 0m
 ```
 
 ## 4. DQ, feature_stats и статус миграции сенсоров

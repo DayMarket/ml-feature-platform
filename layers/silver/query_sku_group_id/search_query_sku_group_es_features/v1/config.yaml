@@ -16,7 +16,7 @@ source:
   min_result_query_installs: 2
   elasticsearch:
     conn_id: elasticsearch_search
-    endpoint_path: /search-sku-index-tag-v0.0.5/_search
+    endpoint_path: /search-sku-index/_search
     size: 2000
     parallel_jobs: 24
     chunk_size: 2000
@@ -26,6 +26,8 @@ source:
     # Scoring fields of the production search query, without its boosts: every field is
     # collected with boost 1 so production weights can be applied downstream.
     fields:
+      - sku.title
+      - sku.title.synonym
       - sku.title_discovery
       - sku.title_discovery.synonym
       - sku.title_discovery_without_excluded_filters
