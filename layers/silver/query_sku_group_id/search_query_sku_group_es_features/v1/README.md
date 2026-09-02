@@ -110,6 +110,12 @@ field value factor, поэтому production-скор (включая `factor=9
 `sku.title_discovery_without_excluded_filters`: они были в более ранней версии production-запроса
 и запрошены явно. Если в индексе их нет, их BM25-массивы будут пустыми.
 
+Поля `sku.title` и `sku.title.synonym` - это те же признаки, что старые nested-поля `skus.title`
+и `skus.title.synonym`, только под новыми именами sku-level индекса. Поэтому они собираются снова,
+а их BM25 пишется в исторические колонки `bm25_skus_title` и `bm25_skus_title_synonym`:
+`analyze.BM25_COLUMN_OVERRIDES` отображает имя ES-поля на имя колонки, новых колонок и миграции
+не требуется, и ряд по этим признакам остается непрерывным через смену индекса.
+
 Elasticsearch collect DAG пишет ответы Elasticsearch в `jsonl.gz`:
 
 `airflow/2026/bm25_features/raw/date=<YYYY-MM-DD>/run_id=<run_id>/chunk=<NNNNNN>/part-<NNNNNN>.jsonl.gz`.
@@ -133,6 +139,7 @@ collect DAG триггерит writer DAG с `partition_date`. Writer DAG сна
 вклады field value factors, `bms`, `total_score`, `sku_group_emb`, `analysis`.
 
 BM25 хранится отдельными `ARRAY<DOUBLE>` колонками для каждого поля Elasticsearch-запроса:
+`bm25_skus_title`, `bm25_skus_title_synonym` (заполняются полями `sku.title` и `sku.title.synonym`),
 `bm25_sku_title_discovery`, `bm25_sku_title_discovery_synonym`,
 `bm25_sku_title_discovery_without_excluded_filters`,
 `bm25_sku_title_discovery_without_excluded_filters_synonym`,
@@ -149,10 +156,14 @@ BM25 хранится отдельными `ARRAY<DOUBLE>` колонками д
 Колонки `bm25_sku_*` добавлены вместе с переходом на индекс `search-sku-index-tag-v0.0.5`;
 партиции, собранные до перехода, содержат по ним `NULL`.
 
-Legacy-колонки `bm25_skus_title`, `bm25_skus_title_synonym`, `bm25_skus_discovery_filter_values_title_ru/uz`,
-`bm25_skus_filter_values_title_ru/uz` остаются в таблице - миграции не удаляют колонки. Соответствующие
-поля больше не собираются, поэтому в новых партициях они пишутся как `NULL`; это отличается от пустого
-массива, который означает "поле запрашивалось, но не сматчилось". Исторические партиции не пересчитываются.
+Legacy-колонки `bm25_skus_discovery_filter_values_title_ru/uz` и `bm25_skus_filter_values_title_ru/uz`
+остаются в таблице - миграции не удаляют колонки. Соответствующие поля больше не собираются, поэтому
+в новых партициях они пишутся как `NULL`; это отличается от пустого массива, который означает
+"поле запрашивалось, но не сматчилось". Исторические партиции не пересчитываются.
+
+Колонки `bm25_skus_title` и `bm25_skus_title_synonym` из этого списка выведены: их снова заполняют
+поля `sku.title` и `sku.title.synonym` нового индекса. `NULL` в них означает партицию, собранную
+между переходом на sku-level индекс и возвратом этих полей.
 
 ## DQ
 
