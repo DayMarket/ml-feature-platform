@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Mapping, Sequence
+
+logger = logging.getLogger(__name__)
+
+# Тело ответа Elasticsearch - единственное место, где написано, что именно не так
+# (несуществующий индекс, неподдерживаемый тип поля, отказ авторизации). Без него в
+# логе остаётся только "request failed after N attempts", по которому причину не найти.
+ERROR_BODY_LIMIT = 2000
 
 SOURCE_FIELDS = [
     "sku_group.id",
@@ -107,6 +115,21 @@ def build_search_body(
     }
 
 
+def _error_details(exc: BaseException) -> str:
+    """Короткое описание неудачной попытки: статус и тело ответа Elasticsearch."""
+    response = getattr(exc, "response", None)
+    if response is None:
+        return f"{type(exc).__name__}: {exc}"
+    body = ""
+    try:
+        body = response.text or ""
+    except Exception:  # noqa: BLE001 - тело недоступно, статус всё равно информативен
+        body = "<unreadable response body>"
+    if len(body) > ERROR_BODY_LIMIT:
+        body = f"{body[:ERROR_BODY_LIMIT]}...<truncated>"
+    return f"HTTP {response.status_code}: {body}"
+
+
 def execute_search(
     url: str,
     body: Mapping[str, Any],
@@ -118,6 +141,7 @@ def execute_search(
     import requests
 
     last_error = None
+    last_details = ""
     for attempt in range(1, retry_count + 1):
         try:
             response = requests.get(
@@ -131,6 +155,17 @@ def execute_search(
             return response.json()
         except requests.RequestException as exc:
             last_error = exc
+            last_details = _error_details(exc)
+            logger.warning(
+                "Elasticsearch request to %s failed on attempt %d/%d: %s",
+                url,
+                attempt,
+                retry_count,
+                last_details,
+            )
             if attempt < retry_count:
                 time.sleep(min(attempt * 2, 10))
-    raise RuntimeError(f"Elasticsearch request failed after {retry_count} attempts") from last_error
+    raise RuntimeError(
+        f"Elasticsearch request to {url} failed after {retry_count} attempts. "
+        f"Last error: {last_details}"
+    ) from last_error

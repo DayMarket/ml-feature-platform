@@ -1038,6 +1038,95 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.analyze.bm25_columns(["sku.title", "skus.title"])
 
+    def test_execute_search_reports_elasticsearch_status_and_body(self):
+        """Ошибку ES видно только по телу ответа, поэтому оно обязано попасть в лог и в исключение."""
+
+        class FakeResponse:
+            status_code = 400
+            text = json.dumps(
+                {"error": {"type": "query_shard_exception", "reason": "field is of type object"}}
+            )
+
+            def raise_for_status(self):
+                raise FakeRequestException("400 Client Error", self)
+
+            def json(self):
+                raise AssertionError("json() must not be called for a failed response")
+
+        class FakeRequestException(Exception):
+            def __init__(self, message, response=None):
+                super().__init__(message)
+                self.response = response
+
+        calls = []
+
+        fake_requests = types.ModuleType("requests")
+        fake_requests.RequestException = FakeRequestException
+
+        def fake_get(**kwargs):
+            calls.append(kwargs["url"])
+            return FakeResponse()
+
+        fake_requests.get = fake_get
+
+        sleeps = []
+        original_sleep = self.search.time.sleep
+        self.search.time.sleep = sleeps.append
+        sys.modules["requests"] = fake_requests
+        try:
+            with self.assertRaises(RuntimeError) as caught:
+                self.search.execute_search(
+                    url="https://es.example.com/search-sku-index/_search",
+                    body={"query": "futbolka"},
+                    auth=None,
+                    headers={},
+                    timeout_seconds=60,
+                    retry_count=3,
+                )
+        finally:
+            self.search.time.sleep = original_sleep
+            sys.modules.pop("requests", None)
+
+        message = str(caught.exception)
+        self.assertIn("https://es.example.com/search-sku-index/_search", message)
+        self.assertIn("HTTP 400", message)
+        self.assertIn("query_shard_exception", message)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(sleeps, [2, 4])
+
+    def test_execute_search_reports_connection_errors_without_response(self):
+        class FakeRequestException(Exception):
+            pass
+
+        fake_requests = types.ModuleType("requests")
+        fake_requests.RequestException = FakeRequestException
+
+        def fake_get(**kwargs):
+            raise FakeRequestException("Failed to establish a new connection")
+
+        fake_requests.get = fake_get
+
+        original_sleep = self.search.time.sleep
+        self.search.time.sleep = lambda seconds: None
+        sys.modules["requests"] = fake_requests
+        try:
+            with self.assertRaises(RuntimeError) as caught:
+                self.search.execute_search(
+                    url="https://es.example.com/search-sku-index/_search",
+                    body={},
+                    auth=None,
+                    headers={},
+                    timeout_seconds=60,
+                    retry_count=2,
+                )
+        finally:
+            self.search.time.sleep = original_sleep
+            sys.modules.pop("requests", None)
+
+        message = str(caught.exception)
+        self.assertIn("FakeRequestException", message)
+        self.assertIn("Failed to establish a new connection", message)
+
     def test_collapse_truncation_warning_uses_sku_group_cardinality(self):
         warnings = []
         original_warning = self.runtime.logger.warning
