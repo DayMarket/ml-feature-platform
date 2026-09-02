@@ -15,8 +15,17 @@ from kubernetes.client import models as k8s
 
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(ENTITY_DIR, "..", "..", "..", "..", ".."))
+sys.path.insert(0, REPO_ROOT)
 CONFIG_PATH = os.path.join(ENTITY_DIR, "config.yaml")
 JOB_DIR = os.path.join(ENTITY_DIR, "job")
+
+from dq.task import build_dq_task
+from feature_stats.task import build_feature_stats_task
+
+# Снапшотная энтити: DQ проверяет ровно тот calculated_at, который записал этот запуск,
+# то есть data_interval_end, а не дневную партицию.
+DQ_PARTITION_TIMESTAMP = '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
+
 SILVER_CONFIG_PATH = os.path.join(
     REPO_ROOT,
     "layers",
@@ -176,6 +185,13 @@ def dynamic_pricing_price_features_dag() -> None:
     )
 
     [wait_for_dynamic_pricing_solution] >> gold_task
+
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_TIMESTAMP)
+    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_TIMESTAMP)
+
+    # Статистика идёт параллельно DQ и ни на что не влияет: downstream ждёт
+    # таску dq, поэтому падение профилей не блокирует потребителей.
+    gold_task >> [dq_task, stats_task]
 
 
 dag = dynamic_pricing_price_features_dag()

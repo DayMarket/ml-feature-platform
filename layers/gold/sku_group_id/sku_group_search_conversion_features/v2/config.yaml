@@ -22,3 +22,148 @@ alerts:
   team: search
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Джоб пишет партицию за data_interval_start (partition_start[:10]).
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # По 111 парам соседних партиций рост лежит в -0.28%..+0.81%, p95 |рост| = 0.48%.
+    # 3% — почти 4x к наблюдаемому максимуму.
+    - name: row_count_growth
+      max_growth_ratio: 0.03
+    # Минимум за последние 30 партиций — 1.92M строк. 1.5M ниже всей недавней истории.
+    - name: row_count_min
+      min_rows: 1500000
+    # Плотные колонки: сглаженные и сырые imp2order плюс счётчики ATC и заказов
+    # категории. Остальные разрежены by design — return rate, atc2order и incr rate
+    # существуют только там, где были ATC или заказы; category_* пусты у sku_group_id
+    # без категории (1778 строк за 4 партиции).
+    - name: not_null
+      columns:
+        - smooth_conv_imp2order_3
+        - smooth_conv_imp2order_7
+        - smooth_conv_imp2order_14
+        - conv_imp2order_3
+        - conv_imp2order_7
+        - conv_imp2order_14
+        - category_skg_orders_1
+        - category_skg_orders_3
+        - category_skg_orders_7
+        - category_skg_orders_14
+        - category_skg_orders_21
+        - category_skg_orders_30
+        - category_skg_orders_60
+        - category_skg_orders_90
+        - category_skg_atc_1
+        - category_skg_atc_3
+        - category_skg_atc_7
+        - category_skg_atc_14
+        - category_skg_atc_21
+        - category_skg_atc_30
+        - category_skg_atc_60
+        - category_skg_atc_90
+    # Все фичи — счётчики, конверсии, доли и отношения окон: отрицательных значений
+    # за 4 партиции (около 7.7M строк) нет ни в одной колонке.
+    - name: non_negative
+      columns:
+        - category_id
+        - smooth_conv_imp2order_3
+        - smooth_conv_imp2order_7
+        - smooth_conv_imp2order_14
+        - conv_imp2order_3
+        - conv_imp2order_7
+        - conv_imp2order_14
+        - skg_days_since_last_impression
+        - skg_days_since_last_atc
+        - skg_conv_atc2order_1
+        - skg_conv_atc2order_3
+        - skg_conv_atc2order_7
+        - skg_conv_atc2order_14
+        - skg_conv_atc2order_21
+        - skg_conv_atc2order_30
+        - skg_conv_atc2order_60
+        - skg_conv_atc2order_90
+        - skg_return_rate_1
+        - skg_return_rate_3
+        - skg_return_rate_7
+        - skg_return_rate_14
+        - skg_return_rate_21
+        - skg_return_rate_30
+        - skg_return_rate_60
+        - skg_return_rate_90
+        - skg_incr_rate_orders_1_to_3
+        - skg_incr_rate_orders_1_to_7
+        - skg_incr_rate_orders_1_to_14
+        - skg_incr_rate_orders_1_to_21
+        - skg_incr_rate_orders_1_to_30
+        - skg_incr_rate_orders_1_to_60
+        - skg_incr_rate_orders_1_to_90
+        - skg_incr_rate_atc_1_to_3
+        - skg_incr_rate_atc_1_to_7
+        - skg_incr_rate_atc_1_to_14
+        - skg_incr_rate_atc_1_to_21
+        - skg_incr_rate_atc_1_to_30
+        - skg_incr_rate_atc_1_to_60
+        - skg_incr_rate_atc_1_to_90
+        - category_skg_orders_1
+        - category_skg_orders_3
+        - category_skg_orders_7
+        - category_skg_orders_14
+        - category_skg_orders_21
+        - category_skg_orders_30
+        - category_skg_orders_60
+        - category_skg_orders_90
+        - category_orders_1
+        - category_orders_3
+        - category_orders_7
+        - category_orders_14
+        - category_orders_21
+        - category_orders_30
+        - category_orders_60
+        - category_orders_90
+        - category_skg_atc_1
+        - category_skg_atc_3
+        - category_skg_atc_7
+        - category_skg_atc_14
+        - category_skg_atc_21
+        - category_skg_atc_30
+        - category_skg_atc_60
+        - category_skg_atc_90
+        - category_atc_1
+        - category_atc_3
+        - category_atc_7
+        - category_atc_14
+        - category_atc_21
+        - category_atc_30
+        - category_atc_60
+        - category_atc_90
+        - category_skg_orders_frac_category_orders_1
+        - category_skg_orders_frac_category_orders_3
+        - category_skg_orders_frac_category_orders_7
+        - category_skg_orders_frac_category_orders_14
+        - category_skg_orders_frac_category_orders_21
+        - category_skg_orders_frac_category_orders_30
+        - category_skg_orders_frac_category_orders_60
+        - category_skg_orders_frac_category_orders_90
+        - category_skg_atc_frac_category_atc_1
+        - category_skg_atc_frac_category_atc_3
+        - category_skg_atc_frac_category_atc_7
+        - category_skg_atc_frac_category_atc_14
+        - category_skg_atc_frac_category_atc_21
+        - category_skg_atc_frac_category_atc_30
+        - category_skg_atc_frac_category_atc_60
+        - category_skg_atc_frac_category_atc_90
+        - imp2order_3_to_1
+        - imp2order_21_to_14
+        - imp2order_30_to_21
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны смотреть
+  # на одну партицию, иначе профиль посчитан не по тем данным, что проверял DQ.
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  # category_id — идентификатор категории, а не признак: профиль распределения
+  # по нему бессмысленен. Остальные BIGINT/INT-колонки таблицы — настоящие признаки.
+  exclude_columns:
+    - category_id

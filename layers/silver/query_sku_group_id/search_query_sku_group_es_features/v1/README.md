@@ -33,7 +33,8 @@
   пары `query, sku_group_id`; отдельный sensor не ставится.
 - `"dwh-iceberg".silver.search_logs` - внешний Trino-источник для `result_query_text`; отдельный sensor не
   ставится по подтвержденному контракту.
-- Elasticsearch endpoint из Airflow connection `elasticsearch_search`, path `/_search`.
+- Elasticsearch endpoint из Airflow connection `elasticsearch_search`, path
+  `/search-sku-index-tag-v0.0.5/_search`. Индекс документов - на уровне `sku_id`.
 - Raw storage - Airflow connection `search_research_bucket`, prefix `airflow/2026/bm25_features`.
 
 ## Логика
@@ -59,11 +60,55 @@ Trino-шаг выбирает все возможные пары `query, sku_gro
 `sku_group_id`, только если `COUNT(DISTINCT install_id) >= 2` за окно `search_logs`. Порог задается в config как
 `source.min_result_query_installs`.
 
-Elasticsearch-запрос использует `size=3000`, `parallel_jobs=24`, `chunk_size=3000`, `write_chunk_size=50000`,
+Elasticsearch-запрос использует `size=2000`, `parallel_jobs=24`, `chunk_size=2000`, `write_chunk_size=50000`,
 `explain=true`, фильтр
 `sku_group.id IN sku_group_ids`, multi-match по полям из `config.yaml` и raw field value factors для рейтингов/заказов.
-`size=3000` - верхний предел на запрос, фактический объем дополнительно ограничивается фильтром по
+В отличие от production-запроса используется `operator=or` без `minimum_should_match=95%`: иначе кандидаты,
+сматчившиеся только частью запроса, не получили бы строк с фичами.
+`size=2000` - верхний предел на запрос, фактический объем дополнительно ограничивается фильтром по
 `sku_group_ids`. Если production DSL отличается от текущего builder, менять нужно только `job/search.py`.
+
+Индекс `search-sku-index-tag-v0.0.5` хранит документы на уровне `sku_id`, а грейн фичей - `sku_group_id`,
+поэтому запрос содержит:
+
+- `collapse` по `sku_group.id` - в выдаче остается один hit на sku group, без дублей строк на каждый sku;
+- агрегацию `total` = `cardinality` по `sku_group.id` - реальное число уникальных sku group, которые
+  подошли под запрос. `hits.total` в этом индексе считает sku-документы и для грейна не применим.
+
+Если `cardinality` больше `size` или больше числа вернувшихся hits, `job/runtime.py` пишет warning с
+запросом и обоими значениями: это означает, что collapse срезал часть sku group и партиция за дату
+неполная по этому запросу.
+
+`sort` повторяет production (`_score desc`, `sku_group.id asc`), поэтому порядок групп воспроизводим
+между прогонами. При этом внутри группы collapse выбирает представителя по нашему скору с boost=1,
+а production - по своему взвешенному скору, так что представляющий группу `sku_id` может отличаться.
+Фильтры production по `product.is_adult_category`, `sku.stock_type`, `sku.delivery_methods.*` не
+воспроизводятся: они зависят от зоны доставки конкретного запроса и отрезали бы кандидатов, которые
+реально были показаны пользователю.
+
+Индекс перестроен на `sku_id`, nested-документов в нем нет, поэтому все поля из `config.yaml`
+адресуются напрямую одним плоским `multi_match` с `type=most_fields`. `nested`-обертка удалена
+из билдера полностью, поля `skus.*` больше не собираются.
+
+Задача пайплайна - не повторить код поиска, а собрать сырье для офлайн-эмуляции: каждое поле
+запрашивается с коэффициентом 1, чтобы любую версию production-формулы можно было пересчитать и
+провалидировать на этих данных без пересбора партиций. Поэтому запрос намеренно шире продового:
+он ничего не отфильтровывает и ничего не взвешивает.
+
+Набор полей повторяет scoring-поля production-запроса поиска, но **без его коэффициентов**:
+
+- production: `sku.title_discovery_without_excluded_filters^0.002963`,
+  `...synonym^0.001400`, `sku.discovery_filter_values.title.*^9`, `sku.filter_values.title.*^9`,
+  `category.title.*^9`, `category.full_title.*^9`, `full_category_name^9`, `product.title.*^0`;
+- здесь все boost равны 1, `field_value_factor` идут с `factor=1.0` без `modifier` и без `weight`.
+
+Это сделано осознанно: в таблицу попадает сырой BM25 каждого поля и сырое значение каждого
+field value factor, поэтому production-скор (включая `factor=9`, `log1p` для orders и boost-ы полей)
+пересчитывается downstream умножением, а изменение весов в поиске не требует пересбора партиций.
+
+Поля `sku.title_discovery` и `sku.title_discovery.synonym` собираются дополнительно к
+`sku.title_discovery_without_excluded_filters`: они были в более ранней версии production-запроса
+и запрошены явно. Если в индексе их нет, их BM25-массивы будут пустыми.
 
 Elasticsearch collect DAG пишет ответы Elasticsearch в `jsonl.gz`:
 
@@ -88,15 +133,26 @@ collect DAG триггерит writer DAG с `partition_date`. Writer DAG сна
 вклады field value factors, `bms`, `total_score`, `sku_group_emb`, `analysis`.
 
 BM25 хранится отдельными `ARRAY<DOUBLE>` колонками для каждого поля Elasticsearch-запроса:
-`bm25_skus_title_synonym`, `bm25_skus_title`, `bm25_skus_discovery_filter_values_title_ru`,
-`bm25_skus_discovery_filter_values_title_uz`, `bm25_skus_filter_values_title_ru`,
-`bm25_skus_filter_values_title_uz`, `bm25_category_title_ru`, `bm25_category_title_uz`,
+`bm25_sku_title_discovery`, `bm25_sku_title_discovery_synonym`,
+`bm25_sku_title_discovery_without_excluded_filters`,
+`bm25_sku_title_discovery_without_excluded_filters_synonym`,
+`bm25_sku_discovery_filter_values_title_ru`, `bm25_sku_discovery_filter_values_title_uz`,
+`bm25_sku_filter_values_title_ru`, `bm25_sku_filter_values_title_uz`,
+`bm25_category_title_ru`, `bm25_category_title_uz`,
 `bm25_category_full_title_ru`, `bm25_category_full_title_uz`, `bm25_product_title_ru`,
 `bm25_product_title_uz`, `bm25_product_title_ru_synonym`, `bm25_product_title_uz_synonym`,
 `bm25_full_category_name`.
 
 `total_score` берется из корня Elasticsearch `_explanation.value`; `analysis` хранит тот же разобранный explain
 в JSON.
+
+Колонки `bm25_sku_*` добавлены вместе с переходом на индекс `search-sku-index-tag-v0.0.5`;
+партиции, собранные до перехода, содержат по ним `NULL`.
+
+Legacy-колонки `bm25_skus_title`, `bm25_skus_title_synonym`, `bm25_skus_discovery_filter_values_title_ru/uz`,
+`bm25_skus_filter_values_title_ru/uz` остаются в таблице - миграции не удаляют колонки. Соответствующие
+поля больше не собираются, поэтому в новых партициях они пишутся как `NULL`; это отличается от пустого
+массива, который означает "поле запрашивалось, но не сматчилось". Исторические партиции не пересчитываются.
 
 ## DQ
 
@@ -112,7 +168,7 @@ Raw S3 запись использует `boto3`; connection `search_research_bu
 `extra.bucket` или `extra.bucket_name`, а также endpoint/credentials для S3-compatible storage.
 
 Elasticsearch collect DAG читает Trino через `trino_search`, Elasticsearch - через `joblib` threading backend на 24 jobs чанками по
-3000 query-групп. Ответы Elasticsearch читаются streaming generator-ом и сохраняются в `jsonl.gz` частями по
+2000 query-групп. Ответы Elasticsearch читаются streaming generator-ом и сохраняются в `jsonl.gz` частями по
 `raw_storage.file_row_limit=50000` строк; полный список строк ES chunk-а не держится в памяти.
 
 Writer DAG читает raw `jsonl.gz` из manifest или списка `chunk=*/part-*.jsonl.gz`, парсит hits и пишет parquet-файлы
@@ -124,3 +180,19 @@ Iceberg transaction заново перезаписывает только па�
 ## Владелец / алерты
 
 `table.meta.team = team:search`, alerts `search`, severity P3, webhook `oncall_webhook_search`.
+
+## DQ
+
+DQ-тесты выполняются таской `dq` внутри этого DAG'а сразу после `load_to_iceberg`; каталог
+тестов и правила конфигурирования описаны в `dq/README.md`.
+
+Базовый набор: `primary_key_not_null`, `primary_key_unique`, `row_count_min`,
+`row_count_growth`, `freshness`. Дополнительно: `string_not_blank` по колонке `query`.
+
+`row_count_growth` имеет `severity: warn` и повышенный порог `0.5`: DAG запускается вручную
+и нерегулярно, поэтому объём между соседними партициями штатно прыгает.
+
+Партиция для DQ берётся тем же выражением, что и для записи:
+`dag_run.conf["partition_date"]` с фолбэком на `macros.ds_add(ds, -1)`.
+
+Downstream ждёт таску `dq` этого DAG'а, а не dbt-DQ-DAG.

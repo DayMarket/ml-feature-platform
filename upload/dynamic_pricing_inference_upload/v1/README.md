@@ -7,7 +7,7 @@
 - DAG: `feature-platform.upload.dynamic_pricing_inference_upload`.
 - Расписание: каждые 3 часа, `0 */3 * * *` UTC.
 - `start_date=2026-07-09T00:00:00+00:00`, `catchup=False`.
-- Сенсор: `feature-platform.layers.gold.calculated_at_sku_group_id_promotion_id.dynamic_pricing_sku_group_price_features`.
+- Сенсор: таска `dq` DAG-а `feature-platform.layers.gold.calculated_at_sku_group_id_promotion_id.dynamic_pricing_sku_group_price_features` (`external_task_id="dq"`, delta `0`). Ждём именно DQ, а не весь DAG: успешная запись снапшота при упавшей проверке качества не даёт права публиковать цены в инференс.
 
 ## Источник
 

@@ -11,6 +11,15 @@ from airflow_commons.helpers.oncall import send_oncall_notification
 DAG_DIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, DAG_DIR)
 
+REPO_ROOT = os.path.abspath(os.path.join(DAG_DIR, "..", "..", "..", "..", ".."))
+sys.path.insert(0, REPO_ROOT)
+
+from dq.task import build_dq_task
+from feature_stats.task import build_feature_stats_task
+
+CONFIG_PATH = os.path.join(DAG_DIR, "config.yaml")
+DQ_PARTITION_DATE = '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+
 from config.factory import get_dag_settings, get_deployment
 from airflow.sdk import dag
 from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
@@ -67,7 +76,12 @@ def collect_silver_sku_group_id_prices():
         kubernetes_conn_id="spark_k8s",
     )
 
-    wait_for_sku_eod >> collect_prices
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
+    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
+
+    # Статистика идёт параллельно DQ и ни на что не влияет: аплоад ждёт таску dq,
+    # поэтому падение профилей не блокирует публикацию фич.
+    wait_for_sku_eod >> collect_prices >> [dq_task, stats_task]
 
 
 dag = collect_silver_sku_group_id_prices()

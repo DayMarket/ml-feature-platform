@@ -5,7 +5,7 @@ spark:
   template_path: ../../../../../config/spark/layer_spark_application.yaml
   application_name: fetch-silver-product-search-queries
   main_application_file: local:///git/repo/layers/silver/product_id/product_search_queries/v1/entrypoints/get_product_search_queries.py
-  resource_profile: large
+  resource_profile: search_product
 
 table:
   key: product_search_queries
@@ -22,7 +22,7 @@ source:
   engine: spark_iceberg
   ranking_events_table: iceberg.silver.ranking_analytics_events
   sku_table: iceberg.silver.sku
-  model_name: search_unified_model_v6
+  model_name: search_unified_model_v9
   lookback_days: 14
   top_queries_limit: 200
 dag:
@@ -37,3 +37,27 @@ alerts:
   team: search
   severity: P4
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Партиция вычисляется от data_interval_end без сдвига на -1 день (Pattern DE):
+  # джоб читает partition_end (не partition_start), см. job/getting_product_search_queries.py.
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Раскатка DQ идёт на витрины, часть которых пуста или отстала на недели.
+    # Объёмные тесты и freshness — в warn: состояние фиксируется в
+    # feature_platform_dq_results, но дежурного не будит. Перевод в error —
+    # по мере починки витрины, с порогом по её реальной истории (AGENTS.md).
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны
+  # смотреть на одну партицию, иначе профиль посчитан не по тем данным.
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  exclude_columns: []
