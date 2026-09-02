@@ -1,13 +1,30 @@
 from datetime import date
+from decimal import Decimal
 
 from job.entities import DatasetSettings
 
 HASH_BUCKETS = 10000
 
 
-def sample_threshold(sample_percent: int) -> int:
-    """Верхняя граница хэш-бакета для заданного процента запросов."""
-    return int(sample_percent) * HASH_BUCKETS // 100
+def sample_threshold(sample_percent: float) -> int:
+    """Верхняя граница хэш-бакета для заданного процента запросов.
+
+    Через Decimal(str(...)), а не двоичным float: 0.01 * 10000 / 100 в double
+    даёт 1.0000000000000002, и на других значениях так же легко получить
+    2.9999999999999996 с усечением до 2. Порог задаёт объём датасета и должен
+    быть воспроизводим от рана к рану.
+    """
+    threshold = int(Decimal(str(sample_percent)) * HASH_BUCKETS / 100)
+    if threshold < 1:
+        # Прежняя целочисленная арифметика (`int(p) * 10000 // 100`) на любой
+        # доле меньше процента молча возвращала 0: условие `pmod(...) < 0` не
+        # пропускает ни одной строки, и партиция выходила бы пустой без единого
+        # исключения. Падаем явно.
+        raise ValueError(
+            f"dataset.sample_percent={sample_percent} мельче шага сетки из "
+            f"{HASH_BUCKETS} бакетов: минимум {100 / HASH_BUCKETS}"
+        )
+    return threshold
 
 
 def build_dataset_query(
@@ -87,9 +104,10 @@ sampled_events AS (
         -- кандидатами. pmod, а не abs: xxhash64 может вернуть Long.MIN_VALUE,
         -- у которого abs отрицателен и условие молча отсечёт всё.
         AND pmod(xxhash64(e.request_id), {HASH_BUCKETS}) < {threshold}
-        -- xxhash64(NULL) — константа-сид 42, а pmod(42, 10000) = 42 всегда
-        -- меньше любого положительного порога: без этого фильтра каждая строка
-        -- лога с NULL request_id проходила бы сэмплирование со 100% вероятностью.
+        -- xxhash64(NULL) — константа-сид 42, то есть все строки с NULL
+        -- request_id попадают в один бакет 42 и проходят сэмплирование либо все
+        -- сразу (порог > 42), либо ни одна. Без этого фильтра выборка на
+        -- плановых долях разом набирала бы весь мусор с NULL ключом.
         AND e.request_id IS NOT NULL
 ),
 candidates AS (
