@@ -100,7 +100,11 @@ def run_dq(settings: DqSettings, ctx: RenderContext, query: Query) -> DqRunOutco
         outcome.skipped_by_active_from = True
         return outcome
 
-    if settings.warmup_days > 0:
+    # scope: table — беспартиционная таблица: считать историю партиций не по чему.
+    # load_dq_settings уже запрещает такую комбинацию, но RenderContext собирается и
+    # в обход конфига, а COUNT(DISTINCT <колонка партиции>) на такой таблице роняет
+    # весь ран на COLUMN_NOT_FOUND ещё до первого теста.
+    if settings.warmup_days > 0 and ctx.scope != "table":
         outcome.warmup_active = _partition_history_count(query, ctx) < settings.warmup_days
 
     for spec in settings.tests:

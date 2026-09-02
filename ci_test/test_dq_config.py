@@ -196,6 +196,68 @@ def test_unknown_partition_granularity_rejected() -> None:
         raise AssertionError("ожидали DqConfigError для неизвестной гранулярности")
 
 
+def test_scope_table_rejects_partition_dependent_tests() -> None:
+    # freshness и row_count_growth рендерят SQL по dq.partition_column в обход
+    # scope_predicate. При scope: table колонки партиции нет, и включённый тест
+    # свалился бы в проде на COLUMN_NOT_FOUND.
+    try:
+        load_dq_settings(
+            {
+                "table": {"catalog": "iceberg", "schema": "gold", "name": "t", "primary_key": "query_text,version"},
+                "dq": {"scope": "table", "warmup_days": 0},
+            }
+        )
+    except DqConfigError as error:
+        message = str(error)
+        assert "freshness" in message
+        assert "row_count_growth" in message
+    else:
+        raise AssertionError("ожидали DqConfigError для партиционных тестов при scope: table")
+
+
+def test_scope_table_rejects_warmup_days() -> None:
+    try:
+        load_dq_settings(
+            {
+                "table": {"catalog": "iceberg", "schema": "gold", "name": "t", "primary_key": "query_text,version"},
+                "dq": {
+                    "scope": "table",
+                    "tests": [
+                        {"name": "freshness", "enabled": False},
+                        {"name": "row_count_growth", "enabled": False},
+                    ],
+                },
+            }
+        )
+    except DqConfigError as error:
+        assert "warmup_days" in str(error)
+    else:
+        raise AssertionError("ожидали DqConfigError для warmup_days при scope: table")
+
+
+def test_scope_table_accepts_partitionless_setup() -> None:
+    settings = load_dq_settings(
+        {
+            "table": {"catalog": "iceberg", "schema": "gold", "name": "t", "primary_key": "query_text,version"},
+            "dq": {
+                "scope": "table",
+                "warmup_days": 0,
+                "tests": [
+                    {"name": "freshness", "enabled": False},
+                    {"name": "row_count_growth", "enabled": False},
+                ],
+            },
+        }
+    )
+    assert settings.scope == "table"
+    assert settings.warmup_days == 0
+    assert [spec.name for spec in settings.tests] == [
+        "primary_key_not_null",
+        "primary_key_unique",
+        "row_count_min",
+    ]
+
+
 def main() -> int:
     test_defaults_without_dq_block()
     test_base_test_override_and_disable()
@@ -208,6 +270,9 @@ def main() -> int:
     test_timestamp_granularity_settings()
     test_date_granularity_is_the_default()
     test_unknown_partition_granularity_rejected()
+    test_scope_table_rejects_partition_dependent_tests()
+    test_scope_table_rejects_warmup_days()
+    test_scope_table_accepts_partitionless_setup()
     print("DQ config tests completed successfully")
     return 0
 

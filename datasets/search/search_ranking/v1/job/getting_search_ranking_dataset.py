@@ -80,7 +80,7 @@ order_items_enhanced AS (
     WHERE
         oi.order_item_status NOT IN ('CREATED', 'NOT_CREATED')
         AND oi.generated_at >= DATE_SUB(p.event_date, 15)
-        AND oi.generated_at < DATE_ADD(p.event_date, 1)
+        AND oi.generated_at < DATE_ADD(p.event_date, 15)
 ),
 orders AS (
     SELECT
@@ -110,7 +110,34 @@ sessions_raw AS (
         trim(lower(query)) AS query,
         CAST(`position` AS INT) AS `position`,
         widget_section_name,
-        widget_space_name
+        widget_space_name,
+        -- bid_id есть в events плоской колонкой и совпадает с
+        -- event_properties.event_parameters.bid_id на 100% показов
+        -- (проверено на received_at = 2026-07-01, 89 163 741 строк),
+        -- поэтому JSON здесь не парсится.
+        CAST(bid_id AS BIGINT) AS bid_id,
+        CAST(
+            get_json_object(event_properties, '$.event_parameters.cpo_adv_version') AS BIGINT
+        ) AS cpo_adv_version,
+        -- seller_price не равен плоской колонке sell_price: значения расходятся
+        -- на 12.3% показов, поэтому берется именно из event_parameters.
+        CAST(
+            get_json_object(event_properties, '$.event_parameters.seller_price') AS BIGINT
+        ) AS seller_price,
+        -- final_price логируется только когда он строго меньше seller_price
+        -- (случай final_price = seller_price в источнике не встречается),
+        -- поэтому COALESCE восстанавливает цену показа без потери информации.
+        COALESCE(
+            CAST(
+                get_json_object(event_properties, '$.event_parameters.final_price') AS BIGINT
+            ),
+            CAST(
+                get_json_object(event_properties, '$.event_parameters.seller_price') AS BIGINT
+            ),
+            CAST(
+                get_json_object(event_properties, '$.event_parameters.full_price') AS BIGINT
+            )
+        ) AS final_price
     FROM iceberg.silver_b2c_clickstream.events
     CROSS JOIN params p
     WHERE
@@ -124,6 +151,14 @@ sessions_raw AS (
         AND query IS NOT NULL
         AND trim(query) != ''
         AND COALESCE(is_full_catpred, false) = false
+        -- Клиент, у которого не проинициализировался SDK, шлёт install_id = NULL
+        -- вместе с session_id = нулевым sentinel'ом. Совпадение 100%: за
+        -- received_at = 2026-08-11 таких показов 166, все с одного устройства, и
+        -- event_properties.event_parameters.event_validation_info.validationStatus
+        -- у них FAILED. Такая строка не атрибутируется к заказу (LEFT JOIN orders
+        -- идёт по install_id и session_id) и ломает первичный ключ витрины.
+        AND install_id IS NOT NULL
+        AND session_id != '00000000-0000-0000-0000-000000000000'
 ),
 sessions_with_duplicate_stats AS (
     SELECT
@@ -150,6 +185,10 @@ sessions_deduplicated AS (
         `position`,
         widget_section_name,
         widget_space_name,
+        bid_id,
+        cpo_adv_version,
+        seller_price,
+        final_price,
         position_duplicate_count
     FROM sessions_with_duplicate_stats
     WHERE position_duplicate_rank = 1
@@ -244,6 +283,10 @@ SELECT
     CAST(s.position_duplicate_count AS BIGINT) AS position_duplicate_count,
     s.widget_section_name,
     s.widget_space_name,
+    s.cpo_adv_version,
+    s.bid_id,
+    s.seller_price,
+    s.final_price,
     rs.normalized_linear_score,
     rs.linear_score,
     rs.dssm_score,

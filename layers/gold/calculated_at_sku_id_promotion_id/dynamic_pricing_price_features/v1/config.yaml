@@ -29,3 +29,37 @@ alerts:
   team: search
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Энтити снапшотная: DAG идёт раз в 3 часа и пишет отдельный calculated_at, а не
+  # дописывает дневную партицию. Проверяем ровно записанный снапшот — дневная
+  # партиция на момент запуска дописана лишь частично.
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 3
+  # Джоб пишет calculated_at = data_interval_end (см. runtime.parse_snapshot_timestamp).
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
+  tests:
+    # Раскатка DQ идёт на витрины, часть которых пуста или отстала на недели.
+    # Объёмные тесты и freshness — в warn: состояние фиксируется в
+    # feature_platform_dq_results, но дежурного не будит. Перевод в error —
+    # по мере починки витрины, с порогом по её реальной истории (AGENTS.md).
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Все четыре поля дословно повторяют блок dq: энтити пишет 8 партиций в сутки,
+  # и профиль обязан относиться ровно к тому снапшоту, который проверял DQ.
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 3
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
+  exclude_columns:
+    - sku_group_id
+    - product_id
