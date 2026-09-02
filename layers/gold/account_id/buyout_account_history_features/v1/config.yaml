@@ -1,0 +1,61 @@
+resources:
+  path: ../../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-gold-buyout-account-history-features
+  main_application_file: local:///git/repo/layers/gold/account_id/buyout_account_history_features/v1/entrypoints/get_buyout_account_history_features.py
+  resource_profile: large
+
+table:
+  key: buyout_account_history_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_buyout_account_history_features
+  primary_key: date,account_id
+  meta:
+    team: team:buyer
+
+source:
+  engine: spark_iceberg
+  history_order_items_table: iceberg.silver.history_order_items
+  order_items_table: iceberg.silver.order_items
+  account_lifetime_facts_table: iceberg.silver.feature_platform_account_lifetime_facts
+  business_timezone: Asia/Tashkent
+  history_window_days: 182
+  creation_window_days: 365
+
+dag:
+  id: feature-platform.layers.gold.account_id.buyout_account_history_features
+  group_tag: buyout-features
+  schedule: "0 4 * * *"
+  start_date: "2026-08-20T00:00:00Z"
+  team: buyer
+  owner: team:buyer
+
+alerts:
+  team: buyer
+  severity: P2
+  oncall_webhook_conn_id: team:buyer
+
+dq:
+  trino_conn_id: trino_search
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Раскатка DQ идёт на витрины, часть которых пуста или отстала на недели.
+    # Объёмные тесты и freshness — в warn: состояние фиксируется в
+    # feature_platform_dq_results, но дежурного не будит. Перевод в error —
+    # по мере починки витрины, с порогом по её реальной истории (AGENTS.md).
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны
+  # смотреть на одну партицию, иначе профиль посчитан не по тем данным.
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  exclude_columns: [last_order_city_id, last_order_region_id, first_order_id_ever]

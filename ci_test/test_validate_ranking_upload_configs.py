@@ -103,6 +103,7 @@ def main() -> int:
                 "dynamic_pricing_sku_group_price_features"
             ),
             "dependency_execution_delta_minutes": 0,
+            "dependency_task_id": "dq",
         },
         "name": "fs_dynamic_pricing",
         "features": ["avg_sell_price"],
@@ -112,6 +113,23 @@ def main() -> int:
         timestamp_feature_group,
         timestamp_tables,
     ) == []
+
+    # Репозиторный источник обязан ждать таску dq, а не весь DAG-владелец:
+    # успешная запись при упавшем DQ не даёт права публиковать фичи.
+    for bad_task_id in (None, "getting_dynamic_pricing_sku_group_price_features"):
+        source = {**timestamp_feature_group["source"]}
+        if bad_task_id is None:
+            source.pop("dependency_task_id")
+        else:
+            source["dependency_task_id"] = bad_task_id
+        errors = validator.validate_feature_group(
+            config_path,
+            {**timestamp_feature_group, "source": source},
+            timestamp_tables,
+        )
+        assert any(
+            'dependency_task_id must be "dq"' in error for error in errors
+        ), (bad_task_id, errors)
 
     invalid_timestamp_feature_group = {
         **timestamp_feature_group,
@@ -127,6 +145,36 @@ def main() -> int:
         timestamp_tables,
     )
     assert any("read_mode=latest_timestamp" in error for error in errors)
+
+    external_feature_group = {
+        "source": {
+            "external": True,
+            "catalog": "iceberg",
+            "schema": "um_prod_feature_store_iceberg",
+            "table": "cold_start_boosted_pw_convs_query_atc_order_90",
+            "primary_key": ["date", "query", "sku_group_id"],
+            "columns": [
+                "date",
+                "query",
+                "sku_group_id",
+                "query_skg_conv_imp2atc_90",
+                "query_skg_conv_imp2order_90",
+            ],
+            "dependency_dag_id": "spark.pyspark_feature_store_dag",
+            "dependency_task_id": "fetch_boosted_conversions_etl",
+            "dependency_execution_delta_minutes": 240,
+        },
+        "name": "fs_search_query_skg_atc_order_features_cold_start",
+        "features": [
+            "query_skg_conv_imp2atc_90",
+            "query_skg_conv_imp2order_90",
+        ],
+    }
+    assert validator.validate_feature_group(
+        config_path,
+        external_feature_group,
+        {},
+    ) == []
 
     print("Ranking upload model manifest validation tests completed successfully")
     return 0

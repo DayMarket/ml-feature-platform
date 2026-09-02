@@ -1,0 +1,74 @@
+# Trino + Elasticsearch-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+table:
+  key: search_query_id
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_search_query_id
+  primary_key: query_text,version
+  meta:
+    team: team:search
+
+source:
+  engine: trino_elasticsearch
+  trino_conn_id: trino_search
+  space: SEARCH_RESULTS
+  stop_words_path: job/stop_words.txt
+  elasticsearch:
+    conn_id: elasticsearch_search
+    index: search-index
+    analyzer: full_name_analyzer
+    parallel_jobs: 24
+    request_timeout_seconds: 10
+    retry_count: 10
+
+output:
+  version: v1
+  write_chunk_size: 50000
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  cpu: "8"
+  memory: 16Gi
+
+dag:
+  id: feature-platform.layers.gold.query_text_version.search_query_id
+  group_tag: search-query-id
+  schedule: "0 5 * * *"
+  start_date: "2026-08-07T00:00:00Z"
+  team: search
+  owner: team:search
+  dagrun_timeout_hours: 6
+  source_dq_execution_delta_hours: 4
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Справочник query_text/version: колонки даты нет вообще, дневных партиций нет
+  # (таблица партиционирована по version). scope: table переводит предикат в TRUE,
+  # и ключевые тесты работают по всей таблице. Всё, что рендерит SQL по колонке
+  # партиции, обязано быть выключено явно — это требование проверяет
+  # load_dq_settings: freshness всегда обращается к dq.partition_column
+  # (dq/tests.py:_render_freshness), row_count_growth сравнивает с предыдущей
+  # партицией, которой здесь нет, а warmup_days считает партиции до текущей
+  # (dq/runner.py:_partition_history_count).
+  scope: table
+  warmup_days: 0
+  tests:
+    - name: freshness
+      enabled: false
+    - name: row_count_growth
+      enabled: false
+    - name: row_count_min
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Выключен по той же причине, что и партиционные DQ-тесты: render_stats_query
+  # всегда фильтрует по колонке партиции, которой у справочника нет. Профилировать
+  # тут всё равно нечего — числовых feature-колонок в таблице нет
+  # (query_id/query_text/version — STRING, updated_at — TIMESTAMP).
+  enabled: false

@@ -827,6 +827,45 @@ def _collect_elasticsearch_rows(
     return rows
 
 
+def _matched_sku_group_cardinality(data: Mapping[str, Any]) -> int | None:
+    aggregations = data.get("aggregations")
+    if not isinstance(aggregations, Mapping):
+        return None
+    total = aggregations.get("total")
+    if not isinstance(total, Mapping):
+        return None
+    try:
+        return int(total["value"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _warn_on_collapse_truncation(
+    query: str,
+    data: Mapping[str, Any],
+    size: int,
+    returned_hits: int,
+) -> None:
+    """Log when collapse returned fewer sku groups than the query actually matched.
+
+    The index is per sku_id, so `hits.total` counts sku documents; only the
+    cardinality aggregation over sku_group.id gives the real number of feature rows
+    the query could produce.
+    """
+    matched_groups = _matched_sku_group_cardinality(data)
+    if matched_groups is None:
+        return
+    if matched_groups > size or matched_groups > returned_hits:
+        logger.warning(
+            "Elasticsearch collapse truncated query=%r: matched sku_group cardinality=%d, "
+            "returned hits=%d, size=%d",
+            query,
+            matched_groups,
+            returned_hits,
+            size,
+        )
+
+
 def _iter_elasticsearch_hit_records(
     records: Sequence[Mapping[str, Any]],
     elastic: ElasticsearchConfig,
@@ -866,6 +905,7 @@ def _iter_elasticsearch_hit_records(
             retry_count=retry_count,
         )
         hits = data.get("hits", {}).get("hits", [])
+        _warn_on_collapse_truncation(query, data, size, len(hits))
         return [{"query": query, "hit": hit} for hit in hits]
 
     logger.info(
@@ -1397,9 +1437,51 @@ def _read_prepared_parquet_part(client, storage: RawStorageConfig, part: Mapping
             pass
 
 
+def _retired_bm25_columns(expected: Sequence[str], present: Sequence[str]) -> list[str]:
+    """Return BM25 columns the table still has but the current field list no longer fills.
+
+    Migrations never drop columns, so fields retired from `config.yaml` keep their column.
+    They are written as NULL, which is distinct from an empty array meaning "no match".
+    """
+    available = set(present)
+    return [
+        name
+        for name in expected
+        if name.startswith("bm25_") and name not in available
+    ]
+
+
+def _add_retired_bm25_frame_columns(frame, expected: Sequence[str]):
+    retired = _retired_bm25_columns(expected, list(frame.columns))
+    if not retired:
+        return frame
+    frame = frame.copy()
+    for name in retired:
+        frame[name] = None
+    logger.info("Writing NULL for retired BM25 columns: %s", retired)
+    return frame
+
+
+def _add_retired_bm25_arrow_columns(arrow_table, arrow_schema):
+    import pyarrow as pa
+
+    expected = [field.name for field in arrow_schema]
+    retired = _retired_bm25_columns(expected, arrow_table.column_names)
+    if not retired:
+        return arrow_table
+    for name in retired:
+        field = arrow_schema.field(name)
+        arrow_table = arrow_table.append_column(
+            field, pa.nulls(arrow_table.num_rows, type=field.type)
+        )
+    logger.info("Writing NULL for retired BM25 columns: %s", retired)
+    return arrow_table
+
+
 def _align_arrow_table_to_iceberg_schema(table, arrow_table, partition_date: date):
     arrow_schema = table.schema().as_arrow()
     expected = [field.name for field in arrow_schema]
+    arrow_table = _add_retired_bm25_arrow_columns(arrow_table, arrow_schema)
     actual = arrow_table.column_names
     missing = [name for name in expected if name not in actual]
     unexpected = [name for name in actual if name not in expected]
@@ -1779,6 +1861,7 @@ def _to_arrow_for_table(table, frame):
 
     arrow_schema = table.schema().as_arrow()
     expected = [field.name for field in arrow_schema]
+    frame = _add_retired_bm25_frame_columns(frame, expected)
     missing = [name for name in expected if name not in frame.columns]
     unexpected = [name for name in frame.columns if name not in expected]
     if missing:

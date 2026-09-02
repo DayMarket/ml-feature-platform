@@ -1,0 +1,56 @@
+# ClickHouse-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+# Runtime/source contract is documented here; the Spark `spark`/`resources`
+# blocks are intentionally absent (see AGENTS.md Trino/ClickHouse-source pattern).
+table:
+  key: account_lifetime_facts
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_account_lifetime_facts
+  primary_key: date,account_id
+  meta:
+    team: team:buyer
+
+source:
+  engine: clickhouse
+  # Коннекшн заводится DE по конвенции clickhouse_<dag>_dag; заявка — в PR.
+  clickhouse_conn_id: clickhouse_account_lifetime_facts_dag
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.silver.account_id.account_lifetime_facts
+  group_tag: buyout-features
+  schedule: "0 2 * * *"
+  start_date: "2026-08-20T00:00:00Z"
+  team: buyer
+  owner: team:buyer
+
+alerts:
+  team: buyer
+  severity: P2
+  oncall_webhook_conn_id: team:buyer
+
+dq:
+  trino_conn_id: trino_search
+  # Партиция вычисляется от data_interval_end без сдвига на -1 день (Pattern DE):
+  # см. dag.py, def parse_partition_date в job/runtime.py.
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Раскатка DQ идёт на витрины, часть которых пуста или отстала на недели.
+    # Объёмные тесты и freshness — в warn: состояние фиксируется в
+    # feature_platform_dq_results, но дежурного не будит. Перевод в error —
+    # по мере починки витрины, с порогом по её реальной истории (AGENTS.md).
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны
+  # смотреть на одну партицию, иначе профиль посчитан не по тем данным.
+  partition_date_template: '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  exclude_columns: [first_order_id_ever]

@@ -71,3 +71,89 @@ def test_spark_factories_fill_executor_core_request():
         factory_content = factory_path.read_text()
         assert '"<executor_core_request>": str(' in factory_content, factory_path
         assert '.get("executor_core_request"' in factory_content, factory_path
+
+
+def test_shared_spark_profiles_pin_memory_overhead():
+    resources = json.loads((ROOT / "config/spark/resources.yaml").read_text())
+
+    for profile_name, profile in resources["profiles"].items():
+        assert "driver_memory_overhead" in profile, profile_name
+        assert "executor_memory_overhead" in profile, profile_name
+
+
+def test_local_spark_resources_pin_memory_overhead():
+    resource_paths = sorted((ROOT / "layers").glob("**/config/resources.yaml"))
+    resource_paths.extend(sorted((ROOT / "datasets").glob("**/config/resources.yaml")))
+    resource_paths.extend(sorted((ROOT / "upload").glob("**/config/resources.yaml")))
+
+    for resource_path in resource_paths:
+        resources = json.loads(resource_path.read_text())
+        if "executor_memory" not in resources:
+            continue
+
+        assert "driver_memory_overhead" in resources, resource_path
+        assert "executor_memory_overhead" in resources, resource_path
+
+
+def test_spark_application_templates_pin_memory_overhead():
+    template_paths = [ROOT / "config/spark/layer_spark_application.yaml"]
+    template_paths.extend(sorted((ROOT / "layers").glob("**/config/*.yaml")))
+    template_paths.extend(sorted((ROOT / "upload").glob("**/config/*.yaml")))
+    template_paths.extend(sorted((ROOT / "datasets").glob("**/config/*.yaml")))
+
+    spark_templates = [
+        path
+        for path in template_paths
+        if "kind: SparkApplication" in path.read_text()
+        and "<executor_memory>" in path.read_text()
+    ]
+
+    assert spark_templates
+
+    for template_path in spark_templates:
+        template_content = template_path.read_text()
+        assert (
+            "memoryOverhead: <driver_memory_overhead>" in template_content
+        ), template_path
+        assert (
+            "memoryOverhead: <executor_memory_overhead>" in template_content
+        ), template_path
+
+
+def test_spark_factories_fill_memory_overhead():
+    factory_paths = sorted((ROOT / "layers").glob("**/config/factory.py"))
+    factory_paths.extend(sorted((ROOT / "datasets").glob("**/config/factory.py")))
+    factory_paths.extend(sorted((ROOT / "upload").glob("**/config/factory.py")))
+
+    spark_factories = [
+        path
+        for path in factory_paths
+        if '"<executor_memory>": str(' in path.read_text()
+    ]
+
+    assert spark_factories
+
+    for factory_path in spark_factories:
+        factory_content = factory_path.read_text()
+        assert '"<driver_memory_overhead>": str(' in factory_content, factory_path
+        assert '"<executor_memory_overhead>": str(' in factory_content, factory_path
+
+
+def main() -> int:
+    # Без этого блока `python3 ci_test/test_spark_resources.py` молча завершается
+    # нулём, ничего не проверив: файл написан в стиле pytest, а команды из раздела
+    # «Local Validation Commands» запускают тесты интерпретатором напрямую.
+    test_shared_spark_profiles_define_cpu_requests()
+    test_local_spark_resources_define_cpu_requests()
+    test_spark_application_templates_use_executor_core_request()
+    test_spark_factories_fill_executor_core_request()
+    test_shared_spark_profiles_pin_memory_overhead()
+    test_local_spark_resources_pin_memory_overhead()
+    test_spark_application_templates_pin_memory_overhead()
+    test_spark_factories_fill_memory_overhead()
+    print("Spark resources tests completed successfully")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

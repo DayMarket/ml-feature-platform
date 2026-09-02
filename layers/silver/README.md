@@ -2,8 +2,10 @@
 
 Переиспользуемые предагрегаты и промежуточные Iceberg-таблицы.
 
+- [`account_id`](account_id/README.md) — пожизненные факты аккаунта;
 - [`account_id_category_id`](account_id_category_id/README.md) — события account/category;
 - [`category_level_category_id`](category_level_category_id/README.md) — агрегаты по уровням иерархии категорий;
+- [`city_id_dimensional_group`](city_id_dimensional_group/README.md) — стоимость логистики по городу и габаритной группе;
 - [`h3_index`](h3_index/README.md) — географические и локационные предагрегаты;
 - [`order_city_id`](order_city_id/README.md) — агрегаты по городу доставки заказа;
 - [`order_region_id`](order_region_id/README.md) — агрегаты по региону доставки заказа;

@@ -19,9 +19,14 @@ Catalog, колонка даты и ключи сущности автомати
 - `log1p_features`: список признаков, к которым перед отправкой применяется `log1p`.
 - `source.limit`: ограничение числа строк после фильтрации партиции. Поле предназначено только для тестовой проверки загрузки.
 - `source.dependency_dag_id`: DAG, который должен успешно завершиться перед загрузкой source-таблицы.
+- `source.dependency_task_id`: задача upstream DAG, которую ждёт сенсор. Для репозиторных gold-источников это всегда `"dq"` — контракт проверяет `scripts/validate_ranking_upload_configs.py`. Своё имя задачи указывают только внешние источники (`source.external: true`), живущие по контракту команды-владельца.
 - `source.dependency_execution_delta_minutes`: разница между расписанием upload DAG и upstream DAG. Например, upload в `04:00 UTC` и upstream в `03:00 UTC` дают `60`.
 
-На текущей итерации daily upload напрямую ждёт gold producer DAG-и, потому что общие dbt source/DQ DAG-и запускаются в `01:00 UTC`, раньше обновления gold-таблиц. Upload стартует в `04:00 UTC`: зависимости на producer в `02:00`, `03:00` и `03:10 UTC` используют delta `120`, `60` и `50` минут соответственно. После переноса DQ DAG на время после producer эту временную схему следует вернуть к ожиданию DQ.
+Внешний Iceberg source должен быть явно помечен `source.external: true` и описать `catalog`, `schema`, `table`, `primary_key` и `columns`. Эти metadata заменяют lookup по `layers/**/config.yaml`; они не объявляют таблицу собственностью feature-platform.
+
+Upload ждёт таску `dq` DAG-а-владельца каждой gold-таблицы: успешная запись при упавшем DQ не даёт права публиковать признаки. Временная схема с ожиданием общих dbt source/DQ DAG-ов, запускавшихся в `01:00 UTC` раньше обновления gold, больше не используется — каждая gold-энтити считает свой DQ таской `dq` внутри собственного DAG-а сразу после записи партиции.
+
+Upload стартует в `04:00 UTC`, поэтому зависимости на producer в `02:00`, `03:00` и `03:10 UTC` используют delta `120`, `60` и `50` минут соответственно. Логическая дата таски `dq` совпадает с логической датой её DAG-а, поэтому переход с ожидания целого DAG-а на ожидание таски `dq` эти дельты не меняет.
 
 Upload DAG имеет `start_date=2026-07-23T00:00:00+00:00`, расписание интерпретируется в UTC.
 
@@ -42,7 +47,7 @@ Production-конфиг не должен содержать `source.limit`, ч�
 
 Нельзя использовать одно и то же `name` для нескольких неполных наборов признаков из разных таблиц: сервис получает массив значений без имен и ожидает единый согласованный контракт feature group.
 
-Порядок feature groups для конфигурации сервиса ранжирования приведен в `ranking_service_input.yaml`. Daily upload публикует 141 признак из шести gold-таблиц; каждая таблица представлена отдельной feature group.
+Порядок feature groups для текущей конфигурации сервиса ранжирования приведен в `ranking_service_input.yaml`. Этот manifest не обязан перечислять новые параллельно публикуемые версии feature group до их подключения на стороне новой модели.
 
 `models` описывает, какие признаки из каких feature groups использует конкретная модель. Feature всегда указывается внутри своей feature group:
 
@@ -62,7 +67,7 @@ Production-конфиг не должен содержать `source.limit`, ч�
 
 Новая feature group нужна только для нового serving-контракта группы: другой `name`, другой source/entity contract или новый namespace/версия публикации. Разные модели могут брать разные subset-ы признаков из одной feature group.
 
-Группа `fs_search_query_skg_atc_order_features_v2` читает 41 query/SKU-group признак из `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features_v2`. Остальные группы читают признаки на grain `sku_group_id` или `query` из своих gold-таблиц, перечисленных в `config.yaml`.
+Группа `fs_search_query_skg_atc_order_features_v2` читает 41 query/SKU-group признак из `iceberg.gold.feature_platform_search_sku_group_id_query_atc_order_features_v2`. Группа `fs_search_query_skg_atc_order_features_cold_start` читает два 90-дневных conversion-признака из внешней таблицы `iceberg.um_prod_feature_store_iceberg.cold_start_boosted_pw_convs_query_atc_order_90`; перед чтением upload ждёт задачу `fetch_boosted_conversions_etl` DAG `spark.pyspark_feature_store_dag`. Остальные группы читают признаки на grain `sku_group_id` или `query` из своих gold-таблиц, перечисленных в `config.yaml`.
 
 CI запускает `scripts/validate_ranking_upload_configs.py`. Проверка находит исходную таблицу по `layers/**/config.yaml`, получает `primary_key`, читает колонки из миграций и завершает сборку с ошибкой, если ключи или признаки отсутствуют.
 

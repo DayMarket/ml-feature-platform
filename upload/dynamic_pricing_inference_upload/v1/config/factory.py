@@ -188,18 +188,12 @@ def _source_dependencies(
                     f"wait_for_{component_id}_"
                     f"{_sanitize_task_id(str(source['table']))}"
                 ),
-                "external_dag_id": str(
-                    source.get("dependency_dag_id")
-                    or (
-                        f"dbt.source.trino.ml_feature_platform_{source['schema']}."
-                        f"{source['table']}.dq"
-                    )
-                ),
+                "external_dag_id": str(source["dependency_dag_id"]),
+                # Аплоад ждёт таску dq DAG'а-владельца таблицы, а не весь DAG:
+                # успех записи без прошедшего DQ не даёт права публиковать фичи.
+                "external_task_id": str(source.get("dependency_task_id", "dq")),
                 "execution_delta_minutes": int(
-                    source.get(
-                        "dependency_execution_delta_minutes",
-                        source.get("dq_execution_delta_minutes", 60),
-                    )
+                    source["dependency_execution_delta_minutes"]
                 ),
             }
         )
@@ -265,12 +259,14 @@ def get_deployment(feature_groups_argument: str = "") -> str:
         "<hive_metastore_uris>": str(resources["hive_metastore_uris"]),
         "<driver_cores>": str(resources["driver_cores"]),
         "<driver_memory>": str(resources["driver_memory"]),
+        "<driver_memory_overhead>": str(resources["driver_memory_overhead"]),
         "<executor_cores>": str(resources["executor_cores"]),
         "<executor_core_request>": str(
             resources.get("executor_core_request", resources["executor_cores"])
         ),
         "<executor_instances>": str(resources["executor_instances"]),
         "<executor_memory>": str(resources["executor_memory"]),
+        "<executor_memory_overhead>": str(resources["executor_memory_overhead"]),
         "<s3_secret_key>": str(s3_connection["aws_secret_access_key"]),
         "<s3_access_key>": str(s3_connection["aws_access_key_id"]),
         "<run_date>": "{{ ds }}",

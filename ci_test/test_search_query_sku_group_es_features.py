@@ -850,6 +850,200 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         for function in functions:
             self.assertNotIn("modifier", function["field_value_factor"])
 
+    def test_search_body_collapses_and_counts_sku_group_cardinality(self):
+        body = self.search.build_search_body(
+            query="futbolka",
+            sku_group_ids=[1, 2],
+            fields=["sku.title_discovery"],
+            size=2000,
+        )
+
+        self.assertEqual(body["collapse"], {"field": "sku_group.id"})
+        self.assertEqual(
+            body["aggregations"],
+            {"total": {"cardinality": {"field": "sku_group.id"}}},
+        )
+
+    def test_search_body_addresses_all_fields_flat_without_nested(self):
+        fields = [
+            "sku.title_discovery",
+            "sku.title_discovery.synonym",
+            "sku.filter_values.title.ru",
+            "category.title.ru",
+            "full_category_name",
+        ]
+        body = self.search.build_search_body(
+            query="futbolka",
+            sku_group_ids=[1],
+            fields=fields,
+            size=2000,
+        )
+
+        should = body["query"]["function_score"]["query"]["bool"]["should"]
+
+        self.assertEqual(len(should), 1)
+        self.assertEqual(should[0]["multi_match"]["fields"], fields)
+        self.assertEqual(should[0]["multi_match"]["operator"], "or")
+        self.assertEqual(should[0]["multi_match"]["type"], "most_fields")
+        self.assertNotIn("nested", json.dumps(body))
+
+    def test_search_body_carries_no_boosts_and_production_sort(self):
+        body = self.search.build_search_body(
+            query="futbolka",
+            sku_group_ids=[1],
+            fields=["sku.title_discovery", "category.title.ru"],
+            size=2000,
+        )
+
+        should = body["query"]["function_score"]["query"]["bool"]["should"]
+        for field in should[0]["multi_match"]["fields"]:
+            self.assertNotIn("^", field)
+
+        for function in body["query"]["function_score"]["functions"]:
+            self.assertEqual(function["field_value_factor"]["factor"], 1.0)
+            self.assertNotIn("modifier", function["field_value_factor"])
+            self.assertNotIn("weight", function)
+
+        self.assertEqual(
+            body["sort"],
+            [{"_score": {"order": "desc"}}, {"sku_group.id": {"order": "asc"}}],
+        )
+
+    def test_configured_fields_match_production_scoring_fields(self):
+        config_text = (ENTITY_DIR / "config.yaml").read_text(encoding="utf-8")
+        configured_fields = [
+            line.strip()[2:]
+            for line in config_text.splitlines()
+            if line.startswith("      - ")
+        ]
+
+        production_scoring_fields = [
+            "sku.title_discovery_without_excluded_filters",
+            "sku.title_discovery_without_excluded_filters.synonym",
+            "sku.discovery_filter_values.title.ru",
+            "sku.discovery_filter_values.title.uz",
+            "sku.filter_values.title.ru",
+            "sku.filter_values.title.uz",
+            "category.title.ru",
+            "category.title.uz",
+            "category.full_title.ru",
+            "category.full_title.uz",
+            "product.title.ru",
+            "product.title.uz",
+            "product.title.ru.synonym",
+            "product.title.uz.synonym",
+            "full_category_name",
+        ]
+        for field in production_scoring_fields:
+            self.assertIn(field, configured_fields)
+
+        # The sku-level index has no nested `skus` object any more.
+        for field in configured_fields:
+            self.assertFalse(field.startswith("skus."), field)
+
+        create_table = (ENTITY_DIR / "migrations" / "create_table.sql").read_text(
+            encoding="utf-8"
+        )
+        for column in self.analyze.output_columns(configured_fields):
+            self.assertIn(f"    {column} ", create_table)
+
+    def test_retired_bm25_columns_are_written_as_null(self):
+        expected = [
+            "date",
+            "query",
+            "bm25_sku_title_discovery",
+            "bm25_skus_title",
+            "bm25_skus_filter_values_title_ru",
+        ]
+        present = ["date", "query", "bm25_sku_title_discovery"]
+
+        self.assertEqual(
+            self.runtime._retired_bm25_columns(expected, present),
+            ["bm25_skus_title", "bm25_skus_filter_values_title_ru"],
+        )
+        # A missing non-BM25 column stays an error rather than being silently filled.
+        self.assertEqual(
+            self.runtime._retired_bm25_columns(["date", "query"], ["date"]),
+            [],
+        )
+
+    def test_retired_bm25_arrow_columns_are_appended_as_null(self):
+        import pyarrow as pa
+
+        arrow_schema = pa.schema(
+            [
+                pa.field("query", pa.string()),
+                pa.field("bm25_sku_title_discovery", pa.list_(pa.float64())),
+                pa.field("bm25_skus_title", pa.list_(pa.float64())),
+            ]
+        )
+        arrow_table = pa.table(
+            {
+                "query": pa.array(["futbolka"]),
+                "bm25_sku_title_discovery": pa.array([[1.5]], pa.list_(pa.float64())),
+            }
+        )
+
+        filled = self.runtime._add_retired_bm25_arrow_columns(arrow_table, arrow_schema)
+
+        self.assertIn("bm25_skus_title", filled.column_names)
+        self.assertEqual(filled.column("bm25_skus_title").to_pylist(), [None])
+        self.assertEqual(
+            filled.column("bm25_sku_title_discovery").to_pylist(), [[1.5]]
+        )
+
+    def test_sku_title_discovery_fields_map_to_migration_columns(self):
+        columns = self.analyze.bm25_columns(
+            [
+                "sku.title_discovery",
+                "sku.title_discovery.synonym",
+                "sku.title_discovery_without_excluded_filters",
+                "sku.title_discovery_without_excluded_filters.synonym",
+            ]
+        )
+        self.assertEqual(
+            columns,
+            [
+                "bm25_sku_title_discovery",
+                "bm25_sku_title_discovery_synonym",
+                "bm25_sku_title_discovery_without_excluded_filters",
+                "bm25_sku_title_discovery_without_excluded_filters_synonym",
+            ],
+        )
+
+        config_text = (ENTITY_DIR / "config.yaml").read_text(encoding="utf-8")
+        self.assertIn("endpoint_path: /search-sku-index-tag-v0.0.5/_search", config_text)
+
+    def test_collapse_truncation_warning_uses_sku_group_cardinality(self):
+        warnings = []
+        original_warning = self.runtime.logger.warning
+        self.runtime.logger.warning = lambda *args: warnings.append(args)
+        try:
+            self.runtime._warn_on_collapse_truncation(
+                "futbolka",
+                {"aggregations": {"total": {"value": 2500}}},
+                size=2000,
+                returned_hits=2000,
+            )
+            self.runtime._warn_on_collapse_truncation(
+                "bandana",
+                {"aggregations": {"total": {"value": 5}}},
+                size=2000,
+                returned_hits=5,
+            )
+            self.runtime._warn_on_collapse_truncation(
+                "no-aggs",
+                {"hits": {"hits": []}},
+                size=2000,
+                returned_hits=0,
+            )
+        finally:
+            self.runtime.logger.warning = original_warning
+
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("futbolka", warnings[0])
+        self.assertIn(2500, warnings[0])
+
     def test_iceberg_commit_retry_handles_lock_errors(self):
         class WaitingForLockException(Exception):
             pass

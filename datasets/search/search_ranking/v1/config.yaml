@@ -5,7 +5,7 @@ spark:
   template_path: ../../../../config/spark/layer_spark_application.yaml
   application_name: fetch-dataset-search-ranking-v1
   main_application_file: local:///git/repo/datasets/search/search_ranking/v1/entrypoints/get_search_ranking_dataset.py
-  resource_profile: large
+  resource_profile: search_dataset
 
 table:
   key: dataset_search_ranking_v1
@@ -18,10 +18,62 @@ table:
 dag:
   team: search
   group_tag: search-ranking-dataset
-  schedule: "0 2 * * *"
+  schedule: "0 10 * * *"
   start_date: "2026-04-01T00:00:00Z"
 
 alerts:
   team: search
-  severity: P3
+  severity: P4
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Партиция таблицы — collection_date (PARTITIONED BY (collection_date) в
+  # migrations/create_table.sql), не date и не event_date (event_date — производная
+  # бизнес-дата = collection_date - 20 дней). Джоб пишет
+  # collection_date = date(partition_start), см. job/getting_search_ranking_dataset.py.
+  partition_column: collection_date
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Это датасет событийных показов, а не витрина признаков: первичный ключ здесь
+    # задаёт гранулярность строки, а не контракт для потребителей. Источник
+    # (silver_b2c_clickstream.events) периодически отдаёт показы со сломанным SDK
+    # (install_id = NULL, session_id = нулевой sentinel) — они отфильтрованы в
+    # job/getting_search_ranking_dataset.py, но держать PK-тесты на error значит
+    # будить дежурного из-за качества источника. Результат по-прежнему пишется
+    # в feature_platform_dq_results.
+    - name: primary_key_not_null
+      severity: warn
+    - name: primary_key_unique
+      severity: warn
+    # Раскатка DQ идёт на витрины, часть которых пуста или отстала на недели.
+    # Объёмные тесты и freshness — в warn: состояние фиксируется в
+    # feature_platform_dq_results, но дежурного не будит. Перевод в error —
+    # по мере починки витрины, с порогом по её реальной истории (AGENTS.md).
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+    # final_price собирается как COALESCE(final_price, seller_price, full_price).
+    # На источнике за received_at = 2026-07-01 (89 163 741 показ после фильтров
+    # джоба) строк, где все три поля пустые, не было ни одной, поэтому NULL здесь
+    # означает сломавшийся контракт event_parameters, а не редкий валидный случай.
+    # severity warn на первое время, как и у остальных тестов этой энтити.
+    - name: not_null
+      columns: [final_price]
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template и dq.partition_column: обе
+  # таски обязаны смотреть на одну партицию, иначе профиль посчитан не по тем данным.
+  partition_column: collection_date
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  exclude_columns:
+    - sku_group_id
+    # Идентификатор рекламной ставки, а не признак: профиль min/max/перцентилей
+    # по нему бессмыслен. cpo_adv_version остается в профиле - это небольшое
+    # целое, по которому видно, поехало ли распределение рекламных показов.
+    - bid_id
