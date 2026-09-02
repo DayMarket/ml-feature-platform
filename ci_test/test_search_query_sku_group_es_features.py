@@ -1038,94 +1038,157 @@ class SearchQuerySkuGroupEsFeaturesTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.analyze.bm25_columns(["sku.title", "skus.title"])
 
-    def test_execute_search_reports_elasticsearch_status_and_body(self):
-        """Ошибку ES видно только по телу ответа, поэтому оно обязано попасть в лог и в исключение."""
-
-        class FakeResponse:
-            status_code = 400
-            text = json.dumps(
-                {"error": {"type": "query_shard_exception", "reason": "field is of type object"}}
-            )
-
-            def raise_for_status(self):
-                raise FakeRequestException("400 Client Error", self)
-
-            def json(self):
-                raise AssertionError("json() must not be called for a failed response")
-
+    @staticmethod
+    def _fake_requests_module(get_impl):
         class FakeRequestException(Exception):
             def __init__(self, message, response=None):
                 super().__init__(message)
                 self.response = response
 
-        calls = []
+        class FakeSession:
+            instances = []
 
-        fake_requests = types.ModuleType("requests")
-        fake_requests.RequestException = FakeRequestException
+            def __init__(self):
+                self.closed = False
+                FakeSession.instances.append(self)
 
-        def fake_get(**kwargs):
-            calls.append(kwargs["url"])
-            return FakeResponse()
+            def get(self, **kwargs):
+                return get_impl(kwargs)
 
-        fake_requests.get = fake_get
+            def close(self):
+                self.closed = True
 
-        sleeps = []
+        module = types.ModuleType("requests")
+        module.RequestException = FakeRequestException
+        module.Session = FakeSession
+        return module, FakeSession, FakeRequestException
+
+    def _run_execute_search(self, module, **kwargs):
+        """Прогнать execute_search на подменённом requests, не оставляя сессию потока в тестах."""
         original_sleep = self.search.time.sleep
+        sleeps = []
         self.search.time.sleep = sleeps.append
-        sys.modules["requests"] = fake_requests
+        sys.modules["requests"] = module
+        self.search._drop_session()
         try:
-            with self.assertRaises(RuntimeError) as caught:
-                self.search.execute_search(
-                    url="https://es.example.com/search-sku-index/_search",
-                    body={"query": "futbolka"},
-                    auth=None,
-                    headers={},
-                    timeout_seconds=60,
-                    retry_count=3,
-                )
+            return self.search.execute_search(**kwargs), sleeps
         finally:
+            self.search._drop_session()
             self.search.time.sleep = original_sleep
             sys.modules.pop("requests", None)
+
+    def test_execute_search_reports_elasticsearch_status_and_body(self):
+        """Ошибку ES видно только по телу ответа, поэтому оно обязано попасть в лог и в исключение."""
+        calls = []
+
+        def get_impl(kwargs):
+            calls.append(kwargs["url"])
+
+            class FakeResponse:
+                status_code = 400
+                text = json.dumps(
+                    {"error": {"type": "query_shard_exception", "reason": "of type object"}}
+                )
+
+                def raise_for_status(self):
+                    raise module.RequestException("400 Client Error", self)
+
+                def json(self):
+                    raise AssertionError("json() must not be called for a failed response")
+
+            return FakeResponse()
+
+        module, fake_session, _ = self._fake_requests_module(get_impl)
+        fake_session.instances = []
+
+        with self.assertRaises(RuntimeError) as caught:
+            self._run_execute_search(
+                module,
+                url="https://es.example.com/search-sku-index/_search",
+                body={"query": "futbolka"},
+                auth=None,
+                headers={},
+                timeout_seconds=60,
+                retry_count=3,
+            )
 
         message = str(caught.exception)
         self.assertIn("https://es.example.com/search-sku-index/_search", message)
         self.assertIn("HTTP 400", message)
         self.assertIn("query_shard_exception", message)
         self.assertEqual(len(calls), 3)
-        self.assertEqual(sleeps, [2, 4])
 
     def test_execute_search_reports_connection_errors_without_response(self):
-        class FakeRequestException(Exception):
-            pass
+        def get_impl(kwargs):
+            raise module.RequestException("Connection to 10.111.0.9 timed out")
 
-        fake_requests = types.ModuleType("requests")
-        fake_requests.RequestException = FakeRequestException
+        module, fake_session, _ = self._fake_requests_module(get_impl)
+        fake_session.instances = []
 
-        def fake_get(**kwargs):
-            raise FakeRequestException("Failed to establish a new connection")
+        with self.assertRaises(RuntimeError) as caught:
+            self._run_execute_search(
+                module,
+                url="https://es.example.com/search-sku-index/_search",
+                body={},
+                auth=None,
+                headers={},
+                timeout_seconds=60,
+                retry_count=2,
+            )
 
-        fake_requests.get = fake_get
+        message = str(caught.exception)
+        self.assertIn("RequestException", message)
+        self.assertIn("Connection to 10.111.0.9 timed out", message)
+        # Сетевой сбой обязан выбросить сессию: в пуле остался мёртвый коннект.
+        self.assertTrue(all(session.closed for session in fake_session.instances))
+        self.assertGreaterEqual(len(fake_session.instances), 2)
+
+    def test_execute_search_reuses_one_session_and_caps_connect_timeout(self):
+        """Keep-alive на поток и короткий connect-таймаут - защита от ConnectTimeout под нагрузкой."""
+        timeouts = []
+
+        def get_impl(kwargs):
+            timeouts.append(kwargs["timeout"])
+
+            class FakeResponse:
+                status_code = 200
+
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return {"hits": {"hits": []}}
+
+            return FakeResponse()
+
+        module, fake_session, _ = self._fake_requests_module(get_impl)
+        fake_session.instances = []
 
         original_sleep = self.search.time.sleep
         self.search.time.sleep = lambda seconds: None
-        sys.modules["requests"] = fake_requests
+        sys.modules["requests"] = module
+        self.search._drop_session()
         try:
-            with self.assertRaises(RuntimeError) as caught:
+            for _ in range(3):
                 self.search.execute_search(
                     url="https://es.example.com/search-sku-index/_search",
                     body={},
                     auth=None,
                     headers={},
                     timeout_seconds=60,
-                    retry_count=2,
+                    retry_count=3,
                 )
         finally:
+            self.search._drop_session()
             self.search.time.sleep = original_sleep
             sys.modules.pop("requests", None)
 
-        message = str(caught.exception)
-        self.assertIn("FakeRequestException", message)
-        self.assertIn("Failed to establish a new connection", message)
+        self.assertEqual(len(fake_session.instances), 1)
+        self.assertEqual(
+            timeouts,
+            [(self.search.CONNECT_TIMEOUT_SECONDS, 60)] * 3,
+        )
+        self.assertLess(self.search.CONNECT_TIMEOUT_SECONDS, 60)
 
     def test_collapse_truncation_warning_uses_sku_group_cardinality(self):
         warnings = []

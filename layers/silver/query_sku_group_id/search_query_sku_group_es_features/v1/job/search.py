@@ -3,10 +3,24 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any, Mapping, Sequence
 
 logger = logging.getLogger(__name__)
+
+# Сбор идёт в 24 потока и делает по запросу на каждую пару (query, sku_group_ids) - это
+# сотни тысяч запросов за прогон. Без переиспользования соединения каждый из них открывает
+# новый TCP-коннект, и хост упирается в conntrack/TIME_WAIT задолго до конца прогона:
+# SYN начинают теряться, и это видно как ConnectTimeout на здоровом в остальном ES.
+# Session на поток даёт keep-alive: по одному соединению на воркер вместо запроса.
+_thread_state = threading.local()
+
+# Отдельный таймаут на установку соединения. Внутри кластера TCP-хендшейк до ES занимает
+# миллисекунды, поэтому 60 секунд здесь - не запас прочности, а 3 минуты простоя воркера
+# на одном мёртвом коннекте перед тем, как ретраи закончатся. Чтение ответа (explain по
+# 2000 collapse-хитов) остаётся на полном request_timeout_seconds.
+CONNECT_TIMEOUT_SECONDS = 10
 
 # Тело ответа Elasticsearch - единственное место, где написано, что именно не так
 # (несуществующий индекс, неподдерживаемый тип поля, отказ авторизации). Без него в
@@ -115,6 +129,27 @@ def build_search_body(
     }
 
 
+def _get_session():
+    import requests
+
+    session = getattr(_thread_state, "session", None)
+    if session is None:
+        session = requests.Session()
+        _thread_state.session = session
+    return session
+
+
+def _drop_session() -> None:
+    """Убрать сессию потока после сетевой ошибки: в пуле мог остаться мёртвый коннект."""
+    session = getattr(_thread_state, "session", None)
+    if session is not None:
+        try:
+            session.close()
+        except Exception:  # noqa: BLE001 - закрытие сессии не должно маскировать исходную ошибку
+            pass
+        _thread_state.session = None
+
+
 def _error_details(exc: BaseException) -> str:
     """Короткое описание неудачной попытки: статус и тело ответа Elasticsearch."""
     response = getattr(exc, "response", None)
@@ -140,22 +175,24 @@ def execute_search(
 ):
     import requests
 
+    connect_timeout = min(CONNECT_TIMEOUT_SECONDS, timeout_seconds)
     last_error = None
     last_details = ""
     for attempt in range(1, retry_count + 1):
         try:
-            response = requests.get(
+            response = _get_session().get(
                 url=url,
                 auth=auth,
                 headers=dict(headers),
                 json=dict(body),
-                timeout=timeout_seconds,
+                timeout=(connect_timeout, timeout_seconds),
             )
             response.raise_for_status()
             return response.json()
         except requests.RequestException as exc:
             last_error = exc
             last_details = _error_details(exc)
+            _drop_session()
             logger.warning(
                 "Elasticsearch request to %s failed on attempt %d/%d: %s",
                 url,

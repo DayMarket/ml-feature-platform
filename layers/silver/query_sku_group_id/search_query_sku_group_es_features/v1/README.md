@@ -34,7 +34,7 @@
 - `"dwh-iceberg".silver.search_logs` - внешний Trino-источник для `result_query_text`; отдельный sensor не
   ставится по подтвержденному контракту.
 - Elasticsearch endpoint из Airflow connection `elasticsearch_search`, path
-  `/search-sku-index-tag-v0.0.5/_search`. Индекс документов - на уровне `sku_id`.
+  `/search-sku-index/_search`. Индекс документов - на уровне `sku_id`.
 - Raw storage - Airflow connection `search_research_bucket`, prefix `airflow/2026/bm25_features`.
 
 ## Логика
@@ -68,7 +68,7 @@ Elasticsearch-запрос использует `size=2000`, `parallel_jobs=24`,
 `size=2000` - верхний предел на запрос, фактический объем дополнительно ограничивается фильтром по
 `sku_group_ids`. Если production DSL отличается от текущего builder, менять нужно только `job/search.py`.
 
-Индекс `search-sku-index-tag-v0.0.5` хранит документы на уровне `sku_id`, а грейн фичей - `sku_group_id`,
+Индекс `search-sku-index` хранит документы на уровне `sku_id`, а грейн фичей - `sku_group_id`,
 поэтому запрос содержит:
 
 - `collapse` по `sku_group.id` - в выдаче остается один hit на sku group, без дублей строк на каждый sku;
@@ -78,6 +78,13 @@ Elasticsearch-запрос использует `size=2000`, `parallel_jobs=24`,
 Если `cardinality` больше `size` или больше числа вернувшихся hits, `job/runtime.py` пишет warning с
 запросом и обоими значениями: это означает, что collapse срезал часть sku group и партиция за дату
 неполная по этому запросу.
+
+HTTP-слой в `job/search.py`: на каждый поток заводится `requests.Session` с keep-alive, потому что за прогон
+уходят сотни тысяч запросов и коннект на запрос упирает хост в conntrack/TIME_WAIT - на здоровом ES это видно
+как `ConnectTimeout`. После любой сетевой ошибки сессия потока выбрасывается, чтобы не переиспользовать мёртвый
+коннект из пула. Таймаут разделён: на установку соединения `CONNECT_TIMEOUT_SECONDS` (10 с), на чтение ответа -
+`request_timeout_seconds` из config. Неудачная попытка логируется со статусом и телом ответа Elasticsearch, и
+они же попадают в текст итогового исключения - без них в логе остаётся только "failed after N attempts".
 
 `sort` повторяет production (`_score desc`, `sku_group.id asc`), поэтому порядок групп воспроизводим
 между прогонами. При этом внутри группы collapse выбирает представителя по нашему скору с boost=1,
