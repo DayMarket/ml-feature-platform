@@ -43,7 +43,12 @@ def load_dataset_settings(
     if not model_name:
         raise ValueError(f"dataset.model_name is missing in {config_path}")
 
-    sample_percent = int(block.get("sample_percent", 0))
+    # float, а не int: значение задаётся в процентах и бывает дробным
+    # (0.01 — одна сотая процента). int("0.01") падал ValueError и валил джоб
+    # на загрузке настроек, до старта Spark. Нижнюю границу шага задаёт сетка
+    # бакетов — её сторожит query.sample_threshold, единственный владелец
+    # HASH_BUCKETS.
+    sample_percent = float(block.get("sample_percent", 0))
     if not 0 < sample_percent <= 100:
         raise ValueError(
             f"dataset.sample_percent must be in (0, 100], got {sample_percent}"

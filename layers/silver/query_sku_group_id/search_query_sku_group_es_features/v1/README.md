@@ -34,7 +34,7 @@
 - `"dwh-iceberg".silver.search_logs` - внешний Trino-источник для `result_query_text`; отдельный sensor не
   ставится по подтвержденному контракту.
 - Elasticsearch endpoint из Airflow connection `elasticsearch_search`, path
-  `/search-sku-index-tag-v0.0.5/_search`. Индекс документов - на уровне `sku_id`.
+  `/search-sku-index/_search`. Индекс документов - на уровне `sku_id`.
 - Raw storage - Airflow connection `search_research_bucket`, prefix `airflow/2026/bm25_features`.
 
 ## Логика
@@ -68,7 +68,7 @@ Elasticsearch-запрос использует `size=2000`, `parallel_jobs=24`,
 `size=2000` - верхний предел на запрос, фактический объем дополнительно ограничивается фильтром по
 `sku_group_ids`. Если production DSL отличается от текущего builder, менять нужно только `job/search.py`.
 
-Индекс `search-sku-index-tag-v0.0.5` хранит документы на уровне `sku_id`, а грейн фичей - `sku_group_id`,
+Индекс `search-sku-index` хранит документы на уровне `sku_id`, а грейн фичей - `sku_group_id`,
 поэтому запрос содержит:
 
 - `collapse` по `sku_group.id` - в выдаче остается один hit на sku group, без дублей строк на каждый sku;
@@ -78,6 +78,13 @@ Elasticsearch-запрос использует `size=2000`, `parallel_jobs=24`,
 Если `cardinality` больше `size` или больше числа вернувшихся hits, `job/runtime.py` пишет warning с
 запросом и обоими значениями: это означает, что collapse срезал часть sku group и партиция за дату
 неполная по этому запросу.
+
+HTTP-слой в `job/search.py`: на каждый поток заводится `requests.Session` с keep-alive, потому что за прогон
+уходят сотни тысяч запросов и коннект на запрос упирает хост в conntrack/TIME_WAIT - на здоровом ES это видно
+как `ConnectTimeout`. После любой сетевой ошибки сессия потока выбрасывается, чтобы не переиспользовать мёртвый
+коннект из пула. Таймаут разделён: на установку соединения `CONNECT_TIMEOUT_SECONDS` (10 с), на чтение ответа -
+`request_timeout_seconds` из config. Неудачная попытка логируется со статусом и телом ответа Elasticsearch, и
+они же попадают в текст итогового исключения - без них в логе остаётся только "failed after N attempts".
 
 `sort` повторяет production (`_score desc`, `sku_group.id asc`), поэтому порядок групп воспроизводим
 между прогонами. При этом внутри группы collapse выбирает представителя по нашему скору с boost=1,
@@ -110,6 +117,12 @@ field value factor, поэтому production-скор (включая `factor=9
 `sku.title_discovery_without_excluded_filters`: они были в более ранней версии production-запроса
 и запрошены явно. Если в индексе их нет, их BM25-массивы будут пустыми.
 
+Поля `sku.title` и `sku.title.synonym` - это те же признаки, что старые nested-поля `skus.title`
+и `skus.title.synonym`, только под новыми именами sku-level индекса. Поэтому они собираются снова,
+а их BM25 пишется в исторические колонки `bm25_skus_title` и `bm25_skus_title_synonym`:
+`analyze.BM25_COLUMN_OVERRIDES` отображает имя ES-поля на имя колонки, новых колонок и миграции
+не требуется, и ряд по этим признакам остается непрерывным через смену индекса.
+
 Elasticsearch collect DAG пишет ответы Elasticsearch в `jsonl.gz`:
 
 `airflow/2026/bm25_features/raw/date=<YYYY-MM-DD>/run_id=<run_id>/chunk=<NNNNNN>/part-<NNNNNN>.jsonl.gz`.
@@ -133,6 +146,7 @@ collect DAG триггерит writer DAG с `partition_date`. Writer DAG сна
 вклады field value factors, `bms`, `total_score`, `sku_group_emb`, `analysis`.
 
 BM25 хранится отдельными `ARRAY<DOUBLE>` колонками для каждого поля Elasticsearch-запроса:
+`bm25_skus_title`, `bm25_skus_title_synonym` (заполняются полями `sku.title` и `sku.title.synonym`),
 `bm25_sku_title_discovery`, `bm25_sku_title_discovery_synonym`,
 `bm25_sku_title_discovery_without_excluded_filters`,
 `bm25_sku_title_discovery_without_excluded_filters_synonym`,
@@ -149,10 +163,14 @@ BM25 хранится отдельными `ARRAY<DOUBLE>` колонками д
 Колонки `bm25_sku_*` добавлены вместе с переходом на индекс `search-sku-index-tag-v0.0.5`;
 партиции, собранные до перехода, содержат по ним `NULL`.
 
-Legacy-колонки `bm25_skus_title`, `bm25_skus_title_synonym`, `bm25_skus_discovery_filter_values_title_ru/uz`,
-`bm25_skus_filter_values_title_ru/uz` остаются в таблице - миграции не удаляют колонки. Соответствующие
-поля больше не собираются, поэтому в новых партициях они пишутся как `NULL`; это отличается от пустого
-массива, который означает "поле запрашивалось, но не сматчилось". Исторические партиции не пересчитываются.
+Legacy-колонки `bm25_skus_discovery_filter_values_title_ru/uz` и `bm25_skus_filter_values_title_ru/uz`
+остаются в таблице - миграции не удаляют колонки. Соответствующие поля больше не собираются, поэтому
+в новых партициях они пишутся как `NULL`; это отличается от пустого массива, который означает
+"поле запрашивалось, но не сматчилось". Исторические партиции не пересчитываются.
+
+Колонки `bm25_skus_title` и `bm25_skus_title_synonym` из этого списка выведены: их снова заполняют
+поля `sku.title` и `sku.title.synonym` нового индекса. `NULL` в них означает партицию, собранную
+между переходом на sku-level индекс и возвратом этих полей.
 
 ## DQ
 

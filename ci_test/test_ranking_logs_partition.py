@@ -97,7 +97,7 @@ def test_load_dataset_settings_matches_the_yaml_source_of_truth():
     raw = yaml.safe_load((ENTITY_DIR / "config.yaml").read_text(encoding="utf-8"))
 
     assert settings.model_name == raw["dataset"]["model_name"]
-    assert settings.sample_percent == int(raw["dataset"]["sample_percent"])
+    assert settings.sample_percent == float(raw["dataset"]["sample_percent"])
 
 
 def test_load_dataset_settings_rejects_out_of_range_percent(tmp_path):
@@ -113,6 +113,22 @@ def test_load_dataset_settings_rejects_out_of_range_percent(tmp_path):
     except ValueError:
         return
     raise AssertionError("ожидался ValueError на sample_percent вне (0, 100]")
+
+
+def test_load_dataset_settings_accepts_fractional_percent(tmp_path):
+    """Доля выборки задаётся в процентах и может быть дробной: 0.01 — это одна
+    сотая процента запросов, а не одна сотая доля. int() на такой строке падал
+    ValueError и валил джоб до старта Spark."""
+    settings_module = load_module("settings")
+
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "dataset:\n  model_name: m\n  sample_percent: 0.01\n", encoding="utf-8"
+    )
+
+    settings = settings_module.load_dataset_settings(config)
+
+    assert settings.sample_percent == 0.01
 
 
 def test_load_settings_survives_poisoned_cache():
@@ -141,7 +157,7 @@ def test_load_settings_survives_poisoned_cache():
         # Сверяемся с самим config.yaml, а не с литералом: sample_percent —
         # настраиваемый параметр, и тест не должен падать при его изменении.
         raw = yaml.safe_load((ENTITY_DIR / "config.yaml").read_text(encoding="utf-8"))
-        assert settings.sample_percent == int(raw["dataset"]["sample_percent"])
+        assert settings.sample_percent == float(raw["dataset"]["sample_percent"])
     finally:
         # Уборка
         for name in list(sys.modules.keys()):

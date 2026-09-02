@@ -89,9 +89,13 @@ def test_query_filters_the_configured_model_only():
 
 def test_query_samples_requests_deterministically():
     query = build_query()
-    # sample_percent = 1 -> порог 100 из 10000. pmod, а не abs: xxhash64 может
-    # вернуть Long.MIN_VALUE, у которого abs отрицателен и условие отсечёт всё.
-    assert "pmod(xxhash64(e.request_id), 10000) < 100" in query
+    query_module = load_module("query")
+    # Порог берётся из config.yaml, а не литералом: sample_percent — настраиваемый
+    # параметр, и тест не должен падать при его изменении. pmod, а не abs:
+    # xxhash64 может вернуть Long.MIN_VALUE, у которого abs отрицателен и
+    # условие молча отсекло бы всё.
+    threshold = query_module.sample_threshold(load_settings().sample_percent)
+    assert f"pmod(xxhash64(e.request_id), 10000) < {threshold}" in query
     assert "abs(xxhash64" not in query
 
 
@@ -203,3 +207,25 @@ def test_sample_threshold_scales_with_percent():
     assert query_module.sample_threshold(1) == 100
     assert query_module.sample_threshold(7) == 700
     assert query_module.sample_threshold(100) == 10000
+
+
+def test_sample_threshold_supports_fractional_percent():
+    """Целочисленная арифметика (`int(p) * 10000 // 100`) обнуляла порог на любой
+    доле меньше процента: условие `pmod(...) < 0` не пропускает ни одной строки,
+    и партиция вышла бы пустой молча, без исключения."""
+    query_module = load_module("query")
+    assert query_module.sample_threshold(0.01) == 1
+    assert query_module.sample_threshold(0.07) == 7
+    assert query_module.sample_threshold(0.5) == 50
+    assert query_module.sample_threshold(2.5) == 250
+
+
+def test_sample_threshold_rejects_percent_finer_than_the_bucket_grid():
+    """10000 бакетов дают минимальный шаг 0.01%. Всё, что мельче, округлилось бы
+    до пустой выборки — падать явно лучше, чем писать пустую партицию."""
+    query_module = load_module("query")
+    try:
+        query_module.sample_threshold(0.005)
+    except ValueError:
+        return
+    raise AssertionError("ожидался ValueError на sample_percent мельче 0.01")
