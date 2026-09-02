@@ -13,7 +13,14 @@ from airflow_commons.helpers.oncall import send_oncall_notification
 from kubernetes.client import models as k8s
 
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(ENTITY_DIR, "..", "..", "..", "..", ".."))
+sys.path.insert(0, REPO_ROOT)
+
+from dq.task import build_dq_task
+from feature_stats.task import build_feature_stats_task
+
 CONFIG_PATH = os.path.join(ENTITY_DIR, "config.yaml")
+DQ_PARTITION_DATE = '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
 JOB_DIR = os.path.join(ENTITY_DIR, "job")
 
 with open(CONFIG_PATH, encoding="utf-8") as config_stream:
@@ -104,9 +111,16 @@ def order_completion_category_features_dag() -> None:
         runtime.require_non_empty(frame, partition_date)
         runtime.write_daily_snapshot(table, frame, partition_date)
 
-    materialize(
+    silver_task = materialize(
         '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
     )
+
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
+    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
+
+    # Статистика идёт параллельно DQ и ни на что не влияет: downstream ждёт
+    # таску dq, поэтому падение профилей не блокирует потребителей.
+    silver_task >> [dq_task, stats_task]
 
 
 dag = order_completion_category_features_dag()

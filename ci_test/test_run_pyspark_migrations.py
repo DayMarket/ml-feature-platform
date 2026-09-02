@@ -156,6 +156,10 @@ def main() -> int:
     migrations.run_statement(migrated_spark, statement)
     assert migrated_spark.sql_calls == []
 
+    discovered = migrations.get_layer_migration_targets(Path("."))
+    config_paths = {str(config_path) for config_path, _ in discovered}
+    assert "dq/results/config.yaml" in config_paths
+
     print("PySpark migration runner tests completed successfully")
     return 0
 

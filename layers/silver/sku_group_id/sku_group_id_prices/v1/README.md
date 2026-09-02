@@ -22,3 +22,20 @@ DAG id: `feature-platform.layers.silver.sku_group_id.sku_group_id_prices`.
 - job проверяет наличие новых колонок и применяет missing-column migration перед формированием датафрейма признаков.
 
 DAG запускается ежедневно в `01:00 UTC` и ждет DAG `dbt.models.dwh_trino.sku_eod`, который запускается в `00:00 UTC`.
+
+## DQ
+
+DQ-тесты выполняются таской `dq` внутри этого DAG'а сразу после записи партиции; каталог
+тестов и правила конфигурирования описаны в `dq/README.md`.
+
+Базовый набор: `primary_key_not_null`, `primary_key_unique`, `row_count_min`,
+`row_count_growth`, `freshness`.
+
+Дополнительно: `non_negative` по всем ценовым колонкам и два `expression_is_true`,
+проверяющих упорядоченность `min <= median <= max` отдельно для sell- и full-цен.
+
+`row_count_growth` временно имеет `severity: warn`: двусторонняя проверка роста впервые
+начинает ловить обвалы объёма, которых прежний односторонний dbt-тест не видел. Поднять до
+`error` после двух недель наблюдений.
+
+Downstream ждёт таску `dq` этого DAG'а, а не dbt-DQ-DAG.

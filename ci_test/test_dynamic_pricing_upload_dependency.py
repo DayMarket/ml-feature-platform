@@ -50,6 +50,27 @@ def test_dynamic_pricing_upload_waits_for_price_producer_dag():
                 "feature_platform_dynamic_pricing_sku_group_price_features"
             ),
             "external_dag_id": PRODUCER_DAG_ID,
+            "external_task_id": "dq",
             "execution_delta_minutes": 0,
         }
     ]
+
+
+def test_dynamic_pricing_upload_waits_for_the_dq_task_not_the_whole_dag():
+    """Аплоад публикует цены только после DQ витрины-владельца."""
+    factory = _load_factory()
+
+    for dependency in factory.get_upload_components()[0]["dependencies"]:
+        assert dependency["external_task_id"] == "dq", dependency
+        assert not dependency["external_dag_id"].startswith("dbt.source."), dependency
+
+
+def main() -> int:
+    test_dynamic_pricing_upload_waits_for_price_producer_dag()
+    test_dynamic_pricing_upload_waits_for_the_dq_task_not_the_whole_dag()
+    print("Dynamic pricing upload dependency tests completed successfully")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

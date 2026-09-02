@@ -132,6 +132,13 @@ def validate_feature_group(
             f"{config_path}: feature group {group_name} "
             "source.dependency_task_id must be a non-empty string"
         )
+    elif source.get("external") is not True and dependency_task_id != "dq":
+        # Репозиторная gold-таблица публикуется только после своего DQ. Ожидание
+        # целого DAG'а-владельца пропустило бы упавшую проверку качества.
+        errors.append(
+            f"{config_path}: feature group {group_name} "
+            'source.dependency_task_id must be "dq" for repository-managed sources'
+        )
 
     if source.get("external") is True:
         primary_key = source.get("primary_key")
