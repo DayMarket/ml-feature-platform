@@ -28,7 +28,7 @@ source:
 dag:
   id: feature-platform.layers.silver.product_id.product_search_queries
   group_tag: product-search-queries
-  schedule: "0 3 * * *"
+  schedule: "0 9 * * *"
   start_date: "2026-06-29T00:00:00Z"
   team: search
   owner: team:search
