@@ -137,3 +137,23 @@ def test_spark_factories_fill_memory_overhead():
         factory_content = factory_path.read_text()
         assert '"<driver_memory_overhead>": str(' in factory_content, factory_path
         assert '"<executor_memory_overhead>": str(' in factory_content, factory_path
+
+
+def main() -> int:
+    # Без этого блока `python3 ci_test/test_spark_resources.py` молча завершается
+    # нулём, ничего не проверив: файл написан в стиле pytest, а команды из раздела
+    # «Local Validation Commands» запускают тесты интерпретатором напрямую.
+    test_shared_spark_profiles_define_cpu_requests()
+    test_local_spark_resources_define_cpu_requests()
+    test_spark_application_templates_use_executor_core_request()
+    test_spark_factories_fill_executor_core_request()
+    test_shared_spark_profiles_pin_memory_overhead()
+    test_local_spark_resources_pin_memory_overhead()
+    test_spark_application_templates_pin_memory_overhead()
+    test_spark_factories_fill_memory_overhead()
+    print("Spark resources tests completed successfully")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

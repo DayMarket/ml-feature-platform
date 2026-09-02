@@ -24,54 +24,43 @@ FIELD_VALUE_FACTORS = [
     "product.rating",
 ]
 
+# The index stores one document per sku_id while the feature grain is sku_group_id.
+# Collapse keeps one hit per group; the cardinality aggregation reports how many distinct
+# groups matched, which is the only way to detect truncation by `size`.
+COLLAPSE_FIELD = "sku_group.id"
+TOTAL_AGGREGATION = "total"
 
-def _field_path(field: str) -> str | None:
-    if field.startswith("skus.discovery_filter_values."):
-        return "skus.discovery_filter_values"
-    if field.startswith("skus.filter_values."):
-        return "skus.filter_values"
-    if field.startswith("skus."):
-        return "skus"
-    return None
+# Same sort as the production query, so group ordering is reproducible between runs.
+SORT_ORDER = [
+    {"_score": {"order": "desc"}},
+    {COLLAPSE_FIELD: {"order": "asc"}},
+]
 
 
 def _lexical_clauses(query: str, fields: Sequence[str]) -> list[dict[str, Any]]:
-    grouped: dict[str | None, list[str]] = {}
-    for field in fields:
-        grouped.setdefault(_field_path(field), []).append(field)
+    """Build the lexical part of the query as one flat multi_match.
 
-    clauses = []
-    root_fields = grouped.get(None, [])
-    if root_fields:
-        clauses.append(
-            {
-                "multi_match": {
-                    "query": query,
-                    "fields": root_fields,
-                    "operator": "or",
-                }
-            }
-        )
+    Every configured field is addressed directly: the sku-level index has no nested
+    documents, so no clause may be wrapped into `nested`. Fields carry no boost, and
+    `most_fields` keeps the explain tree a plain sum of per-field scores, so each field
+    contributes its own BM25 value to the output columns.
 
-    for path, path_fields in sorted(grouped.items(), key=lambda item: str(item[0])):
-        if path is None:
-            continue
-        clauses.append(
-            {
-                "nested": {
-                    "path": path,
-                    "score_mode": "sum",
-                    "query": {
-                        "multi_match": {
-                            "query": query,
-                            "fields": path_fields,
-                            "operator": "or",
-                        }
-                    },
-                }
+    `operator: or` is deliberate: production uses `and` with `minimum_should_match: 95%`,
+    which would drop candidates that matched on only part of the query, and those
+    candidates still need feature rows here.
+    """
+    if not fields:
+        return []
+    return [
+        {
+            "multi_match": {
+                "query": query,
+                "fields": list(fields),
+                "type": "most_fields",
+                "operator": "or",
             }
-        )
-    return clauses
+        }
+    ]
 
 
 def build_search_body(
@@ -96,6 +85,11 @@ def build_search_body(
         "size": int(size),
         "explain": True,
         "_source": SOURCE_FIELDS,
+        "collapse": {"field": COLLAPSE_FIELD},
+        "sort": SORT_ORDER,
+        "aggregations": {
+            TOTAL_AGGREGATION: {"cardinality": {"field": COLLAPSE_FIELD}},
+        },
         "query": {
             "function_score": {
                 "query": {

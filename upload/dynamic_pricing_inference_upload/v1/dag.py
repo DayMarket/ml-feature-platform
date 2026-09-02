@@ -70,6 +70,7 @@ def upload_dynamic_pricing_inference_features():
                     ExternalTaskSensor(
                         task_id=dependency["task_id"],
                         external_dag_id=dependency["external_dag_id"],
+                        external_task_id=dependency.get("external_task_id"),
                         allowed_states=["success"],
                         failed_states=["failed"],
                         mode="poke",

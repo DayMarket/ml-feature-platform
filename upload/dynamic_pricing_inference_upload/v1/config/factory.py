@@ -188,18 +188,12 @@ def _source_dependencies(
                     f"wait_for_{component_id}_"
                     f"{_sanitize_task_id(str(source['table']))}"
                 ),
-                "external_dag_id": str(
-                    source.get("dependency_dag_id")
-                    or (
-                        f"dbt.source.trino.ml_feature_platform_{source['schema']}."
-                        f"{source['table']}.dq"
-                    )
-                ),
+                "external_dag_id": str(source["dependency_dag_id"]),
+                # Аплоад ждёт таску dq DAG'а-владельца таблицы, а не весь DAG:
+                # успех записи без прошедшего DQ не даёт права публиковать фичи.
+                "external_task_id": str(source.get("dependency_task_id", "dq")),
                 "execution_delta_minutes": int(
-                    source.get(
-                        "dependency_execution_delta_minutes",
-                        source.get("dq_execution_delta_minutes", 60),
-                    )
+                    source["dependency_execution_delta_minutes"]
                 ),
             }
         )
