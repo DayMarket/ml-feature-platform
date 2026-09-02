@@ -6,7 +6,7 @@ table:
   primary_key: dt,account_id
   meta:
     team: team::recsys
-    create_dbt_pr: true
+    create_dbt_pr: false
     create_maintenance_pr: true
 
 source:
