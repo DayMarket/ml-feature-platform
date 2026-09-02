@@ -208,7 +208,8 @@
         "schema": "gold",
         "table": "feature_platform_search_sku_group_id_query_atc_order_features_v2",
         "dependency_dag_id": "feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features.v2",
-        "dependency_execution_delta_minutes": 60
+        "dependency_execution_delta_minutes": 60,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_query_skg_atc_order_features_v2",
       "features": [
@@ -288,7 +289,8 @@
         "schema": "gold",
         "table": "feature_platform_sku_group_search_conversion_features_v2",
         "dependency_dag_id": "feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features.v2",
-        "dependency_execution_delta_minutes": 60
+        "dependency_execution_delta_minutes": 60,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_skg_conversion_features_v2",
       "features": [
@@ -368,7 +370,8 @@
         "schema": "gold",
         "table": "feature_platform_sku_group_stock_features",
         "dependency_dag_id": "feature-platform.layers.gold.sku_group_id.sku_group_stock_features",
-        "dependency_execution_delta_minutes": 60
+        "dependency_execution_delta_minutes": 60,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_skg_stock_features_v1",
       "features": [
@@ -385,7 +388,8 @@
         "schema": "gold",
         "table": "feature_platform_sku_group_price_features",
         "dependency_dag_id": "feature-platform.layers.gold.sku_group_id.sku_group_price_features",
-        "dependency_execution_delta_minutes": 120
+        "dependency_execution_delta_minutes": 120,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_skg_price_features_v1",
       "features": [
@@ -402,7 +406,8 @@
         "schema": "gold",
         "table": "feature_platform_search_query_atc_features",
         "dependency_dag_id": "feature-platform.layers.gold.query.search_query_atc_features",
-        "dependency_execution_delta_minutes": 60
+        "dependency_execution_delta_minutes": 60,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_query_atc_features_v1",
       "features": [
@@ -431,7 +436,8 @@
         "schema": "gold",
         "table": "feature_platform_sku_group_feedback_base_stats",
         "dependency_dag_id": "feature-platform.layers.gold.sku_group_id.feedback_sku_group_id",
-        "dependency_execution_delta_minutes": 50
+        "dependency_execution_delta_minutes": 50,
+        "dependency_task_id": "dq"
       },
       "name": "fs_search_skg_rating_v1",
       "features": [

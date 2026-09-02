@@ -65,6 +65,18 @@ Trino + Elasticsearch-source пайплайн (Airflow/Python + `pyiceberg`), н
 Утилиты нормализации вынесены в `job/normalize.py`, HTTP-клиент `_analyze` - в `job/analyze.py`,
 Trino-запрос - в `job/query.py`, работа с каталогом и запись - в `job/runtime.py`.
 
+## DQ и feature_stats
+
+У справочника нет колонки даты, а партиционирован он по `version`, поэтому весь партиционный
+аппарат DQ отключён: `dq.scope: table` (предикат партиции вырождается в `TRUE`, и тесты идут по
+всей таблице), `dq.warmup_days: 0`, а `freshness` и `row_count_growth` выключены явно - они
+рендерят SQL по `dq.partition_column` независимо от `scope`. Работают `primary_key_not_null`,
+`primary_key_unique` и `row_count_min` (severity `warn`).
+
+`feature_stats` выключен: `render_stats_query` всегда фильтрует по колонке партиции, которой
+здесь нет. Профилировать тоже нечего - числовых feature-колонок у таблицы нет
+(`query_id`, `query_text`, `version` - STRING, `updated_at` - TIMESTAMP).
+
 ## Владелец / алерты
 
 `table.meta.team = team:search`, alerts `search`, severity P3, webhook `oncall_webhook_search`.

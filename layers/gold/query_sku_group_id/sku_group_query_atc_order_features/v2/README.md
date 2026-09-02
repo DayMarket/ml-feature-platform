@@ -52,3 +52,26 @@ DAG ждет DQ DAG-и silver-источников:
 Полная схема для новых окружений описана в `migrations/create_table.sql`. Существующие окружения получают raw impression-колонки через idempotent migration `20260814_add_raw_impression_columns.sql`.
 
 Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/query_sku_group_id/sku_group_query_atc_order_features/v2/entrypoints/get_sku_group_query_atc_order_features.py`, поэтому отдельный Docker image для этой сущности не собирается.
+
+## DQ
+
+DQ-тесты выполняются таской `dq` внутри этого DAG'а сразу после записи партиции;
+каталог тестов и правила конфигурирования описаны в `dq/README.md`.
+
+Базовый набор: `primary_key_not_null`, `primary_key_unique`, `row_count_min`,
+`row_count_growth`, `freshness`.
+
+Пороги подобраны по истории таблицы в Trino (102 партиции с 2026-03-14):
+
+- `row_count_min: 4500000` — минимум за последние 30 партиций 5.81M строк;
+- `row_count_growth: 0.06` — по 96 парам соседних партиций рост держится в
+  -2.18%..+2.72%, p95 |рост| = 2.09%.
+
+`not_null` покрывает только 26 сырых счётчиков окна: они пишутся всегда. Конверсии,
+доли и отношения окон разрежены by design — у `query_skg_imp2atc_3_to_1` NULL почти
+в 97% строк, и жёсткий `not_null` падал бы на здоровых данных.
+
+`non_negative` покрывает все 69 фичевых колонок: за 4 партиции (около 24M строк)
+отрицательных значений нет ни в одной.
+
+Аплоад ranking-фич ждёт таску `dq` этого DAG'а, а не весь DAG и не dbt-DQ-DAG.

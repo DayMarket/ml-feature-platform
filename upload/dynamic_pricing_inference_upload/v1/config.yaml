@@ -52,7 +52,8 @@
         "timestamp_column": "calculated_at",
         "read_mode": "latest_timestamp",
         "dependency_dag_id": "feature-platform.layers.gold.calculated_at_sku_group_id_promotion_id.dynamic_pricing_sku_group_price_features",
-        "dependency_execution_delta_minutes": 0
+        "dependency_execution_delta_minutes": 0,
+        "dependency_task_id": "dq"
       },
       "name": "fs_dynamic_pricing_skg_promotion_price_features_v1",
       "features": [
@@ -74,7 +75,8 @@
         "timestamp_column": "calculated_at",
         "read_mode": "latest_timestamp",
         "dependency_dag_id": "feature-platform.layers.gold.calculated_at_sku_group_id_promotion_id.dynamic_pricing_sku_group_price_features",
-        "dependency_execution_delta_minutes": 0
+        "dependency_execution_delta_minutes": 0,
+        "dependency_task_id": "dq"
       },
       "name": "fs_dynamic_pricing_skg_promotion_price_inference_v1",
       "features": [

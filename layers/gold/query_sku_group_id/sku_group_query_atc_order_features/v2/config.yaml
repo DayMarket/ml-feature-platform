@@ -22,3 +22,127 @@ alerts:
   team: search
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_search
+
+dq:
+  trino_conn_id: trino_search
+  # Джоб пишет партицию за data_interval_start (partition_start[:10]).
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # По 96 парам соседних партиций рост лежит в -2.18%..+2.72%, p95 |рост| = 2.09%.
+    # 6% — чуть больше 2x к наблюдаемому максимуму.
+    - name: row_count_growth
+      max_growth_ratio: 0.06
+    # Минимум за последние 30 партиций — 5.81M строк. 4.5M ниже всей недавней истории.
+    - name: row_count_min
+      min_rows: 4500000
+    # Только сырые счётчики окна: они пишутся всегда. Конверсии, доли и отношения
+    # окон разрежены by design (до 97% NULL у query_skg_imp2atc_3_to_1), поэтому в
+    # not_null не входят — иначе тест падал бы на здоровых данных.
+    - name: not_null
+      columns:
+        - query_skg_uniq_orders_7
+        - query_skg_uniq_orders_14
+        - query_skg_conv_imp2atc_14
+        - query_skg_conv_imp2order_14
+        - query_skg_uniq_orders_21
+        - query_skg_conv_imp2atc_21
+        - query_skg_conv_imp2order_21
+        - query_skg_uniq_orders_30
+        - query_skg_conv_imp2atc_30
+        - query_skg_conv_imp2order_30
+        - query_skg_uniq_atcs_60
+        - query_skg_uniq_orders_60
+        - query_skg_conv_imp2atc_60
+        - query_skg_conv_imp2order_60
+        - query_skg_uniq_atcs_90
+        - query_skg_uniq_orders_90
+        - query_skg_conv_imp2atc_90
+        - query_skg_conv_imp2order_90
+        - query_skg_uniq_impressions_1
+        - query_skg_uniq_impressions_3
+        - query_skg_uniq_impressions_7
+        - query_skg_uniq_impressions_14
+        - query_skg_uniq_impressions_21
+        - query_skg_uniq_impressions_30
+        - query_skg_uniq_impressions_60
+        - query_skg_uniq_impressions_90
+    # Счётчики, конверсии, доли и отношения окон неотрицательны по контракту;
+    # за 4 партиции (около 24M строк) отрицательных значений нет ни в одной колонке.
+    - name: non_negative
+      columns:
+        - query_skg_smooth_conv_imp2atc_1
+        - query_skg_smooth_conv_imp2order_1
+        - query_skg_atc_frac_all_skg_atc_1
+        - query_skg_orders_frac_all_skg_orders_1
+        - query_skg_smooth_conv_imp2atc_3
+        - query_skg_smooth_conv_imp2order_3
+        - query_skg_atc_frac_all_skg_atc_3
+        - query_skg_orders_frac_all_skg_orders_3
+        - query_skg_uniq_orders_7
+        - query_skg_conv_imp2atc_7
+        - query_skg_smooth_conv_imp2atc_7
+        - query_skg_smooth_conv_imp2order_7
+        - query_skg_atc_frac_all_skg_atc_7
+        - query_skg_orders_frac_all_skg_orders_7
+        - query_skg_conv_imp2order_7
+        - query_skg_uniq_orders_14
+        - query_skg_conv_imp2atc_14
+        - query_skg_smooth_conv_imp2atc_14
+        - query_skg_smooth_conv_imp2order_14
+        - query_skg_atc_frac_all_skg_atc_14
+        - query_skg_orders_frac_all_skg_orders_14
+        - query_skg_conv_imp2order_14
+        - query_skg_uniq_orders_21
+        - query_skg_conv_imp2atc_21
+        - query_skg_smooth_conv_imp2atc_21
+        - query_skg_smooth_conv_imp2order_21
+        - query_skg_atc_frac_all_skg_atc_21
+        - query_skg_orders_frac_all_skg_orders_21
+        - query_skg_conv_imp2order_21
+        - query_skg_uniq_orders_30
+        - query_skg_conv_imp2atc_30
+        - query_skg_smooth_conv_imp2atc_30
+        - query_skg_smooth_conv_imp2order_30
+        - query_skg_atc_frac_all_skg_atc_30
+        - query_skg_orders_frac_all_skg_orders_30
+        - query_skg_conv_imp2order_30
+        - query_skg_imp2atc_3_to_1
+        - query_skg_imp2atc_7_to_3
+        - query_skg_imp2atc_14_to_7
+        - query_skg_imp2atc_30_to_14
+        - query_skg_imp2order_30_to_14
+        - query_skg_uniq_atcs_60
+        - query_skg_uniq_orders_60
+        - query_skg_conv_imp2atc_60
+        - query_skg_smooth_conv_imp2atc_60
+        - query_skg_smooth_conv_imp2order_60
+        - query_skg_atc_frac_all_skg_atc_60
+        - query_skg_orders_frac_all_skg_orders_60
+        - query_skg_conv_imp2order_60
+        - query_skg_uniq_atcs_90
+        - query_skg_uniq_orders_90
+        - query_skg_conv_imp2atc_90
+        - query_skg_smooth_conv_imp2atc_90
+        - query_skg_smooth_conv_imp2order_90
+        - query_skg_atc_frac_all_skg_atc_90
+        - query_skg_orders_frac_all_skg_orders_90
+        - query_skg_conv_imp2order_90
+        - query_skg_imp2atc_60_to_30
+        - query_skg_imp2order_60_to_30
+        - query_skg_imp2atc_90_to_60
+        - query_skg_imp2order_90_to_60
+        - query_skg_uniq_impressions_1
+        - query_skg_uniq_impressions_3
+        - query_skg_uniq_impressions_7
+        - query_skg_uniq_impressions_14
+        - query_skg_uniq_impressions_21
+        - query_skg_uniq_impressions_30
+        - query_skg_uniq_impressions_60
+        - query_skg_uniq_impressions_90
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны смотреть
+  # на одну партицию, иначе профиль посчитан не по тем данным, что проверял DQ.
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  exclude_columns: []

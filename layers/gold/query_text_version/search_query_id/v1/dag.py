@@ -15,8 +15,18 @@ from kubernetes.client import models as k8s
 
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(ENTITY_DIR, "..", "..", "..", "..", ".."))
+sys.path.insert(0, REPO_ROOT)
 CONFIG_PATH = os.path.join(ENTITY_DIR, "config.yaml")
 JOB_DIR = os.path.join(ENTITY_DIR, "job")
+
+from dq.task import build_dq_task
+from feature_stats.task import build_feature_stats_task
+
+# Справочник query_text/version не партиционирован по дате (dq.scope: table в
+# config.yaml). Значение всё равно нужно framework'у как "дата этого запуска" —
+# берём ту же data_interval_start, что уже идёт в materialize() как partition_date_value.
+DQ_PARTITION_DATE = '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+
 SILVER_CONFIG_PATH = os.path.join(
     REPO_ROOT,
     "layers",
@@ -188,6 +198,13 @@ def search_query_id_dag() -> None:
     )
 
     wait_for_silver_install_query >> gold_task
+
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
+    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
+
+    # Статистика идёт параллельно DQ и ни на что не влияет: downstream ждёт
+    # таску dq, поэтому падение профилей не блокирует потребителей.
+    gold_task >> [dq_task, stats_task]
 
 
 dag = search_query_id_dag()
