@@ -25,7 +25,7 @@ from dq.task import build_dq_task
 from feature_stats.task import build_feature_stats_task
 
 DQ_PARTITION_DATE = (
-    '{{ data_interval_end.in_timezone("Asia/Tashkent").subtract(days=1).strftime('
+    '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime('
     '"%Y-%m-%d") }}'
 )
 
@@ -122,8 +122,8 @@ def product_prices_daily_dag() -> None:
         catalog = runtime.get_iceberg_catalog(ref)
 
         table = runtime.preflight_table(catalog, ref)
-        dt = runtime.previous_tashkent_dt(interval_end_value)
-        source_date = dt.date()
+        dt = runtime.calculation_tashkent_dt(interval_end_value)
+        source_date = dt.date() - timedelta(days=1)
         conn_id = config["source"]["trino_conn_id"]
 
         metrics = runtime.query_trino(
@@ -134,7 +134,7 @@ def product_prices_daily_dag() -> None:
 
         frame = runtime.query_trino(
             conn_id,
-            query.build_query(dt),
+            query.build_query(dt, source_date),
         )
         runtime.write_daily_prices(table, frame, dt)
 

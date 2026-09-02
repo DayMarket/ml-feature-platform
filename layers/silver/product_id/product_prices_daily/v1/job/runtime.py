@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -116,12 +116,9 @@ def parse_interval_timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def previous_tashkent_dt(value: str) -> datetime:
+def calculation_tashkent_dt(value: str) -> datetime:
     interval_end = parse_interval_timestamp(value)
-    local_date = (
-        interval_end.astimezone(TASHKENT_TIME_ZONE).date()
-        - timedelta(days=1)
-    )
+    local_date = interval_end.astimezone(TASHKENT_TIME_ZONE).date()
     return datetime.combine(local_date, time.min)
 
 

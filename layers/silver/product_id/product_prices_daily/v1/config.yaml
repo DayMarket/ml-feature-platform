@@ -34,7 +34,7 @@ alerts:
 dq:
   trino_conn_id: trino_recsys
   partition_column: dt
-  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").subtract(days=1).strftime("%Y-%m-%d") }}'
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d") }}'
   tests:
     - name: freshness
       severity: warn
@@ -46,5 +46,5 @@ dq:
 feature_stats:
   trino_conn_id: trino_recsys
   partition_column: dt
-  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").subtract(days=1).strftime("%Y-%m-%d") }}'
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d") }}'
   exclude_columns: []

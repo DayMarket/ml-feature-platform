@@ -15,9 +15,9 @@ def _timestamp_literal(value: datetime) -> str:
     return f"TIMESTAMP '{value.isoformat(sep=' ', timespec='seconds')}'"
 
 
-def build_query(dt: datetime) -> str:
+def build_query(dt: datetime, source_price_date: date) -> str:
     dt_sql = _timestamp_literal(dt)
-    date_sql = _date_literal(dt.date())
+    date_sql = _date_literal(source_price_date)
 
     return f"""
 WITH sku_prices AS (

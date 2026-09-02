@@ -26,11 +26,11 @@ class ProductPricesDailyTimestampTest(unittest.TestCase):
         runtime = load_runtime()
 
         self.assertEqual(
-            runtime.previous_tashkent_dt("2026-06-17T19:00:00Z"),
-            datetime(2026, 6, 17, 0, 0),
+            runtime.calculation_tashkent_dt("2026-06-17T19:00:00Z"),
+            datetime(2026, 6, 18, 0, 0),
         )
         with self.assertRaisesRegex(ValueError, "not-a-timestamp"):
-            runtime.previous_tashkent_dt("not-a-timestamp")
+            runtime.calculation_tashkent_dt("not-a-timestamp")
 
 
 if __name__ == "__main__":
