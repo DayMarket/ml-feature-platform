@@ -29,13 +29,31 @@ CORE_COLUMNS = [
 ]
 
 
+# sku-level индекс переименовал nested-поля `skus.*` в `sku.*`; сам признак тот же,
+# поэтому BM25 по ним пишется в исторические колонки `bm25_skus_*` вместо новых.
+BM25_COLUMN_OVERRIDES = {
+    "sku.title": "bm25_skus_title",
+    "sku.title.synonym": "bm25_skus_title_synonym",
+}
+
+
 def bm25_column(field: str) -> str:
+    override = BM25_COLUMN_OVERRIDES.get(field)
+    if override is not None:
+        return override
     normalized = re.sub(r"[^0-9A-Za-z]+", "_", field).strip("_").lower()
     return f"bm25_{normalized}"
 
 
 def bm25_columns(fields: Sequence[str]) -> list[str]:
-    return [bm25_column(field) for field in fields]
+    columns = [bm25_column(field) for field in fields]
+    duplicates = sorted({name for name in columns if columns.count(name) > 1})
+    if duplicates:
+        raise ValueError(
+            "Configured Elasticsearch fields map to the same BM25 column, so one would "
+            f"overwrite the other: {duplicates}"
+        )
+    return columns
 
 
 def output_columns(fields: Sequence[str]) -> list[str]:

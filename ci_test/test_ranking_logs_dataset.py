@@ -131,7 +131,7 @@ def test_resolved_dq_settings_are_all_warn_and_growth_is_disabled():
 def test_dataset_parameters_are_declared_in_config():
     dataset = load_config()["dataset"]
     assert dataset["model_name"] == "search_unified_model_v9_cold_start"
-    assert dataset["sample_percent"] == 1
+    assert dataset["sample_percent"] == 0.01
 
 
 def test_ddl_columns_match_the_agreed_order():
