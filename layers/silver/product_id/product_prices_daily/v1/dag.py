@@ -16,6 +16,18 @@ from kubernetes.client import models as k8s
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
 CONFIG_PATH = os.path.join(ENTITY_DIR, "config.yaml")
 JOB_DIR = os.path.join(ENTITY_DIR, "job")
+REPO_ROOT = os.path.abspath(
+    os.path.join(ENTITY_DIR, "..", "..", "..", "..", "..")
+)
+sys.path.insert(0, REPO_ROOT)
+
+from dq.task import build_dq_task
+from feature_stats.task import build_feature_stats_task
+
+DQ_PARTITION_DATE = (
+    '{{ data_interval_end.in_timezone("Asia/Tashkent").subtract(days=1).strftime('
+    '"%Y-%m-%d") }}'
+)
 
 with open(CONFIG_PATH, encoding="utf-8") as config_stream:
     CONFIG = yaml.safe_load(config_stream)
@@ -130,7 +142,12 @@ def product_prices_daily_dag() -> None:
         '{{ data_interval_end.in_timezone("UTC").isoformat() }}'
     )
     materialize_prices = materialize(interval_end_value)
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
+    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(
+        DQ_PARTITION_DATE
+    )
     wait_for_daily_sku_quantity_eod_dq >> materialize_prices
+    materialize_prices >> [dq_task, stats_task]
 
 
 dag = product_prices_daily_dag()
