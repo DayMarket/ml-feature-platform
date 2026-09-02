@@ -16,7 +16,7 @@ source:
   min_result_query_installs: 2
   elasticsearch:
     conn_id: elasticsearch_search
-    endpoint_path: /search-sku-index-tag-v0.0.5/_search
+    endpoint_path: /search-sku-index/_search
     size: 2000
     parallel_jobs: 24
     chunk_size: 2000
