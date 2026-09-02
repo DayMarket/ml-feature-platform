@@ -61,6 +61,10 @@ Iceberg использует `days(calculated_at)`. Запись выполня�
 
 Подтверждённый upstream DQ DAG id внешней clickstream-таблицы неизвестен, поэтому отдельный sensor не добавлен.
 
-CI создаёт стандартные dbt DQ-тесты: уникальность primary key и `not_null` для всех его колонок. `n_events > 0`, допустимый `event_type`, временные границы, положительные ID и границы `last_received_at` обеспечиваются самой трансформацией.
+После `MERGE` параллельно запускаются внутренние `dq` и `feature_stats` для конкретного `calculated_at`. DQ блокирует downstream при NULL или дублях primary key; freshness, минимальный объём и изменение объёма во время первичной раскатки имеют severity `warn`. `n_events > 0`, допустимый `event_type`, временные границы, положительные ID и границы `last_received_at` обеспечиваются самой трансформацией.
+
+`feature_stats` считает распределение `n_events` одним полным Trino-сканом записанного 12-часового среза на каждый запуск, то есть два скана в сутки.
+
+`table.meta.create_dbt_pr: false`: CI не создаёт для таблицы новый DQ-PR в `dbt-trino`; Iceberg maintenance остаётся включённым.
 
 Ranking upload для Silver-контракта не настраивается.
