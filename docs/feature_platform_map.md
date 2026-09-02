@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **38**. Внутренних зависимостей: **10**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **25**. P4: **5**.
+Всего DAG: **40**. Внутренних зависимостей: **10**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **27**. P4: **5**.
 
-Таска `dq`: **36** из **38**. Таска `feature_stats`: **36** из **38** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
+Таска `dq`: **37** из **40**. Таска `feature_stats`: **37** из **40** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
 
 Severity policy:
 
@@ -201,12 +201,16 @@ UTC 02:00 · P2 · airflow-python`"]
 UTC 03:00 · P2 · airflow-python`"]
     d14["`backfill
 UTC 03:00 · P2 · airflow-python`"]
-    d15["`product_search_queries
+    d15["`product_metadata
+UTC 19:00 · P3 · small`"]
+    d16["`product_search_queries
 UTC 09:00 · P4 · search_product`"]
-    d16["`search_query_sku_group_es_features
+    d17["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
-    d17["`sku_group_orders
+    d18["`sku_group_orders
 UTC 01:00 · P3 · large`"]
+    d19["`sku_daily_dynamic_prices
+UTC 01:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
     x2["feedback_sku_group_id"]
@@ -226,8 +230,8 @@ UTC 01:00 · P3 · large`"]
     x1 -.->|"dbt DQ (legacy) Δ2h"| d9
     x0 -.->|"dbt DQ (legacy) Δ1h"| d10
     d5 -.->|"dbt DQ (legacy) Δ3h"| d11
-    x3 -->|"sensor"| d16
-    class d12,d13,d14,d15,d16,d17 silver
+    x3 -->|"sensor"| d17
+    class d12,d13,d14,d15,d16,d17,d18,d19 silver
     class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold
     class d0,d1 datasets
     class x0,x1,x2,x3 external
@@ -251,13 +255,14 @@ gantt
     section Backfill
     03h00 · 1 DAG · airflow-python×1 :milestone, s1_0180, 03:00, 0m
     section Other
-    01h00 · 1 DAG · large×1 :milestone, s2_0060, 01:00, 0m
+    01h00 · 2 DAG · large×1 · airflow-python×1 :milestone, s2_0060, 01:00, 0m
     02h00 · 2 DAG · large×1 · airflow-python×1 :milestone, s2_0120, 02:00, 0m
     03h00 · 3 DAG · large×1 · airflow-python×2 :milestone, s2_0180, 03:00, 0m
     04h00 · 1 DAG · large×1 :milestone, s2_0240, 04:00, 0m
     05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
     06h00 · 5 DAG · small×1 · airflow-python×3 · search_dataset×1 :milestone, s2_0360, 06:00, 0m
     09h00 · 1 DAG · search_product×1 :milestone, s2_0540, 09:00, 0m
+    19h00 · 1 DAG · small×1 :milestone, s2_1140, 19:00, 0m
 ```
 
 ## 4. DQ, feature_stats и статус миграции сенсоров
@@ -291,9 +296,13 @@ flowchart LR
     classDef profile fill:#dcfce7,stroke:#16a34a,color:#052e16
 ```
 
-Таска `dq` есть во всех DAG'ах энтити.
+DAG энтити без таски `dq`:
 
-Таска `feature_stats` есть во всех DAG'ах энтити.
+- `feature-platform.layers.silver.sku_id.sku_daily_dynamic_prices`
+
+DAG энтити без таски `feature_stats`:
+
+- `feature-platform.layers.silver.sku_id.sku_daily_dynamic_prices`
 
 Сенсоров на устаревшем dbt-DQ-контракте: **24**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
 
