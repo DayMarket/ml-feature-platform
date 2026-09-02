@@ -15,7 +15,7 @@ table:
   primary_key: calculated_at,product_id
   meta:
     team: team::recsys
-    create_dbt_pr: true
+    create_dbt_pr: false
     create_maintenance_pr: true
 
 source:
@@ -35,3 +35,25 @@ alerts:
   team: recsys
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_recsys
+
+dq:
+  trino_conn_id: trino_recsys
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 12
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
+  tests:
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_recsys
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 12
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
+  exclude_columns: []

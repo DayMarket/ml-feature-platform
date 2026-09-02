@@ -14,9 +14,21 @@ from airflow.timetables.interval import CronDataIntervalTimetable
 from airflow_commons.helpers.oncall import send_oncall_notification
 
 DAG_DIR = os.path.abspath(os.path.dirname(__file__))
+REPO_ROOT = os.path.abspath(
+    os.path.join(DAG_DIR, "..", "..", "..", "..", "..")
+)
+CONFIG_PATH = os.path.join(DAG_DIR, "config.yaml")
+sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, DAG_DIR)
 
 from config.factory import get_dag_settings, get_deployment
+from dq.task import build_dq_task
+from feature_stats.task import build_feature_stats_task
+
+DQ_PARTITION_TIMESTAMP = (
+    '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime('
+    '"%Y-%m-%d %H:%M:%S") }}'
+)
 
 dag_settings = get_dag_settings()
 
@@ -57,13 +69,20 @@ default_args = {
     dag_id=dag_settings["dag_id"],
 )
 def collect_silver_product_feedback_counts_12h() -> None:
-    SparkKubernetesOperator(
+    materialize_task = SparkKubernetesOperator(
         execution_timeout=timedelta(hours=4),
         task_id="getting_product_feedback_counts_12h",
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(),
         kubernetes_conn_id="spark_k8s",
     )
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(
+        DQ_PARTITION_TIMESTAMP
+    )
+    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(
+        DQ_PARTITION_TIMESTAMP
+    )
+    materialize_task >> [dq_task, stats_task]
 
 
 dag = collect_silver_product_feedback_counts_12h()
