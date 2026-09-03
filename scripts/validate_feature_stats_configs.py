@@ -76,6 +76,14 @@ def validate_config(config_path: Path) -> list[str]:
 
     known_columns = migration_columns(config_path.parent)
     if known_columns:
+        # render_stats_query фильтрует по partition_column в каждом запуске, но
+        # в exclude_columns она не перечислена и проверкой ниже не покрывается.
+        if settings.partition_column.lower() not in known_columns:
+            problems.append(
+                f"{config_path}: feature_stats.partition_column — {settings.partition_column!r}, "
+                "но такой колонки нет в миграциях энтити; render_stats_query фильтрует по ней "
+                "в каждом запуске"
+            )
         for column in settings.exclude_columns:
             if column.lower() not in known_columns:
                 problems.append(

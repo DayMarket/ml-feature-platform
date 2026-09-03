@@ -74,6 +74,12 @@ BASE_TESTS = (
     "freshness",
 )
 
+# Тесты, которым колонка партиции нужна независимо от scope: они рендерят
+# partition_expression() напрямую (dq/tests.py:_render_freshness,
+# _render_row_count_growth), а не scope_predicate(), который при scope: table
+# вырождается в TRUE.
+PARTITION_DEPENDENT_TESTS = ("row_count_growth", "freshness")
+
 DIRECTIONS = ("both", "up", "down")
 
 # Гранулярность партиции. "date" — дневная партиция по колонке типа DATE/TIMESTAMP,
@@ -182,6 +188,10 @@ def load_dq_settings(config: dict[str, Any]) -> DqSettings:
                 "дефолтный шаблон отдаёт дату, а снапшоту нужен полный timestamp записи"
             )
 
+    tests = _build_specs(raw.get("tests") or [])
+    if scope == "table":
+        _reject_partition_machinery(tests, warmup_days)
+
     return DqSettings(
         enabled=_parse_bool(raw.get("enabled", True), "dq.enabled"),
         trino_conn_id=str(raw.get("trino_conn_id", "trino_search")),
@@ -192,10 +202,32 @@ def load_dq_settings(config: dict[str, Any]) -> DqSettings:
         query_timeout_seconds=int(raw.get("query_timeout_seconds", 600)),
         warmup_days=warmup_days,
         active_from=active_from,
-        tests=_build_specs(raw.get("tests") or []),
+        tests=tests,
         partition_granularity=granularity,
         snapshot_interval_hours=snapshot_interval_hours,
     )
+
+
+def _reject_partition_machinery(tests: tuple[TestSpec, ...], warmup_days: int) -> None:
+    """`scope: table` объявляет, что колонки партиции у таблицы нет.
+
+    Всё, что рендерит SQL по `dq.partition_column`, на такой таблице падает на
+    COLUMN_NOT_FOUND в первом же проде. Требуем отключить это в конфиге явно, а не
+    надеяться, что автор конфига вспомнит про каждое место.
+    """
+    enabled = [spec.name for spec in tests if spec.name in PARTITION_DEPENDENT_TESTS]
+    if enabled:
+        raise DqConfigError(
+            f"При dq.scope: table у таблицы нет колонки партиции, а тесты "
+            f"{', '.join(enabled)} всегда рендерят SQL по dq.partition_column. "
+            "Отключите их явно: tests: [{name: <тест>, enabled: false}]"
+        )
+    if warmup_days:
+        raise DqConfigError(
+            "dq.warmup_days считает партиции до текущей и при dq.scope: table обращается "
+            "к несуществующей колонке партиции. Поставьте dq.warmup_days: 0 — у "
+            "беспартиционной таблицы нет и понятия «прогретости» в днях."
+        )
 
 
 def _build_specs(raw_tests: Any) -> tuple[TestSpec, ...]:

@@ -1,4 +1,5 @@
 import sys
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -149,6 +150,36 @@ def test_missing_table_raises_diagnostic_error() -> None:
         raise AssertionError("preflight must fail when the table is missing")
 
 
+def test_table_scope_never_counts_partitions() -> None:
+    # Защита в глубину к запрету из load_dq_settings: RenderContext может быть
+    # собран в обход конфига, а COUNT(DISTINCT ...) по колонке партиции на
+    # беспартиционной таблице роняет весь ран на COLUMN_NOT_FOUND.
+    settings = load_dq_settings(
+        {
+            "table": {
+                "catalog": "iceberg",
+                "schema": "gold",
+                "name": "feature_platform_search_query_id",
+                "primary_key": "query_text,version",
+            },
+            "dq": {
+                "scope": "table",
+                "warmup_days": 0,
+                "tests": [
+                    {"name": "freshness", "enabled": False},
+                    {"name": "row_count_growth", "enabled": False},
+                ],
+            },
+        }
+    )
+    settings = replace(settings, warmup_days=7)
+    ctx = RenderContext(**{**CTX.__dict__, "scope": "table"})
+    query = FakeQuery([("information_schema.tables", [(1,)])])
+    outcome = run_dq(settings, ctx, query)
+    assert outcome.warmup_active is False
+    assert not any("COUNT(DISTINCT" in sql for sql in query.executed)
+
+
 def main() -> int:
     test_all_passing_run()
     test_failed_test_carries_sample_and_severity()
@@ -158,6 +189,7 @@ def main() -> int:
     test_active_from_skips_whole_run()
     test_preflight_query_is_catalog_qualified()
     test_missing_table_raises_diagnostic_error()
+    test_table_scope_never_counts_partitions()
     print("DQ runner tests completed successfully")
     return 0
 

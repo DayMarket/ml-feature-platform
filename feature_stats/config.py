@@ -135,12 +135,25 @@ def load_feature_stats_settings(config: dict[str, Any]) -> FeatureStatsSettings:
                 "null означает один запрос на всю таблицу"
             )
 
+    enabled = _parse_bool(raw.get("enabled", True), "feature_stats.enabled")
+    dq_block = config.get("dq")
+    dq_scope = str(dq_block.get("scope", "partition")) if isinstance(dq_block, dict) else "partition"
+    if enabled and dq_scope == "table":
+        # render_stats_query всегда фильтрует по partition_column, а dq.scope: table
+        # объявляет, что колонки партиции у таблицы нет. Профиль по всей таблице —
+        # не замена: полный скан на каждый DAG-ран не окупается (см. feature_stats/task.py).
+        raise FeatureStatsConfigError(
+            "dq.scope: table означает, что у таблицы нет колонки партиции, а feature_stats "
+            "всегда считает профиль по одной партиции. Поставьте feature_stats.enabled: false "
+            "и объясните причину в README энтити."
+        )
+
     exclude_raw = raw.get("exclude_columns") or []
     if not isinstance(exclude_raw, list):
         raise FeatureStatsConfigError("feature_stats.exclude_columns должен быть списком")
 
     return FeatureStatsSettings(
-        enabled=_parse_bool(raw.get("enabled", True), "feature_stats.enabled"),
+        enabled=enabled,
         trino_conn_id=str(raw.get("trino_conn_id", "trino_search")),
         partition_column=str(raw.get("partition_column", "date")),
         partition_date_template=str(

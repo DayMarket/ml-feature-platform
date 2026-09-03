@@ -152,6 +152,36 @@ def test_stats_context_holds_render_context_and_partition_ts() -> None:
     assert ctx.partition_ts.tzinfo is timezone.utc
 
 
+def test_enabled_stats_on_a_partitionless_table_are_rejected() -> None:
+    # dq.scope: table объявляет таблицу беспартиционной, а render_stats_query
+    # всегда фильтрует по partition_column — в проде это COLUMN_NOT_FOUND.
+    try:
+        load_feature_stats_settings(
+            {
+                "table": {"catalog": "iceberg", "schema": "gold", "name": "t", "primary_key": "query_text,version"},
+                "dq": {"scope": "table"},
+                "feature_stats": {"exclude_columns": []},
+            }
+        )
+    except FeatureStatsConfigError as error:
+        message = str(error)
+        assert "scope" in message
+        assert "enabled: false" in message
+    else:
+        raise AssertionError("ожидали FeatureStatsConfigError для scope: table")
+
+
+def test_disabled_stats_on_a_partitionless_table_are_accepted() -> None:
+    settings = load_feature_stats_settings(
+        {
+            "table": {"catalog": "iceberg", "schema": "gold", "name": "t", "primary_key": "query_text,version"},
+            "dq": {"scope": "table"},
+            "feature_stats": {"enabled": False},
+        }
+    )
+    assert settings.enabled is False
+
+
 def main() -> int:
     test_defaults_when_block_is_absent()
     test_percentile_sets_stay_aligned()
@@ -164,6 +194,8 @@ def main() -> int:
     test_columns_per_query_must_be_positive()
     test_columns_per_query_rejects_booleans()
     test_stats_context_holds_render_context_and_partition_ts()
+    test_enabled_stats_on_a_partitionless_table_are_rejected()
+    test_disabled_stats_on_a_partitionless_table_are_accepted()
     print("Feature stats config tests completed successfully")
     return 0
 

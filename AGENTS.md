@@ -44,7 +44,7 @@ Owner metadata:
 - A dataset DAG that reads repository-managed layer or dataset tables must declare a sensor dependency on the `dq` task of every source table's owning DAG. A training dataset must not bypass DQ sensors just because it is offline-only.
 - When adding or changing DAG schedules, `start_date`, backfill ranges, or partition intervals, ask the user to confirm the launch time in UTC and propose UTC times by default. Keep Airflow `start_date`/`end_date` timezone-aware UTC, and generate job partition boundaries from Airflow `data_interval_start`/`data_interval_end` converted to UTC.
 - When adding or changing Spark layer or dataset DAGs, ask the user which Spark resource profile to use or what driver/executor resources are expected. Use `config/spark/resources.yaml` profiles and reference them from the entity `config.yaml`; add a new named profile only after the resource contract is confirmed.
-- Spark memory overhead must always be pinned explicitly. Every resource profile and local `config/resources.yaml` must define `driver_memory_overhead` and `executor_memory_overhead`, and every SparkApplication template must render them as `memoryOverhead`. Without an explicit value, Spark on Kubernetes applies the non-JVM default `spark.kubernetes.memoryOverheadFactor` of 0.4, so a 16g executor silently requests ~22.4g. Total pod memory is `memory + memoryOverhead`; size the overhead for Python worker processes, not to zero. `ci_test/test_spark_resources.py` enforces this.
+- Spark memory overhead must always be pinned explicitly. Every resource profile and local `config/resources.yaml` must define `driver_memory_overhead` and `executor_memory_overhead`, and every SparkApplication template must render them as `memoryOverhead`. Without an explicit value, Spark on Kubernetes applies the non-JVM default `spark.kubernetes.memoryOverheadFactor` of 0.4, so a 16g executor silently requests ~22.4g. Total pod memory is `memory + memoryOverhead`; size the overhead for Python worker processes, not to zero. `ci_test/test_spark_resources.py` enforces this — including that every `config/factory.py` fills the `<driver_memory_overhead>`/`<executor_memory_overhead>` placeholders: profile and factory are two halves of one contract, and a profile without the keys makes the DAG fail to import with `KeyError`, while a factory that skips them renders the placeholder into the SparkApplication verbatim.
 - New Spark layer and dataset jobs should use the shared Spark image plus `git-sync`. Add a custom Spark image only when runtime dependencies cannot be delivered by `git-sync`.
 - Trino-source DAGs have two supported Airflow connections: `trino_search` for search-domain workloads and `trino_recsys` for recommendation-system workloads. Propose the connection that matches the source and workload context; if the context does not determine it unambiguously, present both options and use the user's final choice. Do not silently lock in a connection when the contract has not been confirmed.
 - For ClickHouse-source DAGs, always ask the user for the Airflow connection id before scaffolding or editing files, because ClickHouse access is RBAC-sensitive. Do not infer the connection from nearby DAGs.
@@ -71,6 +71,7 @@ Use repository files as the source of truth. Do not duplicate their contents in 
 - Spark runtime template and resource profiles: `config/spark/layer_spark_application.yaml`, `config/spark/resources.yaml`, and each entity's `config.yaml` `spark` or `spark_applications` block. These are Spark-specific and should not be forced onto Trino/ClickHouse-source Airflow/Python jobs.
 - Ranking-service publication: `upload/features_service_upload/v1/config.yaml` and `upload/features_service_upload/v1/ranking_service_input.yaml`.
 - CI and generated downstream sync behavior: `.drone.yaml`, `scripts/`, and `ci_test/`.
+- Сводная карта DAG-зависимостей, расписаний и статуса миграции DQ-сенсоров: `docs/feature_platform_map.md`. Файл генерируется из `dag.py`, `config.yaml` и upload-конфигов и охраняется CI, поэтому его нельзя править руками — только перегенерировать. Источником правды остаются сами файлы энтити: карта показывает объявленные зависимости, а не фактические времена прогонов в Airflow.
 
 Useful discovery commands:
 
@@ -117,7 +118,7 @@ Use this workflow:
 - Classify the requested output: reusable pre-aggregate goes to `silver`; final model feature goes to `gold`; offline training sample goes to `datasets`; downstream publication goes to `upload`.
 - Run the duplicate feature or dataset check before scaffolding anything.
 - Present meaningful implementation options when more than one is reasonable, especially add-column vs new-table, internal table vs ranking upload, generated vs completed orders, and whether `{{ ds }}` is included.
-- Clarify entity grain, source tables, source engine when unclear, source connection, join keys, attribution/filter spaces, date boundaries, lookbacks, DAG launch time in UTC, generated/completed/returned semantics, null/zero denominator behavior, Iceberg write mode, upstream DQ/freshness contract, ranking publication or offline-only dataset status, ownership, alerts, and on-call settings.
+- Clarify entity grain, output `table.name`, `dag.group_tag` membership, source tables, source engine when unclear, source connection, join keys, attribution/filter spaces, date boundaries, lookbacks, DAG launch time in UTC, generated/completed/returned semantics, null/zero denominator behavior, Iceberg write mode, upstream DQ/freshness contract, ranking publication or offline-only dataset status, ownership, alerts, and on-call settings.
 - For Spark jobs, clarify the Spark resource profile or driver/executor resource expectations. For Trino/ClickHouse-source jobs, clarify the Airflow/Python runtime image and whether third-party libraries require a custom image.
 - For new entities, ownership and alerting are never safely inferred. Explicitly confirm `table.meta.team`, `dag.team`, `alerts.team`, alert severity, and on-call webhook before scaffolding configs or DAGs.
 - If a feature depends on source tables, source values, or business semantics that are not explicit in the current context, ask whether to use MCP tools such as Trino or ClickHouse or whether the user will provide the contract. Do this even when a plausible table or column was found in the repository.
@@ -131,6 +132,7 @@ Use this workflow:
 - In every changed entity README, include an explicit orchestration section with the exact DAG id and an explicit output section with the fully qualified table name. Do not make readers infer either value from a path or prose.
 - Add DQ sensor dependencies on DQ DAGs for feature-platform source tables. For external upstream tables, use the producing team's documented DAG/DQ contract.
 - Всякий раз, когда работа заводит новый DAG энтити или меняет существующий, явно скажи пользователю, какие штатные шаги в этом DAG'е окажутся: базовый набор DQ таской `dq` и профили признаков таской `feature_stats`. Для `feature_stats` назови и цену — ежедневный скан партиции в общем Trino. Оба шага добавляются по умолчанию; отказ от любого из них — осознанное решение пользователя, а не молчаливый пропуск.
+- Там же, где проговариваются штатные шаги DAG'а, проговаривай downstream-эффект мержа новой таблицы в `master`: при дефолтных `table.meta.create_dbt_pr` и `table.meta.create_maintenance_pr` (оба `true`, когда ключей нет) master-side CI сам создаст PR в `DayMarket/dbt-trino` и в `DayMarket/pyspark-etl` Iceberg maintenance. Это такой же внешний побочный эффект, как ежедневный скан `feature_stats`, и пользователь должен узнать о нём до мержа, а не из уведомления о PR в чужой репозиторий. Выставление любого из флагов в `false` — осознанное решение пользователя, а не дефолт агента.
 - For new Airflow/Spark jobs, pass interval boundaries with `{{ data_interval_start }}` and `{{ data_interval_end }}`-based templates instead of `{{ ds }}` and `{{ next_ds }}`. Convert them to the business timezone explicitly when the feature contract is timezone-specific.
 - When a requested DAG schedule is expressed in a business timezone, confirm or derive the actual Airflow cron timezone before writing `schedule_interval`; if Airflow schedules in UTC, convert the cron expression explicitly and document the business-time equivalent in the README or DAG comments.
 - When deriving a partition date from an interval argument in Python, parse the timestamp explicitly through a tested helper instead of using string slicing such as `partition_start[:10]` or a single-format `datetime.strptime(partition_start, "%Y-%m-%d %H:%M:%S")`. Reuse an existing entity-local helper when available; otherwise add one beside the job code. New parsers must accept Airflow/Pendulum ISO timestamps with and without timezone (`2026-06-17T00:00:00`, `2026-06-17T00:00:00+00:00`, `2026-06-17T00:00:00Z`, `2026-06-17 00:00:00+00:00`) as well as the shared-template format `YYYY-MM-DD HH:MM:SS`, and should raise a clear error that includes the unsupported value. Add or update a small regression test for these accepted formats whenever adding or touching partition-date parsing.
@@ -167,7 +169,7 @@ Final response checklist for new/changed tables:
 Use this workflow for training sample tables under `datasets/`:
 
 - Before creating any files, ask the user to explicitly confirm `team`, `domain`, and `version`. The required path is `datasets/<team>/<domain>/<version>/`; do not infer these values from source tables, ownership metadata, branch names, or nearby directories.
-- Confirm the dataset purpose, training/evaluation consumer, entity grain, primary key, label definition, sample inclusion/exclusion rules, leakage boundary, positive/negative sampling logic, source tables, source engine, source connection, date boundaries, lookbacks, freshness/DQ expectations, write mode, launch time in UTC, ownership, alerts, and on-call settings.
+- Confirm the dataset purpose, training/evaluation consumer, entity grain, output `table.name`, `dag.group_tag` membership, primary key, label definition, sample inclusion/exclusion rules, leakage boundary, positive/negative sampling logic, source tables, source engine, source connection, date boundaries, lookbacks, freshness/DQ expectations, write mode, launch time in UTC, ownership, alerts, and on-call settings.
 - Confirm whether the dataset is a one-time/backfill artifact or a scheduled repository-managed table. Scheduled datasets should include `date` or another explicit snapshot/partition key in `table.primary_key` unless the user approves and documents a deliberate exception.
 - Dataset outputs are repository-managed Iceberg tables and must use `table.catalog: iceberg`. Keep `config.yaml` as the single source of truth for `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`.
 - Dataset tables must not be uploaded to ranking-service, inference services, or online serving systems from this repository. Do not edit `upload/features_service_upload/v1/config.yaml` or `upload/features_service_upload/v1/ranking_service_input.yaml` for a dataset output.
@@ -267,6 +269,7 @@ Configuration constraints:
 - Existing CI parsers read `config.yaml` with a simple nested key parser. Keep layer and dataset configs simple: nested mappings are fine, but avoid YAML anchors, complex lists, and non-obvious syntax unless the CI parser is updated.
 - Local DAG factories that read `config.yaml` with a simple parser must not pass quoted scalar values through to Airflow or Spark. Either keep scalar config values unquoted when the syntax is safe, or strip matching surrounding quotes in the factory before using values such as `dag.schedule`, `dag.start_date`, table identifiers, or resource paths. Test parsed values when adding a new local factory; a value like `"2026-06-09T00:00:00Z"` must reach `pendulum.parse` as `2026-06-09T00:00:00Z`.
 - Required table fields are `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`.
+- `table.name` of every repository-managed output uses the `feature_platform_` prefix, for example `feature_platform_buyout_account_history_features`. Every current layer, dataset, and DQ/stats result table follows it, and the prefix is how repository-owned tables are recognized in the warehouse next to upstream DE tables. The current dataset table additionally encodes the dataset and its version (`feature_platform_dataset_search_ranking_v1`), because dataset versions are a path-level contract. No CI script checks the prefix, so ask the user for the exact `table.name` before scaffolding instead of deriving it from the entity directory name, and do not drop the prefix because a source or a neighbouring upstream table does not use one.
 - Repository-managed output tables must keep `table.catalog: iceberg`. Current dbt source sync reads `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`; current Iceberg maintenance sync reads Iceberg `table.schema` and `table.name`. Additional source/runtime config must not break these simple parsers.
 - Primary keys should include `date` for daily/hourly feature and dataset tables unless there is a deliberate exception documented in README and code.
 
@@ -318,7 +321,7 @@ Use this workflow only after confirming that the default Spark image or default 
 - Каждая репозиторно-управляемая энтити получает DQ-тесты внутри собственного DAG'а, таской `dq`.
 - Базовый набор (`primary_key_not_null`, `primary_key_unique`, `row_count_min`, `row_count_growth`, `freshness`) работает всегда, даже без блока `dq:` в конфиге.
 - Дополнительные тесты объявляются именами в `dq.tests`; полный каталог — в `dq/README.md`.
-- Downstream-DAG'и ждут таску `dq` DAG'а-владельца таблицы: `external_dag_id=<dag id владельца>`, `external_task_id="dq"`. Ссылки на `dbt.source.trino.ml_feature_platform_*.dq` — устаревший контракт, они убираются на фазе 3 миграции.
+- Downstream-DAG'и ждут таску `dq` DAG'а-владельца таблицы: `external_dag_id=<dag id владельца>`, `external_task_id="dq"`. Ссылки на `dbt.source.trino.ml_feature_platform_*.dq` — устаревший контракт, они убираются на фазе 3 миграции. Актуальный список оставшихся легаси-сенсоров — в разделе `## 4` файла `docs/feature_platform_map.md`; в графах карты такие рёбра нарисованы пунктиром.
 - Результаты прогонов пишутся в `iceberg.silver.feature_platform_dq_results`; аналитика строится в Superset поверх неё.
 - Пороги `row_count_min` и `row_count_growth` подбираются по реальной истории таблицы в Trino, а не назначаются на глаз, и каждый порог сопровождается комментарием в `config.yaml` с наблюдённым диапазоном. То же для `not_null`: колонка попадает в тест, только если история показывает, что она действительно плотная — иначе используется `null_share_below` с порогом выше нормальной доли NULL.
 - Любой SQL, который DQ-таска шлёт в Trino, адресует таблицы полным именем `"<trino-catalog>".<schema>.<table>`, включая служебные запросы к `information_schema`. Дефолтный каталог соединений `trino_*` — `hive`, поэтому неквалифицированное имя падает с `CATALOG_NOT_FOUND` ещё до первого теста. Маппинг каталога берётся из `ci_config.yaml` через `dq.config.trino_catalog_alias`, готовая ссылка на таблицу — `dq.tests.table_ref`.
@@ -327,6 +330,29 @@ Use this workflow only after confirming that the default Spark image or default 
 - Литералы времени в DQ-SQL всегда пишутся с зоной — `TIMESTAMP '2026-08-22 06:00:00 UTC'`. Сессия Trino живёт не в UTC (сейчас `Europe/Moscow`), а снапшотные колонки — `timestamp with time zone`, поэтому голый `TIMESTAMP '...'` коэрсится по таймзоне сессии и молча указывает на соседний снапшот. Ошибка не видна ни по падению запроса, ни по пустому результату: возвращается похожее, но чужое число строк.
 - Весь DQ-SQL — и рендереры в `dq/tests.py`, и выражения из `dq.tests[].expression` в конфигах энтити — пишется на диалекте Trino, а не Postgres. Предикатов `IS [NOT] TRUE`/`IS [NOT] FALSE` в Trino нет: «не вычислилось в TRUE» выражается через `IS DISTINCT FROM TRUE`. Локально диалект не исполняется ничем, поэтому новый рендерер обязан получить проверку отрендеренной строки в `ci_test/test_dq_sql.py`, а нетривиальное выражение из конфига — прогон на реальном Trino (MCP или первый запуск DAG'а) до объявления работы законченной.
 - For upstream DE-owned tables, use the source DAG/DQ contract owned by the producing team.
+- Таблица без колонки партиции объявляет `dq.scope: table` и обязана выключить весь партиционный аппарат разом: `dq.warmup_days: 0`, `freshness: {enabled: false}`, `row_count_growth: {enabled: false}` и `feature_stats.enabled: false`. `scope` гасит только предикат партиции (`dq/tests.py:scope_predicate`); warmup (`dq/runner.py:_partition_history_count`), freshness, row_count_growth и `render_stats_query` рендерят SQL по `dq.partition_column` независимо от него, и на такой таблице падают в Trino с `COLUMN_NOT_FOUND` — таска валится с вызовом дежурного раньше, чем появляется результат теста. Правило механическое: `load_dq_settings` и `load_feature_stats_settings` не собирают такой конфиг, `ci_test/test_dq_config.py` и `ci_test/test_feature_stats_config.py` это фиксируют.
+- `scripts/validate_dq_configs.py` рендерит SQL каждого включённого теста (и warmup) и сверяет с `migrations/*.sql` каждый идентификатор, который в этот SQL попал: колонки тестов, `table.primary_key` из проекции sample и `dq.partition_column` из предиката партиции. `scripts/validate_feature_stats_configs.py` так же проверяет `feature_stats.partition_column`. Не покрыты только сырые выражения `dq.tests[].expression` — их по-прежнему прогоняют на живом Trino до объявления работы законченной.
+
+### Отключённые базовые тесты
+
+Отключить базовый тест (`enabled: false`) можно только с письменной причиной и
+условием повторного включения, записанными и в `config.yaml` энтити, и здесь:
+
+| Энтити | Отключено | Почему | Когда включать обратно |
+|---|---|---|---|
+| `layers/gold/query_text_version/search_query_id/v1` | `freshness`, `row_count_growth`, `dq.warmup_days: 0`, `feature_stats.enabled: false` | Append-only справочник query_text/version без колонки даты (партиционирован по `version`). `scope: table` гасит предикат партиции, но `_render_freshness`, `_render_row_count_growth`, `_partition_history_count` и `render_stats_query` рендерят SQL по колонке партиции независимо от `scope` — на этой таблице такой колонки нет. | Не планируется: у таблицы принципиально нет и не будет дневной партиционной колонки. |
+| `layers/silver/sku_group_id_query_category/sku_group_install/v1` | `primary_key_not_null`, `primary_key_unique` | `table.primary_key` называет колонку `query`, которой в таблице нет (`migrations/create_table.sql`: `install_id, sku_group_id, section, uniqs, sum_atc, sum_clicks, sum_impressions, date`) — оба теста рендерят SQL по несуществующей колонке и падают `COLUMN_NOT_FOUND` в Trino с вызовом дежурного; `severity: warn` не защищает, потому что исключение возникает раньше, чем появляется результат теста. | Когда владелец энтити объявит настоящий грейн (реальный primary key) таблицы. |
+| `datasets/search/ranking_logs/v1` | `row_count_growth` | `dq/tests.py` жёстко берёт baseline как `partition_date - 1 day`, а партиция этой энтити недельная — предыдущего дня никогда не существует, и тест на каждом ране отчитывался бы «нет baseline». | Когда `dq/` научится настраиваемому интервалу baseline. |
+
+### Отключённые базовые тесты
+
+Отключить базовый тест (`enabled: false`) можно только с письменной причиной и
+условием повторного включения, записанными и в `config.yaml` энтити, и здесь:
+
+| Энтити | Отключено | Почему | Когда включать обратно |
+|---|---|---|---|
+| `layers/gold/query_text_version/search_query_id/v1` | `freshness`, `row_count_growth` | Append-only справочник query_text/version без колонки даты; `dq/tests.py:_render_freshness` игнорирует `scope` и всегда рендерит SQL по колонке партиции — на этой таблице такой колонки нет. `scope: table` включён, чтобы остальные тесты работали по всей таблице. | Не планируется: у таблицы принципиально нет и не будет партиционной колонки. |
+| `layers/silver/sku_group_id_query_category/sku_group_install/v1` | `primary_key_not_null`, `primary_key_unique` | `table.primary_key` называет колонку `query`, которой в таблице нет (`migrations/create_table.sql`: `install_id, sku_group_id, section, uniqs, sum_atc, sum_clicks, sum_impressions, date`) — оба теста рендерят SQL по несуществующей колонке и падают `COLUMN_NOT_FOUND` в Trino с вызовом дежурного; `severity: warn` не защищает, потому что исключение возникает раньше, чем появляется результат теста. | Когда владелец энтити объявит настоящий грейн (реальный primary key) таблицы. |
 
 Automatically generated DQ tests:
 
@@ -360,12 +386,14 @@ Do not add expensive high-cardinality or source-wide relationship tests blindly.
 - `columns_per_query` по умолчанию не задан: один запрос на таблицу. Каждая дополнительная партия колонок — это ещё один полный скан партиции. Замерено на живом Trino: 89 признаков / 446 агрегатных выражений на 1.97M строк — 18.5 с; 24 признака / 121 агрегат на 32.4M строк — 36.6 с. Первое число ограничивает ширину плана, второе — стоимость скана.
 - Стоимость шага обсуждается заранее для широких или больших таблиц. На энтити, где скан заведомо дорог, вариантов два: оставить дефолт и следить за первым прогоном, либо задать `columns_per_query`, заплатив кратными сканами. Молча включать шаг на таблице в десятки миллионов строк, не сказав об этом, нельзя.
 - Весь SQL таски — диалект Trino, с полной квалификацией имён и литералами времени с зоной; действуют те же правила, что и для DQ-SQL выше. Хелперы адресации таблицы и предиката партиции переиспользуются из `dq.tests`, чтобы обе таски одного DAG-рана физически смотрели на одну партицию.
+- В отличие от `dq`, у таски `feature_stats` нет механизма `severity`: любое исключение валит таску целиком и вызывает oncall через блок `alerts` энтити. Два конфиг-управляемых пути к падению: имя в `exclude_columns`, которого нет в таблице, и неверный `partition_column`. Поэтому свойство раскатки «никого не будит» — свойство уровней severity именно `dq`, на `feature_stats` оно не распространяется.
 - Полный контракт, ключи конфига, схема таблицы результатов и известные ограничения — в `feature_stats/README.md`.
 
 ## CI Contracts
 
 Drone currently:
 
+- Runs `scripts/generate_feature_platform_map.py --check`: падает, когда `docs/feature_platform_map.md` расходится с кодом DAG'ов или у энтити нет `alerts.severity` из шкалы P1–P4. Незнакомую идиому в `dag.py` шаг не роняет — она попадает в раздел «Что генератор не смог прочитать» самой карты.
 - Runs `scripts/validate_dq_configs.py`.
 - Runs `scripts/validate_feature_stats_configs.py`.
 - Runs `scripts/validate_ranking_upload_configs.py`.
@@ -444,6 +472,10 @@ Configuration rules:
 Run relevant checks before finishing changes:
 
 ```bash
+python3 -m pytest ci_test
+
+# Отдельные проверки, если pytest недоступен. Список не полон: часть файлов в
+# ci_test/ написана в стиле pytest, и запуск интерпретатором их не выполняет.
 python3 ci_test/test_script.py
 python3 ci_test/test_sync_dbt_sources.py
 python3 ci_test/test_sync_iceberg_maintenance.py
@@ -465,6 +497,10 @@ python3 ci_test/test_feature_stats_results.py
 python3 ci_test/test_feature_stats_task.py
 python3 ci_test/test_feature_stats_task_wiring.py
 python3 ci_test/test_validate_feature_stats_configs.py
+python3 ci_test/test_spark_resources.py
+python3 scripts/generate_feature_platform_map.py
+python3 scripts/generate_feature_platform_map.py --check
+python3 ci_test/test_generate_feature_platform_map.py
 git diff --check
 ```
 
