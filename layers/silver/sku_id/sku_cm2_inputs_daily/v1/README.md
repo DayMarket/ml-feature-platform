@@ -43,7 +43,7 @@ Grain и уникальный ключ: `dt,sku_id`.
   `id AS sku_id → product_id` и `dimensional_group`;
 - `"dwh-clickhouse".marts.daily_sku_quantity_eod` — исторический `sell_price_eod`;
 - `"dwh-iceberg".silver_apidb_kazanexpress.public_sku_actual_commission` —
-  `sku_id → comission`;
+  `sku_id → commission`;
 - `"dwh-iceberg".silver.order_item_ue_buyer` — строки заказов SKU.
 
 В результат входят все строки `dict.sku` с заполненными `sku_id` и `product_id`. Цена,
@@ -66,7 +66,7 @@ Grain и уникальный ключ: `dt,sku_id`.
 Постоянные правила зафиксированы непосредственно в расчёте:
 
 - `dimensional_group IS NULL → SMALL`;
-- комиссия читается из колонки `comission`;
+- комиссия читается из колонки `commission`;
 - допустимые dimensional group: `SMALL`, `MEDIUM`, `LARGE`;
 - допустимый диапазон комиссии: `[0,100]`;
 - окно заказов: 28 дней.

@@ -72,7 +72,7 @@ daily_prices AS (
 commissions AS (
     SELECT
         CAST(sku_id AS INTEGER) AS sku_id,
-        CAST(comission AS DOUBLE) AS commission_pct
+        commission AS commission_pct
     FROM {commission_table}
 ),
 order_counts AS (
