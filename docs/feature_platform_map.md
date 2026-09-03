@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **46**. Внутренних зависимостей: **10**. Внешних зависимостей: **31**. P1: **0**. P2: **8**. P3: **33**. P4: **5**.
+Всего DAG: **47**. Внутренних зависимостей: **10**. Внешних зависимостей: **31**. P1: **0**. P2: **8**. P3: **34**. P4: **5**.
 
-Таска `dq`: **43** из **46**. Таска `feature_stats`: **43** из **46** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
+Таска `dq`: **44** из **47**. Таска `feature_stats`: **44** из **47** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
 
 Severity policy:
 
@@ -209,19 +209,21 @@ UTC cron 0 7,19 * * * · P3 · small`"]
 UTC 03:00 · P2 · airflow-python`"]
     d18["`backfill
 UTC 03:00 · P2 · airflow-python`"]
-    d19["`product_metadata
+    d19["`product_feedback_counts_12h
+UTC cron 0 7,19 * * * · P3 · small`"]
+    d20["`product_metadata
 UTC 19:00 · P3 · small`"]
-    d20["`product_prices_daily
+    d21["`product_prices_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d21["`product_search_queries
+    d22["`product_search_queries
 UTC 09:00 · P4 · search_product`"]
-    d22["`search_query_sku_group_es_features
+    d23["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
-    d23["`sku_group_orders
+    d24["`sku_group_orders
 UTC 01:00 · P3 · large`"]
-    d24["`sku_cm2_inputs_daily
+    d25["`sku_cm2_inputs_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d25["`sku_daily_dynamic_prices
+    d26["`sku_daily_dynamic_prices
 UTC 01:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
@@ -243,9 +245,9 @@ UTC 01:00 · P3 · airflow-python`"]
     x1 -.->|"dbt DQ (legacy) Δ2h"| d9
     x0 -.->|"dbt DQ (legacy) Δ1h"| d10
     d5 -.->|"dbt DQ (legacy) Δ3h"| d11
-    x2 -->|"sensor Δ13h"| d20
-    x4 -->|"sensor"| d22
-    class d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24,d25 silver
+    x2 -->|"sensor Δ13h"| d21
+    x4 -->|"sensor"| d23
+    class d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24,d25,d26 silver
     class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold
     class d0,d1 datasets
     class x0,x1,x2,x3,x4 external
