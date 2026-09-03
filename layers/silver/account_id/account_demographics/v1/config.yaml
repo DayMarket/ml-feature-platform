@@ -14,9 +14,10 @@ source:
   trino_conn_id: trino_recsys
   customer_table: '"dwh-iceberg".silver.customer'
   ecosystem_users_table: '"ch-ecosystem".ecosystem.ecosystem_users'
-  geo_events_table: '"dwh-clickhouse".clickstream_b2c.events'
+  clickhouse_catalog: '"dwh-clickhouse"'
+  geo_events_table: clickstream_b2c.events
   platform_sessions_table: '"dwh-iceberg".silver.sessions_with_attribution'
-  city_table: '"dwh-clickhouse".dict.city'
+  city_table: dict.city
   trino_iceberg_catalog: '"dwh-iceberg"'
   lookback_days: 28
 

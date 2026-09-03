@@ -115,6 +115,7 @@ def account_demographics_dag() -> None:
                 dt=dt,
                 customer_table=source["customer_table"],
                 ecosystem_users_table=source["ecosystem_users_table"],
+                clickhouse_catalog=source["clickhouse_catalog"],
                 geo_events_table=source["geo_events_table"],
                 platform_sessions_table=source["platform_sessions_table"],
                 city_table=source["city_table"],

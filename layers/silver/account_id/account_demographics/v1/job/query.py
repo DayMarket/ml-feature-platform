@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+
+TASHKENT_TIME_ZONE = ZoneInfo("Asia/Tashkent")
+GEO_H3_RESOLUTION = 7
+GEO_CITY_CANDIDATES = 5
 
 
 def _date_literal(value: date) -> str:
@@ -17,10 +23,162 @@ def _tashkent_timestamp_literal(value: date) -> str:
     return f"TIMESTAMP '{value.isoformat()} 00:00:00 Asia/Tashkent'"
 
 
+def _clickhouse_utc_datetime(value: date) -> str:
+    local_midnight = datetime.combine(
+        value,
+        time.min,
+        tzinfo=TASHKENT_TIME_ZONE,
+    )
+    utc_value = local_midnight.astimezone(timezone.utc)
+    formatted = utc_value.strftime("%Y-%m-%d %H:%M:%S")
+    return f"toDateTime('{formatted}', 'UTC')"
+
+
+def _trino_string_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _build_account_city_query(
+    geo_events_table: str,
+    city_table: str,
+    window_start_date: date,
+    calculation_date: date,
+) -> str:
+    window_start = _clickhouse_utc_datetime(window_start_date)
+    window_end = _clickhouse_utc_datetime(calculation_date)
+    return f"""
+WITH geo_events AS (
+    SELECT
+        account_id,
+        received_at,
+        assumeNotNull(latitude) AS latitude,
+        assumeNotNull(longitude) AS longitude,
+        geoToH3(
+            assumeNotNull(latitude),
+            assumeNotNull(longitude),
+            {GEO_H3_RESOLUTION}
+        ) AS h3
+    FROM (
+        SELECT
+            event_id,
+            account_id,
+            received_at,
+            toFloat64OrNull(
+                JSONExtractString(
+                    event_properties,
+                    'event_parameters',
+                    'latitude'
+                )
+            ) AS latitude,
+            toFloat64OrNull(
+                JSONExtractString(
+                    event_properties,
+                    'event_parameters',
+                    'longitude'
+                )
+            ) AS longitude
+        FROM {geo_events_table}
+        PREWHERE event_type = 'GEO_INFO'
+          AND received_at >= {window_start}
+          AND received_at < {window_end}
+    ) AS parsed
+    WHERE event_id IS NOT NULL
+      AND account_id > 0
+      AND latitude BETWEEN -90 AND 90
+      AND longitude BETWEEN -180 AND 180
+),
+cities AS (
+    SELECT
+        city_ru_name,
+        toFloat64(city_latitude) AS city_latitude,
+        toFloat64(city_longitude) AS city_longitude
+    FROM {city_table}
+    WHERE city_ru_name != ''
+      AND city_latitude BETWEEN -90 AND 90
+      AND city_longitude BETWEEN -180 AND 180
+),
+candidate_rows AS (
+    SELECT
+        cells.h3,
+        cities.city_ru_name,
+        cities.city_latitude,
+        cities.city_longitude
+    FROM (
+        SELECT DISTINCT h3
+        FROM geo_events
+    ) AS cells
+    CROSS JOIN cities
+    ORDER BY
+        cells.h3,
+        greatCircleDistance(
+            h3ToGeo(cells.h3).2,
+            h3ToGeo(cells.h3).1,
+            cities.city_longitude,
+            cities.city_latitude
+        ),
+        cities.city_ru_name
+    LIMIT {GEO_CITY_CANDIDATES} BY cells.h3
+),
+h3_candidates AS (
+    SELECT
+        h3,
+        groupArray(
+            (city_ru_name, city_latitude, city_longitude)
+        ) AS candidates
+    FROM candidate_rows
+    GROUP BY h3
+),
+event_cities AS (
+    SELECT
+        geo.account_id,
+        geo.received_at,
+        arrayMin(
+            arrayMap(
+                city -> (
+                    greatCircleDistance(
+                        geo.longitude,
+                        geo.latitude,
+                        city.3,
+                        city.2
+                    ),
+                    city.1
+                ),
+                map.candidates
+            )
+        ).2 AS city_name
+    FROM geo_events AS geo
+    INNER JOIN h3_candidates AS map
+        ON geo.h3 = map.h3
+),
+city_counts AS (
+    SELECT
+        account_id,
+        city_name,
+        count() AS geo_event_count,
+        max(received_at) AS last_received_at
+    FROM event_cities
+    GROUP BY
+        account_id,
+        city_name
+)
+SELECT
+    account_id,
+    city_name
+FROM city_counts
+ORDER BY
+    account_id,
+    geo_event_count DESC,
+    last_received_at DESC,
+    city_name
+LIMIT 1 BY account_id
+""".strip()
+
+
 def build_query(
     dt: datetime,
     customer_table: str,
     ecosystem_users_table: str,
+    clickhouse_catalog: str,
     geo_events_table: str,
     platform_sessions_table: str,
     city_table: str,
@@ -37,6 +195,13 @@ def build_query(
     window_start_date_sql = _date_literal(window_start_date)
     window_start_sql = _tashkent_timestamp_literal(window_start_date)
     window_end_sql = _tashkent_timestamp_literal(calculation_date)
+    account_city_query = _build_account_city_query(
+        geo_events_table=geo_events_table,
+        city_table=city_table,
+        window_start_date=window_start_date,
+        calculation_date=calculation_date,
+    )
+    account_city_query_sql = _trino_string_literal(account_city_query)
 
     return f"""
 WITH params AS (
@@ -80,114 +245,15 @@ demographics AS (
     FULL OUTER JOIN ecosystem
         ON um.account_id = ecosystem.account_id
 ),
-geo_events_raw AS (
-    SELECT
-        event.event_id,
-        event.account_id,
-        AT_TIMEZONE(
-            event.received_at,
-            'Asia/Tashkent'
-        ) AS received_at_tashkent,
-        TRY_CAST(
-            JSON_EXTRACT_SCALAR(
-                CAST(event.event_properties AS VARCHAR),
-                '$.event_parameters.latitude'
-            ) AS DOUBLE
-        ) AS latitude,
-        TRY_CAST(
-            JSON_EXTRACT_SCALAR(
-                CAST(event.event_properties AS VARCHAR),
-                '$.event_parameters.longitude'
-            ) AS DOUBLE
-        ) AS longitude
-    FROM {geo_events_table} event
-    CROSS JOIN params
-    WHERE event.event_type = 'GEO_INFO'
-      AND event.event_id IS NOT NULL
-      AND event.account_id > 0
-      AND AT_TIMEZONE(
-            event.received_at,
-            'Asia/Tashkent'
-          ) >= params.window_start
-      AND AT_TIMEZONE(
-            event.received_at,
-            'Asia/Tashkent'
-          ) < params.window_end
-),
-valid_geo_events AS (
-    SELECT
-        event_id,
-        account_id,
-        received_at_tashkent,
-        latitude,
-        longitude
-    FROM geo_events_raw
-    WHERE latitude BETWEEN -90 AND 90
-      AND longitude BETWEEN -180 AND 180
-),
-city_locations AS (
-    SELECT
-        CAST(city_ru_name AS VARCHAR) AS city_name,
-        TRY_CAST(city_latitude AS DOUBLE) AS city_latitude,
-        TRY_CAST(city_longitude AS DOUBLE) AS city_longitude
-    FROM {city_table}
-    WHERE city_ru_name IS NOT NULL
-      AND TRY_CAST(city_latitude AS DOUBLE) BETWEEN -90 AND 90
-      AND TRY_CAST(city_longitude AS DOUBLE) BETWEEN -180 AND 180
-),
-city_candidates AS (
-    SELECT
-        geo.account_id,
-        geo.event_id,
-        geo.received_at_tashkent,
-        city.city_name,
-        ROW_NUMBER() OVER (
-            PARTITION BY
-                geo.account_id,
-                geo.event_id
-            ORDER BY
-                GREAT_CIRCLE_DISTANCE(
-                    geo.latitude,
-                    geo.longitude,
-                    city.city_latitude,
-                    city.city_longitude
-                ),
-                city.city_name
-        ) AS distance_rank
-    FROM valid_geo_events geo
-    CROSS JOIN city_locations city
-),
-city_counts AS (
-    SELECT
-        account_id,
-        city_name,
-        COUNT(*) AS geo_event_count,
-        MAX(received_at_tashkent) AS last_received_at
-    FROM city_candidates
-    WHERE distance_rank = 1
-    GROUP BY
-        account_id,
-        city_name
-),
-ranked_cities AS (
-    SELECT
-        account_id,
-        city_name,
-        ROW_NUMBER() OVER (
-            PARTITION BY account_id
-            ORDER BY
-                geo_event_count DESC,
-                last_received_at DESC,
-                city_name
-        ) AS city_rank
-    FROM city_counts
-),
 account_city AS (
     SELECT
         account_id,
-        city_name
-    FROM ranked_cities
-    WHERE city_rank = 1
+        CAST(city_name AS VARCHAR) AS city_name
+    FROM TABLE(
+        {clickhouse_catalog}.system.query(
+            query => {account_city_query_sql}
+        )
+    )
 ),
 platform_events AS (
     SELECT
