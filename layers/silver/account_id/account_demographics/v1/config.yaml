@@ -25,6 +25,7 @@ source:
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
   resource_profile: medium
+  query_batch_rows: 100000
   resources:
     cpu: "4"
     memory: 16Gi
