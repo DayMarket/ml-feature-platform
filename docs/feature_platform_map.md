@@ -227,7 +227,7 @@ UTC 19:00 · P3 · airflow-python`"]
 UTC 01:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
-    x2["daily_sku_quantity_eod.dq"]
+    x2["dwh_core.quantity_eod"]
     x3["feedback_sku_group_id"]
     x4["elasticsearch_collect"]
     x3 -->|"dq"| d0
@@ -245,7 +245,7 @@ UTC 01:00 · P3 · airflow-python`"]
     x1 -.->|"dbt DQ (legacy) Δ2h"| d9
     x0 -.->|"dbt DQ (legacy) Δ1h"| d10
     d5 -.->|"dbt DQ (legacy) Δ3h"| d11
-    x2 -->|"sensor Δ13h"| d21
+    x2 -->|"sensor Δ19h"| d21
     x4 -->|"sensor"| d23
     class d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24,d25,d26 silver
     class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold

@@ -93,18 +93,16 @@ def get_dag_default_args() -> dict:
     catchup=CONFIG["dag"]["catchup"],
 )
 def product_prices_daily_dag() -> None:
-    wait_for_daily_sku_quantity_eod_dq = ExternalTaskSensor(
-        task_id="wait_for_daily_sku_quantity_eod_dq",
-        external_dag_id=(
-            "dbt.tests.dbt_clickhouse_dwh.daily_sku_quantity_eod.dq"
-        ),
+    wait_for_quantity_eod = ExternalTaskSensor(
+        task_id="wait_for_quantity_eod",
+        external_dag_id="dwh_core.quantity_eod",
         allowed_states=["success"],
         failed_states=["failed"],
         mode="reschedule",
         poke_interval=30,
         timeout=6 * 60 * 60,
         check_existence=True,
-        execution_delta=timedelta(hours=13),
+        execution_delta=timedelta(hours=19),
     )
 
     @task(executor_config=_executor_config())
@@ -140,7 +138,7 @@ def product_prices_daily_dag() -> None:
     stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(
         DQ_PARTITION_DATE
     )
-    wait_for_daily_sku_quantity_eod_dq >> materialize_prices
+    wait_for_quantity_eod >> materialize_prices
     materialize_prices >> [dq_task, stats_task]
 
 
