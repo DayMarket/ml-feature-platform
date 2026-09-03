@@ -29,6 +29,12 @@ RENAME_COLUMN_IF_EXISTS_PATTERN = re.compile(
     r"(?:\s+WHEN\s+SOURCE\s+TYPE\s+IS\s+NOT\s+(?P<expected_type>.+?))?\s*$",
     re.IGNORECASE | re.DOTALL,
 )
+ALTER_COLUMN_TYPE_PATTERN = re.compile(
+    r"^\s*ALTER\s+TABLE\s+(?P<table>\S+)\s+ALTER\s+COLUMN\s+"
+    r"(?P<column>`?[\w]+`?)\s+TYPE\s+(?P<target_type>.+?)"
+    r"(?:\s+WHEN\s+SOURCE\s+TYPE\s+IS\s+(?P<source_type>.+?))?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -294,6 +300,43 @@ def run_statement(spark: SparkSession, statement: str) -> None:
             f"ALTER TABLE {table_name} RENAME COLUMN "
             f"{rename_column_match.group('column')} TO "
             f"{rename_column_match.group('new_column')}"
+        )
+        return
+
+    alter_column_type_match = ALTER_COLUMN_TYPE_PATTERN.match(statement)
+    if alter_column_type_match:
+        table_name = alter_column_type_match.group("table")
+        column_name = normalize_identifier(
+            alter_column_type_match.group("column")
+        )
+        column_types = get_existing_column_types(spark, table_name)
+        if column_name not in column_types:
+            raise RuntimeError(
+                f"Cannot alter missing column {table_name}.{column_name}"
+            )
+
+        current_type = column_types[column_name]
+        target_type = normalize_type(
+            alter_column_type_match.group("target_type")
+        )
+        if current_type == target_type:
+            print(
+                f"Skip column {table_name}.{column_name}: "
+                f"type already {current_type}"
+            )
+            return
+
+        source_type = alter_column_type_match.group("source_type")
+        if source_type and current_type != normalize_type(source_type):
+            raise RuntimeError(
+                f"Cannot alter {table_name}.{column_name} from unexpected "
+                f"type {current_type}; expected {normalize_type(source_type)}"
+            )
+
+        spark.sql(
+            f"ALTER TABLE {table_name} ALTER COLUMN "
+            f"{alter_column_type_match.group('column')} TYPE "
+            f"{alter_column_type_match.group('target_type')}"
         )
         return
 

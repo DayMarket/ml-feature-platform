@@ -26,7 +26,7 @@ Silver-контракт с SKU grain в цепочке CM2.
 Grain и уникальный ключ: `dt,sku_id`.
 
 - `dt` — `TIMESTAMP` начала даты выполнения расчёта (`00:00:00 Asia/Tashkent`);
-- `sku_id` — SKU;
+- `sku_id` — SKU типа `BIGINT`; источник содержит значения больше максимума `INTEGER`;
 - `product_id` — товар для финальной агрегации в Gold;
 - `dimensional_group` — `SMALL`, `MEDIUM` или `LARGE`;
 - `sell_price_uzs` — EOD sell price SKU в UZS за календарный день перед `dt` либо `NULL`;
