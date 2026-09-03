@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -148,13 +149,33 @@ def preflight_table(catalog, ref: TableRef):
         ) from error
 
 
-def query_trino(conn_id: str, sql: str):
+def iter_trino_batches(conn_id: str, sql: str, batch_size: int):
     from airflow.providers.trino.hooks.trino import TrinoHook
+    import pandas as pd
+
+    if batch_size <= 0:
+        raise ValueError("Trino query batch_size must be positive")
 
     hook = TrinoHook(trino_conn_id=conn_id)
-    frame = hook.get_pandas_df(sql)
-    logger.info("Trino query returned shape=%s (conn=%s)", frame.shape, conn_id)
-    return frame
+    connection = hook.get_conn()
+    cursor = connection.cursor()
+    try:
+        cursor.execute(sql)
+        columns = [description[0] for description in cursor.description]
+        batch_number = 0
+        while rows := cursor.fetchmany(batch_size):
+            batch_number += 1
+            frame = pd.DataFrame.from_records(rows, columns=columns)
+            logger.info(
+                "Trino query returned batch=%d rows=%d (conn=%s)",
+                batch_number,
+                len(frame.index),
+                conn_id,
+            )
+            yield frame
+    finally:
+        cursor.close()
+        connection.close()
 
 
 def _validate_nullable_numeric(frame, column: str):
@@ -225,20 +246,6 @@ def validate_inputs(frame, dt: datetime) -> None:
     frame["n_orders_28d"] = orders.astype("int64")
 
 
-def log_metrics(frame, dt: datetime) -> None:
-    group_counts = frame["dimensional_group"].value_counts().to_dict()
-    logger.info(
-        "S6 coverage for dt=%s: rows=%d, price_null_share=%.6f, "
-        "commission_null_share=%.6f, zero_order_share=%.6f, groups=%s",
-        dt,
-        len(frame.index),
-        float(frame["sell_price_uzs"].isna().mean()),
-        float(frame["commission_pct"].isna().mean()),
-        float((frame["n_orders_28d"] == 0).mean()),
-        group_counts,
-    )
-
-
 def _to_arrow_for_table(table, frame):
     import pyarrow as pa
 
@@ -263,19 +270,62 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_inputs(*, table, frame, dt: datetime) -> None:
+def write_input_batches(*, table, frames, dt: datetime) -> None:
     from pyiceberg.expressions import EqualTo
 
-    validate_inputs(frame, dt)
-    log_metrics(frame, dt)
-    arrow_table = _to_arrow_for_table(table, frame)
-    table.overwrite(
-        arrow_table,
-        overwrite_filter=EqualTo("dt", dt),
-    )
+    transaction = table.transaction()
+    transaction.delete(delete_filter=EqualTo("dt", dt))
+    total_rows = 0
+    batch_count = 0
+    price_null_count = 0
+    commission_null_count = 0
+    zero_order_count = 0
+    group_counts: dict[str, int] = {}
+
+    for frame in frames:
+        if frame.empty:
+            continue
+
+        batch_count += 1
+        validate_inputs(frame, dt)
+        price_null_count += int(frame["sell_price_uzs"].isna().sum())
+        commission_null_count += int(frame["commission_pct"].isna().sum())
+        zero_order_count += int((frame["n_orders_28d"] == 0).sum())
+        for group, count in frame["dimensional_group"].value_counts().items():
+            group_name = str(group)
+            group_counts[group_name] = group_counts.get(group_name, 0) + int(
+                count
+            )
+
+        arrow_table = _to_arrow_for_table(table, frame)
+        batch_rows = arrow_table.num_rows
+        transaction.append(arrow_table)
+        total_rows += batch_rows
+        logger.info(
+            "Staged S6 batch=%d rows=%d total_rows=%d for dt=%s",
+            batch_count,
+            batch_rows,
+            total_rows,
+            dt,
+        )
+        del arrow_table
+        del frame
+        gc.collect()
+
+    if total_rows == 0:
+        raise ValueError(f"S6 output is empty for {dt}")
+
+    transaction.commit_transaction()
     logger.info(
-        "Wrote %d rows to %s for dt=%s",
-        arrow_table.num_rows,
+        "Wrote %d rows in %d batches to %s for dt=%s; "
+        "price_null_share=%.6f, commission_null_share=%.6f, "
+        "zero_order_share=%.6f, groups=%s",
+        total_rows,
+        batch_count,
         table.name(),
         dt,
+        price_null_count / total_rows,
+        commission_null_count / total_rows,
+        zero_order_count / total_rows,
+        group_counts,
     )

@@ -116,13 +116,14 @@ def sku_cm2_inputs_daily_dag() -> None:
             "orders_table": source["orders_table"],
         }
 
-        frame = runtime.query_trino(
-            source["trino_conn_id"],
-            query.build_query(**query_args),
+        frames = runtime.iter_trino_batches(
+            conn_id=source["trino_conn_id"],
+            sql=query.build_query(**query_args),
+            batch_size=config["runtime"]["query_batch_rows"],
         )
-        runtime.write_inputs(
+        runtime.write_input_batches(
             table=table,
-            frame=frame,
+            frames=frames,
             dt=dt,
         )
 
