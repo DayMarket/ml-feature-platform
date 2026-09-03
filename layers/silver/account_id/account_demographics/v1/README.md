@@ -174,8 +174,8 @@ Age buckets определяются в Gold и не являются часть
 upload не настраивается.
 
 Пайплайн использует Airflow/Python + `pyiceberg`, образ
-`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` и runtime profile `medium`:
-4 CPU, 16 GiB memory. Ресурсы pod задаются в `config.yaml`.
+`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` и runtime profile `large`:
+8 CPU, 32 GiB memory. Ресурсы pod задаются в `config.yaml`.
 
 `table.meta.team = team::recsys`. Внешние on-call алерты для DAG отключены; ошибки остаются
 видимыми в статусах и логах Airflow.
