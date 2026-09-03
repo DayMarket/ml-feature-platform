@@ -5,10 +5,10 @@ from pyspark.sql import DataFrame, SparkSession
 from job.entities import Arguments
 from job.partition import dt_from_partition_end
 from job.query import (
-    build_category_depth_validation_query,
+    build_category_path_validation_query,
     build_product_metadata_merge_query,
     build_product_metadata_query,
-    build_required_l6_validation_query,
+    build_required_category_validation_query,
 )
 from job.runtime_config import SourceSettings, load_source_settings
 
@@ -26,34 +26,34 @@ def _require_tables(spark: SparkSession, table_names: tuple[str, ...]) -> None:
         )
 
 
-def _validate_category_depth(
+def _validate_category_path(
     spark: SparkSession,
     settings: SourceSettings,
 ) -> None:
     categories_deeper_than_supported = spark.sql(
-        build_category_depth_validation_query(settings)
+        build_category_path_validation_query(settings)
     ).take(1)
 
     if categories_deeper_than_supported:
         category_id = categories_deeper_than_supported[0]["id"]
         raise RuntimeError(
-            "Category hierarchy exceeds the supported depth of "
-            f"{settings.max_category_depth} levels; "
+            "Category hierarchy exceeds the supported traversal depth of "
+            "8 levels; "
             f"example category_id={category_id}"
         )
 
 
-def _validate_required_l6(
+def _validate_required_category(
     spark: SparkSession,
     settings: SourceSettings,
 ) -> None:
-    rows_without_l6 = spark.sql(
-        build_required_l6_validation_query(settings)
+    rows_without_category = spark.sql(
+        build_required_category_validation_query(settings)
     ).take(1)
-    if rows_without_l6:
-        product_id = rows_without_l6[0]["product_id"]
+    if rows_without_category:
+        product_id = rows_without_category[0]["product_id"]
         raise RuntimeError(
-            "l6_category_id must contain the final non-technical category; "
+            "category_id must contain the final non-technical category; "
             f"example product_id={product_id}"
         )
 
@@ -76,8 +76,8 @@ def save_product_metadata(
     settings = load_source_settings()
     _require_tables(spark, settings.table_names)
     _require_tables(spark, (target_table,))
-    _validate_category_depth(spark, settings)
-    _validate_required_l6(spark, settings)
+    _validate_category_path(spark, settings)
+    _validate_required_category(spark, settings)
 
     dt = dt_from_partition_end(partition_end)
     metadata = build_product_metadata(

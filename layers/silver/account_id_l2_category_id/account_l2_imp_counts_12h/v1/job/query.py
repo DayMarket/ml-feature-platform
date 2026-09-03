@@ -11,7 +11,6 @@ class SourceSettings(Protocol):
     category_table: str
     impression_event_type: str
     technical_category_root_id: int
-    max_category_depth: int
     window_hours: int
 
 
@@ -27,17 +26,21 @@ LEFT JOIN {settings.category_table} parent_4
     ON parent_3.parent_id = parent_4.id
 LEFT JOIN {settings.category_table} parent_5
     ON parent_4.parent_id = parent_5.id
+LEFT JOIN {settings.category_table} parent_6
+    ON parent_5.parent_id = parent_6.id
+LEFT JOIN {settings.category_table} parent_7
+    ON parent_6.parent_id = parent_7.id
 """
 
 
-def build_category_depth_validation_query(settings: SourceSettings) -> str:
+def build_category_path_validation_query(settings: SourceSettings) -> str:
     return f"""
 SELECT leaf_category.id
 FROM {settings.category_table} leaf_category
 {_parent_category_joins(settings)}
-WHERE parent_5.parent_id IS NOT NULL
-    AND parent_5.parent_id > 0
-    AND parent_5.parent_id != {settings.technical_category_root_id}
+WHERE parent_7.parent_id IS NOT NULL
+    AND parent_7.parent_id > 0
+    AND parent_7.parent_id != {settings.technical_category_root_id}
 LIMIT 1
 """
 
@@ -79,7 +82,13 @@ WITH category_ancestors AS (
         parent_3.id AS parent_3_id,
         parent_4.id AS parent_4_id,
         parent_5.id AS parent_5_id,
+        parent_6.id AS parent_6_id,
+        parent_7.id AS parent_7_id,
         CASE
+            WHEN parent_7.id > 0
+             AND parent_7.id != {settings.technical_category_root_id} THEN 8
+            WHEN parent_6.id > 0
+             AND parent_6.id != {settings.technical_category_root_id} THEN 7
             WHEN parent_5.id > 0
              AND parent_5.id != {settings.technical_category_root_id} THEN 6
             WHEN parent_4.id > 0
@@ -91,7 +100,7 @@ WITH category_ancestors AS (
             WHEN parent_1.id > 0
              AND parent_1.id != {settings.technical_category_root_id} THEN 2
             ELSE 1
-        END AS category_depth
+        END AS path_depth
     FROM {settings.category_table} leaf_category
     {_parent_category_joins(settings)}
     WHERE leaf_category.id > 0
@@ -100,7 +109,9 @@ WITH category_ancestors AS (
 category_levels AS (
     SELECT
         category_id,
-        CASE category_depth
+        CASE path_depth
+            WHEN 8 THEN parent_6_id
+            WHEN 7 THEN parent_5_id
             WHEN 6 THEN parent_4_id
             WHEN 5 THEN parent_3_id
             WHEN 4 THEN parent_2_id
