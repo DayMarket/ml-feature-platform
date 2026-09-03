@@ -38,6 +38,11 @@ dag:
   team: recsys
   owner: team:recsys
 
+alerts:
+  team: recsys
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_recsys
+
 dq:
   trino_conn_id: trino_recsys
   partition_column: dt

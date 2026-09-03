@@ -196,7 +196,7 @@ UTC 02:00 · P3 · large`"]
     d11["`buyout_online_sku_features
 UTC 06:00 · P2 · airflow-python`"]
     d12["`account_demographics
-UTC 19:00 · P3 · airflow-python`"]
+UTC 19:00 · P3 · medium`"]
     d13["`account_lifetime_facts
 UTC 02:00 · P2 · airflow-python`"]
     d14["`account_l1_imp_counts_12h
@@ -278,7 +278,7 @@ gantt
     05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
     06h00 · 5 DAG · small×1 · airflow-python×3 · search_dataset×1 :milestone, s2_0360, 06:00, 0m
     09h00 · 1 DAG · search_product×1 :milestone, s2_0540, 09:00, 0m
-    19h00 · 4 DAG · small×1 · airflow-python×3 :milestone, s2_1140, 19:00, 0m
+    19h00 · 4 DAG · medium×1 · small×1 · airflow-python×2 :milestone, s2_1140, 19:00, 0m
 ```
 
 ## 4. DQ, feature_stats и статус миграции сенсоров
