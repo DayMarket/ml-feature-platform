@@ -5,7 +5,7 @@ from job.partition import parse_airflow_timestamp
 from job.query import (
     build_account_l1_imp_counts_merge_query,
     build_account_l1_imp_counts_query,
-    build_category_depth_validation_query,
+    build_category_path_validation_query,
 )
 from job.runtime_config import SourceSettings, load_source_settings
 
@@ -23,18 +23,18 @@ def _require_tables(spark: SparkSession, table_names: tuple[str, ...]) -> None:
         )
 
 
-def _validate_category_depth(
+def _validate_category_path(
     spark: SparkSession,
     settings: SourceSettings,
 ) -> None:
     categories_deeper_than_supported = spark.sql(
-        build_category_depth_validation_query(settings)
+        build_category_path_validation_query(settings)
     ).take(1)
     if categories_deeper_than_supported:
         category_id = categories_deeper_than_supported[0]["id"]
         raise RuntimeError(
-            "Category hierarchy exceeds the supported depth of "
-            f"{settings.max_category_depth} levels; "
+            "Category hierarchy exceeds the supported traversal depth of "
+            "8 levels; "
             f"example category_id={category_id}"
         )
 
@@ -60,7 +60,7 @@ def save_account_l1_imp_counts(
     settings = load_source_settings()
     _require_tables(spark, settings.table_names)
     _require_tables(spark, (target_table,))
-    _validate_category_depth(spark, settings)
+    _validate_category_path(spark, settings)
 
     calculated_at = parse_airflow_timestamp(partition_end)
     features = spark.sql(

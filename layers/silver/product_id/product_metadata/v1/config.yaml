@@ -26,7 +26,6 @@ source:
   category_gender_table: iceberg.silver.recsys_category_genders
   technical_category_root_id: 1
   excluded_brand_id: 160078
-  max_category_depth: 6
 
 dag:
   id: feature-platform.layers.silver.product_id.product_metadata

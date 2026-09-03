@@ -9,7 +9,6 @@ class SourceSettings(Protocol):
     category_gender_table: str
     technical_category_root_id: int
     excluded_brand_id: int
-    max_category_depth: int
 
 
 def _category_joins(settings: SourceSettings) -> str:
@@ -24,22 +23,26 @@ LEFT JOIN {settings.category_table} parent_4
     ON parent_3.parent_id = parent_4.id
 LEFT JOIN {settings.category_table} parent_5
     ON parent_4.parent_id = parent_5.id
+LEFT JOIN {settings.category_table} parent_6
+    ON parent_5.parent_id = parent_6.id
+LEFT JOIN {settings.category_table} parent_7
+    ON parent_6.parent_id = parent_7.id
 """
 
 
-def build_category_depth_validation_query(settings: SourceSettings) -> str:
+def build_category_path_validation_query(settings: SourceSettings) -> str:
     return f"""
 SELECT leaf_category.id
 FROM {settings.category_table} leaf_category
 {_category_joins(settings)}
-WHERE parent_5.parent_id IS NOT NULL
-    AND parent_5.parent_id > 0
-    AND parent_5.parent_id != {settings.technical_category_root_id}
+WHERE parent_7.parent_id IS NOT NULL
+    AND parent_7.parent_id > 0
+    AND parent_7.parent_id != {settings.technical_category_root_id}
 LIMIT 1
 """
 
 
-def build_required_l6_validation_query(settings: SourceSettings) -> str:
+def build_required_category_validation_query(settings: SourceSettings) -> str:
     return f"""
 SELECT CAST(product.id AS INT) AS product_id
 FROM {settings.product_table} product
@@ -71,7 +74,13 @@ WITH category_ancestors AS (
         parent_3.id AS parent_3_id,
         parent_4.id AS parent_4_id,
         parent_5.id AS parent_5_id,
+        parent_6.id AS parent_6_id,
+        parent_7.id AS parent_7_id,
         CASE
+            WHEN parent_7.id > 0
+             AND parent_7.id != {settings.technical_category_root_id} THEN 8
+            WHEN parent_6.id > 0
+             AND parent_6.id != {settings.technical_category_root_id} THEN 7
             WHEN parent_5.id > 0
              AND parent_5.id != {settings.technical_category_root_id} THEN 6
             WHEN parent_4.id > 0
@@ -83,7 +92,7 @@ WITH category_ancestors AS (
             WHEN parent_1.id > 0
              AND parent_1.id != {settings.technical_category_root_id} THEN 2
             ELSE 1
-        END AS category_depth
+        END AS path_depth
     FROM {settings.category_table} leaf_category
     {_category_joins(settings)}
     WHERE leaf_category.id > 0
@@ -92,7 +101,9 @@ WITH category_ancestors AS (
 category_hierarchy AS (
     SELECT
         category_id,
-        CASE category_depth
+        CASE path_depth
+            WHEN 8 THEN parent_7_id
+            WHEN 7 THEN parent_6_id
             WHEN 6 THEN parent_5_id
             WHEN 5 THEN parent_4_id
             WHEN 4 THEN parent_3_id
@@ -100,29 +111,41 @@ category_hierarchy AS (
             WHEN 2 THEN parent_1_id
             ELSE category_id
         END AS l1_category_id,
-        CASE category_depth
+        CASE path_depth
+            WHEN 8 THEN parent_6_id
+            WHEN 7 THEN parent_5_id
             WHEN 6 THEN parent_4_id
             WHEN 5 THEN parent_3_id
             WHEN 4 THEN parent_2_id
             WHEN 3 THEN parent_1_id
             ELSE category_id
         END AS l2_category_id,
-        CASE category_depth
+        CASE path_depth
+            WHEN 8 THEN parent_5_id
+            WHEN 7 THEN parent_4_id
             WHEN 6 THEN parent_3_id
             WHEN 5 THEN parent_2_id
             WHEN 4 THEN parent_1_id
             ELSE category_id
         END AS l3_category_id,
-        CASE category_depth
+        CASE path_depth
+            WHEN 8 THEN parent_4_id
+            WHEN 7 THEN parent_3_id
             WHEN 6 THEN parent_2_id
             WHEN 5 THEN parent_1_id
             ELSE category_id
         END AS l4_category_id,
-        CASE category_depth
+        CASE path_depth
+            WHEN 8 THEN parent_3_id
+            WHEN 7 THEN parent_2_id
             WHEN 6 THEN parent_1_id
             ELSE category_id
         END AS l5_category_id,
-        category_id AS l6_category_id
+        CASE path_depth
+            WHEN 8 THEN parent_2_id
+            WHEN 7 THEN parent_1_id
+            ELSE category_id
+        END AS l6_category_id
     FROM category_ancestors
 ),
 product_brands AS (

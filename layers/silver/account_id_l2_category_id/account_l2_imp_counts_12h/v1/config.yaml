@@ -25,7 +25,6 @@ source:
   category_table: iceberg.silver_apidb_kazanexpress.public_category
   impression_event_type: PRODUCT_IMPRESSION
   technical_category_root_id: 1
-  max_category_depth: 6
   window_hours: 12
 
 dag:
