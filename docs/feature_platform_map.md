@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **45**. Внутренних зависимостей: **10**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **32**. P4: **5**.
+Всего DAG: **46**. Внутренних зависимостей: **10**. Внешних зависимостей: **31**. P1: **0**. P2: **8**. P3: **33**. P4: **5**.
 
-Таска `dq`: **42** из **45**. Таска `feature_stats`: **42** из **45** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
+Таска `dq`: **43** из **46**. Таска `feature_stats`: **43** из **46** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
 
 Severity policy:
 
@@ -211,21 +211,24 @@ UTC 03:00 · P2 · airflow-python`"]
 UTC 03:00 · P2 · airflow-python`"]
     d19["`product_metadata
 UTC 19:00 · P3 · small`"]
-    d20["`product_search_queries
-UTC 09:00 · P4 · search_product`"]
-    d21["`search_query_sku_group_es_features
-manual · P3 · airflow-python`"]
-    d22["`sku_group_orders
-UTC 01:00 · P3 · large`"]
-    d23["`sku_cm2_inputs_daily
+    d20["`product_prices_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d24["`sku_daily_dynamic_prices
+    d21["`product_search_queries
+UTC 09:00 · P4 · search_product`"]
+    d22["`search_query_sku_group_es_features
+manual · P3 · airflow-python`"]
+    d23["`sku_group_orders
+UTC 01:00 · P3 · large`"]
+    d24["`sku_cm2_inputs_daily
+UTC 19:00 · P3 · airflow-python`"]
+    d25["`sku_daily_dynamic_prices
 UTC 01:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
-    x2["feedback_sku_group_id"]
-    x3["elasticsearch_collect"]
-    x2 -->|"dq"| d0
+    x2["daily_sku_quantity_eod.dq"]
+    x3["feedback_sku_group_id"]
+    x4["elasticsearch_collect"]
+    x3 -->|"dq"| d0
     d13 -.->|"dbt DQ (legacy) Δ26h"| d2
     d2 -.->|"dbt DQ (legacy) Δ2h"| d3
     d17 -.->|"dbt DQ (legacy) Δ3h"| d4
@@ -240,11 +243,12 @@ UTC 01:00 · P3 · airflow-python`"]
     x1 -.->|"dbt DQ (legacy) Δ2h"| d9
     x0 -.->|"dbt DQ (legacy) Δ1h"| d10
     d5 -.->|"dbt DQ (legacy) Δ3h"| d11
-    x3 -->|"sensor"| d21
-    class d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24 silver
+    x2 -->|"sensor Δ13h"| d20
+    x4 -->|"sensor"| d22
+    class d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24,d25 silver
     class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold
     class d0,d1 datasets
-    class x0,x1,x2,x3 external
+    class x0,x1,x2,x3,x4 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
     classDef datasets fill:#dcfce7,stroke:#16a34a,color:#052e16
@@ -272,7 +276,7 @@ gantt
     05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
     06h00 · 5 DAG · small×1 · airflow-python×3 · search_dataset×1 :milestone, s2_0360, 06:00, 0m
     09h00 · 1 DAG · search_product×1 :milestone, s2_0540, 09:00, 0m
-    19h00 · 3 DAG · small×1 · airflow-python×2 :milestone, s2_1140, 19:00, 0m
+    19h00 · 4 DAG · small×1 · airflow-python×3 :milestone, s2_1140, 19:00, 0m
 ```
 
 ## 4. DQ, feature_stats и статус миграции сенсоров
