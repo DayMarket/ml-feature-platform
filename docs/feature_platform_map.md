@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **43**. Внутренних зависимостей: **10**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **30**. P4: **5**.
+Всего DAG: **46**. Внутренних зависимостей: **10**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **33**. P4: **5**.
 
-Таска `dq`: **40** из **43**. Таска `feature_stats`: **40** из **43** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
+Таска `dq`: **43** из **46**. Таска `feature_stats`: **43** из **46** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
 
 Severity policy:
 
@@ -199,23 +199,29 @@ UTC 06:00 · P2 · airflow-python`"]
 UTC 19:00 · P3 · airflow-python`"]
     d13["`account_lifetime_facts
 UTC 02:00 · P2 · airflow-python`"]
-    d14["`delivery_cpi_city_features
-UTC 03:00 · P2 · airflow-python`"]
-    d15["`backfill
-UTC 03:00 · P2 · airflow-python`"]
-    d16["`product_feedback_counts_12h
+    d14["`account_l1_imp_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d17["`product_metadata
+    d15["`account_l2_imp_counts_12h
+UTC cron 0 7,19 * * * · P3 · small`"]
+    d16["`account_product_session_action_counts_12h
+UTC cron 0 7,19 * * * · P3 · small`"]
+    d17["`delivery_cpi_city_features
+UTC 03:00 · P2 · airflow-python`"]
+    d18["`backfill
+UTC 03:00 · P2 · airflow-python`"]
+    d19["`product_feedback_counts_12h
+UTC cron 0 7,19 * * * · P3 · small`"]
+    d20["`product_metadata
 UTC 19:00 · P3 · small`"]
-    d18["`product_search_queries
+    d21["`product_search_queries
 UTC 09:00 · P4 · search_product`"]
-    d19["`search_query_sku_group_es_features
+    d22["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
-    d20["`sku_group_orders
+    d23["`sku_group_orders
 UTC 01:00 · P3 · large`"]
-    d21["`sku_cm2_inputs_daily
+    d24["`sku_cm2_inputs_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d22["`sku_daily_dynamic_prices
+    d25["`sku_daily_dynamic_prices
 UTC 01:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
@@ -224,7 +230,7 @@ UTC 01:00 · P3 · airflow-python`"]
     x2 -->|"dq"| d0
     d13 -.->|"dbt DQ (legacy) Δ26h"| d2
     d2 -.->|"dbt DQ (legacy) Δ2h"| d3
-    d14 -.->|"dbt DQ (legacy) Δ3h"| d4
+    d17 -.->|"dbt DQ (legacy) Δ3h"| d4
     x0 -.->|"dbt DQ (legacy) Δ5h"| d6
     x1 -.->|"dbt DQ (legacy) Δ5h"| d6
     d8 -->|"sensor Δ1h"| d6
@@ -236,8 +242,8 @@ UTC 01:00 · P3 · airflow-python`"]
     x1 -.->|"dbt DQ (legacy) Δ2h"| d9
     x0 -.->|"dbt DQ (legacy) Δ1h"| d10
     d5 -.->|"dbt DQ (legacy) Δ3h"| d11
-    x3 -->|"sensor"| d19
-    class d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22 silver
+    x3 -->|"sensor"| d22
+    class d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24,d25 silver
     class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold
     class d0,d1 datasets
     class x0,x1,x2,x3 external
