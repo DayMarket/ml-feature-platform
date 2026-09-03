@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **40**. Внутренних зависимостей: **10**. Внешних зависимостей: **31**. P1: **0**. P2: **8**. P3: **27**. P4: **5**.
+Всего DAG: **41**. Внутренних зависимостей: **10**. Внешних зависимостей: **31**. P1: **0**. P2: **8**. P3: **28**. P4: **5**.
 
-Таска `dq`: **37** из **40**. Таска `feature_stats`: **37** из **40** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
+Таска `dq`: **38** из **41**. Таска `feature_stats`: **38** из **41** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
 
 Severity policy:
 
@@ -201,15 +201,17 @@ UTC 02:00 · P2 · airflow-python`"]
 UTC 03:00 · P2 · airflow-python`"]
     d14["`backfill
 UTC 03:00 · P2 · airflow-python`"]
-    d15["`product_prices_daily
+    d15["`product_metadata
+UTC 19:00 · P3 · small`"]
+    d16["`product_prices_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d16["`product_search_queries
+    d17["`product_search_queries
 UTC 09:00 · P4 · search_product`"]
-    d17["`search_query_sku_group_es_features
+    d18["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
-    d18["`sku_group_orders
+    d19["`sku_group_orders
 UTC 01:00 · P3 · large`"]
-    d19["`sku_daily_dynamic_prices
+    d20["`sku_daily_dynamic_prices
 UTC 01:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
@@ -231,9 +233,9 @@ UTC 01:00 · P3 · airflow-python`"]
     x1 -.->|"dbt DQ (legacy) Δ2h"| d9
     x0 -.->|"dbt DQ (legacy) Δ1h"| d10
     d5 -.->|"dbt DQ (legacy) Δ3h"| d11
-    x2 -->|"sensor Δ13h"| d15
-    x4 -->|"sensor"| d17
-    class d12,d13,d14,d15,d16,d17,d18,d19 silver
+    x2 -->|"sensor Δ13h"| d16
+    x4 -->|"sensor"| d18
+    class d12,d13,d14,d15,d16,d17,d18,d19,d20 silver
     class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold
     class d0,d1 datasets
     class x0,x1,x2,x3,x4 external
@@ -264,7 +266,7 @@ gantt
     05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
     06h00 · 5 DAG · small×1 · airflow-python×3 · search_dataset×1 :milestone, s2_0360, 06:00, 0m
     09h00 · 1 DAG · search_product×1 :milestone, s2_0540, 09:00, 0m
-    19h00 · 1 DAG · airflow-python×1 :milestone, s2_1140, 19:00, 0m
+    19h00 · 2 DAG · small×1 · airflow-python×1 :milestone, s2_1140, 19:00, 0m
 ```
 
 ## 4. DQ, feature_stats и статус миграции сенсоров

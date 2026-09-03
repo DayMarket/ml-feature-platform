@@ -9,7 +9,7 @@
 - [`h3_index`](h3_index/README.md) — географические и локационные предагрегаты;
 - [`order_city_id`](order_city_id/README.md) — агрегаты по городу доставки заказа;
 - [`order_region_id`](order_region_id/README.md) — агрегаты по региону доставки заказа;
-- [`product_id`](product_id/README.md) — поисковые, ценовые и другие данные товара;
+- [`product_id`](product_id/README.md) — метаданные, поисковые, ценовые и другие данные товара;
 - [`query_platform_sku_group_id`](query_platform_sku_group_id/README.md) — дневные query/platform/SKU group conversions;
 - [`query_sku_group_id`](query_sku_group_id/README.md) — заказы и другие агрегаты пары query/SKU group;
 - [`sku_group_id`](sku_group_id/README.md) — предагрегаты SKU group;
