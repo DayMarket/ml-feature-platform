@@ -100,9 +100,7 @@ def collect_ranking_logs_dataset_v1():
 
     dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
     stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
-
-    # Статистика идёт параллельно DQ и ни на что не влияет: downstream ждёт
-    # таску dq, поэтому падение профилей не блокирует потребителей.
+    
     wait_for_sku_group_feedback >> collect_dataset >> [dq_task, stats_task]
 
 
