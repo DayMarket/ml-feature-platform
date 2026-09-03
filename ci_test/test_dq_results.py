@@ -12,7 +12,9 @@ from dq.results_writer import (
     catalog_properties,
     results_catalog_name,
     results_table_ref,
+    run_iceberg_commit_with_retry,
 )
+import dq.results_writer as results_writer
 from dq.runner import DqRunOutcome, TestResult
 
 CTX = RenderContext(
@@ -142,12 +144,44 @@ def test_build_rows_carries_owning_team() -> None:
     assert build_rows(outcome, ctx, settings, META)[0]["team"] == "team:recsys"
 
 
+def test_iceberg_commit_retry_refreshes_after_concurrent_commit(monkeypatch) -> None:
+    class CommitFailedException(Exception):
+        pass
+
+    calls = []
+    sleeps = []
+
+    def operation():
+        calls.append(len(calls) + 1)
+        if len(calls) < 3:
+            raise CommitFailedException("branch main has changed")
+        return "committed"
+
+    monkeypatch.setattr(
+        results_writer,
+        "_commit_failed_exception_type",
+        lambda: CommitFailedException,
+    )
+    result = run_iceberg_commit_with_retry(
+        operation,
+        "test commit",
+        attempts=3,
+        sleep_fn=sleeps.append,
+        jitter_fn=lambda lower, upper: upper,
+    )
+
+    assert result == "committed"
+    assert calls == [1, 2, 3]
+    assert sleeps == [1.0, 2.0]
+
+
 def main() -> int:
     test_results_table_ref_comes_from_config()
     test_results_catalog_name_comes_from_config()
     test_catalog_properties_are_complete()
     test_build_rows_maps_every_field()
     test_build_rows_carries_owning_team()
+    # Retry проверяется pytest-тестом с monkeypatch и поэтому не вызывается здесь.
     test_build_rows_keeps_params_of_duplicate_test_names_apart()
     test_build_rows_is_empty_when_run_skipped_by_active_from()
     print("DQ results tests completed successfully")

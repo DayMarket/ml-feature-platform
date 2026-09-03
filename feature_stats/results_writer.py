@@ -15,7 +15,10 @@ from typing import Any, Sequence
 
 import yaml
 
-from dq.results_writer import load_results_catalog  # каталог и креды общие с DQ
+from dq.results_writer import (
+    load_results_catalog,
+    run_iceberg_commit_with_retry,
+)
 
 from feature_stats.config import PERCENTILE_COLUMNS, StatsContext
 from feature_stats.runner import FeatureStat
@@ -125,14 +128,26 @@ def write_results(
 
     schema, name = results_table_ref(repo_root)
     catalog = load_results_catalog(results_catalog_name(repo_root))
-    table = catalog.load_table((schema, name))
-
-    arrow_table = pa.Table.from_pylist(rows, schema=table.schema().as_arrow())
     values = overwrite_filter_values(ctx, meta)
     # Фильтр собирается из того же словаря, который проверяет тест: перечисление
     # ключей руками означало бы, что правка, роняющая partition_ts, не поймается
     # ничем — pyiceberg в окружении нет, write_results юнит-тестом не покрыть.
-    table.overwrite(
-        arrow_table,
-        overwrite_filter=reduce(And, (EqualTo(key, value) for key, value in values.items())),
+    identifier = (schema, name)
+
+    def overwrite_current_results() -> None:
+        table = catalog.load_table(identifier)
+        arrow_table = pa.Table.from_pylist(rows, schema=table.schema().as_arrow())
+        table.overwrite(
+            arrow_table,
+            overwrite_filter=reduce(
+                And,
+                (EqualTo(key, value) for key, value in values.items()),
+            ),
+        )
+
+    run_iceberg_commit_with_retry(
+        overwrite_current_results,
+        "write feature stats for "
+        f"dag_id={meta.dag_id} table={ctx.render.table} "
+        f"partition_ts={ctx.partition_ts}",
     )
