@@ -61,6 +61,8 @@ Iceberg использует `days(calculated_at)`. Запись выполня�
 
 После `MERGE` параллельно запускаются внутренние `dq` и `feature_stats` для конкретного `calculated_at`. DQ блокирует downstream при NULL или дублях primary key; freshness, минимальный объём и изменение объёма во время первичной раскатки имеют severity `warn`. `n_impressions > 0`, временные границы и положительные ID обеспечиваются самой трансформацией.
 
+Внешние on-call алерты для DAG отключены. Ошибки остаются видимыми в статусах и логах Airflow.
+
 `feature_stats` считает распределение `n_impressions` одним полным Trino-сканом записанного 12-часового среза на каждый запуск, то есть два скана в сутки.
 
 `table.meta.create_dbt_pr: false`: CI не создаёт для таблицы новый DQ-PR в `dbt-trino`; Iceberg maintenance остаётся включённым.

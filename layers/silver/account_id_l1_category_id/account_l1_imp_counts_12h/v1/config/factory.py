@@ -86,10 +86,8 @@ def get_dag_settings() -> dict[str, Any]:
     config = _get_config()
     table_meta = config["table"]["meta"]
     dag_config = config["dag"]
-    alerts_config = config["alerts"]
 
     dag_team = _normalize_team_name(dag_config.get("team", table_meta["team"]))
-    alert_team = _normalize_team_name(alerts_config.get("team", dag_team))
 
     return {
         "dag_id": str(dag_config["id"]),
@@ -99,11 +97,6 @@ def get_dag_settings() -> dict[str, Any]:
         "schedule": str(dag_config["schedule"]),
         "start_date": str(dag_config["start_date"]),
         "catchup": _parse_bool(dag_config["catchup"]),
-        "alert_severity": str(alerts_config["severity"]),
-        "alert_team": alert_team,
-        "alert_oncall_webhook_conn_id": str(
-            alerts_config["oncall_webhook_conn_id"]
-        ),
     }
 
 
