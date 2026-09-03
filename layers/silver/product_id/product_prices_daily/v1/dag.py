@@ -10,7 +10,6 @@ import yaml
 from airflow.sdk import dag, task
 from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.timetables.interval import CronDataIntervalTimetable
-from airflow_commons.helpers.oncall import send_oncall_notification
 from kubernetes.client import models as k8s
 
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -69,11 +68,6 @@ def get_dag_default_args() -> dict:
         "retry_delay": timedelta(minutes=5),
         "max_retry_delay": timedelta(minutes=30),
         "retry_exponential_backoff": True,
-        "on_failure_callback": send_oncall_notification(
-            team=CONFIG["alerts"]["team"],
-            oncall_webhook_conn_id=CONFIG["alerts"]["oncall_webhook_conn_id"],
-            severity=CONFIG["alerts"]["severity"],
-        ),
     }
 
 

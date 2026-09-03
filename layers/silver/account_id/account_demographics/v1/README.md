@@ -162,5 +162,5 @@ upload не настраивается.
 Пайплайн использует Airflow/Python + `pyiceberg`, образ
 `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` и pod размера `small`: 1 CPU, 4 GiB memory.
 
-`table.meta.team = team::recsys`; DAG/alerts team `recsys`; severity `P3`; webhook
-`oncall_webhook_recsys`.
+`table.meta.team = team::recsys`. Внешние on-call алерты для DAG отключены; ошибки остаются
+видимыми в статусах и логах Airflow.

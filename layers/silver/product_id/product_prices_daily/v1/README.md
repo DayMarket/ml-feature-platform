@@ -138,5 +138,5 @@ Silver-таблицы не настраивается.
 
 ## Владелец и алерты
 
-`table.meta.team = team::recsys`; DAG/alerts team `recsys`; severity `P3`; webhook
-`oncall_webhook_recsys`.
+`table.meta.team = team::recsys`. Внешние on-call алерты для DAG отключены; ошибки остаются
+видимыми в статусах и логах Airflow.
