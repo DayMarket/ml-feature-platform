@@ -88,11 +88,20 @@ CAST(DATE_DIFF('year', birth_date, DATE(dt)) AS INTEGER)
 Длина окна задаётся в `config.yaml` как `source.lookback_days` и сейчас равна 28 дням. Окно:
 `[dt - lookback_days, dt)` в `Asia/Tashkent`.
 
-Для каждого валидного `GEO_INFO` извлекаются `latitude` и `longitude`. Каждое событие по его
-уникальному `event_id` относится к ближайшему городу через `GREAT_CIRCLE_DISTANCE`, после чего
-события суммируются по `account_id,city_name`. Координаты с плавающей точкой не входят в
-`GROUP BY`. Выбирается город с максимальным числом событий. При равенстве используется самое
-свежее событие, затем `city_name`.
+Чтобы не передавать десятки миллионов сырых событий из ClickHouse в Trino, geo-часть
+выполняется нативно в ClickHouse через Trino pass-through table function. Фильтр по
+`received_at` применяется в UTC прямо к партиционированному полю источника. 28-дневное окно
+делится на интервалы по `source.geo_fold_days` — сейчас по 7 дней. Каждый fold возвращает
+только счётчики `account_id,city_name`, после чего Trino суммирует их и выбирает город по всему
+окну. Поэтому разбиение не меняет семантику самого частого города.
+
+Для каждого валидного `GEO_INFO` извлекаются `latitude` и `longitude`. H3 resolution 7
+используется только как пространственный индекс: для ячейки выбираются пять ближайших
+городов-кандидатов, а ближайший среди них для каждого события определяется уже по исходным
+точным координатам через `greatCircleDistance`. После этого события суммируются по
+`account_id,city_name`. Координаты с плавающей точкой не входят в `GROUP BY`. Выбирается город
+с максимальным числом событий. При равенстве используется самое свежее событие, затем
+`city_name`.
 
 В отличие от `any(event_properties)`, эта семантика действительно выбирает самый частый, а не
 произвольный город.
@@ -160,7 +169,8 @@ Age buckets определяются в Gold и не являются часть
 upload не настраивается.
 
 Пайплайн использует Airflow/Python + `pyiceberg`, образ
-`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` и pod размера `small`: 1 CPU, 4 GiB memory.
+`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` и runtime profile `medium`:
+4 CPU, 16 GiB memory. Ресурсы pod задаются в `config.yaml`.
 
-`table.meta.team = team::recsys`; DAG/alerts team `recsys`; severity `P3`; webhook
-`oncall_webhook_recsys`.
+`table.meta.team = team::recsys`. Внешние on-call алерты для DAG отключены; ошибки остаются
+видимыми в статусах и логах Airflow.

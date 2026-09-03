@@ -10,7 +10,6 @@ import yaml
 from airflow.sdk import dag, task
 from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.timetables.interval import CronDataIntervalTimetable
-from airflow_commons.helpers.oncall import send_oncall_notification
 from kubernetes.client import models as k8s
 
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -69,11 +68,6 @@ def get_dag_default_args() -> dict:
         "retry_delay": timedelta(minutes=5),
         "max_retry_delay": timedelta(minutes=30),
         "retry_exponential_backoff": True,
-        "on_failure_callback": send_oncall_notification(
-            team=CONFIG["alerts"]["team"],
-            oncall_webhook_conn_id=CONFIG["alerts"]["oncall_webhook_conn_id"],
-            severity=CONFIG["alerts"]["severity"],
-        ),
     }
 
 
@@ -99,18 +93,16 @@ def get_dag_default_args() -> dict:
     catchup=CONFIG["dag"]["catchup"],
 )
 def product_prices_daily_dag() -> None:
-    wait_for_daily_sku_quantity_eod_dq = ExternalTaskSensor(
-        task_id="wait_for_daily_sku_quantity_eod_dq",
-        external_dag_id=(
-            "dbt.tests.dbt_clickhouse_dwh.daily_sku_quantity_eod.dq"
-        ),
+    wait_for_quantity_eod = ExternalTaskSensor(
+        task_id="wait_for_quantity_eod",
+        external_dag_id="dwh_core.quantity_eod",
         allowed_states=["success"],
         failed_states=["failed"],
         mode="reschedule",
         poke_interval=30,
         timeout=6 * 60 * 60,
         check_existence=True,
-        execution_delta=timedelta(hours=13),
+        execution_delta=timedelta(hours=19),
     )
 
     @task(executor_config=_executor_config())
@@ -146,7 +138,7 @@ def product_prices_daily_dag() -> None:
     stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(
         DQ_PARTITION_DATE
     )
-    wait_for_daily_sku_quantity_eod_dq >> materialize_prices
+    wait_for_quantity_eod >> materialize_prices
     materialize_prices >> [dq_task, stats_task]
 
 

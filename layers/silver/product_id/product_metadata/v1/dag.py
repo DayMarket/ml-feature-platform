@@ -9,7 +9,6 @@ from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import (
 )
 from airflow.sdk import dag
 from airflow.timetables.interval import CronDataIntervalTimetable
-from airflow_commons.helpers.oncall import send_oncall_notification
 
 DAG_DIR = os.path.abspath(os.path.dirname(__file__))
 REPO_ROOT = os.path.abspath(
@@ -38,11 +37,6 @@ default_args = {
     "trigger_rule": "all_success",
     "retries": 3,
     "retry_delay": timedelta(minutes=1),
-    "on_failure_callback": send_oncall_notification(
-        severity=dag_settings["alert_severity"],
-        team=dag_settings["alert_team"],
-        oncall_webhook_conn_id=dag_settings["alert_oncall_webhook_conn_id"],
-    ),
 }
 
 

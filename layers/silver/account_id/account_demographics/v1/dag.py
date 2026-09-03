@@ -9,7 +9,6 @@ import pendulum
 import yaml
 from airflow.sdk import dag, task
 from airflow.timetables.interval import CronDataIntervalTimetable
-from airflow_commons.helpers.oncall import send_oncall_notification
 from kubernetes.client import models as k8s
 
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -41,6 +40,7 @@ def _load_module(filename: str, module_name: str):
 
 
 def _executor_config() -> dict:
+    resources = CONFIG["runtime"]["resources"]
     return {
         "pod_override": k8s.V1Pod(
             spec=k8s.V1PodSpec(
@@ -50,8 +50,11 @@ def _executor_config() -> dict:
                         image_pull_policy="Always",
                         image=CONFIG["runtime"]["image"],
                         resources=k8s.V1ResourceRequirements(
-                            requests={"memory": "4Gi", "cpu": "1"},
-                            limits={"memory": "4Gi"},
+                            requests={
+                                "memory": resources["memory"],
+                                "cpu": resources["cpu"],
+                            },
+                            limits={"memory": resources["memory"]},
                         ),
                     )
                 ]
@@ -67,11 +70,6 @@ def get_dag_default_args() -> dict:
         "retry_delay": timedelta(minutes=5),
         "max_retry_delay": timedelta(minutes=30),
         "retry_exponential_backoff": True,
-        "on_failure_callback": send_oncall_notification(
-            team=CONFIG["alerts"]["team"],
-            oncall_webhook_conn_id=CONFIG["alerts"]["oncall_webhook_conn_id"],
-            severity=CONFIG["alerts"]["severity"],
-        ),
     }
 
 
@@ -117,11 +115,13 @@ def account_demographics_dag() -> None:
                 dt=dt,
                 customer_table=source["customer_table"],
                 ecosystem_users_table=source["ecosystem_users_table"],
+                clickhouse_catalog=source["clickhouse_catalog"],
                 geo_events_table=source["geo_events_table"],
                 platform_sessions_table=source["platform_sessions_table"],
                 city_table=source["city_table"],
                 history_table=history_table,
                 lookback_days=source["lookback_days"],
+                geo_fold_days=source["geo_fold_days"],
             ),
         )
         runtime.write_demographics(table, frame, dt)
