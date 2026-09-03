@@ -40,6 +40,7 @@ def _load_module(filename: str, module_name: str):
 
 
 def _executor_config() -> dict:
+    resources = CONFIG["runtime"]["resources"]
     return {
         "pod_override": k8s.V1Pod(
             spec=k8s.V1PodSpec(
@@ -49,8 +50,11 @@ def _executor_config() -> dict:
                         image_pull_policy="Always",
                         image=CONFIG["runtime"]["image"],
                         resources=k8s.V1ResourceRequirements(
-                            requests={"memory": "4Gi", "cpu": "1"},
-                            limits={"memory": "4Gi"},
+                            requests={
+                                "memory": resources["memory"],
+                                "cpu": resources["cpu"],
+                            },
+                            limits={"memory": resources["memory"]},
                         ),
                     )
                 ]
