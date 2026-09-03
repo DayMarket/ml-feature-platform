@@ -1,0 +1,56 @@
+table:
+  key: account_demographics
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_account_demographics
+  primary_key: dt,account_id
+  meta:
+    team: team::recsys
+    create_dbt_pr: false
+    create_maintenance_pr: true
+
+source:
+  engine: trino
+  trino_conn_id: trino_recsys
+  customer_table: '"dwh-iceberg".silver.customer'
+  ecosystem_users_table: '"ch-ecosystem".ecosystem.ecosystem_users'
+  geo_events_table: '"dwh-clickhouse".clickstream_b2c.events'
+  platform_sessions_table: '"dwh-iceberg".silver.sessions_with_attribution'
+  city_table: '"dwh-clickhouse".dict.city'
+  trino_iceberg_catalog: '"dwh-iceberg"'
+  lookback_days: 28
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.silver.account_id.account_demographics
+  group_tag: recsys-features
+  schedule: "0 19 * * *"
+  start_date: "2026-08-08T19:00:00Z"
+  catchup: true
+  team: recsys
+  owner: team:recsys
+
+alerts:
+  team: recsys
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_recsys
+
+dq:
+  trino_conn_id: trino_recsys
+  partition_column: dt
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d") }}'
+  tests:
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_recsys
+  partition_column: dt
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d") }}'
+  exclude_columns: []
