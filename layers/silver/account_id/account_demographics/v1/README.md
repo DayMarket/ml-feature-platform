@@ -106,6 +106,11 @@ CAST(DATE_DIFF('year', birth_date, DATE(dt)) AS INTEGER)
 В отличие от `any(event_properties)`, эта семантика действительно выбирает самый частый, а не
 произвольный город.
 
+Итоговый результат Trino читается и записывается в Iceberg батчами по
+`runtime.query_batch_rows` строк. Полная дневная партиция не загружается в память Airflow
+worker целиком; очистка старой партиции и добавление всех батчей фиксируются одной
+Iceberg-транзакцией.
+
 Если в текущем 28-дневном окне нет валидного `GEO_INFO`, используется `city_name` из последней
 существующей S5-партиции с `dt` строго меньше текущего. Поэтому ранее известный город не
 исчезает только из-за отсутствия новых событий. Новое значение из текущего окна всегда имеет
@@ -169,8 +174,8 @@ Age buckets определяются в Gold и не являются часть
 upload не настраивается.
 
 Пайплайн использует Airflow/Python + `pyiceberg`, образ
-`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` и runtime profile `medium`:
-4 CPU, 16 GiB memory. Ресурсы pod задаются в `config.yaml`.
+`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` и runtime profile `large`:
+8 CPU, 32 GiB memory. Ресурсы pod задаются в `config.yaml`.
 
 `table.meta.team = team::recsys`. Внешние on-call алерты для DAG отключены; ошибки остаются
 видимыми в статусах и логах Airflow.

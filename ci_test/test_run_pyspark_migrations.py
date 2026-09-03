@@ -156,6 +156,20 @@ def main() -> int:
     migrations.run_statement(migrated_spark, statement)
     assert migrated_spark.sql_calls == []
 
+    widen_sku_id = (
+        "ALTER TABLE iceberg.silver.example "
+        "ALTER COLUMN sku_id TYPE BIGINT WHEN SOURCE TYPE IS INT"
+    )
+    int_sku_spark = FakeSpark([FakeField("sku_id", "int")])
+    migrations.run_statement(int_sku_spark, widen_sku_id)
+    assert int_sku_spark.sql_calls == [
+        "ALTER TABLE iceberg.silver.example ALTER COLUMN sku_id TYPE BIGINT"
+    ]
+
+    bigint_sku_spark = FakeSpark([FakeField("sku_id", "bigint")])
+    migrations.run_statement(bigint_sku_spark, widen_sku_id)
+    assert bigint_sku_spark.sql_calls == []
+
     discovered = migrations.get_layer_migration_targets(Path("."))
     config_paths = {str(config_path) for config_path, _ in discovered}
     assert "dq/results/config.yaml" in config_paths

@@ -55,7 +55,7 @@ def build_query(
     return f"""
 WITH sku_base AS (
     SELECT
-        CAST(id AS INTEGER) AS sku_id,
+        CAST(id AS BIGINT) AS sku_id,
         CAST(product_id AS INTEGER) AS product_id,
         COALESCE(CAST(dimensional_group AS VARCHAR), 'SMALL') AS dimensional_group
     FROM {sku_table}
@@ -64,20 +64,20 @@ WITH sku_base AS (
 ),
 daily_prices AS (
     SELECT
-        CAST(sku_id AS INTEGER) AS sku_id,
+        CAST(sku_id AS BIGINT) AS sku_id,
         CAST(sell_price_eod AS DOUBLE) AS sell_price_uzs
     FROM {prices_table}
     WHERE dt = {price_dt_sql}
 ),
 commissions AS (
     SELECT
-        CAST(sku_id AS INTEGER) AS sku_id,
+        CAST(sku_id AS BIGINT) AS sku_id,
         commission AS commission_pct
     FROM {commission_table}
 ),
 order_counts AS (
     SELECT
-        CAST(sku_id AS INTEGER) AS sku_id,
+        CAST(sku_id AS BIGINT) AS sku_id,
         COUNT(*) AS n_orders_28d
     FROM {orders_table}
     WHERE order_created_at >= {window_start_utc_sql}
@@ -91,7 +91,7 @@ order_counts AS (
             'Asia/Tashkent'
           ) < {window_end_sql}
       AND sku_id IS NOT NULL
-    GROUP BY CAST(sku_id AS INTEGER)
+    GROUP BY CAST(sku_id AS BIGINT)
 )
 SELECT
     {dt_sql} AS dt,

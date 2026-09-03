@@ -109,9 +109,9 @@ def account_demographics_dag() -> None:
         history_table = (
             f'{source["trino_iceberg_catalog"]}.{ref.schema}.{ref.name}'
         )
-        frame = runtime.query_trino(
-            source["trino_conn_id"],
-            query.build_query(
+        frames = runtime.iter_trino_batches(
+            conn_id=source["trino_conn_id"],
+            sql=query.build_query(
                 dt=dt,
                 customer_table=source["customer_table"],
                 ecosystem_users_table=source["ecosystem_users_table"],
@@ -123,8 +123,9 @@ def account_demographics_dag() -> None:
                 lookback_days=source["lookback_days"],
                 geo_fold_days=source["geo_fold_days"],
             ),
+            batch_size=config["runtime"]["query_batch_rows"],
         )
-        runtime.write_demographics(table, frame, dt)
+        runtime.write_demographics_batches(table, frames, dt)
 
     interval_end_value = (
         '{{ data_interval_end.in_timezone("UTC").isoformat() }}'

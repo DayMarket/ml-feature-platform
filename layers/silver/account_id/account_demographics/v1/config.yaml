@@ -24,10 +24,11 @@ source:
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
-  resource_profile: medium
+  resource_profile: large
+  query_batch_rows: 100000
   resources:
-    cpu: "4"
-    memory: 16Gi
+    cpu: "8"
+    memory: 32Gi
 
 dag:
   id: feature-platform.layers.silver.account_id.account_demographics

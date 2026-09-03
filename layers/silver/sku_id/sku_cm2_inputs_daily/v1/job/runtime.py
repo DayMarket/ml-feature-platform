@@ -183,13 +183,13 @@ def validate_inputs(frame, dt: datetime) -> None:
     if (frame["dt"] != dt).any():
         raise ValueError(f"Outgoing rows contain a dt other than {dt}")
 
-    for column in ("sku_id", "product_id"):
+    for column, dtype in (("sku_id", "int64"), ("product_id", "int32")):
         converted = _validate_nullable_numeric(frame, column)
         if converted.isna().any():
             raise ValueError(f"S6 output contains null {column}")
         if (converted % 1 != 0).any():
             raise ValueError(f"S6 output contains non-integer {column}")
-        frame[column] = converted.astype("int32")
+        frame[column] = converted.astype(dtype)
 
     if frame.duplicated(subset=["dt", "sku_id"]).any():
         raise ValueError("S6 output contains duplicate primary keys")
