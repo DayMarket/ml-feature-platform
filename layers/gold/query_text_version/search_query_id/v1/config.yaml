@@ -11,7 +11,20 @@ table:
 source:
   engine: trino_elasticsearch
   trino_conn_id: trino_search
-  space: SEARCH_RESULTS
+  # Кандидаты берутся из сырых логов поиска, а не из дневного предагрегата
+  # feature_platform_search_sku_group_id_install_query: предагрегат отдаёт только
+  # запросы, у которых в этот день были показы товаров, и один день сразу отсекает
+  # хвост. Скользящее окно по логам даёт кандидату 30 дней, чтобы набрать инсталлы.
+  search_logs_table: '"dwh-iceberg".silver.search_logs'
+  lookback_days: 30
+  # Порог отсекает опечатки и разовые запросы, которые не окупают вызов ES _analyze.
+  # Замер на окне 2026-08-04..2026-09-02: всего 14 591 315 различных service_query,
+  # порог оставляет 1 522 547 (10.4%), из них ещё не размеченных - 72 540.
+  # Короткие запросы (<= 2 символов) шумят сильнее всего и живут по своему порогу:
+  # их всего 4632, при installs > 500 проходит 71, при общем installs > 2 - 2145.
+  short_query_max_length: 2
+  short_query_min_installs: 500
+  long_query_min_installs: 2
   stop_words_path: job/stop_words.txt
   elasticsearch:
     conn_id: elasticsearch_search
@@ -38,7 +51,6 @@ dag:
   team: search
   owner: team:search
   dagrun_timeout_hours: 6
-  source_dq_execution_delta_hours: 4
 
 alerts:
   team: search

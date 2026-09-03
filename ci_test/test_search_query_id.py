@@ -128,32 +128,83 @@ class SearchQueryIdQueryTest(unittest.TestCase):
     def setUpClass(cls):
         cls.query = load_job_module("query.py", "test_search_query_id_query")
 
-    def test_query_excludes_already_normalized_queries(self):
-        sql = self.query.build_new_queries_query(
-            partition_date=date(2026, 8, 6),
-            install_query_table='"dwh-iceberg".silver.feature_platform_search_sku_group_id_install_query',
-            query_id_table='"dwh-iceberg".gold.feature_platform_search_query_id',
-            space="SEARCH_RESULTS",
-            version="v1",
-        )
+    @staticmethod
+    def build_sql(**overrides):
+        arguments = {
+            "partition_date": date(2026, 8, 6),
+            "search_logs_table": '"dwh-iceberg".silver.search_logs',
+            "query_id_table": '"dwh-iceberg".gold.feature_platform_search_query_id',
+            "version": "v1",
+            "lookback_days": 30,
+            "short_query_max_length": 2,
+            "short_query_min_installs": 500,
+            "long_query_min_installs": 2,
+        }
+        arguments.update(overrides)
+        return SearchQueryIdQueryTest.query.build_new_queries_query(**arguments)
 
-        self.assertIn("SELECT DISTINCT install_query.uniqs AS original_query", sql)
+    def test_query_excludes_already_normalized_queries(self):
+        sql = self.build_sql()
+
+        self.assertIn("SELECT candidate.service_query AS original_query", sql)
         self.assertIn("LEFT JOIN \"dwh-iceberg\".gold.feature_platform_search_query_id", sql)
         self.assertIn("known_query.version = 'v1'", sql)
         self.assertIn("known_query.query_text IS NULL", sql)
-        self.assertIn("install_query.date = DATE '2026-08-06'", sql)
-        self.assertIn("install_query.space = 'SEARCH_RESULTS'", sql)
+
+    def test_window_is_closed_and_derived_from_the_partition_date(self):
+        """30 дней, заканчивающиеся закрытым днём партиции: перезапуск за ту же дату
+        обязан дать тот же набор кандидатов, поэтому now() в SQL быть не должно."""
+        sql = self.build_sql()
+
+        self.assertIn("logged_at >= TIMESTAMP '2026-07-08 00:00:00 UTC'", sql)
+        self.assertIn("logged_at < TIMESTAMP '2026-08-07 00:00:00 UTC'", sql)
+        self.assertNotIn("now()", sql)
+
+    def test_window_literals_carry_an_explicit_utc_zone(self):
+        """logged_at — timestamp with time zone, а сессия Trino живёт в Europe/Moscow:
+        голый литерал молча сдвинул бы окно на несколько часов."""
+        sql = self.build_sql(lookback_days=1)
+
+        self.assertIn("TIMESTAMP '2026-08-06 00:00:00 UTC'", sql)
+        self.assertIn("TIMESTAMP '2026-08-07 00:00:00 UTC'", sql)
+
+    def test_source_filters_match_the_service_query_contract(self):
+        sql = self.build_sql()
+
+        self.assertIn('FROM "dwh-iceberg".silver.search_logs', sql)
+        self.assertIn("query_text != ''", sql)
+        self.assertIn("pagination_offset = 0", sql)
+        self.assertIn("COUNT(DISTINCT install_id) AS installs", sql)
+        # corrected_query_text бывает и NULL, и '': оба случая падают на query_text.
+        self.assertIn("corrected_query_text IS NULL OR corrected_query_text = ''", sql)
+
+    def test_short_and_long_queries_get_their_own_install_thresholds(self):
+        sql = self.build_sql()
+
+        self.assertIn("LENGTH(candidate.service_query) <= 2", sql)
+        self.assertIn("candidate.installs > 500", sql)
+        self.assertIn("LENGTH(candidate.service_query) > 2", sql)
+        self.assertIn("candidate.installs > 2", sql)
 
     def test_string_literals_are_escaped(self):
-        sql = self.query.build_new_queries_query(
-            partition_date=date(2026, 8, 6),
-            install_query_table="silver.source",
+        sql = self.build_sql(
+            search_logs_table="silver.source",
             query_id_table="gold.target",
-            space="SEARCH_RESULTS",
             version="v'1",
         )
 
         self.assertIn("known_query.version = 'v''1'", sql)
+
+    def test_non_positive_window_and_thresholds_are_rejected(self):
+        for overrides in (
+            {"lookback_days": 0},
+            {"short_query_max_length": 0},
+            {"short_query_min_installs": 0},
+            {"long_query_min_installs": 0},
+        ):
+            with self.subTest(overrides=overrides):
+                with self.assertRaises(ValueError):
+                    self.build_sql(**overrides)
 
 
 class SearchQueryIdPartitionDateTest(unittest.TestCase):

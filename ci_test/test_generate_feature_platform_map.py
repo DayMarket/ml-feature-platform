@@ -54,15 +54,13 @@ def test_map_contains_cross_dag_dependencies_and_schedules():
         60,
     ) in qid.dependencies
 
+    # search_query_id читает внешнюю "dwh-iceberg".silver.search_logs, у которой нет
+    # DAG'а-владельца в репозитории, поэтому сенсоров у него нет вообще. Downstream
+    # (qid выше) по-прежнему ждёт сам DAG, а не его источник.
     query_id = records[
         "feature-platform.layers.gold.query_text_version.search_query_id"
     ]
-    assert generator.Dependency(
-        "dbt.source.trino.ml_feature_platform_silver."
-        "feature_platform_search_sku_group_id_install_query.dq",
-        "legacy-dq",
-        240,
-    ) in query_id.dependencies
+    assert query_id.dependencies == ()
 
     es_writer_id = (
         "feature-platform.layers.silver.query_sku_group_id."

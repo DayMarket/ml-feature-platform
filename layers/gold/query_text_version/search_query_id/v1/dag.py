@@ -1,4 +1,4 @@
-"""Append canonical query_id rows for search queries first seen on the interval day."""
+"""Append canonical query_id rows for search queries of the trailing log window."""
 
 import importlib.util
 import os
@@ -7,7 +7,6 @@ from datetime import timedelta
 
 import pendulum
 import yaml
-from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.sdk import dag, task
 from airflow.timetables.interval import CronDataIntervalTimetable
 from airflow_commons.helpers.oncall import send_oncall_notification
@@ -27,16 +26,6 @@ from feature_stats.task import build_feature_stats_task
 # берём ту же data_interval_start, что уже идёт в materialize() как partition_date_value.
 DQ_PARTITION_DATE = '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
 
-SILVER_CONFIG_PATH = os.path.join(
-    REPO_ROOT,
-    "layers",
-    "silver",
-    "sku_group_id_query_category",
-    "sku_group_install",
-    "v1",
-    "config.yaml",
-)
-
 
 def _read_config(path: str) -> dict:
     with open(path, encoding="utf-8") as config_stream:
@@ -44,7 +33,6 @@ def _read_config(path: str) -> dict:
 
 
 CONFIG = _read_config(CONFIG_PATH)
-SILVER_CONFIG = _read_config(SILVER_CONFIG_PATH)
 
 
 def _load_job_module(filename: str, module_name: str):
@@ -77,14 +65,6 @@ def _executor_config() -> dict:
             )
         )
     }
-
-
-def _dq_dag_id(config: dict) -> str:
-    table = config["table"]
-    return (
-        f"dbt.source.trino.ml_feature_platform_{table['schema']}."
-        f"{table['name']}.dq"
-    )
 
 
 def get_dag_default_args() -> dict:
@@ -124,29 +104,18 @@ def get_dag_default_args() -> dict:
     catchup=False,
 )
 def search_query_id_dag() -> None:
-    wait_for_silver_install_query = ExternalTaskSensor(
-        task_id="wait_for_silver_sku_group_install_query_dq",
-        external_dag_id=_dq_dag_id(SILVER_CONFIG),
-        allowed_states=["success"],
-        failed_states=["failed"],
-        mode="reschedule",
-        poke_interval=60,
-        timeout=6 * 60 * 60,
-        check_existence=True,
-        execution_delta=timedelta(
-            hours=int(CONFIG["dag"]["source_dq_execution_delta_hours"])
-        ),
-    )
-
+    # Sensor'а нет: источник — внешняя DE-таблица "dwh-iceberg".silver.search_logs, у
+    # которой в репозитории нет DAG'а-владельца (тот же контракт, что у
+    # layers/silver/query_sku_group_id/search_query_sku_group_es_features/v1). Окно
+    # скользящее, поэтому недогруженный последний день не теряет запросы: они
+    # проходят порог на одном из следующих 29 запусков.
     @task(executor_config=_executor_config())
     def materialize(partition_date_value: str, updated_at_value: str) -> None:
         runtime = _load_job_module("runtime.py", "search_query_id_runtime")
         query = _load_job_module("query.py", "search_query_id_query")
 
         output_config = runtime.load_config(CONFIG_PATH)
-        silver_config = runtime.load_config(SILVER_CONFIG_PATH)
         output_ref = runtime.table_ref(output_config)
-        silver_ref = runtime.table_ref(silver_config)
 
         source_config = output_config["source"]
         elastic = runtime.elasticsearch_config(source_config["elasticsearch"])
@@ -162,10 +131,13 @@ def search_query_id_dag() -> None:
             source_config["trino_conn_id"],
             query.build_new_queries_query(
                 partition_date=partition_date,
-                install_query_table=runtime.trino_table_name(silver_ref),
+                search_logs_table=str(source_config["search_logs_table"]),
                 query_id_table=runtime.trino_table_name(output_ref),
-                space=str(source_config["space"]),
                 version=version,
+                lookback_days=int(source_config["lookback_days"]),
+                short_query_max_length=int(source_config["short_query_max_length"]),
+                short_query_min_installs=int(source_config["short_query_min_installs"]),
+                long_query_min_installs=int(source_config["long_query_min_installs"]),
             ),
         )
 
@@ -196,8 +168,6 @@ def search_query_id_dag() -> None:
         '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}',
         '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}',
     )
-
-    wait_for_silver_install_query >> gold_task
 
     dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
     stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)

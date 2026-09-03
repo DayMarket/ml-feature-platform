@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **47**. Внутренних зависимостей: **10**. Внешних зависимостей: **31**. P1: **0**. P2: **8**. P3: **34**. P4: **5**.
+Всего DAG: **47**. Внутренних зависимостей: **10**. Внешних зависимостей: **30**. P1: **0**. P2: **8**. P3: **34**. P4: **5**.
 
-Таска `dq`: **44** из **47**. Таска `feature_stats`: **44** из **47** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
+Таска `dq`: **44** из **47**. Таска `feature_stats`: **44** из **47** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **23**.
 
 Severity policy:
 
@@ -240,7 +240,6 @@ UTC 01:00 · P3 · airflow-python`"]
     x0 -.->|"dbt DQ (legacy) Δ5h"| d7
     x1 -.->|"dbt DQ (legacy) Δ5h"| d7
     d8 -->|"sensor Δ1h"| d7
-    x0 -.->|"dbt DQ (legacy) Δ4h"| d8
     x0 -.->|"dbt DQ (legacy) Δ2h"| d9
     x1 -.->|"dbt DQ (legacy) Δ2h"| d9
     x0 -.->|"dbt DQ (legacy) Δ1h"| d10
@@ -320,7 +319,7 @@ DAG энтити без таски `feature_stats`:
 
 - `feature-platform.layers.silver.sku_id.sku_daily_dynamic_prices`
 
-Сенсоров на устаревшем dbt-DQ-контракте: **24**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
+Сенсоров на устаревшем dbt-DQ-контракте: **23**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
 
 | Downstream DAG | Ждёт |
 |---|---|
@@ -337,7 +336,6 @@ DAG энтити без таски `feature_stats`:
 | `feature-platform.layers.gold.query.search_query_atc_features_qid` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
 | `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features.v2` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
 | `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features_qid` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
-| `feature-platform.layers.gold.query_text_version.search_query_id` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
 | `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
 | `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features.v2` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
 | `feature-platform.layers.gold.sku_group_id_query_text.sku_group_query_atc_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
