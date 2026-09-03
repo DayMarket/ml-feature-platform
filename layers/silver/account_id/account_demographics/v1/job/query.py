@@ -38,7 +38,7 @@ def _trino_string_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def _build_account_city_query(
+def _build_city_counts_query(
     geo_events_table: str,
     city_table: str,
     window_start_date: date,
@@ -163,14 +163,109 @@ city_counts AS (
 )
 SELECT
     account_id,
-    city_name
+    city_name,
+    geo_event_count,
+    last_received_at
 FROM city_counts
-ORDER BY
-    account_id,
-    geo_event_count DESC,
-    last_received_at DESC,
-    city_name
-LIMIT 1 BY account_id
+""".strip()
+
+
+def _date_folds(
+    window_start_date: date,
+    calculation_date: date,
+    fold_days: int,
+) -> list[tuple[date, date]]:
+    folds = []
+    fold_start = window_start_date
+    while fold_start < calculation_date:
+        fold_end = min(
+            fold_start + timedelta(days=fold_days),
+            calculation_date,
+        )
+        folds.append((fold_start, fold_end))
+        fold_start = fold_end
+    return folds
+
+
+def _build_account_city_ctes(
+    clickhouse_catalog: str,
+    geo_events_table: str,
+    city_table: str,
+    window_start_date: date,
+    calculation_date: date,
+    geo_fold_days: int,
+) -> str:
+    fold_names = []
+    fold_ctes = []
+    for index, (fold_start, fold_end) in enumerate(
+        _date_folds(
+            window_start_date,
+            calculation_date,
+            geo_fold_days,
+        )
+    ):
+        fold_name = f"geo_fold_{index}"
+        fold_query = _build_city_counts_query(
+            geo_events_table=geo_events_table,
+            city_table=city_table,
+            window_start_date=fold_start,
+            calculation_date=fold_end,
+        )
+        fold_names.append(fold_name)
+        fold_ctes.append(
+            f"""{fold_name} AS (
+    SELECT
+        account_id,
+        CAST(city_name AS VARCHAR) AS city_name,
+        geo_event_count,
+        last_received_at
+    FROM TABLE(
+        {clickhouse_catalog}.system.query(
+            query => {_trino_string_literal(fold_query)}
+        )
+    )
+)"""
+        )
+
+    union_query = "\n    UNION ALL\n    ".join(
+        f"SELECT * FROM {fold_name}" for fold_name in fold_names
+    )
+    fold_ctes_sql = ",\n".join(fold_ctes)
+    return f"""
+{fold_ctes_sql},
+geo_city_counts AS (
+    SELECT
+        account_id,
+        city_name,
+        SUM(geo_event_count) AS geo_event_count,
+        MAX(last_received_at) AS last_received_at
+    FROM (
+        {union_query}
+    ) AS folds
+    GROUP BY
+        account_id,
+        city_name
+),
+ranked_cities AS (
+    SELECT
+        account_id,
+        city_name,
+        ROW_NUMBER() OVER (
+            PARTITION BY account_id
+            ORDER BY
+                geo_event_count DESC,
+                last_received_at DESC,
+                city_name
+        ) AS city_rank
+    FROM geo_city_counts
+),
+account_city AS (
+    SELECT
+        account_id,
+        city_name
+    FROM ranked_cities
+    WHERE city_rank = 1
+)
 """.strip()
 
 
@@ -184,9 +279,12 @@ def build_query(
     city_table: str,
     history_table: str,
     lookback_days: int,
+    geo_fold_days: int,
 ) -> str:
     if lookback_days <= 0:
         raise ValueError("lookback_days must be positive")
+    if geo_fold_days <= 0:
+        raise ValueError("geo_fold_days must be positive")
 
     calculation_date = dt.date()
     dt_sql = _timestamp_literal(dt)
@@ -195,13 +293,14 @@ def build_query(
     window_start_date_sql = _date_literal(window_start_date)
     window_start_sql = _tashkent_timestamp_literal(window_start_date)
     window_end_sql = _tashkent_timestamp_literal(calculation_date)
-    account_city_query = _build_account_city_query(
+    account_city_ctes = _build_account_city_ctes(
+        clickhouse_catalog=clickhouse_catalog,
         geo_events_table=geo_events_table,
         city_table=city_table,
         window_start_date=window_start_date,
         calculation_date=calculation_date,
+        geo_fold_days=geo_fold_days,
     )
-    account_city_query_sql = _trino_string_literal(account_city_query)
 
     return f"""
 WITH params AS (
@@ -245,16 +344,7 @@ demographics AS (
     FULL OUTER JOIN ecosystem
         ON um.account_id = ecosystem.account_id
 ),
-account_city AS (
-    SELECT
-        account_id,
-        CAST(city_name AS VARCHAR) AS city_name
-    FROM TABLE(
-        {clickhouse_catalog}.system.query(
-            query => {account_city_query_sql}
-        )
-    )
-),
+{account_city_ctes},
 platform_events AS (
     SELECT
         session.account_id,

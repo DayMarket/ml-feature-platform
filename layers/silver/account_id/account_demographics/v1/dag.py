@@ -121,6 +121,7 @@ def account_demographics_dag() -> None:
                 city_table=source["city_table"],
                 history_table=history_table,
                 lookback_days=source["lookback_days"],
+                geo_fold_days=source["geo_fold_days"],
             ),
         )
         runtime.write_demographics(table, frame, dt)
