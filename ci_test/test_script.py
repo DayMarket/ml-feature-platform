@@ -2,7 +2,6 @@ import os
 import re
 from pathlib import Path
 
-
 REQUIRED_FILES = (
     ".drone.yaml",
     "ci_config.yaml",
@@ -27,6 +26,7 @@ MIGRATION_TEMPORAL_COLUMN_PATTERN = re.compile(
 )
 
 PRIMARY_KEY_GROUP_EXCEPTIONS = {
+    ("silver", "account_product_session_action_counts_12h"): "account_id_product_id",
     ("silver", "search_query_sku_group_dssm_scores"): "query_sku_group_id",
     ("silver", "sku_group_install"): "sku_group_id_query_category",
 }
