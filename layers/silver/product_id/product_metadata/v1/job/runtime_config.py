@@ -11,7 +11,6 @@ class SourceSettings:
     category_gender_table: str
     technical_category_root_id: int
     excluded_brand_id: int
-    max_category_depth: int
 
     @property
     def table_names(self) -> tuple[str, ...]:
@@ -89,7 +88,6 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
     for field_name in (
         "technical_category_root_id",
         "excluded_brand_id",
-        "max_category_depth",
     ):
         try:
             integer_values[field_name] = int(source[field_name])
@@ -97,10 +95,5 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
             raise ValueError(
                 f"{config_path}: source.{field_name} must be an integer"
             ) from error
-
-    if integer_values["max_category_depth"] != 6:
-        raise ValueError(
-            f"{config_path}: source.max_category_depth must equal 6"
-        )
 
     return SourceSettings(**table_values, **integer_values)

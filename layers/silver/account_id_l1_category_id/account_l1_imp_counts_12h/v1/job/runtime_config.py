@@ -10,7 +10,6 @@ class SourceSettings:
     category_table: str
     impression_event_type: str
     technical_category_root_id: int
-    max_category_depth: int
     window_hours: int
 
     @property
@@ -87,7 +86,6 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
     integer_values = {}
     for field_name in (
         "technical_category_root_id",
-        "max_category_depth",
         "window_hours",
     ):
         try:
@@ -97,10 +95,6 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
                 f"{config_path}: source.{field_name} must be an integer"
             ) from error
 
-    if integer_values["max_category_depth"] != 6:
-        raise ValueError(
-            f"{config_path}: source.max_category_depth must be exactly 6"
-        )
     if integer_values["window_hours"] <= 0:
         raise ValueError(
             f"{config_path}: source.window_hours must be positive"

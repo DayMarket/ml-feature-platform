@@ -25,9 +25,9 @@ Grain и primary key: `calculated_at,account_id,l1_category_id`.
 - `iceberg.silver.product`;
 - `iceberg.silver_apidb_kazanexpress.public_category`.
 
-Категория определяется только по цепочке `event.product_id -> product.category_id -> category hierarchy`; `event.category_id` не используется. Листовая категория товара приводится к L1.
+Категория определяется только по цепочке `event.product_id -> product.category_id -> category hierarchy`; `event.category_id` не используется. В агрегат записывается L1 — первый содержательный уровень от корня. Листовой `category_id` используется только внутри разрешения иерархии и не публикуется.
 
-Технический root `category_id = 1` исключается. Шесть категорийных уровней и соответствующие self-join заданы явно; `max_category_depth = 6`. При более глубокой иерархии job завершается ошибкой до записи.
+Технический root `category_id = 1` исключается. SQL явно обходит до восьми содержательных узлов пути и берёт L1 от корня. Уровни глубже L6 не публикуются и не меняют L1; путь глубже восьми уровней блокируется защитной проверкой до записи.
 
 ## Окно и distinct-семантика
 
