@@ -70,19 +70,10 @@ default_args = {
     schedule=CronDataIntervalTimetable(dag_settings["schedule"], "UTC"),
     start_date=pendulum.parse(dag_settings["start_date"]).in_timezone("UTC"),
     dag_id="feature-platform.datasets.search.ranking_logs.v1",
-    # DAG создаётся на паузе (is_paused_upon_creation=True); catchup=False
-    # исключает случайный многонедельный backfill при первом снятии с паузы —
-    # без явного значения используется дефолт Airflow.
     catchup=False,
 )
 def collect_ranking_logs_dataset_v1():
-    # AGENTS.md: датасет читает feature_platform_sku_group_feedback_base_stats
-    # (owned by feature-platform.layers.gold.sku_group_id.feedback_sku_group_id),
-    # поэтому обязан ждать её dq-таску — иначе feedback CTE молча подставит
-    # устаревший снапшот вместо честного fail/wait. Остальные три источника
-    # (silver.ranking_analytics_events, silver.sku,
-    # silver.search_queries_frequency_groups_30d) — upstream DE-таблицы без
-    # feature_platform_-префикса, сенсоры на них не нужны.
+
     wait_for_sku_group_feedback = ExternalTaskSensor(
         task_id="wait_for_sku_group_feedback_dq",
         external_dag_id="feature-platform.layers.gold.sku_group_id.feedback_sku_group_id",
@@ -97,7 +88,7 @@ def collect_ranking_logs_dataset_v1():
     )
 
     collect_dataset = SparkKubernetesOperator(
-        execution_timeout=timedelta(hours=10),
+        execution_timeout=timedelta(hours=30),
         task_id="collect_ranking_logs_dataset",
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(
