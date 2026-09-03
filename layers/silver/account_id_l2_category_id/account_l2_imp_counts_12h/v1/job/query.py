@@ -14,37 +14,6 @@ class SourceSettings(Protocol):
     window_hours: int
 
 
-def _parent_category_joins(settings: SourceSettings) -> str:
-    return f"""
-LEFT JOIN {settings.category_table} parent_1
-    ON leaf_category.parent_id = parent_1.id
-LEFT JOIN {settings.category_table} parent_2
-    ON parent_1.parent_id = parent_2.id
-LEFT JOIN {settings.category_table} parent_3
-    ON parent_2.parent_id = parent_3.id
-LEFT JOIN {settings.category_table} parent_4
-    ON parent_3.parent_id = parent_4.id
-LEFT JOIN {settings.category_table} parent_5
-    ON parent_4.parent_id = parent_5.id
-LEFT JOIN {settings.category_table} parent_6
-    ON parent_5.parent_id = parent_6.id
-LEFT JOIN {settings.category_table} parent_7
-    ON parent_6.parent_id = parent_7.id
-"""
-
-
-def build_category_path_validation_query(settings: SourceSettings) -> str:
-    return f"""
-SELECT leaf_category.id
-FROM {settings.category_table} leaf_category
-{_parent_category_joins(settings)}
-WHERE parent_7.parent_id IS NOT NULL
-    AND parent_7.parent_id > 0
-    AND parent_7.parent_id != {settings.technical_category_root_id}
-LIMIT 1
-"""
-
-
 def _utc_timestamp_literal(value: datetime) -> str:
     if value.tzinfo is None:
         normalized = value.replace(tzinfo=timezone.utc)
@@ -74,51 +43,29 @@ def build_account_l2_imp_counts_query(
     event_type_sql = _sql_string(settings.impression_event_type)
 
     return f"""
-WITH category_ancestors AS (
+WITH category_paths AS (
     SELECT
-        leaf_category.id AS category_id,
-        parent_1.id AS parent_1_id,
-        parent_2.id AS parent_2_id,
-        parent_3.id AS parent_3_id,
-        parent_4.id AS parent_4_id,
-        parent_5.id AS parent_5_id,
-        parent_6.id AS parent_6_id,
-        parent_7.id AS parent_7_id,
-        CASE
-            WHEN parent_7.id > 0
-             AND parent_7.id != {settings.technical_category_root_id} THEN 8
-            WHEN parent_6.id > 0
-             AND parent_6.id != {settings.technical_category_root_id} THEN 7
-            WHEN parent_5.id > 0
-             AND parent_5.id != {settings.technical_category_root_id} THEN 6
-            WHEN parent_4.id > 0
-             AND parent_4.id != {settings.technical_category_root_id} THEN 5
-            WHEN parent_3.id > 0
-             AND parent_3.id != {settings.technical_category_root_id} THEN 4
-            WHEN parent_2.id > 0
-             AND parent_2.id != {settings.technical_category_root_id} THEN 3
-            WHEN parent_1.id > 0
-             AND parent_1.id != {settings.technical_category_root_id} THEN 2
-            ELSE 1
-        END AS path_depth
-    FROM {settings.category_table} leaf_category
-    {_parent_category_joins(settings)}
-    WHERE leaf_category.id > 0
-      AND leaf_category.id != {settings.technical_category_root_id}
+        category.id AS category_id,
+        FILTER(
+            TRANSFORM(
+                SPLIT(category.path, '[.]'),
+                value -> CAST(value AS INT)
+            ),
+            value -> value > 0
+                AND value != {settings.technical_category_root_id}
+        ) AS hierarchy
+    FROM {settings.category_table} category
+    WHERE category.id > 0
+      AND category.id != {settings.technical_category_root_id}
+      AND category.path IS NOT NULL
 ),
 category_levels AS (
     SELECT
         category_id,
-        CASE path_depth
-            WHEN 8 THEN parent_6_id
-            WHEN 7 THEN parent_5_id
-            WHEN 6 THEN parent_4_id
-            WHEN 5 THEN parent_3_id
-            WHEN 4 THEN parent_2_id
-            WHEN 3 THEN parent_1_id
-            ELSE category_id
-        END AS l2_category_id
-    FROM category_ancestors
+        CASE WHEN SIZE(hierarchy) >= 2 THEN hierarchy[1]
+            ELSE hierarchy[0] END AS l2_category_id
+    FROM category_paths
+    WHERE SIZE(hierarchy) > 0
 ),
 product_categories AS (
     SELECT
