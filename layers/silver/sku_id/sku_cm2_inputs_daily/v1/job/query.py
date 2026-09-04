@@ -57,7 +57,10 @@ WITH sku_base AS (
     SELECT
         CAST(id AS BIGINT) AS sku_id,
         CAST(product_id AS INTEGER) AS product_id,
-        COALESCE(CAST(dimensional_group AS VARCHAR), 'SMALL') AS dimensional_group
+        COALESCE(
+            NULLIF(TRIM(CAST(dimensional_group AS VARCHAR)), ''),
+            'SMALL'
+        ) AS dimensional_group
     FROM {sku_table}
     WHERE id IS NOT NULL
       AND product_id IS NOT NULL
