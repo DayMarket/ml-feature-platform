@@ -9,6 +9,8 @@ Silver-контракт с SKU grain в цепочке CM2.
 - DAG: `feature-platform.layers.silver.sku_id.sku_cm2_inputs_daily`.
 - Путь: `layers/silver/sku_id/sku_cm2_inputs_daily/v1`.
 - Airflow group tag: `recsys-features`.
+- Ошибки задач отправляют alert уровня `P3` команде `recsys` через
+  `oncall_webhook_recsys`.
 - Расписание: ежедневно в `19:00 UTC`, то есть в `00:00 Asia/Tashkent`.
 - `start_date=2026-08-08T19:00:00Z`, `catchup=true`: при первом включении DAG выполняет
   начальный backfill примерно за две недели.
@@ -36,8 +38,9 @@ Grain и уникальный ключ: `dt,sku_id`.
 - `dt` — `TIMESTAMP` начала даты выполнения расчёта (`00:00:00 Asia/Tashkent`);
 - `sku_id` — SKU типа `BIGINT`; источник содержит значения больше максимума `INTEGER`;
 - `product_id` — товар для финальной агрегации в Gold;
-- `dimensional_group` — `SMALL`, `MEDIUM` или `LARGE`; `NULL`, пустая строка и строка только
-  из пробелов в источнике нормализуются в `SMALL`;
+- `dimensional_group` — `SMALL`, `MEDIUM` или `LARGE`; значение нормализуется в верхний
+  регистр, а `NULL`, пустая строка, строка только из пробелов и `UNKNOWN` преобразуются в
+  `SMALL`;
 - `sell_price_uzs` — EOD sell price SKU в UZS за календарный день перед `dt` либо `NULL`;
 - `commission_pct` — комиссия SKU в процентах либо `NULL`;
 - `n_orders_28d` — число строк заказов SKU за предыдущие 28 полных дней.

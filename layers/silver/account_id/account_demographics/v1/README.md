@@ -6,6 +6,8 @@
 - DAG: `feature-platform.layers.silver.account_id.account_demographics`.
 - Путь: `layers/silver/account_id/account_demographics/v1`.
 - Airflow group tag: `recsys-features`.
+- Ошибки задач отправляют alert уровня `P3` команде `recsys` через
+  `oncall_webhook_recsys`.
 - Расписание: ежедневно в `19:00 UTC`, то есть в `00:00 Asia/Tashkent`.
 - `start_date=2026-08-08T19:00:00Z`, `catchup=true`: при первом включении DAG выполняет
   начальный backfill примерно за две недели.

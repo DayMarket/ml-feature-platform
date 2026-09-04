@@ -2,7 +2,10 @@
 
 DAG id: `feature-platform.layers.silver.account_id_product_id.account_product_session_action_counts_12h`.
 
-Airflow group tag: `recsys-featuresrecsys-features`.
+Airflow group tag: `recsys-features`.
+
+Ошибки задач отправляют alert уровня `P3` команде `recsys` через
+`oncall_webhook_recsys`.
 
 Целевая таблица: `iceberg.silver.feature_platform_account_product_session_action_counts_12h`.
 
