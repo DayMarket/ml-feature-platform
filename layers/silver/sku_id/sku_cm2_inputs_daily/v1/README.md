@@ -36,8 +36,9 @@ Grain и уникальный ключ: `dt,sku_id`.
 - `dt` — `TIMESTAMP` начала даты выполнения расчёта (`00:00:00 Asia/Tashkent`);
 - `sku_id` — SKU типа `BIGINT`; источник содержит значения больше максимума `INTEGER`;
 - `product_id` — товар для финальной агрегации в Gold;
-- `dimensional_group` — `SMALL`, `MEDIUM` или `LARGE`; `NULL`, пустая строка и строка только
-  из пробелов в источнике нормализуются в `SMALL`;
+- `dimensional_group` — `SMALL`, `MEDIUM` или `LARGE`; значение нормализуется в верхний
+  регистр, а `NULL`, пустая строка, строка только из пробелов и `UNKNOWN` преобразуются в
+  `SMALL`;
 - `sell_price_uzs` — EOD sell price SKU в UZS за календарный день перед `dt` либо `NULL`;
 - `commission_pct` — комиссия SKU в процентах либо `NULL`;
 - `n_orders_28d` — число строк заказов SKU за предыдущие 28 полных дней.
