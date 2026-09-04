@@ -18,6 +18,7 @@ source:
   orders_table: '"dwh-iceberg".silver.order_item_ue_buyer'
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  query_batch_rows: 100000
   resources:
     cpu: "1"
     memory: 4Gi

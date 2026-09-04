@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -177,6 +178,35 @@ def query_trino(conn_id: str, sql: str):
     return frame
 
 
+def iter_trino_batches(conn_id: str, sql: str, batch_size: int):
+    import pandas as pd
+    from airflow.providers.trino.hooks.trino import TrinoHook
+
+    if batch_size <= 0:
+        raise ValueError("Trino query batch_size must be positive")
+
+    hook = TrinoHook(trino_conn_id=conn_id)
+    connection = hook.get_conn()
+    cursor = connection.cursor()
+    try:
+        cursor.execute(sql)
+        columns = [description[0] for description in cursor.description]
+        batch_number = 0
+        while rows := cursor.fetchmany(batch_size):
+            batch_number += 1
+            frame = pd.DataFrame.from_records(rows, columns=columns)
+            logger.info(
+                "Trino query returned batch=%d rows=%d (conn=%s)",
+                batch_number,
+                len(frame.index),
+                conn_id,
+            )
+            yield frame
+    finally:
+        cursor.close()
+        connection.close()
+
+
 def validate_source_metrics(
     metrics,
     dt: date,
@@ -310,23 +340,43 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_daily_prices(
-    table,
-    frame,
-    dt: datetime,
-) -> None:
+def write_daily_price_batches(table, frames, dt: datetime) -> None:
     from pyiceberg.expressions import EqualTo
 
-    frame = frame.copy()
-    validate_product_prices(frame, dt)
-    arrow_table = _to_arrow_for_table(table, frame)
-    table.overwrite(
-        arrow_table,
-        overwrite_filter=EqualTo("dt", dt),
-    )
+    transaction = table.transaction()
+    transaction.delete(delete_filter=EqualTo("dt", dt))
+    total_rows = 0
+    batch_count = 0
+
+    for frame in frames:
+        if frame.empty:
+            continue
+
+        batch_count += 1
+        validate_product_prices(frame, dt)
+        arrow_table = _to_arrow_for_table(table, frame)
+        batch_rows = arrow_table.num_rows
+        transaction.append(arrow_table)
+        total_rows += batch_rows
+        logger.info(
+            "Staged product-price batch=%d rows=%d total_rows=%d for dt=%s",
+            batch_count,
+            batch_rows,
+            total_rows,
+            dt,
+        )
+        del arrow_table
+        del frame
+        gc.collect()
+
+    if total_rows == 0:
+        raise ValueError(f"Product prices are empty for {dt}")
+
+    transaction.commit_transaction()
     logger.info(
-        "Wrote %d rows to %s for dt=%s",
-        arrow_table.num_rows,
+        "Wrote %d rows in %d batches to %s for dt=%s",
+        total_rows,
+        batch_count,
         table.name(),
         dt,
     )

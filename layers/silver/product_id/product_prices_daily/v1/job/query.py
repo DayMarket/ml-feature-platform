@@ -102,14 +102,14 @@ def build_source_metrics_query(dt: date) -> str:
     return f"""
 WITH price_skus AS (
     SELECT
-        CAST(sku_id AS INTEGER) AS sku_id,
+        CAST(sku_id AS BIGINT) AS sku_id,
         CAST(product_id AS INTEGER) AS source_product_id
     FROM "dwh-clickhouse".marts.daily_sku_quantity_eod
     WHERE dt = {date_sql}
 ),
 sku_mapping AS (
     SELECT
-        CAST(id AS INTEGER) AS sku_id,
+        CAST(id AS BIGINT) AS sku_id,
         CAST(product_id AS INTEGER) AS product_id,
         CAST(sku_group_id AS INTEGER) AS sku_group_id
     FROM "dwh-clickhouse".dict.sku

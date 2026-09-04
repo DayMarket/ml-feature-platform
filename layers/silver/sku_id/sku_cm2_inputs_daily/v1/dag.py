@@ -7,6 +7,7 @@ from datetime import timedelta
 
 import pendulum
 import yaml
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.sdk import dag, task
 from airflow.timetables.interval import CronDataIntervalTimetable
 from kubernetes.client import models as k8s
@@ -95,6 +96,18 @@ def get_dag_default_args() -> dict:
     catchup=CONFIG["dag"]["catchup"],
 )
 def sku_cm2_inputs_daily_dag() -> None:
+    wait_for_quantity_eod = ExternalTaskSensor(
+        task_id="wait_for_quantity_eod",
+        external_dag_id="dwh_core.quantity_eod",
+        allowed_states=["success"],
+        failed_states=["failed"],
+        mode="reschedule",
+        poke_interval=30,
+        timeout=6 * 60 * 60,
+        check_existence=True,
+        execution_delta=timedelta(hours=19),
+    )
+
     @task(executor_config=_executor_config())
     def materialize(interval_end_value: str) -> None:
         runtime = _load_module("runtime.py", "sku_cm2_inputs_daily_runtime")
@@ -116,13 +129,14 @@ def sku_cm2_inputs_daily_dag() -> None:
             "orders_table": source["orders_table"],
         }
 
-        frame = runtime.query_trino(
-            source["trino_conn_id"],
-            query.build_query(**query_args),
+        frames = runtime.iter_trino_batches(
+            conn_id=source["trino_conn_id"],
+            sql=query.build_query(**query_args),
+            batch_size=config["runtime"]["query_batch_rows"],
         )
-        runtime.write_inputs(
+        runtime.write_input_batches(
             table=table,
-            frame=frame,
+            frames=frames,
             dt=dt,
         )
 
@@ -134,6 +148,7 @@ def sku_cm2_inputs_daily_dag() -> None:
     stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(
         DQ_PARTITION_DATE
     )
+    wait_for_quantity_eod >> materialize_task
     materialize_task >> [dq_task, stats_task]
 
 

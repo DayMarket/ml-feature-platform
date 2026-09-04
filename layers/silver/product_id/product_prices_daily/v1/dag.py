@@ -7,8 +7,8 @@ from datetime import timedelta
 
 import pendulum
 import yaml
-from airflow.sdk import dag, task
 from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+from airflow.sdk import dag, task
 from airflow.timetables.interval import CronDataIntervalTimetable
 from kubernetes.client import models as k8s
 
@@ -124,11 +124,12 @@ def product_prices_daily_dag() -> None:
         )
         runtime.validate_source_metrics(metrics, source_date)
 
-        frame = runtime.query_trino(
-            conn_id,
-            query.build_query(dt, source_date),
+        frames = runtime.iter_trino_batches(
+            conn_id=conn_id,
+            sql=query.build_query(dt, source_date),
+            batch_size=config["runtime"]["query_batch_rows"],
         )
-        runtime.write_daily_prices(table, frame, dt)
+        runtime.write_daily_price_batches(table, frames, dt)
 
     interval_end_value = (
         '{{ data_interval_end.in_timezone("UTC").isoformat() }}'

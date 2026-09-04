@@ -311,7 +311,7 @@ WITH params AS (
         {window_start_sql} AS window_start,
         {window_end_sql} AS window_end
 ),
-um AS (
+um_source AS (
     SELECT
         account_id,
         CASE sex
@@ -325,7 +325,19 @@ um AS (
     FROM {customer_table}
     WHERE account_id > 0
 ),
-ecosystem AS (
+um AS (
+    SELECT
+        account_id,
+        CASE
+            WHEN COUNT(DISTINCT gender) = 1 THEN MAX(gender)
+        END AS gender,
+        CASE
+            WHEN COUNT(DISTINCT birth_date) = 1 THEN MAX(birth_date)
+        END AS birth_date
+    FROM um_source
+    GROUP BY account_id
+),
+ecosystem_source AS (
     SELECT
         last_user_id_m AS account_id,
         CASE last_gender_ub
@@ -334,6 +346,15 @@ ecosystem AS (
         END AS gender
     FROM {ecosystem_users_table}
     WHERE last_user_id_m > 0
+),
+ecosystem AS (
+    SELECT
+        account_id,
+        CASE
+            WHEN COUNT(DISTINCT gender) = 1 THEN MAX(gender)
+        END AS gender
+    FROM ecosystem_source
+    GROUP BY account_id
 ),
 demographics AS (
     SELECT
