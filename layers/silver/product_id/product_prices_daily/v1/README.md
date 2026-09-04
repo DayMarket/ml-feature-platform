@@ -10,6 +10,8 @@
 - DAG: `feature-platform.layers.silver.product_id.product_prices_daily`.
 - Путь: `layers/silver/product_id/product_prices_daily/v1`.
 - Групповой тег Airflow: `recsys-features`.
+- Ошибки задач отправляют alert уровня `P3` команде `recsys` через
+  `oncall_webhook_recsys`.
 - Расписание: ежедневно в 19:00 UTC (`0 19 * * *`), то есть в 00:00 `Asia/Tashkent`.
 - `dt` — `TIMESTAMP` начала даты расчёта (`00:00:00 Asia/Tashkent`), определённой из
   `data_interval_end`.

@@ -9,6 +9,8 @@ Silver-контракт с SKU grain в цепочке CM2.
 - DAG: `feature-platform.layers.silver.sku_id.sku_cm2_inputs_daily`.
 - Путь: `layers/silver/sku_id/sku_cm2_inputs_daily/v1`.
 - Airflow group tag: `recsys-features`.
+- Ошибки задач отправляют alert уровня `P3` команде `recsys` через
+  `oncall_webhook_recsys`.
 - Расписание: ежедневно в `19:00 UTC`, то есть в `00:00 Asia/Tashkent`.
 - `start_date=2026-08-08T19:00:00Z`, `catchup=true`: при первом включении DAG выполняет
   начальный backfill примерно за две недели.
