@@ -41,7 +41,8 @@ Grain и уникальный ключ: `dt,sku_id`.
 - `dimensional_group` — `SMALL`, `MEDIUM` или `LARGE`; значение нормализуется в верхний
   регистр, а `NULL`, пустая строка, строка только из пробелов и `UNKNOWN` преобразуются в
   `SMALL`;
-- `sell_price_uzs` — EOD sell price SKU в UZS за календарный день перед `dt` либо `NULL`;
+- `sell_price_uzs` — последний завершённый EOD sell price SKU в UZS, доступный от ожидаемого
+  запуска `dwh_core.quantity_eod`, либо `NULL`;
 - `commission_pct` — комиссия SKU в процентах либо `NULL`;
 - `n_orders_28d` — число строк заказов SKU за предыдущие 28 полных дней.
 
@@ -69,15 +70,16 @@ Grain и уникальный ключ: `dt,sku_id`.
 
 ## Расчёт
 
-В `00:00 Asia/Tashkent` текущий календарный день ещё не имеет EOD-цены. Поэтому выходной `dt`
-хранит дату расчёта, а цена выбирается отдельным условием
-`daily_sku_quantity_eod.dt = dt - INTERVAL '1' DAY`. Например, строка S6 с
-`dt = 2026-08-24 00:00:00` использует EOD-цену за `2026-08-23`. Поле `dt` источника доступно в Trino
-как `DATE`, поэтому дополнительное преобразование не требуется.
+Дата цены привязана к ожидаемому запуску `dwh_core.quantity_eod`:
+`daily_sku_quantity_eod.dt = DATE(data_interval_end UTC) - INTERVAL '1' DAY`. Например,
+запуск S6 с `data_interval_end = 2026-09-04 19:00:00 UTC` записывает
+`dt = 2026-09-05 00:00:00 Asia/Tashkent` и использует завершённую EOD-цену за
+`2026-09-03`. Поле `dt` источника доступно в Trino как `DATE`.
 
 Постоянные правила зафиксированы непосредственно в расчёте:
 
-- `dimensional_group IS NULL → SMALL`;
+- `dimensional_group` после `TRIM` и приведения к верхнему регистру: `NULL`, пустое значение
+  или `UNKNOWN → SMALL`;
 - комиссия читается из колонки `commission`;
 - допустимые dimensional group: `SMALL`, `MEDIUM`, `LARGE`;
 - допустимый диапазон комиссии: `[0,100]`;
