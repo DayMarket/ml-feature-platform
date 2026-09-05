@@ -1,8 +1,8 @@
 # product_prices_daily
 
-Дневные price-факты товара. `dt` обозначает дату расчёта, исторические EOD-цены берутся за
-предыдущий календарный день, а доступность SKU определяется по текущему состоянию на момент
-выполнения job.
+Дневные price-факты товара. `dt` обозначает дату расчёта, исторические EOD-цены берутся из
+последнего завершённого среза ожидаемого запуска `dwh_core.quantity_eod`, а доступность SKU
+определяется по текущему состоянию на момент выполнения job.
 
 ## Выход и оркестрация
 
@@ -16,7 +16,7 @@
 - `dt` — `TIMESTAMP` начала даты расчёта (`00:00:00 Asia/Tashkent`), определённой из
   `data_interval_end`.
 - `start_date=2026-08-08T19:00:00Z`, `catchup=True`. Первый запуск записывает `dt=2026-08-10`
-  и использует EOD-цены за 9 августа; initial backfill цен по-прежнему начинается с 9 августа.
+  и использует EOD-цены за 8 августа.
 
 Перед материализацией `ExternalTaskSensor` ожидает успешный
 запуск DAG `dwh_core.quantity_eod`, который формирует актуальный EOD-срез и запускается
@@ -47,8 +47,9 @@ SKU и SKU-group используются только внутри расчет
 
 Чтение выполняется через Trino connection `trino_recsys`:
 
-- `"dwh-clickhouse".marts.daily_sku_quantity_eod` — `full_price_eod` и
-  `sell_price_eod` за календарный день перед `dt`;
+- `"dwh-clickhouse".marts.daily_sku_quantity_eod` — последний завершённый срез
+  `full_price_eod` и `sell_price_eod`, доступный от ожидаемого запуска
+  `dwh_core.quantity_eod`;
 - `"dwh-clickhouse".dict.sku` — mapping `sku_id → sku_group_id → product_id` и текущее
   состояние `status`, `quantity_active`, `quantity_fbs`.
 
@@ -69,9 +70,11 @@ ClickHouse dict и не выполняет избыточный cross-catalog jo
 ## Расчет
 
 Целевая `dt` вычисляется из `data_interval_end` в `Asia/Tashkent` и сохраняется как
-`TIMESTAMP` локальной полуночи. Из EOD-источника выбираются строки за `dt - 1 день`, поскольку
-на момент расчёта текущий календарный день ещё не завершён. Поле
-`daily_sku_quantity_eod.dt` имеет тип `DATE`.
+`TIMESTAMP` локальной полуночи. Дата цены вычисляется отдельно:
+`daily_sku_quantity_eod.dt = DATE(data_interval_end UTC) - INTERVAL '1' DAY`. Например,
+для `data_interval_end = 2026-09-05 19:00:00 UTC` выходная `dt` равна
+`2026-09-06 00:00:00 Asia/Tashkent`, а EOD-цена выбирается за `2026-09-04`. Поле `dt`
+источника имеет тип `DATE`.
 
 Текущая доступность SKU:
 
@@ -97,9 +100,8 @@ AND (
 active-price агрегаты. Если у товара нет доступных SKU, все три active-price колонки равны
 `NULL`. Нули вместо `NULL` не подставляются.
 
-Историческая цена является point-in-time относительно календарного дня перед `dt`, текущая
-доступность — нет. При backfill также используется current-state dict на фактический момент
-запуска.
+Историческая цена является point-in-time относительно выбранной EOD-даты, текущая доступность
+— нет. При backfill также используется current-state dict на фактический момент запуска.
 
 ## Проверки качества
 
@@ -149,5 +151,5 @@ Silver-таблицы не настраивается.
 
 ## Владелец и алерты
 
-`table.meta.team = team::recsys`. Внешние on-call алерты для DAG отключены; ошибки остаются
-видимыми в статусах и логах Airflow.
+`table.meta.team = team::recsys`. Ошибки задач отправляют alert уровня `P3` команде `recsys`
+через `oncall_webhook_recsys`.

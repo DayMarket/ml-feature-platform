@@ -121,7 +121,7 @@ def product_prices_daily_dag() -> None:
 
         table = runtime.preflight_table(catalog, ref)
         dt = runtime.calculation_tashkent_dt(interval_end_value)
-        source_date = dt.date() - timedelta(days=1)
+        source_date = runtime.source_price_date(interval_end_value)
         conn_id = config["source"]["trino_conn_id"]
 
         metrics = runtime.query_trino(
