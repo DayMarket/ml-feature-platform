@@ -35,6 +35,15 @@ def _utc_timestamp_literal(value: datetime) -> str:
     return normalized.strftime("TIMESTAMP '%Y-%m-%d %H:%M:%S'")
 
 
+def source_price_date(interval_end: datetime) -> date:
+    normalized = (
+        interval_end.replace(tzinfo=timezone.utc)
+        if interval_end.tzinfo is None
+        else interval_end.astimezone(timezone.utc)
+    )
+    return normalized.date() - timedelta(days=1)
+
+
 def build_query(
     *,
     dt: datetime,
@@ -45,7 +54,7 @@ def build_query(
     orders_table: str,
 ) -> str:
     dt_sql = _timestamp_literal(dt)
-    price_dt_sql = _date_literal(dt.date() - timedelta(days=1))
+    price_dt_sql = _date_literal(source_price_date(interval_end))
     window_start = interval_end - timedelta(days=ORDERS_LOOKBACK_DAYS)
     window_end_sql = _tashkent_timestamp_literal(interval_end)
     window_start_sql = _tashkent_timestamp_literal(window_start)
