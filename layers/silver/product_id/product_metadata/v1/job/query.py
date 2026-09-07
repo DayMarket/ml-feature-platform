@@ -76,7 +76,7 @@ product_brands AS (
         CAST(MIN(brand_name_id) AS INT) AS brand_id
     FROM {settings.sku_table}
     WHERE product_id BETWEEN 1 AND {MAX_INT_ID}
-        AND sku_id BETWEEN 1 AND {MAX_INT_ID}
+        AND id BETWEEN 1 AND {MAX_INT_ID}
         AND brand_name_id IS NOT NULL
         AND brand_name_id != {settings.excluded_brand_id}
     GROUP BY product_id
