@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Protocol
 
+MAX_INT_ID = 2_147_483_647
+
 
 class SourceSettings(Protocol):
     product_table: str
@@ -17,7 +19,7 @@ SELECT CAST(product.id AS INT) AS product_id
 FROM {settings.product_table} product
 LEFT JOIN {settings.category_table} category
     ON product.category_id = category.id
-WHERE product.id IS NOT NULL
+WHERE product.id BETWEEN 1 AND {MAX_INT_ID}
     AND (
         product.category_id IS NULL
         OR product.category_id <= 0
@@ -73,7 +75,8 @@ product_brands AS (
         product_id,
         CAST(MIN(brand_name_id) AS INT) AS brand_id
     FROM {settings.sku_table}
-    WHERE product_id IS NOT NULL
+    WHERE product_id BETWEEN 1 AND {MAX_INT_ID}
+        AND sku_id BETWEEN 1 AND {MAX_INT_ID}
         AND brand_name_id IS NOT NULL
         AND brand_name_id != {settings.excluded_brand_id}
     GROUP BY product_id
@@ -107,7 +110,7 @@ LEFT JOIN product_brands brands
     ON product.id = brands.product_id
 LEFT JOIN category_genders genders
     ON product.category_id = genders.category_id
-WHERE product.id IS NOT NULL
+WHERE product.id BETWEEN 1 AND {MAX_INT_ID}
 """
 
 

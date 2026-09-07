@@ -150,8 +150,8 @@ def preflight_table(catalog, ref: TableRef):
 
 
 def iter_trino_batches(conn_id: str, sql: str, batch_size: int):
-    from airflow.providers.trino.hooks.trino import TrinoHook
     import pandas as pd
+    from airflow.providers.trino.hooks.trino import TrinoHook
 
     if batch_size <= 0:
         raise ValueError("Trino query batch_size must be positive")

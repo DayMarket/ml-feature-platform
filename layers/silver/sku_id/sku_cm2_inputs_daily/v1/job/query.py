@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 TASHKENT_TIME_ZONE = ZoneInfo("Asia/Tashkent")
 ORDERS_LOOKBACK_DAYS = 28
+MAX_INT_ID = 2_147_483_647
 
 
 def _date_literal(value: date) -> str:
@@ -77,8 +78,8 @@ WITH sku_base AS (
             'SMALL'
         ) AS dimensional_group
     FROM {sku_table}
-    WHERE id IS NOT NULL
-      AND product_id IS NOT NULL
+    WHERE id BETWEEN 1 AND {MAX_INT_ID}
+      AND product_id BETWEEN 1 AND {MAX_INT_ID}
 ),
 daily_prices AS (
     SELECT
@@ -86,12 +87,14 @@ daily_prices AS (
         CAST(sell_price_eod AS DOUBLE) AS sell_price_uzs
     FROM {prices_table}
     WHERE dt = {price_dt_sql}
+      AND sku_id BETWEEN 1 AND {MAX_INT_ID}
 ),
 commissions AS (
     SELECT
         CAST(sku_id AS BIGINT) AS sku_id,
         commission AS commission_pct
     FROM {commission_table}
+    WHERE sku_id BETWEEN 1 AND {MAX_INT_ID}
 ),
 order_counts AS (
     SELECT
@@ -108,7 +111,7 @@ order_counts AS (
             WITH_TIMEZONE(CAST(order_created_at AS TIMESTAMP), 'UTC'),
             'Asia/Tashkent'
           ) < {window_end_sql}
-      AND sku_id IS NOT NULL
+      AND sku_id BETWEEN 1 AND {MAX_INT_ID}
     GROUP BY CAST(sku_id AS BIGINT)
 )
 SELECT

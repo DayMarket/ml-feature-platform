@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS {target_table} (
     dt TIMESTAMP COMMENT 'Начало даты выполнения расчёта (00:00:00 Asia/Tashkent); EOD-цены берутся из последнего завершённого среза ожидаемого запуска dwh_core.quantity_eod',
-    product_id INT COMMENT 'Идентификатор товара',
+    product_id INT COMMENT 'Положительный идентификатор товара из текущего SKU mapping в диапазоне 1..2147483647',
     min_sell_price_eod DOUBLE COMMENT 'Минимальная валидная sell price товара на конец дня после двухэтапной агрегации через SKU-group',
     avg_sell_price_eod DOUBLE COMMENT 'Среднее sell price по SKU-group товара на конец дня',
     max_sell_price_eod DOUBLE COMMENT 'Максимальная валидная sell price товара на конец дня после двухэтапной агрегации через SKU-group',
