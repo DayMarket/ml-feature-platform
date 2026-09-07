@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 MAX_VALID_PRICE = 1_000_000_000
+MAX_INT_ID = 2_147_483_647
 
 
 def _date_literal(value: date) -> str:
@@ -24,7 +25,7 @@ WITH sku_prices AS (
     SELECT
         {dt_sql} AS dt,
         CAST(s.product_id AS INTEGER) AS product_id,
-        CAST(s.sku_group_id AS INTEGER) AS sku_group_id,
+        s.sku_group_id,
         CASE
             WHEN p.full_price_eod BETWEEN 0 AND {MAX_VALID_PRICE}
             THEN CAST(p.full_price_eod AS DOUBLE)
@@ -44,7 +45,9 @@ WITH sku_prices AS (
     INNER JOIN "dwh-clickhouse".dict.sku s
         ON p.sku_id = s.id
     WHERE p.dt = {date_sql}
-      AND s.product_id IS NOT NULL
+      AND p.sku_id BETWEEN 1 AND {MAX_INT_ID}
+      AND s.id BETWEEN 1 AND {MAX_INT_ID}
+      AND s.product_id BETWEEN 1 AND {MAX_INT_ID}
       AND s.sku_group_id IS NOT NULL
 ),
 sku_group_prices AS (
@@ -102,17 +105,21 @@ def build_source_metrics_query(dt: date) -> str:
     return f"""
 WITH price_skus AS (
     SELECT
-        CAST(sku_id AS BIGINT) AS sku_id,
-        CAST(product_id AS INTEGER) AS source_product_id
+        sku_id,
+        product_id AS source_product_id
     FROM "dwh-clickhouse".marts.daily_sku_quantity_eod
     WHERE dt = {date_sql}
+      AND sku_id BETWEEN 1 AND {MAX_INT_ID}
+      AND product_id BETWEEN 1 AND {MAX_INT_ID}
 ),
 sku_mapping AS (
     SELECT
-        CAST(id AS BIGINT) AS sku_id,
-        CAST(product_id AS INTEGER) AS product_id,
-        CAST(sku_group_id AS INTEGER) AS sku_group_id
+        id AS sku_id,
+        product_id,
+        sku_group_id
     FROM "dwh-clickhouse".dict.sku
+    WHERE id BETWEEN 1 AND {MAX_INT_ID}
+      AND product_id BETWEEN 1 AND {MAX_INT_ID}
 )
 SELECT
     COUNT(*) AS source_rows,

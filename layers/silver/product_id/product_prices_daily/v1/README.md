@@ -64,8 +64,9 @@ ClickHouse dict и не выполняет избыточный cross-catalog jo
 для каждого запуска. Для расчета используется `product_id` из `dict.sku`, как предусмотрено
 отдельным mapping-шагом контракта.
 
-Внутренний `sku_id` в coverage-запросе приводится к `BIGINT`, поскольку источники содержат
-значения больше максимума `INTEGER`. SKU не публикуется в выходной product-grain таблице.
+Строки с `product_id` или внутренним `sku_id` вне диапазона `1..2 147 483 647`
+исключаются до joins, приведения `product_id` к `INTEGER` и агрегации. `sku_group_id`
+используется во внутреннем типе источника и не публикуется в выходной product-grain таблице.
 
 ## Расчет
 
@@ -109,7 +110,7 @@ active-price агрегаты. Если у товара нет доступны�
 
 - непустой source-срез и coverage mapping по SKU/product;
 - уникальность `dt, product_id`;
-- `product_id > 0`;
+- `product_id` находится в диапазоне `1..2 147 483 647`;
 - неотрицательность всех заполненных цен;
 - `min_sell_price_eod <= avg_sell_price_eod <= max_sell_price_eod`;
 - `min_full_price_eod <= max_full_price_eod`;

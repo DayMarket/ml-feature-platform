@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS {target_table} (
     dt TIMESTAMP COMMENT 'Начало локальной даты актуальности метаданных товара (00:00:00 Asia/Tashkent), рассчитанной из Airflow data_interval_end; часть уникального ключа dt, product_id',
-    product_id INT COMMENT 'Уникальный идентификатор карточки товара из iceberg.silver.product.id; часть уникального ключа dt, product_id',
+    product_id INT COMMENT 'Уникальный положительный идентификатор карточки товара из iceberg.silver.product.id в диапазоне 1..2147483647; часть уникального ключа dt, product_id',
     category_id INT COMMENT 'Идентификатор листовой категории товара из iceberg.silver.product.category_id; сохраняется независимо от глубины категорийного пути',
     l1_category_id INT COMMENT 'Идентификатор верхней содержательной категории L1; технический корень category_id = 1 не включается в иерархию',
     l2_category_id INT COMMENT 'Идентификатор категории L2; при отсутствии отдельного второго уровня содержит ближайшего существующего родителя L1',

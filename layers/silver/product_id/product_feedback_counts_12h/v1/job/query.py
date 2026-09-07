@@ -3,6 +3,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 TASHKENT_TIME_ZONE = ZoneInfo("Asia/Tashkent")
+MAX_INT_ID = 2_147_483_647
 
 
 class SourceSettings(Protocol):
@@ -36,7 +37,7 @@ SELECT
     COUNT(rating) AS _n_feedbacks_with_rating
 FROM {settings.feedback_table}
 WHERE status = 'PUBLISHED'
-    AND CAST(product_id AS INT) > 0
+    AND product_id BETWEEN 1 AND {MAX_INT_ID}
     AND date_published >= TIMESTAMP '{window_start_sql}'
     AND date_published < TIMESTAMP '{calculated_at_sql}'
 GROUP BY CAST(product_id AS INT)

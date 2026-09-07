@@ -44,7 +44,7 @@ Grain и primary key: `calculated_at,account_id,l2_category_id`.
 
 - `event_type = 'PRODUCT_IMPRESSION'`;
 - `account_id > 0`;
-- `product_id > 0`;
+- `product_id` находится в диапазоне `1..2 147 483 647`;
 - `session_id IS NOT NULL`;
 - фильтра по `space` нет.
 

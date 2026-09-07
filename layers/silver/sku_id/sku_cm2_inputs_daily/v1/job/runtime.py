@@ -22,6 +22,7 @@ S3_REGION = "ru-central1"
 S3_CONNECTION_ID = "spark_ycs_connection"
 TASHKENT_TIME_ZONE = ZoneInfo("Asia/Tashkent")
 ALLOWED_DIMENSIONAL_GROUPS = {"SMALL", "MEDIUM", "LARGE"}
+MAX_INT_ID = 2_147_483_647
 
 OUTPUT_COLUMNS = (
     "dt",
@@ -150,8 +151,8 @@ def preflight_table(catalog, ref: TableRef):
 
 
 def iter_trino_batches(conn_id: str, sql: str, batch_size: int):
-    from airflow.providers.trino.hooks.trino import TrinoHook
     import pandas as pd
+    from airflow.providers.trino.hooks.trino import TrinoHook
 
     if batch_size <= 0:
         raise ValueError("Trino query batch_size must be positive")
@@ -210,6 +211,10 @@ def validate_inputs(frame, dt: datetime) -> None:
             raise ValueError(f"S6 output contains null {column}")
         if (converted % 1 != 0).any():
             raise ValueError(f"S6 output contains non-integer {column}")
+        if ((converted < 1) | (converted > MAX_INT_ID)).any():
+            raise ValueError(
+                f"S6 output contains {column} outside the supported INT range"
+            )
         frame[column] = converted.astype(dtype)
 
     if frame.duplicated(subset=["dt", "sku_id"]).any():
