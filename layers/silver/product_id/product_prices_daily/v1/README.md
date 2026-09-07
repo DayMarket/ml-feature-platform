@@ -110,7 +110,7 @@ active-price агрегаты. Если у товара нет доступны�
 
 - непустой source-срез и coverage mapping по SKU/product;
 - уникальность `dt, product_id`;
-- `product_id` находится в диапазоне `1..2 147 483 647`;
+- `product_id > 0`;
 - неотрицательность всех заполненных цен;
 - `min_sell_price_eod <= avg_sell_price_eod <= max_sell_price_eod`;
 - `min_full_price_eod <= max_full_price_eod`;

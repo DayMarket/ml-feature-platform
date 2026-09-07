@@ -21,7 +21,6 @@ S3_ENDPOINT = "http://storage.yandexcloud.net"
 S3_REGION = "ru-central1"
 S3_CONNECTION_ID = "spark_ycs_connection"
 TASHKENT_TIME_ZONE = ZoneInfo("Asia/Tashkent")
-MAX_INT_ID = 2_147_483_647
 
 PRICE_COLUMNS = (
     "min_sell_price_eod",
@@ -264,11 +263,7 @@ def validate_product_prices(frame, dt: datetime) -> None:
         raise ValueError(f"Outgoing rows contain a dt other than {dt}")
 
     frame["product_id"] = pd.to_numeric(frame["product_id"], errors="coerce")
-    if (
-        frame["product_id"].isna().any()
-        or (frame["product_id"] <= 0).any()
-        or (frame["product_id"] > MAX_INT_ID).any()
-    ):
+    if frame["product_id"].isna().any() or (frame["product_id"] <= 0).any():
         raise ValueError("Product prices contain invalid product_id")
     if frame.duplicated(subset=["dt", "product_id"]).any():
         raise ValueError("Product prices contain duplicate primary keys")
