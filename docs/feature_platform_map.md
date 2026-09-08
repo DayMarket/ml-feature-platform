@@ -15,7 +15,7 @@ python3 scripts/generate_feature_platform_map.py --check
 
 Всего DAG: **47**. Внутренних зависимостей: **10**. Внешних зависимостей: **32**. P1: **0**. P2: **8**. P3: **34**. P4: **5**.
 
-Таска `dq`: **44** из **47**. Таска `feature_stats`: **44** из **47** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
+Таска `dq`: **45** из **47**. Таска `feature_stats`: **45** из **47** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
 
 Severity policy:
 
@@ -313,13 +313,9 @@ flowchart LR
     classDef profile fill:#dcfce7,stroke:#16a34a,color:#052e16
 ```
 
-DAG энтити без таски `dq`:
+Таска `dq` есть во всех DAG'ах энтити.
 
-- `feature-platform.layers.silver.sku_id.sku_daily_dynamic_prices`
-
-DAG энтити без таски `feature_stats`:
-
-- `feature-platform.layers.silver.sku_id.sku_daily_dynamic_prices`
+Таска `feature_stats` есть во всех DAG'ах энтити.
 
 Сенсоров на устаревшем dbt-DQ-контракте: **24**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
 
