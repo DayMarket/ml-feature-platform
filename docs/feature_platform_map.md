@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **47**. Внутренних зависимостей: **10**. Внешних зависимостей: **32**. P1: **0**. P2: **8**. P3: **34**. P4: **5**.
+Всего DAG: **47**. Внутренних зависимостей: **14**. Внешних зависимостей: **28**. P1: **0**. P2: **8**. P3: **34**. P4: **5**.
 
-Таска `dq`: **45** из **47**. Таска `feature_stats`: **45** из **47** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
+Таска `dq`: **45** из **47**. Таска `feature_stats`: **45** из **47** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
 
 Severity policy:
 
@@ -231,9 +231,9 @@ UTC 01:00 · P3 · airflow-python`"]
     x3["feedback_sku_group_id"]
     x4["elasticsearch_collect"]
     x3 -->|"dq"| d0
-    d13 -.->|"dbt DQ (legacy) Δ26h"| d2
-    d2 -.->|"dbt DQ (legacy) Δ2h"| d3
-    d17 -.->|"dbt DQ (legacy) Δ3h"| d4
+    d13 -->|"dq Δ26h"| d2
+    d2 -->|"dq Δ2h"| d3
+    d17 -->|"dq Δ3h"| d4
     x0 -.->|"dbt DQ (legacy) Δ5h"| d6
     x1 -.->|"dbt DQ (legacy) Δ5h"| d6
     d8 -->|"sensor Δ1h"| d6
@@ -244,7 +244,7 @@ UTC 01:00 · P3 · airflow-python`"]
     x0 -.->|"dbt DQ (legacy) Δ2h"| d9
     x1 -.->|"dbt DQ (legacy) Δ2h"| d9
     x0 -.->|"dbt DQ (legacy) Δ1h"| d10
-    d5 -.->|"dbt DQ (legacy) Δ3h"| d11
+    d5 -->|"dq Δ3h"| d11
     x2 -->|"sensor Δ19h"| d21
     x4 -->|"sensor"| d23
     x2 -->|"sensor Δ19h"| d25
@@ -317,14 +317,10 @@ flowchart LR
 
 Таска `feature_stats` есть во всех DAG'ах энтити.
 
-Сенсоров на устаревшем dbt-DQ-контракте: **24**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
+Сенсоров на устаревшем dbt-DQ-контракте: **20**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
 
 | Downstream DAG | Ждёт |
 |---|---|
-| `feature-platform.layers.gold.account_id.buyout_online_account_features` | `dbt.source.trino.ml_feature_platform_gold.feature_platform_buyout_account_history_features.dq` |
-| `feature-platform.layers.gold.sku_id.buyout_online_sku_features` | `dbt.source.trino.ml_feature_platform_gold.feature_platform_buyout_item_signal_features.dq` |
-| `feature-platform.layers.gold.account_id.buyout_account_history_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_account_lifetime_facts.dq` |
-| `feature-platform.layers.gold.city_id_dimensional_group.buyout_online_city_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_delivery_cpi_city_features.dq` |
 | `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_dp_neighbor_order_features.dq` |
 | `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_geo_geointellect_features.dq` |
 | `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_geo_user_activity_features.dq` |
