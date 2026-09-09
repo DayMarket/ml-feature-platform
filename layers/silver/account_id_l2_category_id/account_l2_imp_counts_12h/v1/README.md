@@ -4,6 +4,9 @@ DAG id: `feature-platform.layers.silver.account_id_l2_category_id.account_l2_imp
 
 Airflow group tag: `recsys-features`.
 
+Ошибки задач отправляют alert уровня `P3` команде `recsys` через
+`oncall_webhook_recsys`.
+
 Целевая таблица: `iceberg.silver.feature_platform_account_l2_imp_counts_12h`.
 
 ## Контракт
@@ -27,7 +30,7 @@ Grain и primary key: `calculated_at,account_id,l2_category_id`.
 
 Категория определяется только по цепочке `event.product_id -> product.category_id -> category hierarchy`; `event.category_id` не используется. В агрегат записывается второй содержательный уровень от корня. Если в пути нет отдельного L2, используется L1. Листовой `category_id` используется только внутри разрешения иерархии и не публикуется.
 
-Технический root `category_id = 1` исключается. SQL явно обходит до восьми содержательных узлов пути и берёт L2 от корня. Уровни глубже L6 не публикуются и не меняют L2; путь глубже восьми уровней блокируется защитной проверкой до записи.
+Технический root `category_id = 1` исключается. L2 берётся из полного `category.path`, поэтому глубина пути не ограничена количеством self-join. Уровни глубже L6 не публикуются и не меняют L2.
 
 ## Окно и distinct-семантика
 
@@ -41,7 +44,7 @@ Grain и primary key: `calculated_at,account_id,l2_category_id`.
 
 - `event_type = 'PRODUCT_IMPRESSION'`;
 - `account_id > 0`;
-- `product_id > 0`;
+- `product_id` находится в диапазоне `1..2 147 483 647`;
 - `session_id IS NOT NULL`;
 - фильтра по `space` нет.
 
@@ -60,6 +63,8 @@ Iceberg использует `days(calculated_at)`. Запись выполня�
 Подтверждённые upstream DQ DAG ids для внешних таблиц-источников неизвестны, поэтому отдельные sensors не добавлены.
 
 После `MERGE` параллельно запускаются внутренние `dq` и `feature_stats` для конкретного `calculated_at`. DQ блокирует downstream при NULL или дублях primary key; freshness, минимальный объём и изменение объёма во время первичной раскатки имеют severity `warn`. `n_impressions > 0`, временные границы и положительные ID обеспечиваются самой трансформацией.
+
+Внешние on-call алерты для DAG отключены. Ошибки остаются видимыми в статусах и логах Airflow.
 
 `feature_stats` считает распределение `n_impressions` одним полным Trino-сканом записанного 12-часового среза на каждый запуск, то есть два скана в сутки.
 

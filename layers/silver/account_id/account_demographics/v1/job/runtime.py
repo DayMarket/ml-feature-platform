@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -140,13 +141,33 @@ def preflight_table(catalog, ref: TableRef):
         ) from error
 
 
-def query_trino(conn_id: str, sql: str):
+def iter_trino_batches(conn_id: str, sql: str, batch_size: int):
     from airflow.providers.trino.hooks.trino import TrinoHook
+    import pandas as pd
+
+    if batch_size <= 0:
+        raise ValueError("Trino query batch_size must be positive")
 
     hook = TrinoHook(trino_conn_id=conn_id)
-    frame = hook.get_pandas_df(sql)
-    logger.info("Trino query returned shape=%s (conn=%s)", frame.shape, conn_id)
-    return frame
+    connection = hook.get_conn()
+    cursor = connection.cursor()
+    try:
+        cursor.execute(sql)
+        columns = [description[0] for description in cursor.description]
+        batch_number = 0
+        while rows := cursor.fetchmany(batch_size):
+            batch_number += 1
+            frame = pd.DataFrame.from_records(rows, columns=columns)
+            logger.info(
+                "Trino query returned batch=%d rows=%d (conn=%s)",
+                batch_number,
+                len(frame.index),
+                conn_id,
+            )
+            yield frame
+    finally:
+        cursor.close()
+        connection.close()
 
 
 def validate_demographics(frame, dt: datetime) -> None:
@@ -209,40 +230,6 @@ def validate_demographics(frame, dt: datetime) -> None:
         )
 
 
-def log_demographics_metrics(frame, dt: datetime) -> None:
-    total_rows = len(frame.index)
-    age_null_share = float(frame["age"].isna().mean())
-    gender_null_share = float(frame["gender"].isna().mean())
-    city_null_share = float(frame["city_name"].isna().mean())
-    platform_null_share = float(frame["platform"].isna().mean())
-    logger.info(
-        "Demographics coverage for dt=%s: rows=%d, age_null_share=%.6f, "
-        "gender_null_share=%.6f, city_null_share=%.6f, "
-        "platform_null_share=%.6f",
-        dt,
-        total_rows,
-        age_null_share,
-        gender_null_share,
-        city_null_share,
-        platform_null_share,
-    )
-
-    ages = frame["age"].dropna().astype(float)
-    if ages.empty:
-        logger.info("Age distribution for dt=%s is empty", dt)
-        return
-    logger.info(
-        "Age distribution for dt=%s: min=%.0f, median=%.0f, "
-        "p95=%.0f, p99=%.0f, max=%.0f",
-        dt,
-        ages.min(),
-        ages.quantile(0.50),
-        ages.quantile(0.95),
-        ages.quantile(0.99),
-        ages.max(),
-    )
-
-
 def _to_arrow_for_table(table, frame):
     import pyarrow as pa
 
@@ -267,20 +254,69 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_demographics(table, frame, dt: datetime) -> None:
+def write_demographics_batches(table, frames, dt: datetime) -> None:
     from pyiceberg.expressions import EqualTo
 
-    frame = frame.copy()
-    validate_demographics(frame, dt)
-    log_demographics_metrics(frame, dt)
-    arrow_table = _to_arrow_for_table(table, frame)
-    table.overwrite(
-        arrow_table,
-        overwrite_filter=EqualTo("dt", dt),
-    )
+    transaction = table.transaction()
+    transaction.delete(delete_filter=EqualTo("dt", dt))
+    total_rows = 0
+    batch_count = 0
+    null_counts = {
+        column: 0 for column in ("age", "gender", "city_name", "platform")
+    }
+    age_min = None
+    age_max = None
+
+    for frame in frames:
+        if frame.empty:
+            continue
+
+        batch_count += 1
+        validate_demographics(frame, dt)
+        for column in null_counts:
+            null_counts[column] += int(frame[column].isna().sum())
+        ages = frame["age"].dropna()
+        if not ages.empty:
+            batch_age_min = int(ages.min())
+            batch_age_max = int(ages.max())
+            age_min = (
+                batch_age_min if age_min is None else min(age_min, batch_age_min)
+            )
+            age_max = (
+                batch_age_max if age_max is None else max(age_max, batch_age_max)
+            )
+        arrow_table = _to_arrow_for_table(table, frame)
+        batch_rows = arrow_table.num_rows
+        transaction.append(arrow_table)
+        total_rows += batch_rows
+        logger.info(
+            "Staged demographics batch=%d rows=%d total_rows=%d for dt=%s",
+            batch_count,
+            batch_rows,
+            total_rows,
+            dt,
+        )
+        del arrow_table
+        del frame
+        gc.collect()
+
+    if total_rows == 0:
+        raise ValueError(f"Account demographics output is empty for {dt}")
+
+    transaction.commit_transaction()
     logger.info(
-        "Wrote %d rows to %s for dt=%s",
-        arrow_table.num_rows,
+        "Wrote %d rows in %d batches to %s for dt=%s; "
+        "age_null_share=%.6f, gender_null_share=%.6f, "
+        "city_null_share=%.6f, platform_null_share=%.6f, "
+        "age_min=%s, age_max=%s",
+        total_rows,
+        batch_count,
         table.name(),
         dt,
+        null_counts["age"] / total_rows,
+        null_counts["gender"] / total_rows,
+        null_counts["city_name"] / total_rows,
+        null_counts["platform"] / total_rows,
+        age_min,
+        age_max,
     )

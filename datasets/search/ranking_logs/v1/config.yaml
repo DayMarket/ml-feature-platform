@@ -40,7 +40,7 @@ dataset:
   # ресурсов search_dataset — см. README, раздел «Отбор». Там же важная
   # оговорка: снижение доли не удешевляет скан model_input, только то, что
   # после него.
-  sample_percent: 0.01
+  sample_percent: 1
 
 dag:
   team: search

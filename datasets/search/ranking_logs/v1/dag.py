@@ -97,7 +97,7 @@ def collect_ranking_logs_dataset_v1():
     )
 
     collect_dataset = SparkKubernetesOperator(
-        execution_timeout=timedelta(hours=10),
+        execution_timeout=timedelta(hours=30),
         task_id="collect_ranking_logs_dataset",
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(

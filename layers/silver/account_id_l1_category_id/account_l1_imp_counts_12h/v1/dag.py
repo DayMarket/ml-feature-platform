@@ -20,6 +20,7 @@ sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, DAG_DIR)
 
 from config.factory import get_dag_settings, get_deployment
+
 from dq.task import build_dq_task
 from feature_stats.task import build_feature_stats_task
 

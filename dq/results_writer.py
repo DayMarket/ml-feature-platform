@@ -7,10 +7,13 @@
 from __future__ import annotations
 
 import json
+import logging
+import random
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 import yaml
 
@@ -29,6 +32,12 @@ S3_CONNECTION_ID = "spark_ycs_connection"
 ICEBERG_LOCK_CHECK_MIN_WAIT_SECONDS = 2
 ICEBERG_LOCK_CHECK_MAX_WAIT_SECONDS = 60
 ICEBERG_LOCK_CHECK_RETRIES = 10
+ICEBERG_COMMIT_RETRY_ATTEMPTS = 8
+ICEBERG_COMMIT_RETRY_INITIAL_SECONDS = 1.0
+ICEBERG_COMMIT_RETRY_MAX_SECONDS = 30.0
+
+logger = logging.getLogger("airflow.task")
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -89,6 +98,52 @@ def load_results_catalog(catalog_name: str):
     )
 
 
+def _commit_failed_exception_type() -> type[Exception]:
+    from pyiceberg.exceptions import CommitFailedException
+
+    return CommitFailedException
+
+
+def run_iceberg_commit_with_retry(
+    operation: Callable[[], T],
+    operation_name: str,
+    *,
+    attempts: int = ICEBERG_COMMIT_RETRY_ATTEMPTS,
+    initial_sleep_seconds: float = ICEBERG_COMMIT_RETRY_INITIAL_SECONDS,
+    max_sleep_seconds: float = ICEBERG_COMMIT_RETRY_MAX_SECONDS,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    jitter_fn: Callable[[float, float], float] = random.uniform,
+) -> T:
+    """Повторяет optimistic commit после конкурентного изменения Iceberg branch."""
+    if attempts <= 0:
+        raise ValueError("Iceberg commit retry attempts must be positive")
+
+    commit_failed = _commit_failed_exception_type()
+    for attempt in range(1, attempts + 1):
+        try:
+            return operation()
+        except commit_failed:
+            if attempt == attempts:
+                raise
+
+            ceiling = min(
+                max_sleep_seconds,
+                initial_sleep_seconds * (2 ** (attempt - 1)),
+            )
+            delay = jitter_fn(ceiling / 2, ceiling)
+            logger.warning(
+                "Concurrent Iceberg commit during %s, attempt %d/%d; "
+                "refreshing table metadata and retrying in %.2fs",
+                operation_name,
+                attempt,
+                attempts,
+                delay,
+            )
+            sleep_fn(delay)
+
+    raise RuntimeError(f"Unexpected retry loop exit during {operation_name}")
+
+
 def build_rows(
     outcome: DqRunOutcome,
     ctx: RenderContext,
@@ -145,13 +200,20 @@ def write_results(
 
     schema, name = results_table_ref(repo_root)
     catalog = load_results_catalog(results_catalog_name(repo_root))
-    table = catalog.load_table((schema, name))
+    identifier = (schema, name)
 
-    arrow_table = pa.Table.from_pylist(rows, schema=table.schema().as_arrow())
-    table.overwrite(
-        arrow_table,
-        overwrite_filter=And(
-            EqualTo("date", ctx.partition_date),
-            EqualTo("dag_id", meta.dag_id),
-        ),
+    def overwrite_current_results() -> None:
+        table = catalog.load_table(identifier)
+        arrow_table = pa.Table.from_pylist(rows, schema=table.schema().as_arrow())
+        table.overwrite(
+            arrow_table,
+            overwrite_filter=And(
+                EqualTo("date", ctx.partition_date),
+                EqualTo("dag_id", meta.dag_id),
+            ),
+        )
+
+    run_iceberg_commit_with_retry(
+        overwrite_current_results,
+        f"write DQ results for dag_id={meta.dag_id} date={ctx.partition_date}",
     )

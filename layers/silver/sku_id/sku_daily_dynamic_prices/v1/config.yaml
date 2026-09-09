@@ -31,3 +31,47 @@ alerts:
   team: pricing
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_pricing
+
+dq:
+  trino_conn_id: trino_search
+  # Джоб пишет партицию previous_utc_date(data_interval_end) (job/runtime.py), а при
+  # расписании "0 1 * * *" это ровно дата data_interval_start в UTC.
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Строка витрины = один distinct sku_id за сутки, поэтому пороги сняты с истории
+    # источника "dwh-clickhouse".pricing.dynamic_discount за 2026-07-01..2026-09-07
+    # (69 дней): 555 473 .. 867 517 строк в сутки, медиана ~655 тыс.
+    # Порог 400 000 — на 28% ниже худшего наблюдённого дня: ловит потерю половины
+    # источника, но не обычный разброс. Тест падает при row_count <= min_rows.
+    - name: row_count_min
+      min_rows: 400000
+      severity: warn
+    # Максимальный наблюдённый суточный скачок на той же истории — +23.5%
+    # (2026-09-01 -> 2026-09-02, 702 353 -> 867 517); дефолтные 0.2 сработали бы
+    # дважды за 69 дней на штатных всплесках. 0.3 оставляет запас над максимумом.
+    - name: row_count_growth
+      max_growth_ratio: 0.3
+      severity: warn
+    # Объёмные тесты и freshness — в warn на период раскатки: состояние копится в
+    # feature_platform_dq_results, но дежурного не будит. Перевод в error — после
+    # первых недель прогонов, уже по истории самой витрины, а не источника.
+    - name: freshness
+      severity: warn
+    # Отрицательная цена означала бы discount_amount > calculated_for_price.
+    # Проверено на источнике за 2026-09-05..2026-09-07: 29 119 338 наблюдений,
+    # ни одного отрицательного и ни одного NULL в calculated_for_price и
+    # discount_amount. observations — sum(cnt) двухуровневой агрегации, всегда >= 1.
+    - name: non_negative
+      columns:
+        - seller_price
+        - dp_sell_price
+        - observations
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны смотреть
+  # на одну партицию, иначе профиль посчитан не по тем данным, что проверял DQ.
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  # Профиль идёт по seller_price, dp_sell_price и observations: date и sku_id
+  # отсекаются как партиция и первичный ключ, prices — как ARRAY<BIGINT>.
+  exclude_columns: []

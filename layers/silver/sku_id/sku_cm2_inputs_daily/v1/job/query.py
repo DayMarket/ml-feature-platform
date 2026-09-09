@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 TASHKENT_TIME_ZONE = ZoneInfo("Asia/Tashkent")
 ORDERS_LOOKBACK_DAYS = 28
+MAX_INT_ID = 2_147_483_647
 
 
 def _date_literal(value: date) -> str:
@@ -35,6 +36,15 @@ def _utc_timestamp_literal(value: datetime) -> str:
     return normalized.strftime("TIMESTAMP '%Y-%m-%d %H:%M:%S'")
 
 
+def source_price_date(interval_end: datetime) -> date:
+    normalized = (
+        interval_end.replace(tzinfo=timezone.utc)
+        if interval_end.tzinfo is None
+        else interval_end.astimezone(timezone.utc)
+    )
+    return normalized.date() - timedelta(days=1)
+
+
 def build_query(
     *,
     dt: datetime,
@@ -45,7 +55,7 @@ def build_query(
     orders_table: str,
 ) -> str:
     dt_sql = _timestamp_literal(dt)
-    price_dt_sql = _date_literal(dt.date() - timedelta(days=1))
+    price_dt_sql = _date_literal(source_price_date(interval_end))
     window_start = interval_end - timedelta(days=ORDERS_LOOKBACK_DAYS)
     window_end_sql = _tashkent_timestamp_literal(interval_end)
     window_start_sql = _tashkent_timestamp_literal(window_start)
@@ -55,29 +65,40 @@ def build_query(
     return f"""
 WITH sku_base AS (
     SELECT
-        CAST(id AS INTEGER) AS sku_id,
+        CAST(id AS BIGINT) AS sku_id,
         CAST(product_id AS INTEGER) AS product_id,
-        COALESCE(CAST(dimensional_group AS VARCHAR), 'SMALL') AS dimensional_group
+        COALESCE(
+            NULLIF(
+                NULLIF(
+                    UPPER(TRIM(CAST(dimensional_group AS VARCHAR))),
+                    ''
+                ),
+                'UNKNOWN'
+            ),
+            'SMALL'
+        ) AS dimensional_group
     FROM {sku_table}
-    WHERE id IS NOT NULL
-      AND product_id IS NOT NULL
+    WHERE id BETWEEN 1 AND {MAX_INT_ID}
+      AND product_id BETWEEN 1 AND {MAX_INT_ID}
 ),
 daily_prices AS (
     SELECT
-        CAST(sku_id AS INTEGER) AS sku_id,
+        CAST(sku_id AS BIGINT) AS sku_id,
         CAST(sell_price_eod AS DOUBLE) AS sell_price_uzs
     FROM {prices_table}
     WHERE dt = {price_dt_sql}
+      AND sku_id BETWEEN 1 AND {MAX_INT_ID}
 ),
 commissions AS (
     SELECT
-        CAST(sku_id AS INTEGER) AS sku_id,
-        CAST(comission AS DOUBLE) AS commission_pct
+        CAST(sku_id AS BIGINT) AS sku_id,
+        commission AS commission_pct
     FROM {commission_table}
+    WHERE sku_id BETWEEN 1 AND {MAX_INT_ID}
 ),
 order_counts AS (
     SELECT
-        CAST(sku_id AS INTEGER) AS sku_id,
+        CAST(sku_id AS BIGINT) AS sku_id,
         COUNT(*) AS n_orders_28d
     FROM {orders_table}
     WHERE order_created_at >= {window_start_utc_sql}
@@ -90,8 +111,8 @@ order_counts AS (
             WITH_TIMEZONE(CAST(order_created_at AS TIMESTAMP), 'UTC'),
             'Asia/Tashkent'
           ) < {window_end_sql}
-      AND sku_id IS NOT NULL
-    GROUP BY CAST(sku_id AS INTEGER)
+      AND sku_id BETWEEN 1 AND {MAX_INT_ID}
+    GROUP BY CAST(sku_id AS BIGINT)
 )
 SELECT
     {dt_sql} AS dt,

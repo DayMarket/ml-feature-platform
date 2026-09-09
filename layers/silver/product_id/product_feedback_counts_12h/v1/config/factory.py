@@ -101,7 +101,9 @@ def get_dag_settings() -> dict[str, Any]:
         "catchup": _parse_bool(dag_config["catchup"]),
         "alert_severity": str(alerts_config["severity"]),
         "alert_team": alert_team,
-        "alert_oncall_webhook_conn_id": str(alerts_config["oncall_webhook_conn_id"]),
+        "alert_oncall_webhook_conn_id": str(
+            alerts_config["oncall_webhook_conn_id"]
+        ),
     }
 
 

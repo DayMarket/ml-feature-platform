@@ -4,6 +4,9 @@ DAG id: `feature-platform.layers.silver.product_id.product_feedback_counts_12h`.
 
 Airflow group tag: `recsys-features`.
 
+Ошибки задач отправляют alert уровня `P3` команде `recsys` через
+`oncall_webhook_recsys`.
+
 Целевая таблица: `iceberg.silver.feature_platform_product_feedback_counts_12h`.
 
 ## Контракт
@@ -14,7 +17,7 @@ Airflow group tag: `recsys-features`.
 Grain и primary key: `calculated_at,product_id`.
 
 - `calculated_at` — правая граница 12-часового интервала в `Asia/Tashkent`;
-- `product_id` — положительный ID товара;
+- `product_id` — положительный ID товара в диапазоне `1..2 147 483 647`;
 - `n_feedbacks_1` — количество опубликованных отзывов с рейтингом 1;
 - `n_feedbacks_2` — количество опубликованных отзывов с рейтингом 2;
 - `n_feedbacks_3` — количество опубликованных отзывов с рейтингом 3;
@@ -40,7 +43,7 @@ producer переводит обе границы в `Asia/Tashkent`. Spark sess
 Фильтры:
 
 - `status = 'PUBLISHED'`;
-- `product_id > 0`;
+- `product_id` находится в диапазоне `1..2 147 483 647`;
 - `date_published >= calculated_at - 12 hours`;
 - `date_published < calculated_at`.
 
@@ -114,7 +117,7 @@ Iceberg-таблица партиционирована по `days(calculated_at
 - каждый из пяти счётчиков неотрицателен;
 - сумма `n_feedbacks_1`…`n_feedbacks_5` равна количеству всех непустых рейтингов в срезе.
 
-Фильтры producer гарантируют положительный `product_id` и принадлежность исходных строк
+Фильтры producer гарантируют `product_id` в диапазоне `1..2 147 483 647` и принадлежность исходных строк
 целевому полуинтервалу. Рейтинги не фильтруются: значение вне диапазона 1–5 выявляется до
 записи сравнением с техническим счётчиком, который не публикуется в таблицу.
 
@@ -131,5 +134,5 @@ Rolling feedback-фичи, product ranking-фичи, `neg_feedback_to_orders_rat
 
 ## Владелец и алерты
 
-`table.meta.team = team::recsys`; DAG/alerts team `recsys`; severity `P3`; webhook
-`oncall_webhook_recsys`.
+`table.meta.team = team::recsys`. Внешние on-call алерты для DAG отключены; ошибки остаются
+видимыми в статусах и логах Airflow.

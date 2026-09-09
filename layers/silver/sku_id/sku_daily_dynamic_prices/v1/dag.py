@@ -15,6 +15,20 @@ from kubernetes.client import models as k8s
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
 CONFIG_PATH = os.path.join(ENTITY_DIR, "config.yaml")
 JOB_DIR = os.path.join(ENTITY_DIR, "job")
+REPO_ROOT = os.path.abspath(
+    os.path.join(ENTITY_DIR, "..", "..", "..", "..", "..")
+)
+sys.path.insert(0, REPO_ROOT)
+
+from dq.task import build_dq_task
+from feature_stats.task import build_feature_stats_task
+
+# Джоб пишет партицию previous_utc_date(data_interval_end); при расписании
+# "0 1 * * *" это ровно дата data_interval_start в UTC. Значение дословно
+# совпадает с dq.partition_date_template и feature_stats.partition_date_template.
+DQ_PARTITION_DATE = (
+    '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+)
 
 with open(CONFIG_PATH, encoding="utf-8") as config_stream:
     CONFIG = yaml.safe_load(config_stream)
@@ -108,9 +122,17 @@ def sku_daily_dynamic_prices_dag() -> None:
         runtime.normalize_list_column(frame, "prices")
         runtime.write_daily_snapshot(table, frame, partition_date)
 
-    materialize(
+    materialize_task = materialize(
         '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
     )
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
+    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(
+        DQ_PARTITION_DATE
+    )
+
+    # Профиль признаков идёт параллельно DQ и ничего не блокирует: downstream
+    # ждал бы таску dq, а не feature_stats.
+    materialize_task >> [dq_task, stats_task]
 
 
 dag = sku_daily_dynamic_prices_dag()

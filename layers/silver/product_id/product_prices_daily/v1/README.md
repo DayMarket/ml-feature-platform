@@ -1,8 +1,8 @@
 # product_prices_daily
 
-Дневные price-факты товара. `dt` обозначает дату расчёта, исторические EOD-цены берутся за
-предыдущий календарный день, а доступность SKU определяется по текущему состоянию на момент
-выполнения job.
+Дневные price-факты товара. `dt` обозначает дату расчёта, исторические EOD-цены берутся из
+последнего завершённого среза ожидаемого запуска `dwh_core.quantity_eod`, а доступность SKU
+определяется по текущему состоянию на момент выполнения job.
 
 ## Выход и оркестрация
 
@@ -10,17 +10,25 @@
 - DAG: `feature-platform.layers.silver.product_id.product_prices_daily`.
 - Путь: `layers/silver/product_id/product_prices_daily/v1`.
 - Групповой тег Airflow: `recsys-features`.
+- Ошибки задач отправляют alert уровня `P3` команде `recsys` через
+  `oncall_webhook_recsys`.
 - Расписание: ежедневно в 19:00 UTC (`0 19 * * *`), то есть в 00:00 `Asia/Tashkent`.
 - `dt` — `TIMESTAMP` начала даты расчёта (`00:00:00 Asia/Tashkent`), определённой из
   `data_interval_end`.
 - `start_date=2026-08-08T19:00:00Z`, `catchup=True`. Первый запуск записывает `dt=2026-08-10`
-  и использует EOD-цены за 9 августа; initial backfill цен по-прежнему начинается с 9 августа.
+  и использует EOD-цены за 8 августа.
 
 Перед материализацией `ExternalTaskSensor` ожидает успешный
-`dbt.tests.dbt_clickhouse_dwh.daily_sku_quantity_eod.dq`, в котором проверяются актуальные
-цены источника. DQ DAG запускается ежедневно в `06:00 UTC`, поэтому S3 с расписанием
-`19:00 UTC` использует `execution_delta=13 часов` и ждёт соответствующий запуск того же дня.
-Пустой срез дополнительно останавливает задачу до записи.
+запуск DAG `dwh_core.quantity_eod`, который формирует актуальный EOD-срез и запускается
+ежедневно в `00:00 UTC`. S3 с расписанием `19:00 UTC` использует
+`execution_delta=19 часов` и ждёт соответствующий upstream-run той же logical date.
+Сенсор ожидает состояние всего DAG, а не отдельную задачу. Пустой срез дополнительно
+останавливает задачу до записи.
+
+Результат основного Trino-запроса читается и записывается в Iceberg батчами по
+`runtime.query_batch_rows` строк. Полная product-партиция не загружается в память Airflow
+worker целиком; очистка старой партиции и добавление всех батчей фиксируются одной
+Iceberg-транзакцией.
 
 ## Грейн и ключ
 
@@ -39,8 +47,9 @@ SKU и SKU-group используются только внутри расчет
 
 Чтение выполняется через Trino connection `trino_recsys`:
 
-- `"dwh-clickhouse".marts.daily_sku_quantity_eod` — `full_price_eod` и
-  `sell_price_eod` за календарный день перед `dt`;
+- `"dwh-clickhouse".marts.daily_sku_quantity_eod` — последний завершённый срез
+  `full_price_eod` и `sell_price_eod`, доступный от ожидаемого запуска
+  `dwh_core.quantity_eod`;
 - `"dwh-clickhouse".dict.sku` — mapping `sku_id → sku_group_id → product_id` и текущее
   состояние `status`, `quantity_active`, `quantity_fbs`.
 
@@ -55,12 +64,18 @@ ClickHouse dict и не выполняет избыточный cross-catalog jo
 для каждого запуска. Для расчета используется `product_id` из `dict.sku`, как предусмотрено
 отдельным mapping-шагом контракта.
 
+Строки с `product_id` или внутренним `sku_id` вне диапазона `1..2 147 483 647`
+исключаются до joins, приведения `product_id` к `INTEGER` и агрегации. `sku_group_id`
+используется во внутреннем типе источника и не публикуется в выходной product-grain таблице.
+
 ## Расчет
 
 Целевая `dt` вычисляется из `data_interval_end` в `Asia/Tashkent` и сохраняется как
-`TIMESTAMP` локальной полуночи. Из EOD-источника выбираются строки за `dt - 1 день`, поскольку
-на момент расчёта текущий календарный день ещё не завершён. Поле
-`daily_sku_quantity_eod.dt` имеет тип `DATE`.
+`TIMESTAMP` локальной полуночи. Дата цены вычисляется отдельно:
+`daily_sku_quantity_eod.dt = DATE(data_interval_end UTC) - INTERVAL '1' DAY`. Например,
+для `data_interval_end = 2026-09-05 19:00:00 UTC` выходная `dt` равна
+`2026-09-06 00:00:00 Asia/Tashkent`, а EOD-цена выбирается за `2026-09-04`. Поле `dt`
+источника имеет тип `DATE`.
 
 Текущая доступность SKU:
 
@@ -86,9 +101,8 @@ AND (
 active-price агрегаты. Если у товара нет доступных SKU, все три active-price колонки равны
 `NULL`. Нули вместо `NULL` не подставляются.
 
-Историческая цена является point-in-time относительно календарного дня перед `dt`, текущая
-доступность — нет. При backfill также используется current-state dict на фактический момент
-запуска.
+Историческая цена является point-in-time относительно выбранной EOD-даты, текущая доступность
+— нет. При backfill также используется current-state dict на фактический момент запуска.
 
 ## Проверки качества
 
@@ -122,7 +136,7 @@ price-колонок. Это один дополнительный полный 
 
 `table.meta.create_dbt_pr: false`: собственный DQ S3 выполняется внутри DAG, поэтому CI не
 создаёт для целевой таблицы новый DQ-PR в `dbt-trino`. Sensor внешнего
-`daily_sku_quantity_eod.dq` сохраняется как upstream-контракт источника. Iceberg maintenance
+`dwh_core.quantity_eod` сохраняется как upstream-контракт источника. Iceberg maintenance
 остаётся включённым.
 
 ## Рантайм и потребители
@@ -138,5 +152,5 @@ Silver-таблицы не настраивается.
 
 ## Владелец и алерты
 
-`table.meta.team = team::recsys`; DAG/alerts team `recsys`; severity `P3`; webhook
-`oncall_webhook_recsys`.
+`table.meta.team = team::recsys`. Ошибки задач отправляют alert уровня `P3` команде `recsys`
+через `oncall_webhook_recsys`.

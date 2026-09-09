@@ -9,6 +9,8 @@ Silver-контракт с SKU grain в цепочке CM2.
 - DAG: `feature-platform.layers.silver.sku_id.sku_cm2_inputs_daily`.
 - Путь: `layers/silver/sku_id/sku_cm2_inputs_daily/v1`.
 - Airflow group tag: `recsys-features`.
+- Ошибки задач отправляют alert уровня `P3` команде `recsys` через
+  `oncall_webhook_recsys`.
 - Расписание: ежедневно в `19:00 UTC`, то есть в `00:00 Asia/Tashkent`.
 - `start_date=2026-08-08T19:00:00Z`, `catchup=true`: при первом включении DAG выполняет
   начальный backfill примерно за две недели.
@@ -16,20 +18,32 @@ Silver-контракт с SKU grain в цепочке CM2.
 `dt` — `TIMESTAMP` начала локальной даты выполнения расчёта:
 `00:00:00 Asia/Tashkent` для даты `data_interval_end`. Например, запуск
 `2026-08-23 19:00 UTC` записывает `dt = 2026-08-24 00:00:00`. Повторный запуск одного `dt`
-идемпотентно перезаписывает его через PyIceberg `overwrite`.
+идемпотентно заменяет эту партицию одной PyIceberg-транзакцией.
 
-Подтверждённые upstream DQ DAG id внешних источников отсутствуют, поэтому отдельные sensors не
-добавлены.
+Результат Trino читается и записывается в Iceberg батчами по
+`runtime.query_batch_rows` строк. Полная SKU-партиция не загружается в память Airflow worker
+целиком; очистка старой партиции и добавление всех батчей фиксируются одной
+Iceberg-транзакцией.
+
+Перед материализацией `ExternalTaskSensor` ожидает успешный запуск DAG
+`dwh_core.quantity_eod`, который формирует используемый EOD-срез и запускается ежедневно в
+`00:00 UTC`. S6 с расписанием `19:00 UTC` использует `execution_delta=19 часов` и ждёт
+соответствующий upstream-run той же logical date. Сенсор ожидает состояние всего DAG, а не
+отдельную задачу.
 
 ## Grain и схема
 
 Grain и уникальный ключ: `dt,sku_id`.
 
 - `dt` — `TIMESTAMP` начала даты выполнения расчёта (`00:00:00 Asia/Tashkent`);
-- `sku_id` — SKU;
-- `product_id` — товар для финальной агрегации в Gold;
-- `dimensional_group` — `SMALL`, `MEDIUM` или `LARGE`;
-- `sell_price_uzs` — EOD sell price SKU в UZS за календарный день перед `dt` либо `NULL`;
+- `sku_id` — SKU типа `BIGINT`, публикуемый только в диапазоне `1..2 147 483 647`;
+- `product_id` — товар для финальной агрегации в Gold, также ограниченный диапазоном
+  `1..2 147 483 647`;
+- `dimensional_group` — `SMALL`, `MEDIUM` или `LARGE`; значение нормализуется в верхний
+  регистр, а `NULL`, пустая строка, строка только из пробелов и `UNKNOWN` преобразуются в
+  `SMALL`;
+- `sell_price_uzs` — последний завершённый EOD sell price SKU в UZS, доступный от ожидаемого
+  запуска `dwh_core.quantity_eod`, либо `NULL`;
 - `commission_pct` — комиссия SKU в процентах либо `NULL`;
 - `n_orders_28d` — число строк заказов SKU за предыдущие 28 полных дней.
 
@@ -43,10 +57,11 @@ Grain и уникальный ключ: `dt,sku_id`.
   `id AS sku_id → product_id` и `dimensional_group`;
 - `"dwh-clickhouse".marts.daily_sku_quantity_eod` — исторический `sell_price_eod`;
 - `"dwh-iceberg".silver_apidb_kazanexpress.public_sku_actual_commission` —
-  `sku_id → comission`;
+  `sku_id → commission`;
 - `"dwh-iceberg".silver.order_item_ue_buyer` — строки заказов SKU.
 
-В результат входят все строки `dict.sku` с заполненными `sku_id` и `product_id`. Цена,
+В результат входят строки `dict.sku`, у которых `sku_id` и `product_id` находятся в диапазоне
+`1..2 147 483 647`. Цена,
 комиссия и счётчик заказов присоединяются через `LEFT JOIN` по `sku_id`. Контракт источников
 предполагает уникальность mapping, комиссии и dimensional group по `sku_id`, а цены — по
 `dt,sku_id`.
@@ -57,16 +72,17 @@ Grain и уникальный ключ: `dt,sku_id`.
 
 ## Расчёт
 
-В `00:00 Asia/Tashkent` текущий календарный день ещё не имеет EOD-цены. Поэтому выходной `dt`
-хранит дату расчёта, а цена выбирается отдельным условием
-`daily_sku_quantity_eod.dt = dt - INTERVAL '1' DAY`. Например, строка S6 с
-`dt = 2026-08-24 00:00:00` использует EOD-цену за `2026-08-23`. Поле `dt` источника доступно в Trino
-как `DATE`, поэтому дополнительное преобразование не требуется.
+Дата цены привязана к ожидаемому запуску `dwh_core.quantity_eod`:
+`daily_sku_quantity_eod.dt = DATE(data_interval_end UTC) - INTERVAL '1' DAY`. Например,
+запуск S6 с `data_interval_end = 2026-09-04 19:00:00 UTC` записывает
+`dt = 2026-09-05 00:00:00 Asia/Tashkent` и использует завершённую EOD-цену за
+`2026-09-03`. Поле `dt` источника доступно в Trino как `DATE`.
 
 Постоянные правила зафиксированы непосредственно в расчёте:
 
-- `dimensional_group IS NULL → SMALL`;
-- комиссия читается из колонки `comission`;
+- `dimensional_group` после `TRIM` и приведения к верхнему регистру: `NULL`, пустое значение
+  или `UNKNOWN → SMALL`;
+- комиссия читается из колонки `commission`;
 - допустимые dimensional group: `SMALL`, `MEDIUM`, `LARGE`;
 - допустимый диапазон комиссии: `[0,100]`;
 - окно заказов: 28 дней.
@@ -125,8 +141,8 @@ USD rate присоединяются или применяются в Gold. П�
 
 ## Владелец и алерты
 
-`table.meta.team = team::recsys`; DAG/alerts team `recsys`; severity `P3`; webhook
-`oncall_webhook_recsys`.
+`table.meta.team = team::recsys`. Внешние on-call алерты для DAG отключены; ошибки остаются
+видимыми в статусах и логах Airflow.
 
 После merge в master нужно проверить автоматически созданный PR регистрации Iceberg
 maintenance в `DayMarket/pyspark-etl`.

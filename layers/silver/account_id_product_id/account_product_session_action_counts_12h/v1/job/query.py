@@ -3,6 +3,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 TASHKENT_TIME_ZONE = ZoneInfo("Asia/Tashkent")
+MAX_INT_ID = 2_147_483_647
 
 
 class SourceSettings(Protocol):
@@ -57,7 +58,7 @@ WITH filtered_events AS (
             {event_types_sql}
         )
         AND event.account_id > 0
-        AND event.product_id > 0
+        AND event.product_id BETWEEN 1 AND {MAX_INT_ID}
         AND event.session_id IS NOT NULL
 )
 SELECT

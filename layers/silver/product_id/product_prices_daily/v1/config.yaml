@@ -16,6 +16,7 @@ source:
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  query_batch_rows: 100000
 
 dag:
   id: feature-platform.layers.silver.product_id.product_prices_daily

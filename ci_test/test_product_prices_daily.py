@@ -1,7 +1,7 @@
 import importlib.util
 import sys
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,10 +27,18 @@ class ProductPricesDailyTimestampTest(unittest.TestCase):
 
         self.assertEqual(
             runtime.calculation_tashkent_dt("2026-06-17T19:00:00Z"),
-            datetime(2026, 6, 18, 0, 0),
+            datetime.fromisoformat("2026-06-18T00:00:00"),
         )
         with self.assertRaisesRegex(ValueError, "not-a-timestamp"):
             runtime.calculation_tashkent_dt("not-a-timestamp")
+
+    def test_eod_source_date_uses_utc_interval_end(self):
+        runtime = load_runtime()
+
+        self.assertEqual(
+            runtime.source_price_date("2026-09-05T19:00:00Z"),
+            date(2026, 9, 4),
+        )
 
 
 if __name__ == "__main__":
