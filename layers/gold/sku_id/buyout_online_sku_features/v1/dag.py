@@ -34,9 +34,10 @@ SIGNAL_CONFIG_PATH = os.path.join(
     "config.yaml",
 )
 
-# Сигнал пишется в 03:00 UTC, проекция стартует в 06:00 UTC. Дельта считает
-# logical date DQ-DAG-а равной logical date DAG-производителя; после появления
-# dbt-DQ DAG-а её нужно сверить с его реальным расписанием.
+# Ждём таску `dq` DAG-а сигнала (правило платформы, AGENTS.md), а не dbt-DQ-DAG:
+# тот идёт в 01:00 UTC своей логической датой и проверяет партицию за ds − 1.
+# Сигнал пишется в 03:00 UTC, проекция стартует в 06:00 UTC — обе логические даты
+# одного дня, дельта равна разнице расписаний.
 SIGNAL_DQ_EXECUTION_DELTA = timedelta(hours=3)
 
 
@@ -76,14 +77,6 @@ def _executor_config() -> dict:
             )
         )
     }
-
-
-def _dq_dag_id(config: dict) -> str:
-    table = config["table"]
-    return (
-        f"dbt.source.trino.ml_feature_platform_{table['schema']}."
-        f"{table['name']}.dq"
-    )
 
 
 def get_dag_default_args() -> dict:
@@ -126,7 +119,8 @@ def get_dag_default_args() -> dict:
 def buyout_online_sku_features_dag() -> None:
     wait_for_signal_dq = ExternalTaskSensor(
         task_id="wait_for_buyout_item_signal_dq",
-        external_dag_id=_dq_dag_id(SIGNAL_CONFIG),
+        external_dag_id=SIGNAL_CONFIG["dag"]["id"],
+        external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
         check_existence=True,

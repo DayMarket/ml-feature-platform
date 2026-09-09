@@ -27,14 +27,14 @@
 
 ## Зависимости
 
-`ExternalTaskSensor` на DQ-DAG витрины-источника:
-`dbt.source.trino.ml_feature_platform_gold.feature_platform_buyout_account_history_features.dq`,
-`execution_delta = 2 часа` — разница расписаний (06:00 против 04:00) в предположении, что
-DQ-DAG разделяет логическую дату производящего gold-DAG.
+`ExternalTaskSensor` на таску `dq` Spark-DAG-а витрины-источника
+`feature-platform.layers.gold.account_id.buyout_account_history_features`
+(`external_task_id="dq"`), `execution_delta = 2 часа` — разница расписаний (06:00 против
+04:00): обе логические даты одного дня.
 
-**Дельта предварительная**: DQ-DAG появляется после первого мержа таблицы в `master`; после этого
-пересчитать её как «06:00 UTC минус время cron DQ-DAG» и поправить `SOURCE_DQ_EXECUTION_DELTA`
-в `dag.py`.
+dbt-DQ-DAG `dbt.source.trino.ml_feature_platform_gold.<таблица>.dq` сенсором не используется:
+он идёт в 01:00 UTC своей логической датой и проверяет партицию за `ds − 1`, так что дельта
+до него не сходится (правило платформы — AGENTS.md).
 
 ## Логика
 

@@ -34,14 +34,16 @@ sku, его карточки, категории, магазина и бренд
 
 ## Зависимости
 
-`ExternalTaskSensor` на DQ-DAG источника:
-`dbt.source.trino.ml_feature_platform_gold.feature_platform_buyout_item_signal_features.dq`
-(`mode="reschedule"`, `check_existence=True`, таймаут 3 часа).
+`ExternalTaskSensor` на таску `dq` DAG-а сигнала
+`feature-platform.layers.gold.key_type_key_id.buyout_item_signal_features`
+(`external_task_id="dq"`, `mode="reschedule"`, `check_existence=True`, таймаут 3 часа).
 
-`execution_delta = 3 часа` — разница расписаний (06:00 против 03:00) в предположении, что
-logical date DQ-DAG-а совпадает с logical date DAG-производителя. DQ-DAG появится только
-после мержа в `master`; дельту нужно сверить с его фактическим расписанием и при
-необходимости поправить.
+`execution_delta = 3 часа` — разница расписаний (06:00 против 03:00): обе логические даты
+одного дня, оба DAG-а пишут партицию `date = data_interval_end − 1 день`.
+
+dbt-DQ-DAG `dbt.source.trino.ml_feature_platform_gold.<таблица>.dq` сенсором не используется:
+он идёт в 01:00 UTC своей логической датой и проверяет партицию за `ds − 1`, так что дельта
+до него не сходится (правило платформы — AGENTS.md).
 
 ## Логика
 
