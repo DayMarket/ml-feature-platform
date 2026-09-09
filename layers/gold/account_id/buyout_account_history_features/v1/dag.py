@@ -27,14 +27,12 @@ from airflow.timetables.interval import CronDataIntervalTimetable
 
 dag_settings = get_dag_settings()
 
-# Пожизненные факты аккаунта читаются из silver-витрины, поэтому ждём её DQ-DAG, а не Spark-DAG.
-ACCOUNT_LIFETIME_FACTS_DQ_DAG_ID = (
-    "dbt.source.trino.ml_feature_platform_silver."
-    "feature_platform_account_lifetime_facts.dq"
-)
+# Пожизненные факты аккаунта читаются из silver-витрины: ждём таску `dq` её DAG-а
+# (правило платформы, AGENTS.md), а не dbt-DQ-DAG, который идёт в 01:00 UTC своей
+# логической датой и проверяет партицию за ds − 1.
+ACCOUNT_LIFETIME_FACTS_DAG_ID = "feature-platform.layers.silver.account_id.account_lifetime_facts"
 # Джоб читает партицию пожизненных фактов за дату D, а её пишет silver-запуск, который
 # стартовал сутками раньше (02:00 UTC дня D, логическая дата D-1 02:00). Отсюда сутки в дельте.
-# Уточняется по факту появления DQ-DAG (см. README).
 ACCOUNT_LIFETIME_FACTS_DQ_EXECUTION_DELTA = timedelta(days=1, hours=2)
 
 logger = logging.getLogger("airflow.task")
@@ -75,7 +73,8 @@ default_args = {
 def collect_gold_buyout_account_history_features():
     wait_for_account_lifetime_facts = ExternalTaskSensor(
         task_id="wait_for_silver_account_lifetime_facts",
-        external_dag_id=ACCOUNT_LIFETIME_FACTS_DQ_DAG_ID,
+        external_dag_id=ACCOUNT_LIFETIME_FACTS_DAG_ID,
+        external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
         mode="poke",

@@ -35,9 +35,10 @@ SILVER_CONFIG_PATH = os.path.join(
     "config.yaml",
 )
 
-# Silver пишется в 03:00 UTC, проекция стартует в 06:00 UTC. Дельта считает
-# logical date DQ-DAG-а равной logical date DAG-производителя; после появления
-# dbt-DQ DAG-а её нужно сверить с его реальным расписанием.
+# Ждём таску `dq` silver-DAG-а (правило платформы, AGENTS.md), а не dbt-DQ-DAG:
+# тот идёт в 01:00 UTC своей логической датой и проверяет партицию за ds − 1.
+# Silver пишется в 03:00 UTC, проекция стартует в 06:00 UTC — обе логические даты
+# одного дня, дельта равна разнице расписаний.
 SILVER_DQ_EXECUTION_DELTA = timedelta(hours=3)
 
 
@@ -77,14 +78,6 @@ def _executor_config() -> dict:
             )
         )
     }
-
-
-def _dq_dag_id(config: dict) -> str:
-    table = config["table"]
-    return (
-        f"dbt.source.trino.ml_feature_platform_{table['schema']}."
-        f"{table['name']}.dq"
-    )
 
 
 def get_dag_default_args() -> dict:
@@ -128,7 +121,8 @@ def get_dag_default_args() -> dict:
 def buyout_online_city_features_dag() -> None:
     wait_for_silver_dq = ExternalTaskSensor(
         task_id="wait_for_delivery_cpi_city_dq",
-        external_dag_id=_dq_dag_id(SILVER_CONFIG),
+        external_dag_id=SILVER_CONFIG["dag"]["id"],
+        external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
         check_existence=True,

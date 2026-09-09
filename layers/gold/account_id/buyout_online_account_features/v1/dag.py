@@ -37,13 +37,11 @@ SOURCE_CONFIG_PATH = os.path.join(
 with open(CONFIG_PATH, encoding="utf-8") as config_stream:
     CONFIG = yaml.safe_load(config_stream)
 
-# Проекция читает gold-витрину этого репозитория, поэтому ждём её DQ-DAG, а не Spark-DAG.
-SOURCE_DQ_DAG_ID = (
-    "dbt.source.trino.ml_feature_platform_gold."
-    "feature_platform_buyout_account_history_features.dq"
-)
-# Разница расписаний (06:00 против 04:00) в предположении, что DQ-DAG разделяет логическую
-# дату производящего gold-DAG. Уточняется по факту появления DQ-DAG (см. README).
+# Проекция читает gold-витрину этого репозитория: ждём таску `dq` её Spark-DAG-а
+# (правило платформы, AGENTS.md), а не dbt-DQ-DAG, который идёт в 01:00 UTC своей
+# логической датой и проверяет партицию за ds − 1.
+SOURCE_DAG_ID = "feature-platform.layers.gold.account_id.buyout_account_history_features"
+# Разница расписаний (06:00 против 04:00): обе логические даты одного дня.
 SOURCE_DQ_EXECUTION_DELTA = timedelta(hours=2)
 
 
@@ -116,7 +114,8 @@ def get_dag_default_args() -> dict:
 def buyout_online_account_features_dag() -> None:
     wait_for_history_features = ExternalTaskSensor(
         task_id="wait_for_gold_buyout_account_history_features",
-        external_dag_id=SOURCE_DQ_DAG_ID,
+        external_dag_id=SOURCE_DAG_ID,
+        external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
         mode="poke",
