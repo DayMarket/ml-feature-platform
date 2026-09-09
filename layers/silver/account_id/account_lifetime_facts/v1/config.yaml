@@ -12,8 +12,8 @@ table:
 
 source:
   engine: clickhouse
-  # Коннекшн заводится DE по конвенции clickhouse_<dag>_dag; заявка — в PR.
-  clickhouse_conn_id: clickhouse_account_lifetime_facts_dag
+  # Рабочий ClickHouse-коннекшн команды, тот же, что в DAG-ах product-analytics-dags.
+  clickhouse_conn_id: ch_dwh_cx_team
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
