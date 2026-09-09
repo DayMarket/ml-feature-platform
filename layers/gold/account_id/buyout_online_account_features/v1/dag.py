@@ -37,11 +37,24 @@ SOURCE_CONFIG_PATH = os.path.join(
 with open(CONFIG_PATH, encoding="utf-8") as config_stream:
     CONFIG = yaml.safe_load(config_stream)
 
+<<<<<<< HEAD
 # Проекция читает gold-витрину этого репозитория: ждём таску `dq` её Spark-DAG-а
 # (правило платформы, AGENTS.md), а не dbt-DQ-DAG, который идёт в 01:00 UTC своей
 # логической датой и проверяет партицию за ds − 1.
 SOURCE_DAG_ID = "feature-platform.layers.gold.account_id.buyout_account_history_features"
 # Разница расписаний (06:00 против 04:00): обе логические даты одного дня.
+=======
+# Проекция читает gold-витрину этого репозитория, а та считает свой DQ таской dq внутри
+# собственного DAG'а, — ждём её, а не отдельный dbt-DQ-DAG. Отдельный dbt-DQ идёт в 01:00,
+# то есть всегда раньше производителя (04:00), и партицию D он проверяет только в D+2 01:00 —
+# это +19 ч к запуску проекции, за пределами её таймаутов.
+SOURCE_DAG_ID = (
+    "feature-platform.layers.gold.account_id.buyout_account_history_features"
+)
+SOURCE_DQ_TASK_ID = "dq"
+# Разница расписаний: D 06:00 - 2ч = D 04:00 — логическая дата запуска витрины-источника,
+# который пишет партицию D (её же читает materialize).
+>>>>>>> 738ac44 (feat: add changes)
 SOURCE_DQ_EXECUTION_DELTA = timedelta(hours=2)
 
 
@@ -115,7 +128,11 @@ def buyout_online_account_features_dag() -> None:
     wait_for_history_features = ExternalTaskSensor(
         task_id="wait_for_gold_buyout_account_history_features",
         external_dag_id=SOURCE_DAG_ID,
+<<<<<<< HEAD
         external_task_id="dq",
+=======
+        external_task_id=SOURCE_DQ_TASK_ID,
+>>>>>>> 738ac44 (feat: add changes)
         allowed_states=["success"],
         failed_states=["failed"],
         mode="poke",

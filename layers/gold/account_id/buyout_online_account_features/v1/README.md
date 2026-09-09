@@ -27,6 +27,7 @@
 
 ## Зависимости
 
+<<<<<<< HEAD
 `ExternalTaskSensor` на таску `dq` Spark-DAG-а витрины-источника
 `feature-platform.layers.gold.account_id.buyout_account_history_features`
 (`external_task_id="dq"`), `execution_delta = 2 часа` — разница расписаний (06:00 против
@@ -35,6 +36,18 @@
 dbt-DQ-DAG `dbt.source.trino.ml_feature_platform_gold.<таблица>.dq` сенсором не используется:
 он идёт в 01:00 UTC своей логической датой и проверяет партицию за `ds − 1`, так что дельта
 до него не сходится (правило платформы — AGENTS.md).
+=======
+`ExternalTaskSensor` на таску `dq` DAG'а витрины-источника:
+`feature-platform.layers.gold.account_id.buyout_account_history_features`,
+`external_task_id="dq"`, `execution_delta = 2 часа` — разница расписаний (06:00 против 04:00):
+`D 06:00 - 2 часа = D 04:00`, логическая дата запуска, который пишет партицию `D`.
+
+Сенсор специально смотрит не на `dbt.source.trino.ml_feature_platform_gold.
+feature_platform_buyout_account_history_features.dq`. Тот идёт в `0 1 * * *`, то есть всегда
+раньше производителя (04:00), и партицию `D` проверяет только в `D+2 01:00` — на 19 часов позже
+запуска проекции, за пределами её `timeout` и `dagrun_timeout`. Ни одна дельта этого не чинит:
+ждать надо таску `dq` самого производителя (AGENTS.md, «Downstream-DAG'и»).
+>>>>>>> 738ac44 (feat: add changes)
 
 ## Логика
 
@@ -92,6 +105,5 @@ alerts `buyer`, severity `P2`, webhook conn id `team:buyer`.
 - Airflow connection к Trino: домена buyer в списке (`trino_bx_analytics`, `trino_recsys`) нет,
   временно взят `trino_bx_analytics` — подтвердить у владельца.
 - Conn id `team:buyer` собран по конвенции `oncall_webhook_<team>` — подтвердить у владельца.
-- `execution_delta` сенсора уточняется после появления DQ-DAG.
 - Число срезов 16 выбрано по оценке «десятки миллионов аккаунтов × 82 колонки»; после первого
   прогона сверить фактическую память задачи и при необходимости изменить `source.shards`.

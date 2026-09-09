@@ -5,6 +5,7 @@
 параллельно, но реестр остаётся полным.
 """
 
+import ast
 import importlib.util
 import sys
 import unittest
@@ -65,7 +66,17 @@ ENTITIES = {
         "primary_key": ("date", "sku_id"),
         "schedule": "0 6 * * *",
         "engine": "trino",
+<<<<<<< HEAD
         "dq_sources": ("item_signal",),
+=======
+        "dq_sources": (
+            (
+                "item_signal",
+                "feature-platform.layers.gold.key_type_key_id."
+                "buyout_item_signal_features",
+            ),
+        ),
+>>>>>>> 738ac44 (feat: add changes)
     },
     "online_city": {
         "layer": "gold",
@@ -75,7 +86,17 @@ ENTITIES = {
         "primary_key": ("date", "city_id", "dimensional_group"),
         "schedule": "0 6 * * *",
         "engine": "trino",
+<<<<<<< HEAD
         "dq_sources": ("delivery_cpi_city",),
+=======
+        "dq_sources": (
+            (
+                "delivery_cpi_city",
+                "feature-platform.layers.silver.city_id_dimensional_group."
+                "delivery_cpi_city_features",
+            ),
+        ),
+>>>>>>> 738ac44 (feat: add changes)
     },
     # Spark-контур аккаунтов и его online-проекция.
     "account_history": {
@@ -96,7 +117,17 @@ ENTITIES = {
         "primary_key": ("date", "account_id"),
         "schedule": "0 6 * * *",
         "engine": "trino",
+<<<<<<< HEAD
         "dq_sources": ("account_history",),
+=======
+        "dq_sources": (
+            (
+                "account_history",
+                "feature-platform.layers.gold.account_id."
+                "buyout_account_history_features",
+            ),
+        ),
+>>>>>>> 738ac44 (feat: add changes)
     },
 }
 
@@ -139,6 +170,46 @@ def expected_dag_id(name: str) -> str:
     )
 
 
+<<<<<<< HEAD
+=======
+def external_task_sensors(dag_source: str) -> list[tuple[str | None, str | None]]:
+    """(external_dag_id, external_task_id) каждого сенсора; константы модуля разворачиваются."""
+    tree = ast.parse(dag_source)
+    constants: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            value = node.value
+            if isinstance(target, ast.Name) and isinstance(value, ast.Constant):
+                if isinstance(value.value, str):
+                    constants[target.id] = value.value
+
+    def resolve(node: ast.expr | None) -> str | None:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name):
+            return constants.get(node.id)
+        return None
+
+    sensors = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+        if name != "ExternalTaskSensor":
+            continue
+        keywords = {kw.arg: kw.value for kw in node.keywords}
+        sensors.append(
+            (
+                resolve(keywords.get("external_dag_id")),
+                resolve(keywords.get("external_task_id")),
+            )
+        )
+    return sensors
+
+
+>>>>>>> 738ac44 (feat: add changes)
 def load_module(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
@@ -293,16 +364,28 @@ class BuyoutOrchestrationTest(unittest.TestCase):
 
 
 class BuyoutSensorTest(unittest.TestCase):
+<<<<<<< HEAD
     """Сенсоры ждут таску `dq` DAG-а-владельца источника (AGENTS.md), не dbt-DQ-DAG:
     тот идёт в 01:00 UTC своей логической датой, и дельта до него не сходится."""
 
     def test_declared_dq_sensors_wait_for_owner_dq_task(self):
+=======
+    def test_declared_dq_sensors_match_source_configs(self):
+        """Сенсор ждёт таску dq DAG'а-владельца, а не легаси dbt-DQ-DAG.
+
+        У `dbt.source.trino.ml_feature_platform_*.dq` собственное расписание
+        `0 1 * * *` и собственная логическая дата: `execution_delta`, посчитанная
+        от расписания производителя, в неё не попадает и сенсор висит до таймаута.
+        """
+>>>>>>> 738ac44 (feat: add changes)
         for name in present_entities():
             spec = ENTITIES[name]
             if not spec["dq_sources"]:
                 continue
             dag_source = (entity_dir(name) / "dag.py").read_text(encoding="utf-8")
+            sensors = external_task_sensors(dag_source)
             with self.subTest(entity=name):
+<<<<<<< HEAD
                 self.assertIn("ExternalTaskSensor", dag_source)
                 self.assertIn('external_task_id="dq"', dag_source)
                 self.assertNotIn("dbt.source.", dag_source)
@@ -321,6 +404,17 @@ class BuyoutSensorTest(unittest.TestCase):
                         owner_dag_id in dag_source or '["dag"]["id"]' in dag_source,
                         f"{name}: сенсор не ссылается на DAG {owner_dag_id}",
                     )
+=======
+                self.assertEqual(len(sensors), len(spec["dq_sources"]))
+                self.assertNotIn("dbt.source.trino.ml_feature_platform", dag_source)
+            waited = {
+                (upstream_dag_id, task_id) for upstream_dag_id, task_id in sensors
+            }
+            for source_name, expected_upstream in spec["dq_sources"]:
+                with self.subTest(entity=name, source=source_name):
+                    self.assertEqual(expected_dag_id(source_name), expected_upstream)
+                    self.assertIn((expected_upstream, "dq"), waited)
+>>>>>>> 738ac44 (feat: add changes)
 
     def test_entities_without_dependencies_declare_no_sensor(self):
         for name in present_entities():

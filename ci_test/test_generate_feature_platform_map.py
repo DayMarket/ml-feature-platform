@@ -118,11 +118,19 @@ def test_module_level_constants_resolve_sensor_dependencies():
         "feature-platform.layers.gold.account_id.buyout_account_history_features"
     ]
     assert generator.Dependency(
-        "dbt.source.trino.ml_feature_platform_silver."
-        "feature_platform_account_lifetime_facts.dq",
-        "legacy-dq",
+        "feature-platform.layers.silver.account_id.account_lifetime_facts",
+        "dq",
         1560,
     ) in history.dependencies
+
+    online = records[
+        "feature-platform.layers.gold.account_id.buyout_online_account_features"
+    ]
+    assert generator.Dependency(
+        "feature-platform.layers.gold.account_id.buyout_account_history_features",
+        "dq",
+        120,
+    ) in online.dependencies
 
 
 def test_fstring_dag_id_resolves():

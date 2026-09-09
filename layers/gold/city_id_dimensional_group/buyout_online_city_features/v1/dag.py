@@ -35,10 +35,23 @@ SILVER_CONFIG_PATH = os.path.join(
     "config.yaml",
 )
 
+<<<<<<< HEAD
 # Ждём таску `dq` silver-DAG-а (правило платформы, AGENTS.md), а не dbt-DQ-DAG:
 # тот идёт в 01:00 UTC своей логической датой и проверяет партицию за ds − 1.
 # Silver пишется в 03:00 UTC, проекция стартует в 06:00 UTC — обе логические даты
 # одного дня, дельта равна разнице расписаний.
+=======
+# Silver-витрина считает свой DQ таской dq внутри собственного DAG'а — ждём её, а не
+# отдельный dbt-DQ-DAG: у dbt-DQ своё расписание 0 1 * * * и своя логическая дата
+# (D-1 01:00), с расписанием производителя она не совпадает ни при какой дельте.
+SILVER_DAG_ID = (
+    "feature-platform.layers.silver.city_id_dimensional_group.delivery_cpi_city_features"
+)
+SILVER_DQ_TASK_ID = "dq"
+# Silver пишется в 03:00 UTC, проекция стартует в 06:00 UTC: D 06:00 - 3ч = D 03:00 —
+# логическая дата запуска silver, который пишет партицию D+1 (её же читает materialize,
+# Pattern DE: партиция за data_interval_end без сдвига).
+>>>>>>> 738ac44 (feat: add changes)
 SILVER_DQ_EXECUTION_DELTA = timedelta(hours=3)
 
 
@@ -48,7 +61,6 @@ def _read_config(path: str) -> dict:
 
 
 CONFIG = _read_config(CONFIG_PATH)
-SILVER_CONFIG = _read_config(SILVER_CONFIG_PATH)
 
 
 def _load_module(filename: str, module_name: str):
@@ -121,8 +133,13 @@ def get_dag_default_args() -> dict:
 def buyout_online_city_features_dag() -> None:
     wait_for_silver_dq = ExternalTaskSensor(
         task_id="wait_for_delivery_cpi_city_dq",
+<<<<<<< HEAD
         external_dag_id=SILVER_CONFIG["dag"]["id"],
         external_task_id="dq",
+=======
+        external_dag_id=SILVER_DAG_ID,
+        external_task_id=SILVER_DQ_TASK_ID,
+>>>>>>> 738ac44 (feat: add changes)
         allowed_states=["success"],
         failed_states=["failed"],
         check_existence=True,
