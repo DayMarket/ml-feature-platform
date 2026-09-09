@@ -458,6 +458,33 @@ class BuyoutProjectionQueryTest(unittest.TestCase):
         self.assertIn("WHERE date = DATE '2026-08-01'", sql)
         self.assertIn("sku_vs_product_gap_90d", sql)
         self.assertIn("sku_buyout_rate_shrunk_90d", sql)
+        # MAD-13695: выкупаемость магазина стянута к маркетплейсу, общая выкупаемость отдаётся колонкой
+        self.assertIn("CROSS JOIN global_rate g", sql)
+        for column in ("shop_buyout_rate_shrunk_90d", "marketplace_buyout_rate_90d",
+                       "marketplace_no_show_rate_90d"):
+            with self.subTest(column=column):
+                self.assertIn(column, sql)
+        # MAD-13695: население — активные sku в наличии плюс sku с доставками; подстановки
+        # категории и маркетплейса считаются здесь, а не в сервисе
+        self.assertIn("status = 'ACTIVE'", sql)
+        self.assertIn("OR id IN (SELECT key_id FROM sig WHERE key_type = 'sku')", sql)
+        self.assertIn("LEFT JOIN sig s       ON s.key_type = 'sku'", sql)
+        self.assertIn("COALESCE(c.cat_buyout_90d,  g.g_buyout)", sql)
+        self.assertIn("COALESCE(s.n_delivered_90d, 0)                      AS sku_n_delivered_90d", sql)
+
+    def test_online_sku_migrations_declare_shop_shrunk_columns(self):
+        if not is_present("online_sku"):
+            self.fail("Сущность online_sku отсутствует на диске")
+        migrations = entity_dir("online_sku") / "migrations"
+        create_sql = (migrations / "create_table.sql").read_text(encoding="utf-8")
+        alter_sql = (migrations / "20260909_shop_shrunk_and_marketplace_rates.sql").read_text(
+            encoding="utf-8"
+        )
+        for column in ("shop_buyout_rate_shrunk_90d", "marketplace_buyout_rate_90d",
+                       "marketplace_no_show_rate_90d"):
+            with self.subTest(column=column):
+                self.assertIn(f"    {column} DOUBLE COMMENT", create_sql)
+                self.assertIn(f"ADD COLUMN IF NOT EXISTS {column} DOUBLE COMMENT", alter_sql)
 
     def test_online_city_projection_reads_silver_partition(self):
         if not is_present("online_city"):
