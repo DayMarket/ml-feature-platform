@@ -1,0 +1,48 @@
+# Trino-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+table:
+  key: buyout_online_category_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_buyout_online_category_features
+  primary_key: date,category_id
+  meta:
+    team: team:buyer
+
+source:
+  engine: trino
+  trino_conn_id: trino_bx_analytics
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.gold.category_id.buyout_online_category_features
+  group_tag: buyout-features
+  schedule: "0 6 * * *"
+  start_date: "2026-08-20T00:00:00Z"
+  team: buyer
+  owner: team:buyer
+
+alerts:
+  team: buyer
+  severity: P2
+  oncall_webhook_conn_id: team:buyer
+
+dq:
+  trino_conn_id: trino_search
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Как у buyout_online_sku_features: объёмные тесты и freshness в warn, пока
+    # витрина не наполнена и у неё нет истории для порогов (AGENTS.md).
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны
+  # смотреть на одну партицию, иначе профиль посчитан не по тем данным.
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'

@@ -26,7 +26,10 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     sku_buyout_rate_shrunk_90d DOUBLE COMMENT 'Выкупаемость sku за 90 дней, стянутая к сглаженной ставке своей категории (k = 30)',
     sku_no_show_rate_shrunk_90d DOUBLE COMMENT 'Доля NO SHOW у sku за 90 дней, стянутая к сглаженной ставке своей категории (k = 30)',
     product_buyout_rate_shrunk_90d DOUBLE COMMENT 'Выкупаемость карточки товара за 90 дней, стянутая к сглаженной ставке категории (k = 30)',
-    sku_vs_product_gap_90d DOUBLE COMMENT 'Разрыв sku и карточки: sku_buyout_rate_shrunk_90d - product_buyout_rate_shrunk_90d (гипотеза размерного эффекта)'
+    sku_vs_product_gap_90d DOUBLE COMMENT 'Разрыв sku и карточки: sku_buyout_rate_shrunk_90d - product_buyout_rate_shrunk_90d (гипотеза размерного эффекта)',
+    marketplace_buyout_rate_90d DOUBLE COMMENT 'Общая выкупаемость маркетплейса в штуках за 90 дней (по строкам категорий сигнала) — последний уровень подстановки, к ней стягиваются категория и магазин',
+    marketplace_no_show_rate_90d DOUBLE COMMENT 'Общая доля NO SHOW маркетплейса за 90 дней',
+    shop_buyout_rate_shrunk_90d DOUBLE COMMENT 'Выкупаемость магазина за 90 дней, стянутая к общей выкупаемости маркетплейса (k = 30) — величина, на которой обучена модель невыкупов; сырая выкупаемость магазина рядом в shop_buyout_rate_90d'
 )
 USING iceberg
 COMMENT 'Таблица товара для сервиса невыкупов: одна строка на sku_id за date — выкупаемость самого sku, его карточки, категории, магазина и бренда плюс сглаженные оценки. Сглаживание: shrunk = (доля_родителя · 30 + доля_sku · n_доставок) / (30 + n_доставок); категория сглаживается к общей выкупаемости маркетплейса, sku и карточка — к сглаженной доле своей категории. Партиция совпадает с feature_platform_buyout_item_signal_features. Сервис читает последнюю дату: WHERE date = (SELECT max(date) ...)'

@@ -13,5 +13,6 @@
 - [`sku_group_id_query_text`](sku_group_id_query_text/README.md) — признаки SKU group и нормализованного текста запроса;
 - [`key_type_key_id`](key_type_key_id/README.md) — товарный сигнал выкупаемости в длинном формате «уровень × ID»;
 - [`sku_id`](sku_id/README.md) — online-признаки SKU для сервиса невыкупов;
+- [`category_id`](category_id/README.md) — online-выкупаемость категории для сервиса невыкупов (подстановка для sku без заказов за 90 дней);
 - [`city_id_dimensional_group`](city_id_dimensional_group/README.md) — online-проекция стоимости логистики по городу и габаритной группе;
 - [`account_id`](account_id/README.md) — признаки истории выкупа аккаунта для модели невыкупов.

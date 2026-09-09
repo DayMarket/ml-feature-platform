@@ -14,6 +14,9 @@ brand) + сглаженные ставки. Serving-контракт: серви
   shrunk = (parent_rate * k + raw_rate * n) / (k + n).
 Признак гипотезы MAD-13413 «размеры внутри карточки выкупаются по-разному»:
   sku_vs_product_gap_90d = shrunk_sku - shrunk_product.
+Магазин стягивается к общей выкупаемости маркетплейса (shop_buyout_rate_shrunk_90d),
+сама общая выкупаемость отдаётся колонкой marketplace_buyout_rate_90d — последний
+уровень подстановки для сервиса.
 
 Популяция: sku с историей за 90 дней (~1.44 млн строк). Холодные sku в таблице
 отсутствуют — сервис для них падает на категорию/бренд из своих данных
@@ -104,6 +107,14 @@ SELECT
     b.n_delivered_90d                                   AS brand_n_delivered_90d,
     b.buyout_rate_items_90d                             AS brand_buyout_rate_90d,
 
+    -- общая выкупаемость маркетплейса (по строкам категорий) и сглаженная
+    -- выкупаемость магазина: обучающий запрос cart_item_signal.sql (MAD-13227)
+    -- стягивает магазин к маркетплейсу с k = 30 — модель обучена на этой величине (MAD-13695)
+    g.g_buyout                                          AS marketplace_buyout_rate_90d,
+    g.g_no_show                                         AS marketplace_no_show_rate_90d,
+    (g.g_buyout * {k} + COALESCE(sh.buyout_rate_items_90d, g.g_buyout) * COALESCE(sh.n_delivered_90d, 0))
+        / ({k} + COALESCE(sh.n_delivered_90d, 0))       AS shop_buyout_rate_shrunk_90d,
+
     -- сглаженные ставки (канон k=30)
     (c.cat_buyout_90d * {k} + COALESCE(s.buyout_rate_items_90d, c.cat_buyout_90d) * s.n_delivered_90d)
         / ({k} + s.n_delivered_90d)                     AS sku_buyout_rate_shrunk_90d,
@@ -124,5 +135,6 @@ LEFT JOIN sig p       ON p.key_type = 'product'  AND p.key_id = m.product_id
 LEFT JOIN cat_smooth c ON c.category_id = m.category_id
 LEFT JOIN sig sh      ON sh.key_type = 'shop'    AND sh.key_id = m.shop_id
 LEFT JOIN sig b       ON b.key_type = 'brand'    AND b.key_id = m.brand_name_id
+CROSS JOIN global_rate g
 WHERE s.key_type = 'sku'
 """

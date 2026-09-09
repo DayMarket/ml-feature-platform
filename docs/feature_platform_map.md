@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **47**. Внутренних зависимостей: **10**. Внешних зависимостей: **31**. P1: **0**. P2: **8**. P3: **34**. P4: **5**.
+Всего DAG: **48**. Внутренних зависимостей: **10**. Внешних зависимостей: **32**. P1: **0**. P2: **9**. P3: **34**. P4: **5**.
 
-Таска `dq`: **44** из **47**. Таска `feature_stats`: **44** из **47** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **24**.
+Таска `dq`: **45** из **48**. Таска `feature_stats`: **45** из **48** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **25**.
 
 Severity policy:
 
@@ -179,51 +179,53 @@ UTC 10:00 · P4 · search_dataset`"]
 UTC 04:00 · P2 · large`"]
     d3["`buyout_online_account_features
 UTC 06:00 · P2 · airflow-python`"]
-    d4["`buyout_online_city_features
+    d4["`buyout_online_category_features
 UTC 06:00 · P2 · airflow-python`"]
-    d5["`buyout_item_signal_features
+    d5["`buyout_online_city_features
+UTC 06:00 · P2 · airflow-python`"]
+    d6["`buyout_item_signal_features
 UTC 03:00 · P2 · airflow-python`"]
-    d6["`search_query_atc_features_qid
+    d7["`search_query_atc_features_qid
 UTC 06:00 · P4 · small`"]
-    d7["`sku_group_query_atc_order_features_qid
+    d8["`sku_group_query_atc_order_features_qid
 UTC 06:00 · P4 · search_dataset`"]
-    d8["`search_query_id
+    d9["`search_query_id
 UTC 05:00 · P3 · airflow-python`"]
-    d9["`sku_group_search_conversion_features
+    d10["`sku_group_search_conversion_features
 UTC 03:00 · P3 · large`"]
-    d10["`sku_group_query_atc_features
+    d11["`sku_group_query_atc_features
 UTC 02:00 · P3 · large`"]
-    d11["`buyout_online_sku_features
+    d12["`buyout_online_sku_features
 UTC 06:00 · P2 · airflow-python`"]
-    d12["`account_demographics
+    d13["`account_demographics
 UTC 19:00 · P3 · airflow-python`"]
-    d13["`account_lifetime_facts
+    d14["`account_lifetime_facts
 UTC 02:00 · P2 · airflow-python`"]
-    d14["`account_l1_imp_counts_12h
+    d15["`account_l1_imp_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d15["`account_l2_imp_counts_12h
+    d16["`account_l2_imp_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d16["`account_product_session_action_counts_12h
+    d17["`account_product_session_action_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d17["`delivery_cpi_city_features
+    d18["`delivery_cpi_city_features
 UTC 03:00 · P2 · airflow-python`"]
-    d18["`backfill
+    d19["`backfill
 UTC 03:00 · P2 · airflow-python`"]
-    d19["`product_feedback_counts_12h
+    d20["`product_feedback_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d20["`product_metadata
+    d21["`product_metadata
 UTC 19:00 · P3 · small`"]
-    d21["`product_prices_daily
+    d22["`product_prices_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d22["`product_search_queries
+    d23["`product_search_queries
 UTC 09:00 · P4 · search_product`"]
-    d23["`search_query_sku_group_es_features
+    d24["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
-    d24["`sku_group_orders
+    d25["`sku_group_orders
 UTC 01:00 · P3 · large`"]
-    d25["`sku_cm2_inputs_daily
+    d26["`sku_cm2_inputs_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d26["`sku_daily_dynamic_prices
+    d27["`sku_daily_dynamic_prices
 UTC 01:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
@@ -231,24 +233,25 @@ UTC 01:00 · P3 · airflow-python`"]
     x3["feedback_sku_group_id"]
     x4["elasticsearch_collect"]
     x3 -->|"dq"| d0
-    d13 -.->|"dbt DQ (legacy) Δ26h"| d2
+    d14 -.->|"dbt DQ (legacy) Δ26h"| d2
     d2 -.->|"dbt DQ (legacy) Δ2h"| d3
-    d17 -.->|"dbt DQ (legacy) Δ3h"| d4
-    x0 -.->|"dbt DQ (legacy) Δ5h"| d6
-    x1 -.->|"dbt DQ (legacy) Δ5h"| d6
-    d8 -->|"sensor Δ1h"| d6
+    d6 -.->|"dbt DQ (legacy) Δ3h"| d4
+    d18 -.->|"dbt DQ (legacy) Δ3h"| d5
     x0 -.->|"dbt DQ (legacy) Δ5h"| d7
     x1 -.->|"dbt DQ (legacy) Δ5h"| d7
-    d8 -->|"sensor Δ1h"| d7
-    x0 -.->|"dbt DQ (legacy) Δ4h"| d8
-    x0 -.->|"dbt DQ (legacy) Δ2h"| d9
-    x1 -.->|"dbt DQ (legacy) Δ2h"| d9
-    x0 -.->|"dbt DQ (legacy) Δ1h"| d10
-    d5 -.->|"dbt DQ (legacy) Δ3h"| d11
-    x2 -->|"sensor Δ13h"| d21
-    x4 -->|"sensor"| d23
-    class d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24,d25,d26 silver
-    class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold
+    d9 -->|"sensor Δ1h"| d7
+    x0 -.->|"dbt DQ (legacy) Δ5h"| d8
+    x1 -.->|"dbt DQ (legacy) Δ5h"| d8
+    d9 -->|"sensor Δ1h"| d8
+    x0 -.->|"dbt DQ (legacy) Δ4h"| d9
+    x0 -.->|"dbt DQ (legacy) Δ2h"| d10
+    x1 -.->|"dbt DQ (legacy) Δ2h"| d10
+    x0 -.->|"dbt DQ (legacy) Δ1h"| d11
+    d6 -.->|"dbt DQ (legacy) Δ3h"| d12
+    x2 -->|"sensor Δ13h"| d22
+    x4 -->|"sensor"| d24
+    class d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24,d25,d26,d27 silver
+    class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11,d12 gold
     class d0,d1 datasets
     class x0,x1,x2,x3,x4 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
@@ -276,7 +279,7 @@ gantt
     03h00 · 3 DAG · large×1 · airflow-python×2 :milestone, s2_0180, 03:00, 0m
     04h00 · 1 DAG · large×1 :milestone, s2_0240, 04:00, 0m
     05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
-    06h00 · 5 DAG · small×1 · airflow-python×3 · search_dataset×1 :milestone, s2_0360, 06:00, 0m
+    06h00 · 6 DAG · small×1 · airflow-python×4 · search_dataset×1 :milestone, s2_0360, 06:00, 0m
     09h00 · 1 DAG · search_product×1 :milestone, s2_0540, 09:00, 0m
     19h00 · 4 DAG · small×1 · airflow-python×3 :milestone, s2_1140, 19:00, 0m
 ```
@@ -320,11 +323,12 @@ DAG энтити без таски `feature_stats`:
 
 - `feature-platform.layers.silver.sku_id.sku_daily_dynamic_prices`
 
-Сенсоров на устаревшем dbt-DQ-контракте: **24**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
+Сенсоров на устаревшем dbt-DQ-контракте: **25**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
 
 | Downstream DAG | Ждёт |
 |---|---|
 | `feature-platform.layers.gold.account_id.buyout_online_account_features` | `dbt.source.trino.ml_feature_platform_gold.feature_platform_buyout_account_history_features.dq` |
+| `feature-platform.layers.gold.category_id.buyout_online_category_features` | `dbt.source.trino.ml_feature_platform_gold.feature_platform_buyout_item_signal_features.dq` |
 | `feature-platform.layers.gold.sku_id.buyout_online_sku_features` | `dbt.source.trino.ml_feature_platform_gold.feature_platform_buyout_item_signal_features.dq` |
 | `feature-platform.layers.gold.account_id.buyout_account_history_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_account_lifetime_facts.dq` |
 | `feature-platform.layers.gold.city_id_dimensional_group.buyout_online_city_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_delivery_cpi_city_features.dq` |
