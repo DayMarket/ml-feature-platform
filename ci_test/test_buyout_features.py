@@ -73,22 +73,6 @@ ENTITIES = {
             ),
         ),
     },
-    "online_category": {
-        "layer": "gold",
-        "group": "category_id",
-        "entity": "buyout_online_category_features",
-        "table": "iceberg.gold.feature_platform_buyout_online_category_features",
-        "primary_key": ("date", "category_id"),
-        "schedule": "0 6 * * *",
-        "engine": "trino",
-        "dq_sources": (
-            (
-                "item_signal",
-                "dbt.source.trino.ml_feature_platform_gold."
-                "feature_platform_buyout_item_signal_features.dq",
-            ),
-        ),
-    },
     "online_city": {
         "layer": "gold",
         "group": "city_id_dimensional_group",
@@ -480,6 +464,13 @@ class BuyoutProjectionQueryTest(unittest.TestCase):
                        "marketplace_no_show_rate_90d"):
             with self.subTest(column=column):
                 self.assertIn(column, sql)
+        # MAD-13695: население — активные sku в наличии плюс sku с доставками; подстановки
+        # категории и маркетплейса считаются здесь, а не в сервисе
+        self.assertIn("status = 'ACTIVE'", sql)
+        self.assertIn("OR id IN (SELECT key_id FROM sig WHERE key_type = 'sku')", sql)
+        self.assertIn("LEFT JOIN sig s       ON s.key_type = 'sku'", sql)
+        self.assertIn("COALESCE(c.cat_buyout_90d,  g.g_buyout)", sql)
+        self.assertIn("COALESCE(s.n_delivered_90d, 0)                      AS sku_n_delivered_90d", sql)
 
     def test_online_sku_migrations_declare_shop_shrunk_columns(self):
         if not is_present("online_sku"):
@@ -494,28 +485,6 @@ class BuyoutProjectionQueryTest(unittest.TestCase):
             with self.subTest(column=column):
                 self.assertIn(f"    {column} DOUBLE COMMENT", create_sql)
                 self.assertIn(f"ADD COLUMN IF NOT EXISTS {column} DOUBLE COMMENT", alter_sql)
-
-    def test_online_category_projection_reads_signal_partition(self):
-        if not is_present("online_category"):
-            self.fail("Сущность online_category отсутствует на диске")
-        query = load_module(
-            entity_dir("online_category") / "job" / "query.py",
-            "buyout_online_category_query_under_test",
-        )
-        signal_table = '"dwh-iceberg".gold.feature_platform_buyout_item_signal_features'
-        sql = query.build_query(date(2026, 8, 1), signal_table)
-        self.assertIn(signal_table, sql)
-        self.assertIn("WHERE date = DATE '2026-08-01'", sql)
-        self.assertIn("AND key_type = 'category'", sql)
-        create_sql = (
-            entity_dir("online_category") / "migrations" / "create_table.sql"
-        ).read_text(encoding="utf-8")
-        for column in ("category_buyout_rate_90d", "category_no_show_rate_90d",
-                       "marketplace_buyout_rate_90d", "marketplace_no_show_rate_90d",
-                       "cat_n_delivered_90d"):
-            with self.subTest(column=column):
-                self.assertIn(f"AS {column}", sql)
-                self.assertIn(f"    {column} ", create_sql)
 
     def test_online_city_projection_reads_silver_partition(self):
         if not is_present("online_city"):
