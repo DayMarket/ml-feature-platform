@@ -63,9 +63,9 @@ ClickHouse-source пайплайн (Airflow/Python + `pyiceberg`), не Spark. �
 ClickHouse-connection, запись — через entity-local модуль `job/runtime.py`.
 Образ задачи: `ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2`, 16Gi / 4 CPU.
 
-`source.clickhouse_conn_id` сейчас `clickhouse_account_lifetime_facts_dag` — это заглушка. Доступ к
-`marketing.account_properties` зависит от RBAC: коннекшн clickhouse_account_lifetime_facts_dag заводится DE по заявке (конвенция clickhouse_<dag>_dag в product-analytics-dags)
-до включения DAG.
+`source.clickhouse_conn_id` = `ch_dwh_cx_team` — рабочий ClickHouse-коннекшн команды, тот же,
+что в DAG-ах product-analytics-dags. Доступ этого коннекшна к `marketing.account_properties`
+проверить до включения DAG.
 
 Запись идемпотентна: партиция `date` перезаписывается целиком через PyIceberg `overwrite`.
 
