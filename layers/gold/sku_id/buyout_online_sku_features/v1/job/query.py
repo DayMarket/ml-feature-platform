@@ -17,7 +17,7 @@ brand) + сглаженные выкупаемости. Сервис невык�
 Магазин стягивается к общей выкупаемости маркетплейса (shop_buyout_rate_shrunk_90d),
 сама общая выкупаемость отдаётся колонкой marketplace_buyout_rate_90d.
 
-Население (MAD-13695): все активные sku в наличии (status = 'ACTIVE', остаток
+В таблице (MAD-13695) все активные sku в наличии (status = 'ACTIVE', остаток
 quantity_active + quantity_additional + quantity_fbs > 0) плюс все sku с
 доставками за 90 дней. У sku без доставок сырые доли NULL, число доставок 0,
 сглаженные выкупаемости равны выкупаемости категории, а у категории без
@@ -39,7 +39,7 @@ def _sql_string(value: str) -> str:
 
 
 def build_query(partition_date: date, signal_table: str) -> str:
-    """SQL проекции на дату партиции; signal_table — Trino-имя silver/gold источника."""
+    """SQL таблицы на дату партиции; signal_table — Trino-имя gold-источника."""
     partition_date_sql = f"DATE {_sql_string(partition_date.isoformat())}"
     k = SHRINKAGE_K
 
@@ -73,7 +73,7 @@ cat_smooth AS (
     WHERE s.key_type = 'category'
 ),
 
--- население: активные sku в наличии плюс все sku с доставками за 90 дней
+-- в таблицу входят активные sku в наличии плюс все sku с доставками за 90 дней
 sku_map AS (
     SELECT id AS sku_id, product_id, category_id, shop_id, brand_name_id
     FROM {SKU_TABLE}
