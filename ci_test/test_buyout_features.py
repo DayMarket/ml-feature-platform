@@ -7,6 +7,7 @@
 
 import ast
 import importlib.util
+import re
 import sys
 import unittest
 from datetime import date, datetime, timezone
@@ -159,6 +160,53 @@ FOREIGN_DQ_SOURCES = {
         "order_completion_region_features",
     ),
 }
+
+
+ACCOUNT_HISTORY_JOB = "job/getting_buyout_account_history_features.py"
+
+
+def sql_template(source: str, function: str) -> str:
+    """Текст SQL-шаблона функции: подстановки f-строки заменены на «?»."""
+    tree = ast.parse(source)
+    node = next(
+        n for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name == function
+    )
+    returned = next(n for n in ast.walk(node) if isinstance(n, ast.Return)).value
+    if isinstance(returned, ast.Constant):
+        return returned.value
+    return "".join(
+        part.value if isinstance(part, ast.Constant) else "?"
+        for part in returned.values
+    )
+
+
+def select_output_names(select_list: str) -> set[str]:
+    """Имена колонок на выходе SELECT-списка: алиас `AS x` или хвост `t.x`."""
+    cleaned = "\n".join(line.split("--")[0] for line in select_list.splitlines())
+    items: list[str] = []
+    depth = 0
+    buffer: list[str] = []
+    for char in cleaned:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char == "," and depth == 0:
+            items.append("".join(buffer))
+            buffer = []
+        else:
+            buffer.append(char)
+    items.append("".join(buffer))
+
+    names = set()
+    for item in items:
+        item = " ".join(item.split())
+        if not item:
+            continue
+        alias = re.search(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)$", item, re.IGNORECASE)
+        names.add(alias.group(1) if alias else item.rsplit(".", 1)[-1])
+    return names
 
 
 def entity_dir(name: str) -> Path:
@@ -568,6 +616,48 @@ class BuyoutProjectionQueryTest(unittest.TestCase):
         self.assertIn("WHERE date = DATE '2026-08-01'", sql)
         self.assertIn("dimensional_group", sql)
         self.assertIn("cpi_forward_country_uzs", sql)
+
+
+class BuyoutAccountHistoryQueryTest(unittest.TestCase):
+    """Сборка витрины склеивает три временные вьюхи — контракт колонок между ними."""
+
+    def setUp(self):
+        if not is_present("account_history"):
+            self.fail("Сущность account_history отсутствует на диске")
+        self.source = (entity_dir("account_history") / ACCOUNT_HISTORY_JOB).read_text(
+            encoding="utf-8"
+        )
+
+    def test_final_select_reads_only_columns_asof_history_projects(self):
+        asof = sql_template(self.source, "asof_history_sql")
+        final_select = re.search(r"\nSELECT\n(.*?)\nFROM agg AS a", asof, re.S)
+        self.assertIsNotNone(
+            final_select, "не найден финальный SELECT вьюхи asof_history"
+        )
+        produced = select_output_names(final_select.group(1))
+
+        features = sql_template(self.source, "features_sql")
+        consumed = set(re.findall(r"\bh\.([a-z_][a-z0-9_]*)", features))
+
+        missing = sorted(consumed - produced)
+        self.assertFalse(
+            missing,
+            "features_sql читает из asof_history колонки, которых нет в её проекции: "
+            + ", ".join(missing),
+        )
+
+    def test_geo_join_keys_reach_the_target_table(self):
+        """Ключи связи с гео-витринами обязаны дойти от agg до записи в таблицу."""
+        asof = sql_template(self.source, "asof_history_sql")
+        final_select = re.search(r"\nSELECT\n(.*?)\nFROM agg AS a", asof, re.S)
+        produced = select_output_names(final_select.group(1))
+        create_sql = (
+            entity_dir("account_history") / "migrations" / "create_table.sql"
+        ).read_text(encoding="utf-8")
+        for column in ("last_order_city_id", "last_order_region_id"):
+            with self.subTest(column=column):
+                self.assertIn(column, produced)
+                self.assertIn(f"    {column} BIGINT", create_sql)
 
 
 if __name__ == "__main__":

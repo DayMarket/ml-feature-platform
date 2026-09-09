@@ -394,6 +394,8 @@ SELECT
     a.avg_ticket_win, a.median_ticket_win, a.std_ticket_win, a.max_ticket_win,
     a.avg_items_per_order_win,
     a.n_distinct_dp_win, a.n_distinct_city_win,
+    -- ключи связи с order_completion_city/region_features (присоединяются по date + 1)
+    a.last_order_city_id, a.last_order_region_id,
 
     -- временные метки и цензура окна
     a.first_order_date_win,
