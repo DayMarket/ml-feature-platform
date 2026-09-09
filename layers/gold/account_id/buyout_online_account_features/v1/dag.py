@@ -33,17 +33,28 @@ SOURCE_CONFIG_PATH = os.path.join(
     "v1",
     "config.yaml",
 )
+CITY_CONFIG_PATH = os.path.join(
+    REPO_ROOT,
+    "layers",
+    "silver",
+    "order_city_id",
+    "order_completion_city_features",
+    "v1",
+    "config.yaml",
+)
+REGION_CONFIG_PATH = os.path.join(
+    REPO_ROOT,
+    "layers",
+    "silver",
+    "order_region_id",
+    "order_completion_region_features",
+    "v1",
+    "config.yaml",
+)
 
 with open(CONFIG_PATH, encoding="utf-8") as config_stream:
     CONFIG = yaml.safe_load(config_stream)
 
-<<<<<<< HEAD
-# Проекция читает gold-витрину этого репозитория: ждём таску `dq` её Spark-DAG-а
-# (правило платформы, AGENTS.md), а не dbt-DQ-DAG, который идёт в 01:00 UTC своей
-# логической датой и проверяет партицию за ds − 1.
-SOURCE_DAG_ID = "feature-platform.layers.gold.account_id.buyout_account_history_features"
-# Разница расписаний (06:00 против 04:00): обе логические даты одного дня.
-=======
 # Проекция читает gold-витрину этого репозитория, а та считает свой DQ таской dq внутри
 # собственного DAG'а, — ждём её, а не отдельный dbt-DQ-DAG. Отдельный dbt-DQ идёт в 01:00,
 # то есть всегда раньше производителя (04:00), и партицию D он проверяет только в D+2 01:00 —
@@ -54,8 +65,18 @@ SOURCE_DAG_ID = (
 SOURCE_DQ_TASK_ID = "dq"
 # Разница расписаний: D 06:00 - 2ч = D 04:00 — логическая дата запуска витрины-источника,
 # который пишет партицию D (её же читает materialize).
->>>>>>> 738ac44 (feat: add changes)
 SOURCE_DQ_EXECUTION_DELTA = timedelta(hours=2)
+
+# Гео-доли выкупа приходят из двух silver-витрин: они тоже считают свой DQ таской dq внутри
+# собственного DAG'а. Обе идут в 03:00 UTC и помечают партицию датой analyze_date, как и
+# витрина-источник, поэтому проекция читает партицию D из всех трёх.
+CITY_DAG_ID = "feature-platform.layers.silver.order_city_id.order_completion_city_features"
+REGION_DAG_ID = (
+    "feature-platform.layers.silver.order_region_id.order_completion_region_features"
+)
+GEO_DQ_TASK_ID = "dq"
+# D 06:00 - 3ч = D 03:00 — логическая дата запуска silver, который пишет партицию D.
+GEO_DQ_EXECUTION_DELTA = timedelta(hours=3)
 
 
 def _load_module(filename: str, module_name: str):
@@ -128,11 +149,7 @@ def buyout_online_account_features_dag() -> None:
     wait_for_history_features = ExternalTaskSensor(
         task_id="wait_for_gold_buyout_account_history_features",
         external_dag_id=SOURCE_DAG_ID,
-<<<<<<< HEAD
-        external_task_id="dq",
-=======
         external_task_id=SOURCE_DQ_TASK_ID,
->>>>>>> 738ac44 (feat: add changes)
         allowed_states=["success"],
         failed_states=["failed"],
         mode="poke",
@@ -142,6 +159,32 @@ def buyout_online_account_features_dag() -> None:
         execution_delta=SOURCE_DQ_EXECUTION_DELTA,
     )
 
+    wait_for_city_features = ExternalTaskSensor(
+        task_id="wait_for_silver_order_completion_city_features",
+        external_dag_id=CITY_DAG_ID,
+        external_task_id=GEO_DQ_TASK_ID,
+        allowed_states=["success"],
+        failed_states=["failed"],
+        mode="poke",
+        poke_interval=60,
+        timeout=4 * 60 * 60,
+        check_existence=True,
+        execution_delta=GEO_DQ_EXECUTION_DELTA,
+    )
+
+    wait_for_region_features = ExternalTaskSensor(
+        task_id="wait_for_silver_order_completion_region_features",
+        external_dag_id=REGION_DAG_ID,
+        external_task_id=GEO_DQ_TASK_ID,
+        allowed_states=["success"],
+        failed_states=["failed"],
+        mode="poke",
+        poke_interval=60,
+        timeout=4 * 60 * 60,
+        check_existence=True,
+        execution_delta=GEO_DQ_EXECUTION_DELTA,
+    )
+
     @task(executor_config=_executor_config())
     def materialize(interval_end_value: str) -> None:
         runtime = _load_module("runtime.py", "buyout_online_account_features_runtime")
@@ -149,23 +192,36 @@ def buyout_online_account_features_dag() -> None:
         config = runtime.load_config(CONFIG_PATH)
         ref = runtime.table_ref(config)
         source_ref = runtime.table_ref(runtime.load_config(SOURCE_CONFIG_PATH))
-        if source_ref.catalog != ref.catalog:
-            raise ValueError(
-                "Source and output configs must use one Iceberg catalog; "
-                f"output={ref.catalog!r}, source={source_ref.catalog!r}"
-            )
+        city_ref = runtime.table_ref(runtime.load_config(CITY_CONFIG_PATH))
+        region_ref = runtime.table_ref(runtime.load_config(REGION_CONFIG_PATH))
+        for upstream_ref in (source_ref, city_ref, region_ref):
+            if upstream_ref.catalog != ref.catalog:
+                raise ValueError(
+                    "Source and output configs must use one Iceberg catalog; "
+                    f"output={ref.catalog!r}, source={upstream_ref.catalog!r}"
+                )
 
         catalog = runtime.get_iceberg_catalog(ref)
-        # Resolve both migrated tables before reading the source partition.
+        # Resolve every migrated table before reading the source partition.
         table = runtime.preflight_table(catalog, ref)
-        runtime.preflight_table(catalog, source_ref)
+        for upstream_ref in (source_ref, city_ref, region_ref):
+            runtime.preflight_table(catalog, upstream_ref)
         # Партиция витрины-источника за сутки D пишется DAG-ом в D+1 04:00 UTC.
         partition_date = runtime.previous_utc_date(interval_end_value)
         source_table = runtime.trino_table_name(source_ref)
+        city_table = runtime.trino_table_name(city_ref)
+        region_table = runtime.trino_table_name(region_ref)
         shards = runtime.shard_count(config)
 
         for shard in range(shards):
-            sql = query.build_query(partition_date, source_table, shards, shard)
+            sql = query.build_query(
+                partition_date,
+                source_table,
+                city_table,
+                region_table,
+                shards,
+                shard,
+            )
             frame = runtime.query_trino(config["source"]["trino_conn_id"], sql)
             if shard == 0:
                 runtime.require_non_empty(frame, partition_date)
@@ -179,7 +235,11 @@ def buyout_online_account_features_dag() -> None:
     gold_task = materialize(
         '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
     )
-    wait_for_history_features >> gold_task
+    [
+        wait_for_history_features,
+        wait_for_city_features,
+        wait_for_region_features,
+    ] >> gold_task
 
     dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)
     stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_DATE)

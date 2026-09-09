@@ -1,0 +1,9 @@
+output-label: output
+input-labels:
+  - label: buyout_account_features
+    type: OFFLINE
+    missing-feature-value: 0.0
+    feature-sets:
+      - name: fs_buyout_account_features_v1
+        schema: ACCOUNT
+        size: 82

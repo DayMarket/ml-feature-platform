@@ -34,7 +34,9 @@ def test_generated_feature_platform_map_is_current():
     assert "section Backfill" in actual
     assert "section Other" in actual
     assert "UTC 03:00" in actual
-    assert 'd0["`search_query_atc_features\nUTC 03:00 · P3 · medium`"]' in actual
+    # Идентификатор ноды не проверяем: он зависит от порядка обхода и сдвигается
+    # от любого нового DAG'а. Значение имеет подпись — расписание, severity, размер.
+    assert '["`search_query_atc_features\nUTC 03:00 · P3 · medium`"]' in actual
     assert "<br" not in actual
 
 

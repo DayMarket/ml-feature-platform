@@ -34,12 +34,6 @@ SIGNAL_CONFIG_PATH = os.path.join(
     "config.yaml",
 )
 
-<<<<<<< HEAD
-# Ждём таску `dq` DAG-а сигнала (правило платформы, AGENTS.md), а не dbt-DQ-DAG:
-# тот идёт в 01:00 UTC своей логической датой и проверяет партицию за ds − 1.
-# Сигнал пишется в 03:00 UTC, проекция стартует в 06:00 UTC — обе логические даты
-# одного дня, дельта равна разнице расписаний.
-=======
 # Сигнал считает свой DQ таской dq внутри собственного DAG'а — ждём её, а не отдельный
 # dbt-DQ-DAG: у dbt-DQ своё расписание 0 1 * * * и своя логическая дата (D-1 01:00),
 # с расписанием производителя она не совпадает ни при какой дельте.
@@ -49,7 +43,6 @@ SIGNAL_DAG_ID = (
 SIGNAL_DQ_TASK_ID = "dq"
 # Сигнал пишется в 03:00 UTC, проекция стартует в 06:00 UTC: D 06:00 - 3ч = D 03:00 —
 # логическая дата запуска сигнала, который пишет партицию D (её же читает materialize).
->>>>>>> 738ac44 (feat: add changes)
 SIGNAL_DQ_EXECUTION_DELTA = timedelta(hours=3)
 
 
@@ -130,13 +123,8 @@ def get_dag_default_args() -> dict:
 def buyout_online_sku_features_dag() -> None:
     wait_for_signal_dq = ExternalTaskSensor(
         task_id="wait_for_buyout_item_signal_dq",
-<<<<<<< HEAD
-        external_dag_id=SIGNAL_CONFIG["dag"]["id"],
-        external_task_id="dq",
-=======
         external_dag_id=SIGNAL_DAG_ID,
         external_task_id=SIGNAL_DQ_TASK_ID,
->>>>>>> 738ac44 (feat: add changes)
         allowed_states=["success"],
         failed_states=["failed"],
         check_existence=True,

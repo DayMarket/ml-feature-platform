@@ -66,9 +66,6 @@ ENTITIES = {
         "primary_key": ("date", "sku_id"),
         "schedule": "0 6 * * *",
         "engine": "trino",
-<<<<<<< HEAD
-        "dq_sources": ("item_signal",),
-=======
         "dq_sources": (
             (
                 "item_signal",
@@ -76,7 +73,6 @@ ENTITIES = {
                 "buyout_item_signal_features",
             ),
         ),
->>>>>>> 738ac44 (feat: add changes)
     },
     "online_city": {
         "layer": "gold",
@@ -86,9 +82,6 @@ ENTITIES = {
         "primary_key": ("date", "city_id", "dimensional_group"),
         "schedule": "0 6 * * *",
         "engine": "trino",
-<<<<<<< HEAD
-        "dq_sources": ("delivery_cpi_city",),
-=======
         "dq_sources": (
             (
                 "delivery_cpi_city",
@@ -96,7 +89,6 @@ ENTITIES = {
                 "delivery_cpi_city_features",
             ),
         ),
->>>>>>> 738ac44 (feat: add changes)
     },
     # Spark-контур аккаунтов и его online-проекция.
     "account_history": {
@@ -107,7 +99,13 @@ ENTITIES = {
         "primary_key": ("date", "account_id"),
         "schedule": "0 4 * * *",
         "engine": "spark",
-        "dq_sources": ("account_lifetime_facts",),
+        "dq_sources": (
+            (
+                "account_lifetime_facts",
+                "feature-platform.layers.silver.account_id."
+                "account_lifetime_facts",
+            ),
+        ),
     },
     "online_account": {
         "layer": "gold",
@@ -117,17 +115,23 @@ ENTITIES = {
         "primary_key": ("date", "account_id"),
         "schedule": "0 6 * * *",
         "engine": "trino",
-<<<<<<< HEAD
-        "dq_sources": ("account_history",),
-=======
         "dq_sources": (
             (
                 "account_history",
                 "feature-platform.layers.gold.account_id."
                 "buyout_account_history_features",
             ),
+            (
+                "order_completion_city",
+                "feature-platform.layers.silver.order_city_id."
+                "order_completion_city_features",
+            ),
+            (
+                "order_completion_region",
+                "feature-platform.layers.silver.order_region_id."
+                "order_completion_region_features",
+            ),
         ),
->>>>>>> 738ac44 (feat: add changes)
     },
 }
 
@@ -145,7 +149,21 @@ ITEM_SIGNAL_WINDOW_COLUMNS = (
 )
 
 
+# Источники DQ вне группы `buyout-features`: их контракт таблицы и алертов принадлежит
+# другой команде, реестр ENTITIES их не описывает — сверяется только dag id владельца.
+FOREIGN_DQ_SOURCES = {
+    "order_completion_city": ("silver", "order_city_id", "order_completion_city_features"),
+    "order_completion_region": (
+        "silver",
+        "order_region_id",
+        "order_completion_region_features",
+    ),
+}
+
+
 def entity_dir(name: str) -> Path:
+    if name in FOREIGN_DQ_SOURCES:
+        return LAYERS.joinpath(*FOREIGN_DQ_SOURCES[name], "v1")
     spec = ENTITIES[name]
     return LAYERS / spec["layer"] / spec["group"] / spec["entity"] / "v1"
 
@@ -163,15 +181,14 @@ def read_config(name: str) -> dict:
 
 
 def expected_dag_id(name: str) -> str:
-    spec = ENTITIES[name]
-    return (
-        f"feature-platform.layers.{spec['layer']}."
-        f"{spec['group']}.{spec['entity']}"
-    )
+    if name in FOREIGN_DQ_SOURCES:
+        layer, group, entity = FOREIGN_DQ_SOURCES[name]
+    else:
+        spec = ENTITIES[name]
+        layer, group, entity = spec["layer"], spec["group"], spec["entity"]
+    return f"feature-platform.layers.{layer}.{group}.{entity}"
 
 
-<<<<<<< HEAD
-=======
 def external_task_sensors(dag_source: str) -> list[tuple[str | None, str | None]]:
     """(external_dag_id, external_task_id) каждого сенсора; константы модуля разворачиваются."""
     tree = ast.parse(dag_source)
@@ -209,7 +226,6 @@ def external_task_sensors(dag_source: str) -> list[tuple[str | None, str | None]
     return sensors
 
 
->>>>>>> 738ac44 (feat: add changes)
 def load_module(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
@@ -364,12 +380,6 @@ class BuyoutOrchestrationTest(unittest.TestCase):
 
 
 class BuyoutSensorTest(unittest.TestCase):
-<<<<<<< HEAD
-    """Сенсоры ждут таску `dq` DAG-а-владельца источника (AGENTS.md), не dbt-DQ-DAG:
-    тот идёт в 01:00 UTC своей логической датой, и дельта до него не сходится."""
-
-    def test_declared_dq_sensors_wait_for_owner_dq_task(self):
-=======
     def test_declared_dq_sensors_match_source_configs(self):
         """Сенсор ждёт таску dq DAG'а-владельца, а не легаси dbt-DQ-DAG.
 
@@ -377,7 +387,6 @@ class BuyoutSensorTest(unittest.TestCase):
         `0 1 * * *` и собственная логическая дата: `execution_delta`, посчитанная
         от расписания производителя, в неё не попадает и сенсор висит до таймаута.
         """
->>>>>>> 738ac44 (feat: add changes)
         for name in present_entities():
             spec = ENTITIES[name]
             if not spec["dq_sources"]:
@@ -385,26 +394,6 @@ class BuyoutSensorTest(unittest.TestCase):
             dag_source = (entity_dir(name) / "dag.py").read_text(encoding="utf-8")
             sensors = external_task_sensors(dag_source)
             with self.subTest(entity=name):
-<<<<<<< HEAD
-                self.assertIn("ExternalTaskSensor", dag_source)
-                self.assertIn('external_task_id="dq"', dag_source)
-                self.assertNotIn("dbt.source.", dag_source)
-            for source_name in spec["dq_sources"]:
-                with self.subTest(entity=name, source=source_name):
-                    self.assertIn(ENTITIES[source_name]["entity"], dag_source)
-                    if not is_present(source_name):
-                        self.skipTest(
-                            f"Источник {source_name} ещё не создан: "
-                            "сверка dag id по config.yaml пропущена"
-                        )
-                    owner_dag_id = read_config(source_name)["dag"]["id"]
-                    self.assertEqual(owner_dag_id, expected_dag_id(source_name))
-                    # Владелец либо назван литералом, либо берётся из его config.yaml.
-                    self.assertTrue(
-                        owner_dag_id in dag_source or '["dag"]["id"]' in dag_source,
-                        f"{name}: сенсор не ссылается на DAG {owner_dag_id}",
-                    )
-=======
                 self.assertEqual(len(sensors), len(spec["dq_sources"]))
                 self.assertNotIn("dbt.source.trino.ml_feature_platform", dag_source)
             waited = {
@@ -414,7 +403,6 @@ class BuyoutSensorTest(unittest.TestCase):
                 with self.subTest(entity=name, source=source_name):
                     self.assertEqual(expected_dag_id(source_name), expected_upstream)
                     self.assertIn((expected_upstream, "dq"), waited)
->>>>>>> 738ac44 (feat: add changes)
 
     def test_entities_without_dependencies_declare_no_sensor(self):
         for name in present_entities():
