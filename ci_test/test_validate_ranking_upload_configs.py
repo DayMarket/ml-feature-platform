@@ -52,6 +52,69 @@ def check_postgres_sink_skips_ranking_checks(validator) -> list[str]:
     return errors
 
 
+def check_sink_requires_connection_schema_table(validator) -> list[str]:
+    """Non-kafka sink обязан объявить connection_id/schema/table непустыми строками."""
+    errors = []
+    config_path = Path("upload/buyout_sku_postgres_upload/v1/config.yaml")
+
+    full_sink_errors = validator.validate_sink(
+        config_path,
+        {
+            "sink": {
+                "type": "postgres",
+                "connection_id": "postgres_non_buyout_service_connect",
+                "schema": "mlgrowth",
+                "table": "sku_buyout_features",
+            }
+        },
+    )
+    if full_sink_errors:
+        errors.append(
+            f"полный sink-блок не должен давать ошибок, получено: {full_sink_errors}"
+        )
+
+    kafka_sink_errors = validator.validate_sink(config_path, {"sink": {"type": "kafka"}})
+    if kafka_sink_errors:
+        errors.append(
+            f"kafka-выгрузка не должна проверяться на connection_id/schema/table, "
+            f"получено: {kafka_sink_errors}"
+        )
+
+    for missing_field in ("connection_id", "schema", "table"):
+        sink = {
+            "type": "postgres",
+            "connection_id": "postgres_non_buyout_service_connect",
+            "schema": "mlgrowth",
+            "table": "sku_buyout_features",
+        }
+        sink.pop(missing_field)
+        found = validator.validate_sink(config_path, {"sink": sink})
+        if not any(f"sink.{missing_field}" in error for error in found):
+            errors.append(
+                f"отсутствие sink.{missing_field} должно быть замечено, "
+                f"получено: {found}"
+            )
+
+    empty_string_errors = validator.validate_sink(
+        config_path,
+        {
+            "sink": {
+                "type": "postgres",
+                "connection_id": "",
+                "schema": "mlgrowth",
+                "table": "sku_buyout_features",
+            }
+        },
+    )
+    if not any("sink.connection_id" in error for error in empty_string_errors):
+        errors.append(
+            f"пустая строка в sink.connection_id должна считаться ошибкой, "
+            f"получено: {empty_string_errors}"
+        )
+
+    return errors
+
+
 def main() -> int:
     validator = load_validator()
     config_path = Path("upload/features_service_upload/v1/config.yaml")
@@ -215,6 +278,9 @@ def main() -> int:
     ) == []
 
     errors = check_postgres_sink_skips_ranking_checks(validator)
+    assert not errors, errors
+
+    errors = check_sink_requires_connection_schema_table(validator)
     assert not errors, errors
 
     print("Ranking upload model manifest validation tests completed successfully")

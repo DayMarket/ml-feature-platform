@@ -3,7 +3,7 @@
 Витрина экономики корзины и выкупаемости на грейне `sku_id`: одна строка на каждый
 sku из полного sku-универса `"dwh-iceberg".silver.sku`, а не только на sku с историей
 доставок. В строке — тип продавца (`1p`/`3p`), комиссия, себестоимость 1p-приёмки,
-пятиуровневая категория и шесть сглаженных признаков выкупаемости из
+пятиуровневая категория и семь сглаженных признаков выкупаемости из
 `feature_platform_buyout_online_sku_features`.
 
 ## Выход
@@ -88,13 +88,21 @@ Join `silver.sku.category_id = dict.category.id` покрывает 100% стр�
 База строк — весь sku-универс (`silver.sku`), а не только sku с сигналом выкупаемости.
 `feature_platform_buyout_online_sku_features` на 2026-09-09 содержит 2 889 958 строк,
 ровно одну на `sku_id`. Это меньше, чем полный универс, поэтому у порядка 7,6 млн sku
-(10 485 803 − 2 889 958) все шесть признаков выкупаемости (`sku_buyout`,
+(10 485 803 − 2 889 958) все семь признаков выкупаемости (`sku_buyout`,
 `product_buyout`, `category_buyout`, `shop_buyout`, `category_no_show`,
 `sku_n_delivered`, `product_n_delivered`) в строке — `NULL`. Это легитимное состояние
 (нет истории доставок за 90 дней или sku не попал в снимок источника), а не ошибка
 джойна: `NULL` здесь нельзя заменять нулём — ноль означал бы «выкупается с
 вероятностью 0% / доставок 0», что для sku без истории неверно и исказит потребителя
 признака.
+
+`predicted_dimensional_group` при отсутствующих габаритах (`total_size IS NULL`)
+подставляет `silver.sku.dimensional_group` как есть, но через `NULLIF(dimensional_group,
+'')`: у 5 353 из 10 492 211 sku (замер на проде) справочник хранит `''`, а не `NULL`.
+`COPY ... FORMAT csv` при выгрузке в PostgreSQL читает незаквоченное пустое поле как
+`NULL`, поэтому без `NULLIF` Iceberg-витрина держала бы `''`, а `mlgrowth.sku_buyout_features`
+— `NULL` для тех же строк. `NULLIF` убирает это расхождение на источнике: неизвестная
+размерная группа — всегда `NULL`, никогда пустая строка, в обеих витринах.
 
 ## Диапазонное шардирование, а не остаток от деления
 
@@ -124,8 +132,9 @@ index range scan, поэтому восемь срезов читают OLTP с�
 
 ## Выгрузка в PostgreSQL
 
-Витрина не публикуется в `mlgrowth` этим DAG'ом. Отдельный upload DAG (Task 6)
-выгружает её в `mlgrowth.sku_buyout_features`. `category_id` присутствует в Iceberg
+Витрина не публикуется в `mlgrowth` этим DAG'ом. Отдельный upload DAG
+`feature-platform.upload.buyout_sku_postgres_upload`
+(`upload/buyout_sku_postgres_upload/v1`) выгружает её в `mlgrowth.sku_buyout_features`. `category_id` присутствует в Iceberg
 (как ключ джойна с `dict.category` и для отладки), но **не** входит в состав
 PostgreSQL-таблицы `mlgrowth.sku_buyout_features` — потребителю в Postgres category_id
 не нужен, вниз идут только пять уровней категории (`l1_category` … `l5_category`).

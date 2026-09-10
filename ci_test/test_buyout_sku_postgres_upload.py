@@ -228,7 +228,13 @@ class PublishTransactionContract(unittest.TestCase):
 
         return [pa.RecordBatch.from_pydict({"sku_id": chunk}) for chunk in row_id_chunks]
 
-    def test_normal_path_truncates_then_copies_then_commits(self):
+    @staticmethod
+    def _executed_sql(record):
+        return [entry[1] for entry in record if entry[0] == "execute"]
+
+    def test_normal_path_stages_then_truncates_then_inserts_then_commits(self):
+        # The slow part (COPY of ~10.5M rows) must land in the temp stage table,
+        # never touching target_table until the guard has already passed.
         record = []
         connection = _RecordingConnection(record)
         table = _FakeIcebergTable(self._batches([[1, 2], [3]]))
@@ -246,10 +252,28 @@ class PublishTransactionContract(unittest.TestCase):
         kinds = [entry[0] for entry in record]
         self.assertEqual(
             kinds,
-            ["autocommit", "execute", "copy_expert", "copy_expert", "commit", "close"],
+            [
+                "autocommit",
+                "execute",  # CREATE TEMP TABLE stage
+                "copy_expert",
+                "copy_expert",
+                "execute",  # TRUNCATE TABLE target
+                "execute",  # INSERT INTO target SELECT * FROM stage
+                "commit",
+                "close",
+            ],
         )
         self.assertEqual(record[0], ("autocommit", False))
-        self.assertTrue(record[1][1].startswith("TRUNCATE TABLE"))
+        executed = self._executed_sql(record)
+        self.assertTrue(executed[0].startswith("CREATE TEMP TABLE"))
+        self.assertIn("ON COMMIT DROP", executed[0])
+        self.assertTrue(executed[1].startswith(f"TRUNCATE TABLE {self.TARGET_TABLE}"))
+        self.assertTrue(executed[2].startswith(f"INSERT INTO {self.TARGET_TABLE}"))
+        # Every COPY happened before the TRUNCATE — the stage, not the target,
+        # absorbed the slow part of the transaction.
+        copy_index = kinds.index("copy_expert")
+        truncate_index = kinds.index("execute", copy_index)
+        self.assertGreater(truncate_index, copy_index)
         self.assertNotIn("rollback", kinds)
 
     def test_empty_partition_rolls_back_and_never_commits(self):
@@ -273,6 +297,42 @@ class PublishTransactionContract(unittest.TestCase):
         self.assertNotIn("commit", kinds)
         self.assertIn("close", kinds)
         self.assertEqual(kinds[-1], "close")
+        # Stronger than before FIX 1: staging happens first, so an empty
+        # partition must never even issue TRUNCATE against the target.
+        self.assertFalse(
+            any(sql.startswith("TRUNCATE") for sql in self._executed_sql(record))
+        )
+
+    def test_short_partition_below_min_rows_rolls_back_and_never_truncates(self):
+        # One good shard plus seven empty ones must not pass just because
+        # written > 0 — it must clear the mart's own DQ floor.
+        record = []
+        connection = _RecordingConnection(record)
+        table = _FakeIcebergTable(self._batches([[1, 2]]))
+
+        with self.assertRaises(RuntimeError) as caught:
+            self.job.publish(
+                table,
+                date(2026, 9, 9),
+                ("sku_id",),
+                connection,
+                self.TARGET_TABLE,
+                self.STAMP,
+                min_rows=9_000_000,
+            )
+
+        self.assertIn("2026-09-09", str(caught.exception))
+        self.assertIn("2", str(caught.exception))
+        self.assertIn("9000000", str(caught.exception))
+
+        kinds = [entry[0] for entry in record]
+        self.assertIn("rollback", kinds)
+        self.assertNotIn("commit", kinds)
+        self.assertIn("close", kinds)
+        self.assertEqual(kinds[-1], "close")
+        self.assertFalse(
+            any(sql.startswith("TRUNCATE") for sql in self._executed_sql(record))
+        )
 
     def test_mid_copy_failure_rolls_back_and_never_commits(self):
         record = []
@@ -297,6 +357,9 @@ class PublishTransactionContract(unittest.TestCase):
         # Only the first batch's copy_expert made it into the record; the
         # second batch is where the fake raised.
         self.assertEqual(kinds.count("copy_expert"), 1)
+        self.assertFalse(
+            any(sql.startswith("TRUNCATE") for sql in self._executed_sql(record))
+        )
 
 
 if __name__ == "__main__":

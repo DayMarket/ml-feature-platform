@@ -11,8 +11,10 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 ENTITY = ROOT / "layers" / "gold" / "sku_id" / "sku_buyout_features" / "v1"
 
-# Колонки витрины в порядке миграции. 21 из них уезжают в PostgreSQL;
-# category_id остаётся только в Iceberg как ключ джойна с dict.category.
+# Колонки витрины в порядке миграции. 20 из них уезжают в PostgreSQL;
+# date и category_id остаются только в Iceberg — date не хранится в
+# PostgreSQL-таблице (версию несёт updated_at), category_id — ключ джойна
+# с dict.category.
 EXPECTED_COLUMNS = (
     "date",
     "sku_id",
@@ -144,6 +146,12 @@ class QueryContract(unittest.TestCase):
 
     def test_commission_is_null_for_one_p(self):
         self.assertIn("WHEN one_p.sku_id IS NULL THEN comm.commission", self.build())
+
+    def test_dimensional_group_fallback_treats_empty_string_as_null(self):
+        # silver.sku.dimensional_group хранит '' у части строк; COPY ... FORMAT csv
+        # читает пустое поле как NULL, значит и Iceberg-сторона обязана отдать NULL,
+        # а не '', иначе Iceberg-мart и опубликованная PostgreSQL-таблица разойдутся.
+        self.assertIn("NULLIF(dimensional_group, '')", self.build())
 
     def test_uses_shrunk_rates_where_they_exist(self):
         sql = self.build()

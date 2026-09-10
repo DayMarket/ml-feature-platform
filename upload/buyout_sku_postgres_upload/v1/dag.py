@@ -24,9 +24,9 @@ FEATURE_GROUP = CONFIG["feature_groups"][0]
 SOURCE = FEATURE_GROUP["source"]
 SINK = CONFIG["sink"]
 
-SOURCE_ENTITY_DIR = os.path.join(
-    REPO_ROOT, "layers", "gold", "sku_id", "sku_buyout_features", "v1"
-)
+# config.yaml — единственный источник правды об идентификаторах: путь до
+# энтити-источника не дублируется здесь, а читается из sink-конфига выгрузки.
+SOURCE_ENTITY_DIR = os.path.join(REPO_ROOT, SOURCE["entity_path"])
 SOURCE_CONFIG_PATH = os.path.join(SOURCE_ENTITY_DIR, "config.yaml")
 
 
@@ -36,6 +36,36 @@ def _load_module(path: str, module_name: str):
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _row_count_min(source_config: dict, source_config_path: str) -> int:
+    """Читает порог `row_count_min` из DQ-контракта витрины-источника.
+
+    Мы намеренно не заводим отдельную "магическую" константу: DQ-тест на
+    объём — уже согласованный владельцем витрины порог, и выгрузка обязана
+    отражать именно его, а не собственное независимое число.
+    """
+    dq_tests = source_config.get("dq", {}).get("tests")
+    if not isinstance(dq_tests, list):
+        raise RuntimeError(f"{source_config_path}: missing dq.tests")
+    row_count_min_test = next(
+        (
+            test
+            for test in dq_tests
+            if isinstance(test, dict) and test.get("name") == "row_count_min"
+        ),
+        None,
+    )
+    if row_count_min_test is None:
+        raise RuntimeError(
+            f"{source_config_path}: dq.tests has no row_count_min entry"
+        )
+    min_rows = row_count_min_test.get("min_rows")
+    if not isinstance(min_rows, int) or isinstance(min_rows, bool):
+        raise RuntimeError(
+            f"{source_config_path}: dq.tests row_count_min is missing min_rows"
+        )
+    return min_rows
 
 
 def _executor_config() -> dict:
@@ -116,9 +146,11 @@ def buyout_sku_postgres_upload() -> None:
             "buyout_sku_upload_postgres",
         )
 
-        ref = runtime.table_ref(runtime.load_config(SOURCE_CONFIG_PATH))
+        source_config = runtime.load_config(SOURCE_CONFIG_PATH)
+        ref = runtime.table_ref(source_config)
         catalog = runtime.get_iceberg_catalog(ref)
         iceberg_table = runtime.preflight_table(catalog, ref)
+        min_rows = _row_count_min(source_config, SOURCE_CONFIG_PATH)
 
         # Та же партиция, что записала витрина: дата конца интервала минус сутки.
         partition_date = runtime.previous_utc_date(interval_end_value)
@@ -135,6 +167,7 @@ def buyout_sku_postgres_upload() -> None:
             connection,
             target_table,
             pendulum.now("UTC"),
+            min_rows=min_rows,
         )
 
     wait_for_gold_dq >> publish_to_postgres(

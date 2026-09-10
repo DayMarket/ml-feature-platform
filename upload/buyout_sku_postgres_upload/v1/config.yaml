@@ -26,6 +26,7 @@
       "source": {
         "schema": "gold",
         "table": "feature_platform_sku_buyout_features",
+        "entity_path": "layers/gold/sku_id/sku_buyout_features/v1",
         "dependency_dag_id": "feature-platform.layers.gold.sku_id.sku_buyout_features",
         "dependency_execution_delta_minutes": 0,
         "dependency_task_id": "dq"

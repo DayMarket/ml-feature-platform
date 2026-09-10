@@ -267,6 +267,28 @@ def sink_type(config: dict[str, Any]) -> str:
     return str(value).strip() if isinstance(value, str) and value.strip() else KAFKA_SINK
 
 
+SINK_REQUIRED_STRING_FIELDS = ("connection_id", "schema", "table")
+
+
+def validate_sink(config_path: Path, config: dict[str, Any]) -> list[str]:
+    """Проверяет весь sink-блок non-kafka выгрузки, а не только sink.type.
+
+    Опечатка в connection_id/schema/table сегодня доезжает до продакшена
+    незамеченной — валидатор смотрел только на sink.type.
+    """
+    if sink_type(config) == KAFKA_SINK:
+        return []
+    sink = config.get("sink")
+    if not isinstance(sink, dict):
+        sink = {}
+    errors = []
+    for field in SINK_REQUIRED_STRING_FIELDS:
+        value = sink.get(field)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{config_path}: sink.{field} must be a non-empty string")
+    return errors
+
+
 def validate_models(
     config_path: Path,
     config: dict[str, Any],
@@ -416,6 +438,7 @@ def main() -> int:
     for config_path in config_paths:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         config_sink = sink_type(config)
+        errors.extend(validate_sink(config_path, config))
         feature_groups = config.get("feature_groups", [])
         if not feature_groups:
             errors.append(f"{config_path}: feature_groups must not be empty")

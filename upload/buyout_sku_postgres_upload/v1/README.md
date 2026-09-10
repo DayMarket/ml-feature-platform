@@ -1,8 +1,8 @@
 # buyout_sku_postgres_upload
 
 Публикует последнюю партицию витрины `gold.feature_platform_sku_buyout_features`
-(Iceberg, Task 1–4) в PostgreSQL сервиса невыкупов — первая в репозитории
-выгрузка не в Kafka.
+(Iceberg, `layers/gold/sku_id/sku_buyout_features/v1`) в PostgreSQL сервиса
+невыкупов — первая в репозитории выгрузка не в Kafka.
 
 - **DAG id**: `feature-platform.upload.buyout_sku_postgres_upload`
 - **Расписание**: `0 7 * * *` UTC
@@ -30,7 +30,8 @@
 
 DDL таблицы `mlgrowth.sku_buyout_features` живёт **вне этого репозитория** —
 таблицу завели вручную в PostgreSQL сервиса невыкупов до начала этой работы.
-Список колонок ниже подтверждён через Trino на момент Task 6 и должен
+Список колонок ниже подтверждён через Trino на момент ввода в эксплуатацию
+DAG'а `feature-platform.upload.buyout_sku_postgres_upload` и должен
 поддерживаться **вручную синхронно** со схемой: изменение колонок на стороне
 PostgreSQL не отражается в репозитории автоматически, и наоборот — добавление
 новой колонки в `features` конфига без соответствующей колонки в PostgreSQL
@@ -92,4 +93,4 @@ updated_at timestamptz
 «Custom Image Workflow») на момент написания **не выполнена**: локальный
 Docker daemon недоступен в среде разработки. Это открытый вопрос —
 до подтверждения наличия обеих зависимостей в образе DAG нельзя считать
-готовым к раскатке; см. `task-6-report.md` в директории плана.
+готовым к раскатке.

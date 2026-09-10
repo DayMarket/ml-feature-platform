@@ -100,7 +100,7 @@ dims AS (
             WHEN total_size < 500 THEN 'SMALL'
             WHEN total_size >= 500 AND total_size < 1700
                  AND height < 500 AND length_mm < 500 AND width < 500 THEN 'MEDIUM'
-            WHEN total_size IS NULL THEN dimensional_group
+            WHEN total_size IS NULL THEN NULLIF(dimensional_group, '')
             ELSE 'LARGE'
         END AS predicted_dimensional_group
     FROM base
