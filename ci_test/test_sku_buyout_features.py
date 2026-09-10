@@ -1,6 +1,7 @@
 """Контракт витрины экономики корзины и выкупаемости на грейне sku_id."""
 
 import importlib.util
+import sys
 import unittest
 from datetime import date
 from pathlib import Path
@@ -200,6 +201,105 @@ class QueryContract(unittest.TestCase):
             else:
                 emitted.append(line.rsplit(".", 1)[-1].strip())
         self.assertEqual(tuple(emitted), EXPECTED_COLUMNS)
+
+
+def load_runtime_module():
+    path = ENTITY / "job" / "runtime.py"
+    spec = importlib.util.spec_from_file_location("sku_buyout_features_runtime", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class ShardBounds(unittest.TestCase):
+    def bounds(self, min_id, max_id, shards):
+        return load_runtime_module().shard_bounds(min_id, max_id, shards)
+
+    def test_single_shard_has_no_bounds_at_all(self):
+        self.assertEqual(self.bounds(8, 12281576, 1), [(None, None)])
+
+    def test_first_shard_has_no_lower_bound(self):
+        self.assertIsNone(self.bounds(8, 12281576, 8)[0][0])
+
+    def test_last_shard_has_no_upper_bound(self):
+        # sku, заведённые между расчётом границ и чтением, обязаны попасть
+        # в последний срез, а не потеряться.
+        self.assertIsNone(self.bounds(8, 12281576, 8)[-1][1])
+
+    def test_shards_are_contiguous_without_gaps_or_overlaps(self):
+        bounds = self.bounds(8, 12281576, 8)
+        for (_, upper), (lower, _) in zip(bounds, bounds[1:]):
+            self.assertEqual(upper, lower)
+
+    def test_every_id_in_range_lands_in_exactly_one_shard(self):
+        bounds = self.bounds(0, 99, 4)
+        for value in (0, 25, 50, 75, 99, -5, 1000):
+            matches = [
+                1
+                for lower, upper in bounds
+                if (lower is None or value >= lower)
+                and (upper is None or value < upper)
+            ]
+            with self.subTest(value=value):
+                self.assertEqual(sum(matches), 1)
+
+    def test_rejects_non_positive_shard_count(self):
+        with self.assertRaises(ValueError):
+            self.bounds(0, 99, 0)
+
+    def test_rejects_inverted_range(self):
+        with self.assertRaises(ValueError):
+            self.bounds(99, 0, 4)
+
+
+class IdentifierContract(unittest.TestCase):
+    def test_table_ref_builds_a_two_part_identifier(self):
+        runtime = load_runtime_module()
+        ref = runtime.table_ref(read_config())
+        self.assertEqual(
+            ref.identifier, ("gold", "feature_platform_sku_buyout_features")
+        )
+
+    def test_rejects_a_dotted_schema_or_name(self):
+        runtime = load_runtime_module()
+        for table in (
+            {"catalog": "iceberg", "schema": "gold.x", "name": "t"},
+            {"catalog": "iceberg", "schema": "gold", "name": "gold.t"},
+        ):
+            with self.subTest(table=table):
+                with self.assertRaises(ValueError):
+                    runtime.table_ref({"table": table})
+
+
+class IntervalParsing(unittest.TestCase):
+    def test_accepts_every_airflow_timestamp_shape(self):
+        runtime = load_runtime_module()
+        for value in (
+            "2026-09-10T00:00:00",
+            "2026-09-10T00:00:00+00:00",
+            "2026-09-10T00:00:00Z",
+            "2026-09-10 00:00:00+00:00",
+            "2026-09-10 00:00:00",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    runtime.parse_interval_timestamp(value).date(),
+                    date(2026, 9, 10),
+                )
+
+    def test_rejects_an_unsupported_value_with_a_clear_message(self):
+        runtime = load_runtime_module()
+        with self.assertRaises(ValueError) as caught:
+            runtime.parse_interval_timestamp("10.09.2026")
+        self.assertIn("10.09.2026", str(caught.exception))
+
+    def test_partition_is_the_day_before_the_interval_end(self):
+        runtime = load_runtime_module()
+        self.assertEqual(
+            runtime.previous_utc_date("2026-09-10 07:00:00"), date(2026, 9, 9)
+        )
 
 
 if __name__ == "__main__":
