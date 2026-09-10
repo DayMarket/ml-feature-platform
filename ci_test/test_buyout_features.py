@@ -75,6 +75,22 @@ ENTITIES = {
             ),
         ),
     },
+    "sku_buyout": {
+        "layer": "gold",
+        "group": "sku_id",
+        "entity": "sku_buyout_features",
+        "table": "iceberg.gold.feature_platform_sku_buyout_features",
+        "primary_key": ("date", "sku_id"),
+        "schedule": "0 7 * * *",
+        "engine": "trino",
+        "dq_sources": (
+            (
+                "online_sku",
+                "feature-platform.layers.gold.sku_id."
+                "buyout_online_sku_features",
+            ),
+        ),
+    },
     "online_city": {
         "layer": "gold",
         "group": "city_id_dimensional_group",
