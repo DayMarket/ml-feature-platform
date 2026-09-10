@@ -61,6 +61,11 @@ sku из полного sku-универса `"dwh-iceberg".silver.sku`, а не
 `commission` заполняется только для `'3p'` (`CASE WHEN one_p.sku_id IS NULL THEN
 comm.commission END`), `cost_price` — только для `'1p'`.
 
+В Iceberg `commission` хранится как `DECIMAL(19,2)`: масштаб исходной комиссии
+остаётся ровно двумя знаками, а расширенная precision нужна для совместимости
+PyArrow/PyIceberg при записи Parquet. Миграция расширяет существующий
+`DECIMAL(5,2)` идемпотентно.
+
 ## Каскад категорий
 
 Справочник `"dwh-clickhouse".dict.category` (6 913 категорий) хранит вместо `NULL`

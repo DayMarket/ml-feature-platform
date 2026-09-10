@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     l4_category BIGINT COMMENT 'Категория 4 уровня; при нуле подставляется последний ненулевой уровень выше',
     l5_category BIGINT COMMENT 'Категория 5 уровня; при нуле подставляется последний ненулевой уровень выше',
     type STRING COMMENT 'Тип товара: 1p при продавце is_1p = 1 с известной себестоимостью, иначе 3p',
-    commission DECIMAL(5,2) COMMENT 'Процент комиссии из kazanexpress.public.sku.commission; NULL у 1p',
+    commission DECIMAL(19,2) COMMENT 'Процент комиссии из kazanexpress.public.sku.commission; NULL у 1p. Precision 19 сохраняет исходную точность и совместим с Parquet/PyIceberg writer',
     cost_price BIGINT COMMENT 'Себестоимость за штуку из последней приёмки stock_flow_1p; NULL у 3p',
     is_not_block BOOLEAN COMMENT 'Правило «не отключать постоплату». Источника правила пока нет, колонка всегда false',
     sku_buyout DOUBLE COMMENT 'Выкупаемость sku за 90 дней, стянутая к категории (sku_buyout_rate_shrunk_90d)',

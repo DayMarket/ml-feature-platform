@@ -74,6 +74,14 @@ class MigrationContract(unittest.TestCase):
     def test_partitioned_by_date(self):
         self.assertIn("PARTITIONED BY (date)", read_migration())
 
+    def test_commission_precision_uses_pyiceberg_compatible_parquet_encoding(self):
+        self.assertIn("commission DECIMAL(19,2)", read_migration())
+        alter_migration = (
+            ENTITY / "migrations" / "20260910_widen_commission_precision.sql"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ALTER COLUMN commission TYPE DECIMAL(19,2)", alter_migration)
+        self.assertIn("WHEN SOURCE TYPE IS DECIMAL(5,2)", alter_migration)
+
 
 class ConfigContract(unittest.TestCase):
     def test_materialization_pod_has_headroom_for_dataframe_to_arrow_conversion(self):
