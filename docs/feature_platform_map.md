@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **48**. Внутренних зависимостей: **17**. Внешних зависимостей: **28**. P1: **0**. P2: **8**. P3: **35**. P4: **5**.
+Всего DAG: **50**. Внутренних зависимостей: **19**. Внешних зависимостей: **28**. P1: **0**. P2: **9**. P3: **36**. P4: **5**.
 
-Таска `dq`: **45** из **48**. Таска `feature_stats`: **45** из **48** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
+Таска `dq`: **46** из **50**. Таска `feature_stats`: **46** из **50** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
 
 Severity policy:
 
@@ -37,31 +37,39 @@ flowchart LR
 UTC 04:00 · P2 · large`"]
     d1["`buyout_online_account_features
 UTC 06:00 · P2 · airflow-python`"]
-    d2["`search_query_atc_features
+    d2["`buyout_item_signal_features
+UTC 03:00 · P2 · airflow-python`"]
+    d3["`search_query_atc_features
 UTC 03:00 · P3 · medium`"]
-    d3["`sku_group_query_atc_order_features.v2
+    d4["`sku_group_query_atc_order_features.v2
 UTC 03:00 · P3 · large`"]
-    d4["`feedback_sku_group_id
+    d5["`feedback_sku_group_id
 UTC 03:10 · P3 · small`"]
-    d5["`sku_group_price_features
+    d6["`sku_group_price_features
 UTC 02:00 · P3 · small`"]
-    d6["`sku_group_search_conversion_features.v2
+    d7["`sku_group_search_conversion_features.v2
 UTC 03:00 · P3 · large`"]
-    d7["`sku_group_stock_features
+    d8["`sku_group_stock_features
 UTC 03:00 · P3 · small`"]
-    d8["`account_lifetime_facts
+    d9["`buyout_online_sku_features
+UTC 06:00 · P2 · airflow-python`"]
+    d10["`sku_buyout_features
+UTC 07:00 · P2 · airflow-python`"]
+    d11["`account_lifetime_facts
 UTC 02:00 · P2 · airflow-python`"]
-    d9["`sku_group_query_search_orders
+    d12["`sku_group_query_search_orders
 UTC 01:00 · P3 · medium`"]
-    d10["`sku_group_id_prices
+    d13["`sku_group_id_prices
 UTC 01:00 · P3 · small`"]
-    d11["`sku_group_install
+    d14["`sku_group_install
 UTC 01:00 · P3 · mem_heavy`"]
-    d12["`sku_stock_daily
+    d15["`sku_stock_daily
 UTC 00:00 · P3 · small`"]
-    d13["`buyout_features_upload
+    d16["`buyout_features_upload
 UTC 07:00 · P3 · spark-custom`"]
-    d14["`ranking_features_upload_dag
+    d17["`buyout_sku_postgres_upload
+UTC 07:00 · P3 · airflow-python`"]
+    d18["`ranking_features_upload_dag
 UTC 04:00 · P3 · spark-custom`"]
     x0["dwh_trino.sku_eod"]
     x1["events.dq"]
@@ -69,33 +77,36 @@ UTC 04:00 · P3 · spark-custom`"]
     x3["order_completion_city_features"]
     x4["order_completion_region_features"]
     x5["spark.pyspark_feature_store_dag"]
-    d8 -->|"dq Δ26h"| d0
+    d11 -->|"dq Δ26h"| d0
     d0 -->|"dq Δ2h"| d1
     x3 -->|"dq Δ3h"| d1
     x4 -->|"dq Δ3h"| d1
-    d9 -.->|"dbt DQ (legacy) Δ2h"| d2
-    d11 -.->|"dbt DQ (legacy) Δ2h"| d2
-    d9 -.->|"dbt DQ (legacy) Δ2h"| d3
-    d11 -.->|"dbt DQ (legacy) Δ2h"| d3
-    d10 -->|"dq Δ1h"| d5
-    d9 -.->|"dbt DQ (legacy) Δ2h"| d6
-    d11 -.->|"dbt DQ (legacy) Δ2h"| d6
+    d12 -.->|"dbt DQ (legacy) Δ2h"| d3
+    d14 -.->|"dbt DQ (legacy) Δ2h"| d3
+    d12 -.->|"dbt DQ (legacy) Δ2h"| d4
+    d14 -.->|"dbt DQ (legacy) Δ2h"| d4
+    d13 -->|"dq Δ1h"| d6
     d12 -.->|"dbt DQ (legacy) Δ2h"| d7
-    x0 -->|"sensor Δ1h"| d10
-    x1 -->|"sensor"| d11
-    x2 -->|"sensor"| d11
-    x0 -->|"sensor"| d12
-    d1 -->|"upload-sensor Δ1h"| d13
-    d2 -->|"upload-sensor Δ1h"| d14
-    d3 -->|"upload-sensor Δ1h"| d14
-    d4 -->|"upload-sensor Δ50m"| d14
-    d5 -->|"upload-sensor Δ2h"| d14
-    d6 -->|"upload-sensor Δ1h"| d14
-    d7 -->|"upload-sensor Δ1h"| d14
-    x5 -->|"upload-sensor Δ4h"| d14
-    class d8,d9,d10,d11,d12 silver
-    class d0,d1,d2,d3,d4,d5,d6,d7 gold
-    class d13,d14 upload
+    d14 -.->|"dbt DQ (legacy) Δ2h"| d7
+    d15 -.->|"dbt DQ (legacy) Δ2h"| d8
+    d2 -->|"dq Δ3h"| d9
+    d9 -->|"dq Δ1h"| d10
+    x0 -->|"sensor Δ1h"| d13
+    x1 -->|"sensor"| d14
+    x2 -->|"sensor"| d14
+    x0 -->|"sensor"| d15
+    d1 -->|"upload-sensor Δ1h"| d16
+    d10 -->|"upload-sensor"| d17
+    d3 -->|"upload-sensor Δ1h"| d18
+    d4 -->|"upload-sensor Δ1h"| d18
+    d5 -->|"upload-sensor Δ50m"| d18
+    d6 -->|"upload-sensor Δ2h"| d18
+    d7 -->|"upload-sensor Δ1h"| d18
+    d8 -->|"upload-sensor Δ1h"| d18
+    x5 -->|"upload-sensor Δ4h"| d18
+    class d11,d12,d13,d14,d15 silver
+    class d0,d1,d2,d3,d4,d5,d6,d7,d8,d9,d10 gold
+    class d16,d17,d18 upload
     class x0,x1,x2,x3,x4,x5 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
@@ -119,11 +130,11 @@ gantt
     00h00 · 1 DAG · small×1 :milestone, s0_0000, 00:00, 0m
     01h00 · 3 DAG · medium×1 · small×1 · mem_heavy×1 :milestone, s0_0060, 01:00, 0m
     02h00 · 2 DAG · small×1 · airflow-python×1 :milestone, s0_0120, 02:00, 0m
-    03h00 · 4 DAG · large×2 · medium×1 · small×1 :milestone, s0_0180, 03:00, 0m
+    03h00 · 5 DAG · large×2 · medium×1 · small×1 · airflow-python×1 :milestone, s0_0180, 03:00, 0m
     03h10 · 1 DAG · small×1 :milestone, s0_0190, 03:10, 0m
     04h00 · 2 DAG · large×1 · spark-custom×1 :milestone, s0_0240, 04:00, 0m
-    06h00 · 1 DAG · airflow-python×1 :milestone, s0_0360, 06:00, 0m
-    07h00 · 1 DAG · spark-custom×1 :milestone, s0_0420, 07:00, 0m
+    06h00 · 2 DAG · airflow-python×2 :milestone, s0_0360, 06:00, 0m
+    07h00 · 3 DAG · spark-custom×1 · airflow-python×2 :milestone, s0_0420, 07:00, 0m
 ```
 
 ## 2. Production-critical DAGs — Logistics
@@ -194,47 +205,43 @@ UTC cron 0 12 * * 0 · P4 · search_dataset`"]
 UTC 10:00 · P4 · search_dataset`"]
     d2["`buyout_online_city_features
 UTC 06:00 · P2 · airflow-python`"]
-    d3["`buyout_item_signal_features
-UTC 03:00 · P2 · airflow-python`"]
-    d4["`search_query_atc_features_qid
+    d3["`search_query_atc_features_qid
 UTC 06:00 · P4 · small`"]
-    d5["`sku_group_query_atc_order_features_qid
+    d4["`sku_group_query_atc_order_features_qid
 UTC 06:00 · P4 · search_dataset`"]
-    d6["`search_query_id
+    d5["`search_query_id
 UTC 05:00 · P3 · airflow-python`"]
-    d7["`sku_group_search_conversion_features
+    d6["`sku_group_search_conversion_features
 UTC 03:00 · P3 · large`"]
-    d8["`sku_group_query_atc_features
+    d7["`sku_group_query_atc_features
 UTC 02:00 · P3 · large`"]
-    d9["`buyout_online_sku_features
-UTC 06:00 · P2 · airflow-python`"]
-    d10["`account_demographics
+    d8["`account_demographics
 UTC 19:00 · P3 · large`"]
-    d11["`account_l1_imp_counts_12h
+    d9["`account_l1_imp_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d12["`account_l2_imp_counts_12h
+    d10["`account_l2_imp_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d13["`account_product_session_action_counts_12h
+    d11["`account_product_session_action_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d14["`delivery_cpi_city_features
+    d12["`delivery_cpi_city_features
 UTC 03:00 · P2 · airflow-python`"]
-    d15["`backfill
+    d13["`backfill
 UTC 03:00 · P2 · airflow-python`"]
-    d16["`product_feedback_counts_12h
+    d14["`product_feedback_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d17["`product_metadata
+    d15["`product_metadata
 UTC 19:00 · P3 · small`"]
-    d18["`product_prices_daily
+    d16["`product_prices_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d19["`product_search_queries
+    d17["`product_search_queries
 UTC 09:00 · P4 · search_product`"]
-    d20["`search_query_sku_group_es_features
+    d18["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
-    d21["`sku_group_orders
+    d19["`sku_group_orders
 UTC 01:00 · P3 · large`"]
-    d22["`sku_cm2_inputs_daily
+    d20["`sku_cm2_inputs_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d23["`sku_daily_dynamic_prices
+    d21["`sku_daily_dynamic_prices
 UTC 01:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
@@ -242,23 +249,22 @@ UTC 01:00 · P3 · airflow-python`"]
     x3["feedback_sku_group_id"]
     x4["elasticsearch_collect"]
     x3 -->|"dq"| d0
-    d14 -->|"dq Δ3h"| d2
+    d12 -->|"dq Δ3h"| d2
+    x0 -.->|"dbt DQ (legacy) Δ5h"| d3
+    x1 -.->|"dbt DQ (legacy) Δ5h"| d3
+    d5 -->|"sensor Δ1h"| d3
     x0 -.->|"dbt DQ (legacy) Δ5h"| d4
     x1 -.->|"dbt DQ (legacy) Δ5h"| d4
-    d6 -->|"sensor Δ1h"| d4
-    x0 -.->|"dbt DQ (legacy) Δ5h"| d5
-    x1 -.->|"dbt DQ (legacy) Δ5h"| d5
-    d6 -->|"sensor Δ1h"| d5
-    x0 -.->|"dbt DQ (legacy) Δ4h"| d6
-    x0 -.->|"dbt DQ (legacy) Δ2h"| d7
-    x1 -.->|"dbt DQ (legacy) Δ2h"| d7
-    x0 -.->|"dbt DQ (legacy) Δ1h"| d8
-    d3 -->|"dq Δ3h"| d9
-    x2 -->|"sensor Δ19h"| d18
-    x4 -->|"sensor"| d20
-    x2 -->|"sensor Δ19h"| d22
-    class d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23 silver
-    class d2,d3,d4,d5,d6,d7,d8,d9 gold
+    d5 -->|"sensor Δ1h"| d4
+    x0 -.->|"dbt DQ (legacy) Δ4h"| d5
+    x0 -.->|"dbt DQ (legacy) Δ2h"| d6
+    x1 -.->|"dbt DQ (legacy) Δ2h"| d6
+    x0 -.->|"dbt DQ (legacy) Δ1h"| d7
+    x2 -->|"sensor Δ19h"| d16
+    x4 -->|"sensor"| d18
+    x2 -->|"sensor Δ19h"| d20
+    class d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21 silver
+    class d2,d3,d4,d5,d6,d7 gold
     class d0,d1 datasets
     class x0,x1,x2,x3,x4 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
@@ -283,9 +289,9 @@ gantt
     section Other
     01h00 · 2 DAG · large×1 · airflow-python×1 :milestone, s2_0060, 01:00, 0m
     02h00 · 1 DAG · large×1 :milestone, s2_0120, 02:00, 0m
-    03h00 · 3 DAG · large×1 · airflow-python×2 :milestone, s2_0180, 03:00, 0m
+    03h00 · 2 DAG · large×1 · airflow-python×1 :milestone, s2_0180, 03:00, 0m
     05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
-    06h00 · 4 DAG · small×1 · airflow-python×2 · search_dataset×1 :milestone, s2_0360, 06:00, 0m
+    06h00 · 3 DAG · small×1 · airflow-python×1 · search_dataset×1 :milestone, s2_0360, 06:00, 0m
     09h00 · 1 DAG · search_product×1 :milestone, s2_0540, 09:00, 0m
     19h00 · 4 DAG · large×1 · small×1 · airflow-python×2 :milestone, s2_1140, 19:00, 0m
 ```
