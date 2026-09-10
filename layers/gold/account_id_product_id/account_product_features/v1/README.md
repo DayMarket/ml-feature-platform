@@ -32,9 +32,6 @@ Grain и primary key: `calculated_at,account_id,product_id`.
 - `pid_neg_n_days_since_last_purchase`;
 - `last_click_before_last_purchase`.
 
-Устаревшие `pid_neg_n_days_since_last_click*` не публикуются: click-recency
-хранится в точных дробных часах.
-
 ## Action-события
 
 Источник: `iceberg.silver.feature_platform_account_product_session_action_counts_12h`.
