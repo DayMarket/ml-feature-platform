@@ -1,6 +1,8 @@
 """Контракт витрины экономики корзины и выкупаемости на грейне sku_id."""
 
+import importlib.util
 import unittest
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -105,6 +107,85 @@ class ConfigContract(unittest.TestCase):
                 "l5_category",
             },
         )
+
+
+def load_query_module():
+    path = ENTITY / "job" / "query.py"
+    spec = importlib.util.spec_from_file_location("sku_buyout_features_query", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+SIGNAL_TABLE = '"dwh-iceberg".gold.feature_platform_buyout_online_sku_features'
+
+
+class QueryContract(unittest.TestCase):
+    def build(self, lower=None, upper=None):
+        return load_query_module().build_query(
+            date(2026, 9, 9), SIGNAL_TABLE, lower, upper
+        )
+
+    def test_pins_the_partition_date(self):
+        self.assertIn("DATE '2026-09-09'", self.build())
+
+    def test_never_unions_the_two_type_branches(self):
+        # Ветка 3p не фильтрует продавца и содержит все 179 081 sku ветки 1p.
+        # UNION задвоил бы их; тип определяется антиджойном.
+        sql = self.build().upper()
+        self.assertNotIn("UNION", sql)
+
+    def test_type_is_decided_by_the_one_p_antijoin(self):
+        sql = self.build()
+        self.assertIn("WHEN one_p.sku_id IS NOT NULL THEN '1p'", sql)
+        self.assertIn("ELSE '3p'", sql)
+
+    def test_commission_is_null_for_one_p(self):
+        self.assertIn("WHEN one_p.sku_id IS NULL THEN comm.commission", self.build())
+
+    def test_uses_shrunk_rates_where_they_exist(self):
+        sql = self.build()
+        self.assertIn("sku_buyout_rate_shrunk_90d AS sku_buyout", sql)
+        self.assertIn("product_buyout_rate_shrunk_90d AS product_buyout", sql)
+        self.assertIn("shop_buyout_rate_shrunk_90d AS shop_buyout", sql)
+
+    def test_category_rates_have_no_shrunk_variant(self):
+        sql = self.build()
+        self.assertIn("category_buyout_rate_90d AS category_buyout", sql)
+        self.assertIn("category_no_show_rate_90d AS category_no_show", sql)
+        self.assertNotIn("category_buyout_rate_shrunk_90d", sql)
+
+    def test_no_coalesce_cascade_over_buyout_rates(self):
+        # _shrunk-колонки уже содержат подстановку родителя, COALESCE был бы
+        # вторым сглаживанием поверх первого.
+        self.assertNotIn("COALESCE(sku_buyout", self.build())
+
+    def test_category_cascade_starts_at_l1(self):
+        # У 23 категорий l2_category = 0; каскад обязан падать до l1.
+        sql = self.build()
+        self.assertIn("NULLIF(c.l2_category, 0)", sql)
+        self.assertIn("NULLIF(c.l5_category, 0)", sql)
+
+    def test_shard_bounds_are_range_predicates_on_every_large_source(self):
+        sql = self.build(lower=1000000, upper=2000000)
+        self.assertIn("s.id >= 1000000", sql)
+        self.assertIn("s.id < 2000000", sql)
+        self.assertIn("ke.id >= 1000000", sql)
+        self.assertIn("ke.id < 2000000", sql)
+        self.assertIn("f.sku_id >= 1000000", sql)
+
+    def test_open_ended_shards_omit_the_missing_bound(self):
+        first = self.build(lower=None, upper=2000000)
+        self.assertNotIn(">= None", first)
+        last = self.build(lower=1000000, upper=None)
+        self.assertNotIn("< None", last)
+
+    def test_reads_only_the_requested_signal_partition(self):
+        self.assertIn(f"FROM {SIGNAL_TABLE}", self.build())
+
+    def test_is_not_block_is_a_constant(self):
+        self.assertIn("false AS is_not_block", self.build())
 
 
 if __name__ == "__main__":
