@@ -433,6 +433,12 @@ Iceberg maintenance sync:
 - Maintenance removals need manual review; do not remove entries automatically just because a table disappeared locally.
 - Side-effecting maintenance sync runs only on `master` push.
 
+Парсинг DAG'ов и `.airflowignore`:
+
+- Репозиторий целиком синхронизируется в dags-директорию Airflow, поэтому Airflow пытается импортировать каждый `.py` в дереве. В safe mode он импортирует файл, если в нём есть подстроки `airflow` и `dag` одновременно, — под это условие легко попадает обычный тест про оркестрацию. Тесты написаны под pytest, а pytest в Airflow-образе не установлен, и такой файл валит парсер с `ModuleNotFoundError: No module named 'pytest'` — DAG'и рядом при этом остаются без импорта.
+- Единственная защита — `.airflowignore` в корне репозитория. Он уже закрывает `ci_test/**`, `dq/**`, `feature_stats/**` и вспомогательные `**/job/**`, `**/config/**`, `**/entrypoints/**`, `**/migrations/**`. Любой новый каталог с кодом, который не должен исполняться Airflow, добавляется туда же, а не чинится точечно внутри файла.
+- Файл читается в glob-синтаксисе (`core.dag_ignore_file_syntax = glob`; настройка живёт в деплое Airflow, не в этом репозитории). Все существующие записи написаны как glob — `dq/**` как регэксп даже не скомпилировался бы, — поэтому новые пишутся так же: паттерн со слэшем матчится против пути относительно корня репозитория, паттерн без слэша — против имени файла. Правило и обратная проверка (настоящие `layers/**/dag.py` не должны попасть под паттерн) закреплены в `ci_test/test_airflowignore.py`; там же сплошная проверка, что ни один видимый парсеру файл не импортирует pytest на уровне модуля.
+
 ## Ranking Feature Upload
 
 Ranking upload lives in `upload/features_service_upload/v1`.
@@ -501,6 +507,7 @@ python3 ci_test/test_spark_resources.py
 python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 python3 ci_test/test_generate_feature_platform_map.py
+python3 ci_test/test_airflowignore.py
 git diff --check
 ```
 
