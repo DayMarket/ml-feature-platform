@@ -86,7 +86,12 @@ def build_render_context(
     )
 
 
-def build_dq_task(config_path: str, repo_root: str) -> Callable:
+def build_dq_task(
+    config_path: str,
+    repo_root: str,
+    *,
+    failure_callback_enabled: bool = True,
+) -> Callable:
     """Возвращает штатную dq-таску энтити из блока `dq:` её config.yaml."""
     from airflow.providers.trino.hooks.trino import TrinoHook
     from airflow.sdk import get_current_context, task
@@ -94,16 +99,21 @@ def build_dq_task(config_path: str, repo_root: str) -> Callable:
 
     config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
     settings = load_dq_settings(config)
+    if not isinstance(failure_callback_enabled, bool):
+        raise DqConfigError("failure_callback_enabled должен быть bool")
     alerts = config["alerts"]
+    failure_callback = None
+    if failure_callback_enabled:
+        failure_callback = send_oncall_notification(
+            team=alerts["team"],
+            oncall_webhook_conn_id=alerts["oncall_webhook_conn_id"],
+            severity=alerts["severity"],
+        )
 
     @task(
         task_id=TASK_ID,
         retries=1,
-        on_failure_callback=send_oncall_notification(
-            team=alerts["team"],
-            oncall_webhook_conn_id=alerts["oncall_webhook_conn_id"],
-            severity=alerts["severity"],
-        ),
+        on_failure_callback=failure_callback,
     )
     def dq(partition_date_value: str) -> None:
         import logging

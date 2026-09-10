@@ -96,7 +96,12 @@ def build_stats_context(config: dict[str, Any], repo_root: Path, partition_value
     )
 
 
-def build_feature_stats_task(config_path: str, repo_root: str) -> Callable:
+def build_feature_stats_task(
+    config_path: str,
+    repo_root: str,
+    *,
+    failure_callback_enabled: bool = True,
+) -> Callable:
     """Возвращает штатную stats-таску энтити из блока `feature_stats:` её config.yaml.
 
     Шаблон партиции может отдать несколько значений через запятую: тогда профили
@@ -109,7 +114,16 @@ def build_feature_stats_task(config_path: str, repo_root: str) -> Callable:
 
     config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
     settings = load_feature_stats_settings(config)
+    if not isinstance(failure_callback_enabled, bool):
+        raise FeatureStatsConfigError("failure_callback_enabled должен быть bool")
     alerts = config["alerts"]
+    failure_callback = None
+    if failure_callback_enabled:
+        failure_callback = send_oncall_notification(
+            team=alerts["team"],
+            oncall_webhook_conn_id=alerts["oncall_webhook_conn_id"],
+            severity=alerts["severity"],
+        )
 
     @task(
         task_id=TASK_ID,
@@ -118,11 +132,7 @@ def build_feature_stats_task(config_path: str, repo_root: str) -> Callable:
         # значиться в конфиге: иначе зависший запрос держит воркер-слот бессрочно,
         # а понижение таймаута и редеплой ничего не меняют.
         execution_timeout=timedelta(seconds=settings.query_timeout_seconds),
-        on_failure_callback=send_oncall_notification(
-            team=alerts["team"],
-            oncall_webhook_conn_id=alerts["oncall_webhook_conn_id"],
-            severity=alerts["severity"],
-        ),
+        on_failure_callback=failure_callback,
     )
     def feature_stats(partition_date_value: str) -> None:
         import logging
