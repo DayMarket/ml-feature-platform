@@ -187,6 +187,20 @@ class QueryContract(unittest.TestCase):
     def test_is_not_block_is_a_constant(self):
         self.assertIn("false AS is_not_block", self.build())
 
+    def test_select_emits_exactly_the_migration_columns_in_order(self):
+        sql = self.build()
+        select_clause = sql[sql.rindex("\nSELECT\n") : sql.index("\nFROM dims")]
+        emitted = []
+        for line in select_clause.splitlines():
+            line = line.strip().rstrip(",")
+            if not line or line == "SELECT":
+                continue
+            if " AS " in line:
+                emitted.append(line.rsplit(" AS ", 1)[1].strip())
+            else:
+                emitted.append(line.rsplit(".", 1)[-1].strip())
+        self.assertEqual(tuple(emitted), EXPECTED_COLUMNS)
+
 
 if __name__ == "__main__":
     unittest.main()
