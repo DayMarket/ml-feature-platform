@@ -17,3 +17,4 @@
 - [`sku_id`](sku_id/README.md) — online-признаки SKU для сервиса невыкупов;
 - [`city_id_dimensional_group`](city_id_dimensional_group/README.md) — online-проекция стоимости логистики по городу и габаритной группе;
 - [`account_id`](account_id/README.md) — признаки истории выкупа аккаунта для модели невыкупов.
+- [`account_id_product_id`](account_id_product_id/README.md) — recsys-признаки взаимодействия пользователя с товаром.
