@@ -275,6 +275,29 @@ class ShardBounds(unittest.TestCase):
             self.bounds(99, 0, 4)
 
 
+class EmptyShardHandling(unittest.TestCase):
+    def test_empty_non_first_shard_is_skipped_before_schema_validation(self):
+        runtime = load_runtime_module()
+
+        class EmptyFrame:
+            empty = True
+
+        class Table:
+            def name(self):
+                return ("gold", "feature_platform_sku_buyout_features")
+
+        # Trino отдаёт пустой DataFrame без колонок. После успешного первого
+        # среза такой диапазон не должен пытаться пройти Arrow-конвертацию.
+        self.assertIsNone(
+            runtime.write_partition_shard(
+                Table(),
+                EmptyFrame(),
+                date(2026, 9, 9),
+                replace=False,
+            )
+        )
+
+
 class IdentifierContract(unittest.TestCase):
     def test_table_ref_builds_a_two_part_identifier(self):
         runtime = load_runtime_module()

@@ -196,8 +196,18 @@ def write_partition_shard(table, frame, partition_date: date, replace: bool) -> 
 
     Первый срез перезаписывает партицию целиком, остальные дописываются. Повтор задачи
     начинается снова с первого среза, поэтому запись идемпотентна; падение в середине
-    оставляет партицию неполной до следующего успешного запуска.
+    оставляет партицию неполной до следующего успешного запуска. Пустой первый срез
+    блокируется require_non_empty() в DAG; пустые последующие срезы легитимны.
     """
+    if frame.empty:
+        logger.info(
+            "Skipping empty shard for %s date=%s (replace=%s)",
+            table.name(),
+            partition_date,
+            replace,
+        )
+        return
+
     from pyiceberg.expressions import EqualTo
 
     import pandas as pd
