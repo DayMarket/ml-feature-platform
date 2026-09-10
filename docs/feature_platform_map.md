@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **51**. Внутренних зависимостей: **20**. Внешних зависимостей: **28**. P1: **0**. P2: **9**. P3: **37**. P4: **5**.
+Всего DAG: **63**. Внутренних зависимостей: **28**. Внешних зависимостей: **28**. P1: **0**. P2: **9**. P3: **49**. P4: **5**.
 
-Таска `dq`: **46** из **51**. Таска `feature_stats`: **46** из **51** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
+Таска `dq`: **58** из **63**. Таска `feature_stats`: **58** из **63** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
 
 Severity policy:
 
@@ -208,49 +208,67 @@ UTC cron 0 12 * * 0 · P4 · search_dataset`"]
 UTC 10:00 · P4 · search_dataset`"]
     d2["`buyout_online_city_features
 UTC 06:00 · P2 · airflow-python`"]
-    d3["`search_query_atc_features_qid
-UTC 06:00 · P4 · small`"]
-    d4["`sku_group_query_atc_order_features_qid
-UTC 06:00 · P4 · search_dataset`"]
-    d5["`search_query_id
-UTC 05:00 · P3 · airflow-python`"]
-    d6["`sku_group_search_conversion_features
-UTC 03:00 · P3 · large`"]
-    d7["`sku_group_query_atc_features
-UTC 02:00 · P3 · large`"]
-    d8["`account_demographics
-UTC 19:00 · P3 · large`"]
-    d9["`account_l1_imp_counts_12h
-UTC cron 0 7,19 * * * · P3 · small`"]
-    d10["`account_l2_imp_counts_12h
-UTC cron 0 7,19 * * * · P3 · small`"]
-    d11["`account_product_session_action_counts_12h
-UTC cron 0 7,19 * * * · P3 · small`"]
-    d12["`delivery_cpi_city_features
-UTC 03:00 · P2 · airflow-python`"]
-    d13["`backfill
-UTC 03:00 · P2 · airflow-python`"]
-    d14["`product_feedback_counts_12h
-UTC cron 0 7,19 * * * · P3 · small`"]
-    d15["`product_metadata
-UTC 19:00 · P3 · small`"]
-    d16["`product_prices_daily
-UTC 19:00 · P3 · airflow-python`"]
-    d17["`product_search_queries
-UTC 09:00 · P4 · search_product`"]
-    d18["`search_query_sku_group_es_features
-manual · P3 · airflow-python`"]
-    d19["`sku_group_orders
-UTC 01:00 · P3 · large`"]
-    d20["`sku_cm2_inputs_daily
-UTC 19:00 · P3 · airflow-python`"]
-    d21["`sku_daily_dynamic_prices
-UTC 01:00 · P3 · airflow-python`"]
-    d33["`demand_restored_daily
-manual · P3 · airflow-python`"]
-    d34["`demand_finance_daily
+    d3["`demand_calendar_daily
 UTC 04:00 · P3 · airflow-python`"]
-    d35["`demand_seller_sales_observed_daily
+    d4["`search_query_atc_features_qid
+UTC 06:00 · P4 · small`"]
+    d5["`sku_group_query_atc_order_features_qid
+UTC 06:00 · P4 · search_dataset`"]
+    d6["`search_query_id
+UTC 05:00 · P3 · airflow-python`"]
+    d7["`sku_group_search_conversion_features
+UTC 03:00 · P3 · large`"]
+    d8["`sku_group_query_atc_features
+UTC 02:00 · P3 · large`"]
+    d9["`demand_observed_daily
+UTC 05:00 · P3 · airflow-python`"]
+    d10["`account_demographics
+UTC 19:00 · P3 · large`"]
+    d11["`account_l1_imp_counts_12h
+UTC cron 0 7,19 * * * · P3 · small`"]
+    d12["`account_l2_imp_counts_12h
+UTC cron 0 7,19 * * * · P3 · small`"]
+    d13["`account_product_session_action_counts_12h
+UTC cron 0 7,19 * * * · P3 · small`"]
+    d14["`delivery_cpi_city_features
+UTC 03:00 · P2 · airflow-python`"]
+    d15["`backfill
+UTC 03:00 · P2 · airflow-python`"]
+    d16["`demand_calendar
+UTC 03:00 · P3 · airflow-python`"]
+    d17["`demand_event_calendar
+UTC 03:10 · P3 · airflow-python`"]
+    d18["`demand_catalog_tree
+UTC 04:00 · P3 · airflow-python`"]
+    d19["`product_feedback_counts_12h
+UTC cron 0 7,19 * * * · P3 · small`"]
+    d20["`product_metadata
+UTC 19:00 · P3 · small`"]
+    d21["`product_prices_daily
+UTC 19:00 · P3 · airflow-python`"]
+    d22["`product_search_queries
+UTC 09:00 · P4 · search_product`"]
+    d23["`search_query_sku_group_es_features
+manual · P3 · airflow-python`"]
+    d24["`demand_catalog_seller
+UTC 04:00 · P3 · airflow-python`"]
+    d25["`sku_group_orders
+UTC 01:00 · P3 · large`"]
+    d26["`demand_catalog_sku
+UTC 04:00 · P3 · airflow-python`"]
+    d27["`demand_sales_daily
+UTC 04:00 · P3 · airflow-python`"]
+    d28["`demand_stock_daily
+UTC 04:00 · P3 · airflow-python`"]
+    d29["`sku_cm2_inputs_daily
+UTC 19:00 · P3 · airflow-python`"]
+    d30["`sku_daily_dynamic_prices
+UTC 01:00 · P3 · airflow-python`"]
+    d31["`demand_restored_daily
+manual · P3 · airflow-python`"]
+    d32["`demand_finance_daily
+UTC 04:00 · P3 · airflow-python`"]
+    d33["`demand_seller_sales_observed_daily
 UTC 04:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
@@ -258,22 +276,30 @@ UTC 04:00 · P3 · airflow-python`"]
     x3["feedback_sku_group_id"]
     x4["elasticsearch_collect"]
     x3 -->|"dq"| d0
-    d12 -->|"dq Δ3h"| d2
-    x0 -.->|"dbt DQ (legacy) Δ5h"| d3
-    x1 -.->|"dbt DQ (legacy) Δ5h"| d3
-    d5 -->|"sensor Δ1h"| d3
+    d14 -->|"dq Δ3h"| d2
+    d16 -->|"dq"| d3
+    d17 -->|"dq"| d3
     x0 -.->|"dbt DQ (legacy) Δ5h"| d4
     x1 -.->|"dbt DQ (legacy) Δ5h"| d4
-    d5 -->|"sensor Δ1h"| d4
-    x0 -.->|"dbt DQ (legacy) Δ4h"| d5
-    x0 -.->|"dbt DQ (legacy) Δ2h"| d6
-    x1 -.->|"dbt DQ (legacy) Δ2h"| d6
-    x0 -.->|"dbt DQ (legacy) Δ1h"| d7
-    x2 -->|"sensor Δ19h"| d16
-    x4 -->|"sensor"| d18
-    x2 -->|"sensor Δ19h"| d20
-    class d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21 silver
-    class d2,d3,d4,d5,d6,d7 gold
+    d6 -->|"sensor Δ1h"| d4
+    x0 -.->|"dbt DQ (legacy) Δ5h"| d5
+    x1 -.->|"dbt DQ (legacy) Δ5h"| d5
+    d6 -->|"sensor Δ1h"| d5
+    x0 -.->|"dbt DQ (legacy) Δ4h"| d6
+    x0 -.->|"dbt DQ (legacy) Δ2h"| d7
+    x1 -.->|"dbt DQ (legacy) Δ2h"| d7
+    x0 -.->|"dbt DQ (legacy) Δ1h"| d8
+    d27 -->|"dq"| d9
+    d28 -->|"dq"| d9
+    d16 -->|"dq"| d17
+    d26 -->|"dq"| d18
+    x2 -->|"sensor Δ19h"| d21
+    x4 -->|"sensor"| d23
+    d24 -->|"dq"| d26
+    d33 -->|"dq"| d27
+    x2 -->|"sensor Δ19h"| d29
+    class d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24,d25,d26,d27,d28,d29,d30,d31,d32,d33 silver
+    class d2,d3,d4,d5,d6,d7,d8,d9 gold
     class d0,d1 datasets
     class x0,x1,x2,x3,x4 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
@@ -298,8 +324,10 @@ gantt
     section Other
     01h00 · 2 DAG · large×1 · airflow-python×1 :milestone, s2_0060, 01:00, 0m
     02h00 · 1 DAG · large×1 :milestone, s2_0120, 02:00, 0m
-    03h00 · 2 DAG · large×1 · airflow-python×1 :milestone, s2_0180, 03:00, 0m
-    05h00 · 1 DAG · airflow-python×1 :milestone, s2_0300, 05:00, 0m
+    03h00 · 3 DAG · large×1 · airflow-python×2 :milestone, s2_0180, 03:00, 0m
+    03h10 · 1 DAG · airflow-python×1 :milestone, s2_0190, 03:10, 0m
+    04h00 · 8 DAG · airflow-python×8 :milestone, s2_0240, 04:00, 0m
+    05h00 · 2 DAG · airflow-python×2 :milestone, s2_0300, 05:00, 0m
     06h00 · 3 DAG · small×1 · airflow-python×1 · search_dataset×1 :milestone, s2_0360, 06:00, 0m
     09h00 · 1 DAG · search_product×1 :milestone, s2_0540, 09:00, 0m
     19h00 · 4 DAG · large×1 · small×1 · airflow-python×2 :milestone, s2_1140, 19:00, 0m
