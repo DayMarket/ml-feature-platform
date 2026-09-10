@@ -34,9 +34,9 @@ CONFIG = _read_config(CONFIG_PATH)
 
 SOURCE_CONFIG_PATH = os.path.join(REPO_ROOT, CONFIG["source"]["entity_path"], "config.yaml")
 SOURCE_CONFIG = _read_config(SOURCE_CONFIG_PATH)
-# config.yaml источника — единственный источник правды о его dag id, не дублируем его
-# отдельной константой здесь.
-SOURCE_DAG_ID = SOURCE_CONFIG["dag"]["id"]
+# id оставляем литералом: scripts/generate_feature_platform_map.py разбирает dag.py
+# статически (AST), и через config.yaml external_dag_id не вычислится — ребро пропадёт из карты.
+SOURCE_DAG_ID = "feature-platform.layers.gold.sku_id.buyout_online_sku_features"
 SOURCE_DQ_TASK_ID = "dq"
 # Источник пишет партицию в 06:00 UTC, витрина стартует в 07:00 UTC:
 # D 07:00 - 1ч = D 06:00 — логическая дата прогона источника за ту же партицию.
