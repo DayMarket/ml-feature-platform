@@ -104,6 +104,7 @@ def build_feature_stats_task(
     range_timeout_seconds: int | None = None,
     range_guard: Callable | None = None,
     task_guard: Callable | None = None,
+    failure_callback_enabled: bool = True,
 ) -> Callable:
     """Возвращает штатную stats-таску; opt-in range профилирует каждый день."""
     from airflow.providers.trino.hooks.trino import TrinoHook
@@ -112,6 +113,8 @@ def build_feature_stats_task(
 
     config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
     settings = load_feature_stats_settings(config)
+    if not isinstance(failure_callback_enabled, bool):
+        raise FeatureStatsConfigError("failure_callback_enabled должен быть bool")
     if task_guard is not None and (not callable(task_guard) or range_guard is not None):
         raise FeatureStatsConfigError(
             "task_guard требует callable и не совмещается с range_guard"
@@ -135,6 +138,13 @@ def build_feature_stats_task(
             "range_timeout_seconds допустим только с range_receipt_task_id"
         )
     alerts = config["alerts"]
+    failure_callback = None
+    if failure_callback_enabled:
+        failure_callback = send_oncall_notification(
+            team=alerts["team"],
+            oncall_webhook_conn_id=alerts["oncall_webhook_conn_id"],
+            severity=alerts["severity"],
+        )
 
     @task(
         task_id=TASK_ID,
@@ -145,11 +155,7 @@ def build_feature_stats_task(
         execution_timeout=timedelta(
             seconds=range_timeout_seconds or settings.query_timeout_seconds
         ),
-        on_failure_callback=send_oncall_notification(
-            team=alerts["team"],
-            oncall_webhook_conn_id=alerts["oncall_webhook_conn_id"],
-            severity=alerts["severity"],
-        ),
+        on_failure_callback=failure_callback,
     )
     @guarded_task(task_guard if task_guard is not None else range_guard)
     def feature_stats(partition_date_value: str) -> None:
