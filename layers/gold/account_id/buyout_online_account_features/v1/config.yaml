@@ -45,6 +45,8 @@ dq:
       severity: warn
     - name: row_count_min
       severity: warn
+      # 4 316 684 строк 2026-09-09, 4 312 654 днём раньше — с запасом ниже обеих.
+      min_rows: 4000000
     - name: row_count_growth
       severity: warn
 
