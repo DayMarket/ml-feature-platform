@@ -85,6 +85,8 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.payment_price AS DOUBLE", self.sql)
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertIn("COUNT(DISTINCT CASE", self.sql)
+        self.assertNotIn("BETWEEN 1", self.sql)
+        self.assertNotIn("order_item.order_id > 0", self.sql)
 
     def test_cutoffs_are_half_open_and_snapshot_is_local_time(self):
         self.assertIn("TIMESTAMP '2026-09-10 12:00:00' AS calculated_at", self.sql)

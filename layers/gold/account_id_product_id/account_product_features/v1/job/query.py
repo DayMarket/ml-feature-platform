@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-MAX_INT_ID = 2_147_483_647
 ACTION_EVENT_TYPES = {
     "clicks": "PRODUCT_VIEW",
     "atcs": "ADD_TO_CART",
@@ -205,8 +204,6 @@ sku_mapping AS (
         CAST(id AS BIGINT) AS sku_id,
         CAST(MIN(product_id) AS INT) AS product_id
     FROM {settings.sku_table}
-    WHERE id IS NOT NULL
-        AND product_id BETWEEN 1 AND {MAX_INT_ID}
     GROUP BY id
 ),
 filtered_orders AS (
@@ -224,8 +221,6 @@ filtered_orders AS (
             - INTERVAL {max_order_window} DAYS
         AND order_item.generated_at < TIMESTAMP '{calculated_at_utc}'
         AND order_item.order_item_status IN ({statuses_sql})
-        AND order_item.account_id BETWEEN 1 AND {MAX_INT_ID}
-        AND order_item.order_id > 0
 ),
 order_features AS (
     SELECT
