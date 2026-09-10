@@ -32,6 +32,8 @@ ACTION_COUNTS_DAG_ID = (
     "feature-platform.layers.silver.account_id_product_id."
     "account_product_session_action_counts_12h"
 )
+# Включим после завершения первичной отладки новых recsys Gold DAG-ов.
+ALERTS_ENABLED = False
 
 dag_settings = get_dag_settings()
 
@@ -44,12 +46,13 @@ default_args = {
     "trigger_rule": "all_success",
     "retries": 3,
     "retry_delay": timedelta(minutes=1),
-    "on_failure_callback": send_oncall_notification(
+}
+if ALERTS_ENABLED:
+    default_args["on_failure_callback"] = send_oncall_notification(
         severity=dag_settings["alert_severity"],
         team=dag_settings["alert_team"],
         oncall_webhook_conn_id=dag_settings["alert_oncall_webhook_conn_id"],
-    ),
-}
+    )
 
 
 @dag(
@@ -91,10 +94,16 @@ def collect_gold_account_product_features():
         application_file=get_deployment(),
         kubernetes_conn_id="spark_k8s",
     )
-    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(DQ_PARTITION_TIMESTAMP)
-    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(
-        DQ_PARTITION_TIMESTAMP
-    )
+    dq_task = build_dq_task(
+        CONFIG_PATH,
+        REPO_ROOT,
+        failure_callback_enabled=ALERTS_ENABLED,
+    )(DQ_PARTITION_TIMESTAMP)
+    stats_task = build_feature_stats_task(
+        CONFIG_PATH,
+        REPO_ROOT,
+        failure_callback_enabled=ALERTS_ENABLED,
+    )(DQ_PARTITION_TIMESTAMP)
 
     wait_for_action_counts_dq >> materialize_task >> [dq_task, stats_task]
 
