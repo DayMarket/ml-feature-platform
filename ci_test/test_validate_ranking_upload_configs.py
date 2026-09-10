@@ -53,7 +53,7 @@ def check_postgres_sink_skips_ranking_checks(validator) -> list[str]:
 
 
 def check_sink_requires_connection_schema_table(validator) -> list[str]:
-    """Non-kafka sink обязан объявить connection_id/schema/table непустыми строками."""
+    """Postgres sink обязан объявить БД, connection_id, schema и table."""
     errors = []
     config_path = Path("upload/buyout_sku_postgres_upload/v1/config.yaml")
 
@@ -63,7 +63,8 @@ def check_sink_requires_connection_schema_table(validator) -> list[str]:
             "sink": {
                 "type": "postgres",
                 "connection_id": "postgres_non_buyout_service_connect",
-                "schema": "mlgrowth",
+                "database": "mlgrowth",
+                "schema": "public",
                 "table": "sku_buyout_features",
             }
         },
@@ -80,11 +81,12 @@ def check_sink_requires_connection_schema_table(validator) -> list[str]:
             f"получено: {kafka_sink_errors}"
         )
 
-    for missing_field in ("connection_id", "schema", "table"):
+    for missing_field in ("database", "connection_id", "schema", "table"):
         sink = {
             "type": "postgres",
             "connection_id": "postgres_non_buyout_service_connect",
-            "schema": "mlgrowth",
+            "database": "mlgrowth",
+            "schema": "public",
             "table": "sku_buyout_features",
         }
         sink.pop(missing_field)
@@ -101,7 +103,8 @@ def check_sink_requires_connection_schema_table(validator) -> list[str]:
             "sink": {
                 "type": "postgres",
                 "connection_id": "",
-                "schema": "mlgrowth",
+                "database": "mlgrowth",
+                "schema": "public",
                 "table": "sku_buyout_features",
             }
         },

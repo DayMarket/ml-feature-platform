@@ -268,6 +268,7 @@ def sink_type(config: dict[str, Any]) -> str:
 
 
 SINK_REQUIRED_STRING_FIELDS = ("connection_id", "schema", "table")
+POSTGRES_SINK_REQUIRED_STRING_FIELDS = SINK_REQUIRED_STRING_FIELDS + ("database",)
 
 
 def validate_sink(config_path: Path, config: dict[str, Any]) -> list[str]:
@@ -282,7 +283,12 @@ def validate_sink(config_path: Path, config: dict[str, Any]) -> list[str]:
     if not isinstance(sink, dict):
         sink = {}
     errors = []
-    for field in SINK_REQUIRED_STRING_FIELDS:
+    required_fields = (
+        POSTGRES_SINK_REQUIRED_STRING_FIELDS
+        if sink_type(config) == "postgres"
+        else SINK_REQUIRED_STRING_FIELDS
+    )
+    for field in required_fields:
         value = sink.get(field)
         if not isinstance(value, str) or not value.strip():
             errors.append(f"{config_path}: sink.{field} must be a non-empty string")

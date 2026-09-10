@@ -15,7 +15,7 @@ Iceberg-марта не заводит и не нуждается в нём — 
   идут по одному и тому же `data_interval`, но с часовым сдвигом расписаний.
 - **Владелец/алерты**: `team:buyer`, `severity=P3`, `oncall_webhook_conn_id=team:buyer`.
 - **Connection**: `postgres_non_buyout_service_connect`.
-- **Целевая таблица**: `mlgrowth.account_buyout_features`.
+- **База / целевая таблица**: `mlgrowth` / `public.account_buyout_features`.
 
 ## Код публикации — общий со sku-выгрузкой
 
@@ -33,28 +33,28 @@ Iceberg-марта не заводит и не нуждается в нём — 
 напрямую — тот же режим, что и у buyout_sku_postgres_upload:
 
 1. `CREATE TEMP TABLE stage_account_buyout_features (...)`. Не `LIKE
-   mlgrowth.account_buyout_features` — колонки источника называются иначе,
+   public.account_buyout_features` — колонки источника называются иначе,
    чем в целевой таблице (`orders_created_prev_365d` vs `orders_count`,
    `last_order_date_win` vs `last_order_date`), поэтому стейдж создаётся с
    исходными именами и типами колонок, взятыми из Arrow-схемы Iceberg-скана.
 2. `COPY ... FROM STDIN` льёт батчи скана (`account_id`,
    `orders_created_prev_365d`, `last_order_date_win`, `updated_at`) в стейдж.
 3. Проверка объёма — по числу строк, ушедших в стейдж (см. ниже).
-4. `TRUNCATE TABLE mlgrowth.account_buyout_features`.
+4. `TRUNCATE TABLE public.account_buyout_features`.
 5. Явный `INSERT INTO ... (colonки) SELECT ... FROM stage` — не `SELECT *`
    (см. ниже).
 6. Один `commit()` на всё.
 
 Скан Iceberg и кодирование CSV — самая долгая часть публикации, и она пишет
 только во временную таблицу, не в target. ACCESS EXCLUSIVE на
-`mlgrowth.account_buyout_features` берётся лишь на шагах 4–5 — именно ради
+`public.account_buyout_features` берётся лишь на шагах 4–5 — именно ради
 этого партиция сначала стадируется: читатели сервиса невыкупов не
 блокируются на время скана и кодирования, а не только на время самой
 записи.
 
 ## Отображение колонок
 
-| Целевая (`mlgrowth.account_buyout_features`) | Источник (стейдж)                          |
+| Целевая (`public.account_buyout_features`) | Источник (стейдж)                          |
 |-----------------------------------------------|---------------------------------------------|
 | `account_id`                                  | `account_id`                                 |
 | `orders_count`                                | `orders_created_prev_365d`                   |
@@ -111,7 +111,7 @@ NULL (`last_order_date_win` и `orders_created_prev_365d`), то есть на
 
 ## Схема целевой таблицы
 
-DDL таблицы `mlgrowth.account_buyout_features` живёт **вне этого
+DDL таблицы `public.account_buyout_features` в БД `mlgrowth` живёт **вне этого
 репозитория** — таблицу заводит пользователь вручную в PostgreSQL сервиса
 невыкупов, репозиторий её не создаёт и не мигрирует. Подтверждённые 8
 колонок (порядок как в задании на создание таблицы):

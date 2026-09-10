@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 UPLOAD = ROOT / "upload" / "buyout_sku_postgres_upload" / "v1"
 
-# Порядок и состав колонок целевой таблицы mlgrowth.sku_buyout_features.
+# Порядок и состав колонок целевой таблицы public.sku_buyout_features.
 # category_id в неё не выгружается.
 TARGET_COLUMNS = (
     "sku_id",
@@ -69,8 +69,14 @@ class ConfigContract(unittest.TestCase):
         self.assertEqual(
             config["sink"]["connection_id"], "postgres_non_buyout_service_connect"
         )
-        self.assertEqual(config["sink"]["schema"], "mlgrowth")
+        self.assertEqual(config["sink"]["database"], "mlgrowth")
+        self.assertEqual(config["sink"]["schema"], "public")
         self.assertEqual(config["sink"]["table"], "sku_buyout_features")
+
+    def test_dag_uses_database_for_connection_and_schema_for_target(self):
+        dag_source = (UPLOAD / "dag.py").read_text(encoding="utf-8")
+        self.assertIn("target_table = f'{SINK[\"schema\"]}.{SINK[\"table\"]}'", dag_source)
+        self.assertIn('schema=SINK["database"]', dag_source)
 
     def test_waits_for_the_gold_dq_task(self):
         source = read_config()["feature_groups"][0]["source"]
@@ -208,7 +214,7 @@ class PublishTransactionContract(unittest.TestCase):
     """
 
     STAMP = datetime(2026, 9, 10, 7, 0, tzinfo=timezone.utc)
-    TARGET_TABLE = "mlgrowth.sku_buyout_features"
+    TARGET_TABLE = "public.sku_buyout_features"
 
     def setUp(self):
         self.job = load_job()

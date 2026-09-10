@@ -158,7 +158,9 @@ def buyout_sku_postgres_upload() -> None:
         target_table = f'{SINK["schema"]}.{SINK["table"]}'
         connection = PostgresHook(
             postgres_conn_id=SINK["connection_id"],
-            schema=SINK["schema"],
+            # В PostgresHook schema — имя подключаемой базы. SQL-схема
+            # задаётся отдельно в target_table (public.<table>).
+            schema=SINK["database"],
         ).get_conn()
 
         job.publish(

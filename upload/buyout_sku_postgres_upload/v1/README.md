@@ -11,7 +11,7 @@
   минут — та же партиция, что уже прошла DQ витрины.
 - **Владелец/алерты**: `team:buyer`, `severity=P3`, `oncall_webhook_conn_id=team:buyer`.
 - **Connection**: `postgres_non_buyout_service_connect`.
-- **Целевая таблица**: `mlgrowth.sku_buyout_features`.
+- **База / целевая таблица**: `mlgrowth` / `public.sku_buyout_features`.
 
 ## Режим записи
 
@@ -19,16 +19,16 @@
 напрямую. Порядок внутри одной транзакции (`connection.autocommit = False`,
 единый `commit()` в конце):
 
-1. `CREATE TEMP TABLE stage_sku_buyout_features (LIKE mlgrowth.sku_buyout_features)`.
+1. `CREATE TEMP TABLE stage_sku_buyout_features (LIKE public.sku_buyout_features)`.
 2. `COPY ... FROM STDIN` льёт все батчи Iceberg-скана в стейдж.
 3. Проверка объёма (см. ниже) — по числу строк, ушедших в стейдж.
-4. `TRUNCATE TABLE mlgrowth.sku_buyout_features`.
-5. `INSERT INTO mlgrowth.sku_buyout_features SELECT * FROM stage_sku_buyout_features`.
+4. `TRUNCATE TABLE public.sku_buyout_features`.
+5. `INSERT INTO public.sku_buyout_features SELECT * FROM stage_sku_buyout_features`.
 6. Один `commit()` на всё.
 
 Скан Iceberg и кодирование CSV (шаг 2) — самая долгая часть публикации
 (~10.5М строк), и она пишет только во временную таблицу, не в target.
-ACCESS EXCLUSIVE на `mlgrowth.sku_buyout_features` берётся лишь на шагах
+ACCESS EXCLUSIVE на `public.sku_buyout_features` берётся лишь на шагах
 4–5 (`TRUNCATE` + `INSERT ... SELECT`) — именно ради этого партиция сначала
 стадируется: читатели сервиса невыкупов не блокируются на время скана и
 кодирования, а не только на время самой записи. Упрощение обратно до прямого
@@ -48,7 +48,7 @@ ACCESS EXCLUSIVE на `mlgrowth.sku_buyout_features` берётся лишь н�
 
 ## Схема целевой таблицы
 
-DDL таблицы `mlgrowth.sku_buyout_features` живёт **вне этого репозитория** —
+DDL таблицы `public.sku_buyout_features` в БД `mlgrowth` живёт **вне этого репозитория** —
 таблицу завели вручную в PostgreSQL сервиса невыкупов до начала этой работы.
 Список колонок ниже подтверждён через Trino на момент ввода в эксплуатацию
 DAG'а `feature-platform.upload.buyout_sku_postgres_upload` и должен

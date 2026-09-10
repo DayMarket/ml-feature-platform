@@ -2,7 +2,8 @@
   "sink": {
     "type": "postgres",
     "connection_id": "postgres_non_buyout_service_connect",
-    "schema": "mlgrowth",
+    "database": "mlgrowth",
+    "schema": "public",
     "table": "sku_buyout_features"
   },
   "runtime": {

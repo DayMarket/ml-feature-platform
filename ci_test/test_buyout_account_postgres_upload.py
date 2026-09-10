@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 UPLOAD = ROOT / "upload" / "buyout_account_postgres_upload" / "v1"
 SKU_UPLOAD = ROOT / "upload" / "buyout_sku_postgres_upload" / "v1"
 
-# Порядок и состав колонок целевой таблицы mlgrowth.account_buyout_features
+# Порядок и состав колонок целевой таблицы public.account_buyout_features
 # (DDL живёт вне репозитория — см. README этой выгрузки).
 TARGET_COLUMNS = (
     "account_id",
@@ -63,8 +63,14 @@ class ConfigContract(unittest.TestCase):
         sink = config["sink"]
         self.assertEqual(sink["type"], "postgres")
         self.assertEqual(sink["connection_id"], "postgres_non_buyout_service_connect")
-        self.assertEqual(sink["schema"], "mlgrowth")
+        self.assertEqual(sink["database"], "mlgrowth")
+        self.assertEqual(sink["schema"], "public")
         self.assertEqual(sink["table"], "account_buyout_features")
+
+    def test_dag_uses_database_for_connection_and_schema_for_target(self):
+        dag_source = (UPLOAD / "dag.py").read_text(encoding="utf-8")
+        self.assertIn("target_table = f'{SINK[\"schema\"]}.{SINK[\"table\"]}'", dag_source)
+        self.assertIn('schema=SINK["database"]', dag_source)
 
     def test_waits_for_the_gold_dq_task_with_an_hour_offset(self):
         source = read_config()["feature_groups"][0]["source"]
@@ -95,14 +101,14 @@ class InsertSelectBuilder(unittest.TestCase):
 
         sql = job.build_insert_select(
             "stage_account_buyout_features",
-            "mlgrowth.account_buyout_features",
+            "public.account_buyout_features",
             sink["column_map"],
             sink["constants"],
         )
 
         self.assertEqual(
             sql,
-            "INSERT INTO mlgrowth.account_buyout_features "
+            "INSERT INTO public.account_buyout_features "
             "(account_id, orders_count, last_order_date, updated_at, "
             "no_block, segment_description, text_description_ru, text_description_uz) "
             "SELECT account_id, orders_created_prev_365d, "
@@ -221,7 +227,7 @@ class PublishTransactionContract(unittest.TestCase):
     """publish() через фейки: стейдж -> COPY -> проверка объёма -> TRUNCATE -> INSERT -> commit."""
 
     STAMP = datetime(2026, 9, 10, 7, 0, tzinfo=timezone.utc)
-    TARGET_TABLE = "mlgrowth.account_buyout_features"
+    TARGET_TABLE = "public.account_buyout_features"
 
     def setUp(self):
         self.job = load_job()
