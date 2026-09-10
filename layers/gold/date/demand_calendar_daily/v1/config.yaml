@@ -1,0 +1,83 @@
+table:
+  key: demand_calendar_daily
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_demand_calendar_daily
+  primary_key: date
+  meta:
+    team: team:operations
+
+inputs:
+  calendar_config: layers/silver/date/demand_calendar/v1/config.yaml
+  events_config: layers/silver/event_code/demand_event_calendar/v1/config.yaml
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  cpu: "2"
+  memory: 8Gi
+
+dag:
+  id: feature-platform.layers.gold.date.demand_calendar_daily
+  group_tag: demand-forecast
+  team: operations
+  owner: team:operations
+  schedule: 0 4 * * *
+  start_date: "2026-09-08T00:00:00Z"
+  catchup: false
+
+alerts:
+  team: operations-analytics
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_operations
+
+# Даты точно совпадают с silver-календарём (аудит: 2191 строка).
+# Штатные пороги: непусто, рост ±20%, freshness 2 дня. Без warmup.
+# NULL исходных календарных полей сохраняется, новые lineage/count поля обязательны.
+dq:
+  scope: table
+  trino_conn_id: trino_search
+  warmup_days: 0
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_calendar")["ingested_at"] }}'
+  tests:
+    - name: row_count_growth
+      enabled: false
+    - name: freshness
+      enabled: false
+    - name: not_null
+      columns: [calendar_id, big_sale_event_count, calendar_coverage_status, promotion_coverage_status, calendar_snapshot_id, events_snapshot_id, calendar_source_manifest_id, events_source_manifest_id, source_manifest_id, ingested_at]
+    - name: distinct_count_between
+      columns: [source_manifest_id, calendar_snapshot_id, events_snapshot_id, calendar_source_manifest_id, events_source_manifest_id]
+      min: 1
+      max: 1
+    - name: accepted_values
+      column: calendar_id
+      values: [uz_official]
+    - name: accepted_values
+      column: calendar_coverage_status
+      values: [source_row_present]
+    - name: accepted_values
+      column: promotion_coverage_status
+      values: [registry_rows_present, no_registry_rows]
+    - name: accepted_range
+      column: big_sale_event_count
+      min: 0
+    - name: accepted_range
+      column: day_of_week_iso
+      min: 1
+      max: 7
+    - name: accepted_range
+      column: month
+      min: 1
+      max: 12
+
+feature_stats:
+  enabled: false
+  trino_conn_id: trino_search
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_calendar")["ingested_at"] }}'
+  exclude_columns: [calendar_snapshot_id, events_snapshot_id]

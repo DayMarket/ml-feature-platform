@@ -135,6 +135,26 @@ def test_module_level_constants_resolve_sensor_dependencies():
     ) in online.dependencies
 
 
+def test_path_config_references_resolve_sensor_dependencies():
+    """DAG может читать upstream config через Path(REPO_ROOT) / CONFIG inputs."""
+    generator = load_generator_module()
+    records = {record.dag_id: record for record in generator.discover_dags(ROOT)}
+
+    observed = records[
+        "feature-platform.layers.gold.sku_id.demand_observed_daily"
+    ]
+    assert generator.Dependency(
+        "feature-platform.layers.silver.sku_id.demand_sales_daily",
+        "dq",
+        0,
+    ) in observed.dependencies
+    assert generator.Dependency(
+        "feature-platform.layers.silver.sku_id.demand_stock_daily",
+        "dq",
+        0,
+    ) in observed.dependencies
+
+
 def test_fstring_dag_id_resolves():
     """dag_id=f"{CONFIG['dag']['id']}.backfill" — рабочая идиома backfill-DAG'ов."""
     generator = load_generator_module()

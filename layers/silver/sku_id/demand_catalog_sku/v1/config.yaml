@@ -1,0 +1,91 @@
+table:
+  key: demand_catalog_sku
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_demand_catalog_sku
+  primary_key: date,sku_id
+  meta:
+    team: team:operations
+source:
+  conn_id: clickhouse_dwh_team_logistics
+  contract_version: current_sku_catalog_v1
+  sku: dict.sku
+  category: dict.category
+  golden_links: matching.mdm_golden_meta_links
+  golden: matching.mdm_golden_sku
+  meta_sku: matching.meta_sku_id_dict
+inputs:
+  seller_config: layers/silver/seller_id/demand_catalog_seller/v1/config.yaml
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  cpu: "2"
+  memory: 32Gi
+  run_timeout_seconds:
+    regular: 21600
+    manual: 604800
+  max_batch_rows: 100000
+  max_batch_bytes: 67108864
+  delivery_status: prepared_local
+dag:
+  id: feature-platform.layers.silver.sku_id.demand_catalog_sku
+  group_tag: demand-forecast
+  team: operations
+  owner: team:operations
+  schedule: 0 4 * * *
+  start_date: "2026-09-08T00:00:00Z"
+  catchup: false
+alerts:
+  team: operations-analytics
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_operations
+# Сохраняются дефолты объёма/growth. Read-only 2026-09-09: 10470760 SKU.
+# Один срез не задаёт коридор всей истории.
+dq:
+  scope: partition
+  trino_conn_id: trino_search
+  warmup_days: 0
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_catalog")["ingested_at"] }}'
+  tests:
+    - name: row_count_growth
+      enabled: false
+    - name: accepted_range
+      column: sku_id
+      min: 1
+    - name: accepted_range
+      column: catalog_seller_snapshot_id
+      min: 1
+    - name: accepted_values
+      column: category_path_status
+      values: [valid, missing, conflict]
+    - name: accepted_values
+      column: golden_mapping_status
+      values: [matched, unmatched, unavailable, conflict]
+    - name: accepted_values
+      column: seller_mapping_status
+      values: [matched, unmatched, unavailable, conflict]
+    - name: not_accepted_values
+      column: category_path_status
+      values: [conflict]
+    - name: not_accepted_values
+      column: golden_mapping_status
+      values: [unavailable, conflict]
+    - name: not_accepted_values
+      column: seller_mapping_status
+      values: [unavailable, conflict]
+    - name: string_not_blank
+      columns: [catalog_version, source_contract_version, source_manifest_id]
+    - name: distinct_count_between
+      columns: [catalog_version, source_manifest_id, catalog_seller_snapshot_id]
+      min: 1
+      max: 1
+feature_stats:
+  enabled: true
+  trino_conn_id: trino_search
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_catalog")["ingested_at"] }}'
+  exclude_columns: [product_id, category_id, seller_id, shop_id, raw_l1_category_id, raw_l2_category_id, raw_l3_category_id, raw_l4_category_id, raw_l5_category_id, raw_l6_category_id, catalog_seller_snapshot_id]

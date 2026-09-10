@@ -2,6 +2,8 @@
 
 Финальные feature tables, готовые для модельного потребления или публикации.
 
+- [`date`](date/README.md) — дневной календарь без размножения на SKU;
+
 - [`h3_index`](h3_index/README.md) — географические признаки по H3-гексагону;
 - [`product_id`](product_id/README.md) — признаки товара на уровне `product_id`;
 - [`query`](query/README.md) — признаки на уровне нормализованного query;

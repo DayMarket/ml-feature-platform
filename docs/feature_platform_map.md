@@ -246,6 +246,12 @@ UTC 01:00 · P3 · large`"]
 UTC 19:00 · P3 · airflow-python`"]
     d21["`sku_daily_dynamic_prices
 UTC 01:00 · P3 · airflow-python`"]
+    d33["`demand_restored_daily
+manual · P3 · airflow-python`"]
+    d34["`demand_finance_daily
+UTC 04:00 · P3 · airflow-python`"]
+    d35["`demand_seller_sales_observed_daily
+UTC 04:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
     x2["dwh_core.quantity_eod"]

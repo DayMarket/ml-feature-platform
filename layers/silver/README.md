@@ -2,6 +2,13 @@
 
 Переиспользуемые предагрегаты и промежуточные Iceberg-таблицы.
 
+- [`date`](date/README.md) — официальный календарь для дневных панелей;
+- [`event_code`](event_code/README.md) — исходные праздники и реестр акций.
+- [`seller_id`](seller_id/README.md) — полный текущий seller-master каталог, без модельных окон.
+- [`level_node_id`](level_node_id/README.md) — дерево одного текущего SKU-каталога.
+- [`sku_id_estimate_kind`](sku_id_estimate_kind/README.md) — восстановленный спрос по SKU и типу оценки.
+- [`sku_id_seller_key`](sku_id_seller_key/README.md) — продажи и финансы по SKU и продавцу.
+
 - [`account_id`](account_id/README.md) — атрибуты и пожизненные факты пользователя;
 - [`account_id_category_id`](account_id_category_id/README.md) — события account/category;
 - [`category_level_category_id`](category_level_category_id/README.md) — агрегаты по уровням иерархии категорий;
