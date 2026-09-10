@@ -130,7 +130,7 @@ def test_invalid_source_type_stops_before_stream(prepared_env):
     ("source", "conn_id", None), ("dq", "trino_conn_id", None),
     ("feature_stats", "trino_conn_id", ""), ("source", "conn_id", " spaced "),
     ("dq", "scope", "table"),
-    ("feature_stats", "enabled", False), ("dq", "warmup_days", 3)])
+    ("feature_stats", "enabled", False), ("dq", "warmup_days", 1), ("dq", "warmup_days", 3)])
 def test_invalid_contract_stops_before_connections(prepared_env, monkeypatch, section, key, value):
     prepared_env[0][0][section][key] = value
     monkeypatch.setattr(bridge, "load_results_catalog", lambda _: pytest.fail("Не открывать catalog"))
@@ -210,7 +210,7 @@ def test_current_catalog_has_no_numeric_nonkey_feature(prepared_env):
         assert "information_schema" in sql
         calls.append(sql)
         return metadata
-    assert run_feature_stats(settings, context, query, strict_results=True) == []
+    assert run_feature_stats(settings, context, query) == []
     assert len(calls) == 1 and settings.enabled is True
 
 

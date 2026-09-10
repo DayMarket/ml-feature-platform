@@ -128,6 +128,9 @@ trino_search и общий Hive/S3 catalog из штатного DQ loader. Exac
 
 ## Оркестрация и DQ
 
+Полная замена не накапливает историю захватов в текущем содержимом таблицы.
+Поэтому `dq.warmup_days` должен быть `0`; ненулевое значение отклоняется до открытия подключений.
+
 Один owner DAG `feature-platform.layers.silver.sku_id.demand_catalog_sku` с `max_active_runs=1` заменяет полный текущий SKU-каталог. Scheduled run идёт ежедневно в `04:00 UTC` и ждёт точный DQ seller catalog. Ручной полный refresh запускается в этом же DAG:
 
 ```json

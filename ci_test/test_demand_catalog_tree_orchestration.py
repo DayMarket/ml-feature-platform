@@ -97,3 +97,14 @@ def test_invalid_stats_exclusion_fails_before_scan(full):
     with pytest.raises(ValueError, match="exclude_columns"):
         execute(full, connection=connection)
     assert not connection.queries
+
+
+@pytest.mark.parametrize("warmup_days", [1, 3])
+def test_warmup_rejected_before_connections_or_xcom(full, monkeypatch, warmup_days):
+    full[0][0]["dq"]["warmup_days"] = warmup_days
+    loader, getter = Mock(), Mock()
+    monkeypatch.setattr(bridge, "load_results_catalog", loader)
+    with pytest.raises(ValueError, match="warmup_days"):
+        execute(full, catalog=None, get_checked=getter)
+    loader.assert_not_called()
+    getter.assert_not_called()
