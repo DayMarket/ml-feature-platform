@@ -14,7 +14,8 @@ from airflow_commons.helpers.oncall import send_oncall_notification
 from kubernetes.client import models as k8s
 
 UPLOAD_DIR = os.path.abspath(os.path.dirname(__file__))
-REPO_ROOT = os.path.abspath(os.path.join(UPLOAD_DIR, "..", ".."))
+# upload/<entity>/v1 -> корень репозитория: entity, upload, repo.
+REPO_ROOT = os.path.abspath(os.path.join(UPLOAD_DIR, "..", "..", ".."))
 
 CONFIG_PATH = os.path.join(UPLOAD_DIR, "config.yaml")
 with open(CONFIG_PATH, encoding="utf-8") as config_stream:

@@ -21,7 +21,8 @@ from airflow_commons.helpers.oncall import send_oncall_notification
 from kubernetes.client import models as k8s
 
 UPLOAD_DIR = os.path.abspath(os.path.dirname(__file__))
-REPO_ROOT = os.path.abspath(os.path.join(UPLOAD_DIR, "..", ".."))
+# upload/<entity>/v1 -> корень репозитория: entity, upload, repo.
+REPO_ROOT = os.path.abspath(os.path.join(UPLOAD_DIR, "..", "..", ".."))
 
 # job/upload_postgres.py живёт у первой PostgreSQL-выгрузки: код публикации
 # (COPY -> стейдж -> TRUNCATE -> INSERT) общий, эта выгрузка отличается от

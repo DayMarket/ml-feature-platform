@@ -47,6 +47,17 @@ def load_job():
 
 
 class ConfigContract(unittest.TestCase):
+    def test_dag_resolves_source_entity_from_repository_root(self):
+        source = read_config()["feature_groups"][0]["source"]
+        expected_runtime = ROOT / source["entity_path"] / "job" / "runtime.py"
+
+        self.assertTrue(expected_runtime.is_file())
+        dag_source = (UPLOAD / "dag.py").read_text(encoding="utf-8")
+        self.assertIn(
+            'REPO_ROOT = os.path.abspath(os.path.join(UPLOAD_DIR, "..", "..", ".."))',
+            dag_source,
+        )
+
     def test_declares_a_postgres_sink(self):
         config = read_config()
         sink = config["sink"]
