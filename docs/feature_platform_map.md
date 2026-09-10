@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **50**. Внутренних зависимостей: **19**. Внешних зависимостей: **28**. P1: **0**. P2: **9**. P3: **36**. P4: **5**.
+Всего DAG: **51**. Внутренних зависимостей: **20**. Внешних зависимостей: **28**. P1: **0**. P2: **9**. P3: **37**. P4: **5**.
 
-Таска `dq`: **46** из **50**. Таска `feature_stats`: **46** из **50** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
+Таска `dq`: **46** из **51**. Таска `feature_stats`: **46** из **51** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
 
 Severity policy:
 
@@ -65,11 +65,13 @@ UTC 01:00 · P3 · small`"]
 UTC 01:00 · P3 · mem_heavy`"]
     d15["`sku_stock_daily
 UTC 00:00 · P3 · small`"]
-    d16["`buyout_features_upload
-UTC 07:00 · P3 · spark-custom`"]
-    d17["`buyout_sku_postgres_upload
+    d16["`buyout_account_postgres_upload
 UTC 07:00 · P3 · airflow-python`"]
-    d18["`ranking_features_upload_dag
+    d17["`buyout_features_upload
+UTC 07:00 · P3 · spark-custom`"]
+    d18["`buyout_sku_postgres_upload
+UTC 07:00 · P3 · airflow-python`"]
+    d19["`ranking_features_upload_dag
 UTC 04:00 · P3 · spark-custom`"]
     x0["dwh_trino.sku_eod"]
     x1["events.dq"]
@@ -96,17 +98,18 @@ UTC 04:00 · P3 · spark-custom`"]
     x2 -->|"sensor"| d14
     x0 -->|"sensor"| d15
     d1 -->|"upload-sensor Δ1h"| d16
-    d10 -->|"upload-sensor"| d17
-    d3 -->|"upload-sensor Δ1h"| d18
-    d4 -->|"upload-sensor Δ1h"| d18
-    d5 -->|"upload-sensor Δ50m"| d18
-    d6 -->|"upload-sensor Δ2h"| d18
-    d7 -->|"upload-sensor Δ1h"| d18
-    d8 -->|"upload-sensor Δ1h"| d18
-    x5 -->|"upload-sensor Δ4h"| d18
+    d1 -->|"upload-sensor Δ1h"| d17
+    d10 -->|"upload-sensor"| d18
+    d3 -->|"upload-sensor Δ1h"| d19
+    d4 -->|"upload-sensor Δ1h"| d19
+    d5 -->|"upload-sensor Δ50m"| d19
+    d6 -->|"upload-sensor Δ2h"| d19
+    d7 -->|"upload-sensor Δ1h"| d19
+    d8 -->|"upload-sensor Δ1h"| d19
+    x5 -->|"upload-sensor Δ4h"| d19
     class d11,d12,d13,d14,d15 silver
     class d0,d1,d2,d3,d4,d5,d6,d7,d8,d9,d10 gold
-    class d16,d17,d18 upload
+    class d16,d17,d18,d19 upload
     class x0,x1,x2,x3,x4,x5 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
@@ -134,7 +137,7 @@ gantt
     03h10 · 1 DAG · small×1 :milestone, s0_0190, 03:10, 0m
     04h00 · 2 DAG · large×1 · spark-custom×1 :milestone, s0_0240, 04:00, 0m
     06h00 · 2 DAG · airflow-python×2 :milestone, s0_0360, 06:00, 0m
-    07h00 · 3 DAG · spark-custom×1 · airflow-python×2 :milestone, s0_0420, 07:00, 0m
+    07h00 · 4 DAG · spark-custom×1 · airflow-python×3 :milestone, s0_0420, 07:00, 0m
 ```
 
 ## 2. Production-critical DAGs — Logistics
