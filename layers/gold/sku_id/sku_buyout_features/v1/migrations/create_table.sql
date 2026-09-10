@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     l3_category BIGINT COMMENT 'Категория 3 уровня; при нуле подставляется последний ненулевой уровень выше',
     l4_category BIGINT COMMENT 'Категория 4 уровня; при нуле подставляется последний ненулевой уровень выше',
     l5_category BIGINT COMMENT 'Категория 5 уровня; при нуле подставляется последний ненулевой уровень выше',
-    type VARCHAR COMMENT 'Тип товара: 1p при продавце is_1p = 1 с известной себестоимостью, иначе 3p',
+    type STRING COMMENT 'Тип товара: 1p при продавце is_1p = 1 с известной себестоимостью, иначе 3p',
     commission DECIMAL(5,2) COMMENT 'Процент комиссии из kazanexpress.public.sku.commission; NULL у 1p',
     cost_price BIGINT COMMENT 'Себестоимость за штуку из последней приёмки stock_flow_1p; NULL у 3p',
     is_not_block BOOLEAN COMMENT 'Правило «не отключать постоплату». Источника правила пока нет, колонка всегда false',
