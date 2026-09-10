@@ -1,0 +1,66 @@
+# Trino-source layer pipeline (Airflow/Python + pyiceberg), not Spark.
+table:
+  key: sku_buyout_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_sku_buyout_features
+  primary_key: date,sku_id
+  meta:
+    team: team:buyer
+
+source:
+  engine: trino
+  trino_conn_id: trino_bx_analytics
+  # Имя витрины-источника берётся из её config.yaml, здесь не дублируется.
+  entity_path: layers/gold/sku_id/buyout_online_sku_features/v1
+  # Партиция читается диапазонами sku_id: 10.5 млн строк не помещаются в память
+  # задачи целиком. Диапазон, в отличие от остатка от деления, пушдаунится в
+  # kazanexpress.public.sku как index range scan по первичному ключу.
+  shards: 8
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+
+dag:
+  id: feature-platform.layers.gold.sku_id.sku_buyout_features
+  group_tag: buyout-features
+  schedule: "0 7 * * *"
+  start_date: "2026-08-20T00:00:00Z"
+  team: buyer
+  owner: team:buyer
+
+alerts:
+  team: buyer
+  severity: P2
+  oncall_webhook_conn_id: team:buyer
+
+dq:
+  trino_conn_id: trino_search
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  tests:
+    # Наблюдённый объём sku-универса на 2026-09-10 — 10 485 803 строки.
+    # Порог с запасом вниз на удаление позиций; в warn на время раскатки,
+    # перевод в error — после недели реальной истории таблицы.
+    - name: row_count_min
+      severity: warn
+      min_rows: 9000000
+    - name: row_count_growth
+      severity: warn
+    - name: freshness
+      severity: warn
+
+feature_stats:
+  trino_conn_id: trino_search
+  # Дословно совпадает с dq.partition_date_template: обе таски обязаны
+  # смотреть на одну партицию, иначе профиль посчитан не по тем данным.
+  partition_date_template: '{{ data_interval_start.in_timezone("UTC").strftime("%Y-%m-%d") }}'
+  # Идентификаторы, а не признаки: профиль по ним бессмысленен.
+  exclude_columns:
+    - product_id
+    - seller_id
+    - category_id
+    - l1_category
+    - l2_category
+    - l3_category
+    - l4_category
+    - l5_category
