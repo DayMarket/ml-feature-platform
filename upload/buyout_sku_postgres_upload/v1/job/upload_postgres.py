@@ -62,10 +62,9 @@ def publish(
         row_filter=EqualTo("date", partition_date),
         selected_fields=tuple(columns),
     )
-    conn = connection
-    conn.autocommit = False
+    connection.autocommit = False
     try:
-        with conn.cursor() as cursor:
+        with connection.cursor() as cursor:
             written = copy_partition(
                 cursor,
                 scan.to_arrow_batch_reader(),
@@ -79,12 +78,12 @@ def publish(
                     f"Partition {partition_date} of {iceberg_table.name()} is empty; "
                     f"refusing to leave {target_table} truncated"
                 )
-        conn.commit()
+        connection.commit()
     except Exception:
-        conn.rollback()
+        connection.rollback()
         raise
     finally:
-        conn.close()
+        connection.close()
 
     logger.info("Copied %d rows into %s", written, target_table)
     return written
