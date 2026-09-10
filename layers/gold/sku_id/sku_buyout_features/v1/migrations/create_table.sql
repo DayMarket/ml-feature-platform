@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     category_no_show DOUBLE COMMENT 'Доля NO SHOW категории за 90 дней, сглаженная к маркетплейсу (category_no_show_rate_90d)',
     sku_n_delivered BIGINT COMMENT 'Позиций sku доставлено за 90 дней (sku_n_delivered_90d); вес сглаживания',
     product_n_delivered BIGINT COMMENT 'Позиций карточки товара доставлено за 90 дней (product_n_delivered_90d)',
-    predicted_dimensional_group VARCHAR COMMENT 'Габаритная группа по сумме height+length+width; при неизвестных габаритах берётся silver.sku.dimensional_group'
+    predicted_dimensional_group STRING COMMENT 'Габаритная группа по сумме height+length+width; при неизвестных габаритах берётся silver.sku.dimensional_group'
 )
 USING iceberg
 COMMENT 'Экономика корзины и выкупаемость на грейне sku_id для сервиса невыкупов: 1p/3p с себестоимостью или комиссией, выкупаемость sku/карточки/категории/магазина в _shrunk-версиях, категорийное дерево l1..l5. Строки — весь sku-универс silver.sku; у sku вне feature_platform_buyout_online_sku_features колонки выкупаемости NULL. Сервис читает последнюю дату: WHERE date = (SELECT max(date) ...)'
