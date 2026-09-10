@@ -76,6 +76,11 @@ class MigrationContract(unittest.TestCase):
 
 
 class ConfigContract(unittest.TestCase):
+    def test_materialization_pod_has_headroom_for_dataframe_to_arrow_conversion(self):
+        dag_source = (ENTITY / "dag.py").read_text(encoding="utf-8")
+        self.assertIn('requests={"memory": "64Gi", "cpu": "8"}', dag_source)
+        self.assertIn('limits={"memory": "64Gi", "cpu": "8"}', dag_source)
+
     def test_table_identifier(self):
         config = read_config()
         self.assertEqual(config["table"]["catalog"], "iceberg")

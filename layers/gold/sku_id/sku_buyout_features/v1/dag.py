@@ -62,8 +62,11 @@ def _executor_config() -> dict:
                         image_pull_policy="Always",
                         image=CONFIG["runtime"]["image"],
                         resources=k8s.V1ResourceRequirements(
-                            requests={"memory": "16Gi", "cpu": "4"},
-                            limits={"memory": "16Gi"},
+                            # Один срез может содержать весь sku-универс
+                            # (~10.5 млн строк). pandas, Arrow и writer
+                            # кратковременно держат несколько его копий.
+                            requests={"memory": "64Gi", "cpu": "8"},
+                            limits={"memory": "64Gi", "cpu": "8"},
                         ),
                     )
                 ]
