@@ -1,0 +1,95 @@
+# buyout_sku_postgres_upload
+
+Публикует последнюю партицию витрины `gold.feature_platform_sku_buyout_features`
+(Iceberg, Task 1–4) в PostgreSQL сервиса невыкупов — первая в репозитории
+выгрузка не в Kafka.
+
+- **DAG id**: `feature-platform.upload.buyout_sku_postgres_upload`
+- **Расписание**: `0 7 * * *` UTC
+- **Ожидание источника**: `ExternalTaskSensor` на `external_task_id="dq"` DAG'а
+  `feature-platform.layers.gold.sku_id.sku_buyout_features`, `execution_delta=0`
+  минут — та же партиция, что уже прошла DQ витрины.
+- **Владелец/алерты**: `team:buyer`, `severity=P3`, `oncall_webhook_conn_id=team:buyer`.
+- **Connection**: `postgres_non_buyout_service_connect`.
+- **Целевая таблица**: `mlgrowth.sku_buyout_features`.
+
+## Режим записи
+
+`TRUNCATE TABLE mlgrowth.sku_buyout_features` и `COPY ... FROM STDIN` выполняются
+в одной транзакции (`connection.autocommit = False`, единый `commit()`).
+Читатели сервиса невыкупов в любой момент видят либо всё старое содержимое
+таблицы, либо всё новое целиком — промежуточного (пустого или наполовину
+заполненного) состояния снаружи не видно.
+
+Если партиция витрины на дату запуска пуста (`written == 0`), задача поднимает
+`RuntimeError` до коммита; открытая транзакция откатывается (`rollback()`), и
+`TRUNCATE` не применяется — таблица сервиса остаётся с прежними данными, а не
+опустошается. Задача в этом случае падает и уходит в алерт дежурному.
+
+## Схема целевой таблицы
+
+DDL таблицы `mlgrowth.sku_buyout_features` живёт **вне этого репозитория** —
+таблицу завели вручную в PostgreSQL сервиса невыкупов до начала этой работы.
+Список колонок ниже подтверждён через Trino на момент Task 6 и должен
+поддерживаться **вручную синхронно** со схемой: изменение колонок на стороне
+PostgreSQL не отражается в репозитории автоматически, и наоборот — добавление
+новой колонки в `features` конфига без соответствующей колонки в PostgreSQL
+уронит `COPY` с ошибкой числа колонок.
+
+Подтверждённые 21 колонка в PostgreSQL (порядок как в `CREATE TABLE`):
+
+```
+sku_id bigint, product_id bigint, seller_id bigint,
+l1_category integer, l2_category integer, l3_category integer,
+l4_category integer, l5_category integer,
+type varchar, commission numeric, cost_price numeric,
+predicted_dimensional_group varchar, is_not_block boolean,
+sku_buyout double, product_buyout double, category_buyout double,
+shop_buyout double, category_no_show double,
+sku_n_delivered integer, product_n_delivered integer,
+updated_at timestamptz
+```
+
+Важные расхождения с исходной Iceberg-витриной:
+
+- **Нет `category_id`.** Iceberg-мart несёт `category_id` как ключ джойна с
+  `dict.category`, но сервис невыкупов эту колонку не потребляет — она
+  сознательно исключена из `features` конфига и не публикуется.
+- **Нет `date`.** PostgreSQL-таблица не партиционирована по дате: `updated_at`
+  (момент запуска задачи, UTC) — единственный маркер версии данных. Выгрузка
+  всегда полностью заменяет содержимое таблицы одной партицией витрины —
+  предыдущая дата не хранится и не нужна.
+- **`sku_n_delivered` и `product_n_delivered` — `integer` в PostgreSQL, но
+  `BIGINT` в Iceberg.** Замеренный максимум на партиции 2026-09-09 — 234 462,
+  то есть запас до предела `int4` (2 147 483 647) — четыре порядка величины.
+  Явного приведения/проверки диапазона в коде выгрузки нет: при переполнении
+  `COPY` обязан упасть с ошибкой PostgreSQL (`integer out of range`), а не
+  молча усечь значение — так `psycopg2`/PostgreSQL и ведут себя на COPY с
+  текстовым представлением числа, выходящим за диапазon целевого типа.
+  Наблюдать за ростом этих значений и пересматривать типы в PostgreSQL нужно
+  заранее, до фактического переполнения.
+- **`commission` и `cost_price` в Trino отображаются как `varchar`.** Это
+  особенность рендеринга Trino для PostgreSQL `numeric` без явных
+  precision/scale, а не текстовая колонка. `COPY` пишет десятичные литералы
+  строкой, PostgreSQL сам приводит их к `numeric` при вставке.
+
+## NULL-значения
+
+Пропуск в признаке выкупаемости (`sku_buyout`, `product_buyout`,
+`category_buyout`, `shop_buyout`, `category_no_show` и др.) — законное
+значение, а не отсутствие данных, которое можно заменить нулём. CSV,
+построенный `batch_to_csv`, пишет для `None` пустое поле, что `COPY ... WITH
+(FORMAT csv)` интерпретирует как SQL `NULL`. Нулевое значение выкупаемости и
+пропуск выкупаемости — разные вещи, и код нигде их не подменяет друг другом.
+
+## Рантайм-зависимости
+
+Задача использует `PostgresHook` (`apache-airflow-providers-postgres`) и
+`pyiceberg`'s `DataScan.to_arrow_batch_reader` — ни то, ни другое больше
+нигде в репозитории не используется, и их наличие в образе
+`ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2` не подтверждено ни одним
+существующим DAG'ом. Проверка через `docker run` (см. `AGENTS.md`, раздел
+«Custom Image Workflow») на момент написания **не выполнена**: локальный
+Docker daemon недоступен в среде разработки. Это открытый вопрос —
+до подтверждения наличия обеих зависимостей в образе DAG нельзя считать
+готовым к раскатке; см. `task-6-report.md` в директории плана.

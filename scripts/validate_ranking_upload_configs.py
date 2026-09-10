@@ -18,6 +18,7 @@ SUPPORTED_ENTITY_KEYS = {
     ("account_id",),
     ("query",),
     ("sku_group_id",),
+    ("sku_id",),
     ("account_id", "category_id"),
     ("category_id", "sku_group_id"),
     ("promotion_id", "sku_group_id"),

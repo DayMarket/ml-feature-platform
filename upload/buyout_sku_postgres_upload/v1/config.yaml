@@ -1,0 +1,58 @@
+{
+  "sink": {
+    "type": "postgres",
+    "connection_id": "postgres_non_buyout_service_connect",
+    "schema": "mlgrowth",
+    "table": "sku_buyout_features"
+  },
+  "runtime": {
+    "image": "ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2"
+  },
+  "dag": {
+    "id": "feature-platform.upload.buyout_sku_postgres_upload",
+    "schedule": "0 7 * * *",
+    "start_date": "2026-09-10T00:00:00+00:00",
+    "team": "buyer",
+    "team_tag": "team::buyer",
+    "owner": "team:buyer"
+  },
+  "alerts": {
+    "team": "buyer",
+    "severity": "P3",
+    "oncall_webhook_conn_id": "team:buyer"
+  },
+  "feature_groups": [
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_sku_buyout_features",
+        "dependency_dag_id": "feature-platform.layers.gold.sku_id.sku_buyout_features",
+        "dependency_execution_delta_minutes": 0,
+        "dependency_task_id": "dq"
+      },
+      "name": "sku_buyout_features_postgres",
+      "features": [
+        "sku_id",
+        "product_id",
+        "seller_id",
+        "l1_category",
+        "l2_category",
+        "l3_category",
+        "l4_category",
+        "l5_category",
+        "type",
+        "commission",
+        "cost_price",
+        "predicted_dimensional_group",
+        "is_not_block",
+        "sku_buyout",
+        "product_buyout",
+        "category_buyout",
+        "shop_buyout",
+        "category_no_show",
+        "sku_n_delivered",
+        "product_n_delivered"
+      ]
+    }
+  ]
+}
