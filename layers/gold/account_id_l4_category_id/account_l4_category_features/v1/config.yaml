@@ -1,0 +1,192 @@
+resources:
+  path: ../../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-gold-account-l4-category-features
+  main_application_file: local:///git/repo/layers/gold/account_id_l4_category_id/account_l4_category_features/v1/entrypoints/get_account_l4_category_features.py
+  resource_profile: small
+
+table:
+  key: account_l4_category_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_account_l4_category_features
+  primary_key: calculated_at,account_id,l4_category_id
+  meta:
+    team: team::recsys
+    create_dbt_pr: false
+    create_maintenance_pr: true
+
+source:
+  engine: spark_iceberg
+  category_level: 4
+  category_column: l4_category_id
+  product_metadata_table: iceberg.silver.feature_platform_product_metadata
+  action_counts_table: iceberg.silver.feature_platform_account_product_session_action_counts_12h
+  order_items_table: iceberg.silver.order_items
+  sku_table: iceberg.silver.sku
+  business_timezone: Asia/Tashkent
+  event_windows_days: 3,7,14,28
+  order_windows_days: 3,7,14,28,60,90
+  successful_order_statuses: COMPLETED,PAID,DELIVERED,IN_DELIVERY
+
+dag:
+  id: feature-platform.layers.gold.account_id_l4_category_id.account_l4_category_features
+  group_tag: recsys-features
+  schedule: "0 7,19 * * *"
+  start_date: "2026-08-08T07:00:00Z"
+  catchup: true
+  team: recsys
+  owner: team:recsys
+
+alerts:
+  team: recsys
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_recsys
+
+dq:
+  trino_conn_id: trino_recsys
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 12
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
+  tests:
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+    - name: expression_is_true
+      expression: "account_id > 0 AND l4_category_id > 0"
+    - name: non_negative
+      columns:
+        - l4_n_clicks_3d
+        - l4_n_clicks_7d
+        - l4_n_clicks_14d
+        - l4_n_clicks_28d
+        - l4_n_atcs_3d
+        - l4_n_atcs_7d
+        - l4_n_atcs_14d
+        - l4_n_atcs_28d
+        - l4_n_atfs_3d
+        - l4_n_atfs_7d
+        - l4_n_atfs_14d
+        - l4_n_atfs_28d
+        - l4_n_orders_3d
+        - l4_n_orders_7d
+        - l4_n_orders_14d
+        - l4_n_orders_28d
+        - l4_n_orders_60d
+        - l4_n_orders_90d
+        - l4_gmv_3d
+        - l4_gmv_7d
+        - l4_gmv_14d
+        - l4_gmv_28d
+        - l4_gmv_60d
+        - l4_gmv_90d
+    - name: accepted_range
+      column: l4_n_clicks_3d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_clicks_7d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_clicks_14d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_clicks_28d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_atcs_3d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_atcs_7d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_atcs_14d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_atcs_28d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_atfs_3d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_atfs_7d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_atfs_14d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_atfs_28d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_orders_3d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_orders_7d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_orders_14d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_orders_28d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_orders_60d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_n_orders_90d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_gmv_3d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_gmv_7d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_gmv_14d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_gmv_28d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_gmv_60d_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: l4_gmv_90d_ratio
+      min: 0
+      max: 1
+
+feature_stats:
+  trino_conn_id: trino_recsys
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 12
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
+  exclude_columns: []
