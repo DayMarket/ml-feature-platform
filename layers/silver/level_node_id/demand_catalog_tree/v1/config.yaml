@@ -1,0 +1,72 @@
+table:
+  key: demand_catalog_tree
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_demand_catalog_tree
+  primary_key: date,level,node_id
+  meta:
+    team: team:operations
+source:
+  conn_id: trino_search
+  contract_version: current_catalog_tree_v1
+inputs:
+  sku_config: layers/silver/sku_id/demand_catalog_sku/v1/config.yaml
+runtime:
+  max_batch_rows: 100000
+  max_batch_bytes: 67108864
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  cpu: "2"
+  memory: 8Gi
+  run_timeout_seconds:
+    regular: 21600
+    manual: 604800
+  delivery_status: prepared_local
+dag:
+  id: feature-platform.layers.silver.level_node_id.demand_catalog_tree
+  group_tag: demand-forecast
+  team: operations
+  owner: team:operations
+  schedule: 0 4 * * *
+  start_date: "2026-09-08T00:00:00Z"
+  catchup: false
+alerts:
+  team: operations-analytics
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_operations
+# Сохраняются дефолты объёма/growth. Число узлов проверяется по exact SKU snapshot,
+# а не выводится из объёма исходного dict.category (6906 строк на 2026-09-09).
+dq:
+  scope: partition
+  trino_conn_id: trino_search
+  warmup_days: 0
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_catalog")["ingested_at"] }}'
+  tests:
+    - name: row_count_growth
+      enabled: false
+    - name: accepted_values
+      column: level
+      values: [market, l1, l2, l3, l4, l5, leaf]
+    - name: accepted_range
+      column: level_code
+      min: 0
+      max: 6
+    - name: accepted_range
+      column: catalog_sku_snapshot_id
+      min: 1
+    - name: string_not_blank
+      columns: [node_id, catalog_version, source_contract_version, source_manifest_id]
+    - name: distinct_count_between
+      columns: [catalog_version, source_manifest_id, catalog_sku_snapshot_id]
+      min: 1
+      max: 1
+feature_stats:
+  enabled: true
+  trino_conn_id: trino_search
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_catalog")["ingested_at"] }}'
+  exclude_columns: [level_code, catalog_sku_snapshot_id]

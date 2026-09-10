@@ -251,6 +251,15 @@ Iceberg metadata с exponential backoff и jitter. SQL расчёта стати
   зрения контракта данных — только `success`/`failed` самой Airflow-таски. Ни один
   downstream не ждёт её явно.
 
+### Дневной диапазон одной задачей
+
+Для витрин с посуточным writer фабрика принимает `range_receipt_task_id` и явный
+`range_timeout_seconds`. Одна таска последовательно профилирует все записанные даты,
+контролируя неизменность current Iceberg snapshot, и сохраняет стандартные строки
+статистики для каждой даты. Режим opt-in: вызовы фабрики без этих аргументов не меняются. DQ и feature_stats
+должны объявлять одинаковые date partition column/template; число строк каждого
+профиля сверяется с дневным writer receipt.
+
 ## Локальные проверки
 
 ```bash

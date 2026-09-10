@@ -1,0 +1,67 @@
+table:
+  key: demand_finance_daily
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_demand_finance_daily
+  primary_key: date,sku_id,seller_key
+  meta:
+    team: team:operations
+source:
+  conn_id: clickhouse_dwh_team_logistics
+  database: marts_b2c
+  table: finance_margin_by_order_item
+  currency: UZS
+  time_policy: finance_event_dt
+  contract_version: finance_event_seller_raw_usd_v1
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  cpu: "2"
+  memory: 8Gi
+  refresh_days: 31
+  run_timeout_seconds:
+    regular: 21600
+    manual: 604800
+  history_start: "2022-09-01"
+  max_batch_rows: 100000
+  max_batch_bytes: 67108864
+  delivery_status: prepared_local
+dag:
+  id: feature-platform.layers.silver.sku_id_seller_key.demand_finance_daily
+  group_tag: demand-forecast
+  team: operations
+  owner: team:operations
+  schedule: 0 4 * * *
+  start_date: "2026-09-08T00:00:00Z"
+  catchup: false
+alerts:
+  team: operations-analytics
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_operations
+# Согласованный growth: 20% AND более 100 строк date×sku_id×seller_key, без warmup.
+# Максимальное дневное изменение сентября 2022 — 85 строк; signed суммы не обнуляем.
+dq:
+  trino_conn_id: trino_search
+  warmup_days: 0
+  partition_column: date
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_range")["dates"][-1] }}'
+  tests:
+    # Freshness/growth по умолчанию: последний завершённый день на момент записи.
+    # Исторические даты проверяет dq.day_range без этих двух временных тестов.
+    - name: not_null
+      columns: [source_rows, fx_rate_source, fx_captured_at, source_manifest_id, source_contract_version, ingested_at]
+    - name: accepted_range
+      column: sku_id
+      min: 1
+    - name: accepted_range
+      column: source_rows
+      min: 1
+    - name: accepted_values
+      column: fx_rate_source
+      values: [exact_date, latest_available, unavailable]
+    - name: string_not_blank
+      columns: [seller_key, source_manifest_id, source_contract_version]
+feature_stats:
+  trino_conn_id: trino_search
+  partition_column: date
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_range")["dates"][-1] }}'
+  exclude_columns: [seller_id]

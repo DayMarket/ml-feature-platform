@@ -275,6 +275,10 @@ def validate_layer_layout(repo_root: Path) -> list[str]:
         expected_group = PRIMARY_KEY_GROUP_EXCEPTIONS.get(
             (layer, entity), "_".join(primary_key)
         )
+        # Date-only daily reference tables use the explicit date group.
+        declared_key = [column.strip() for column in str(table.get("primary_key", "")).split(",")]
+        if declared_key == ["date"] and "date" in temporal_columns:
+            expected_group = "date"
         if not expected_group:
             errors.append(f"{config_path}: primary key has no non-date columns")
             continue
