@@ -69,8 +69,7 @@ pid_neg_n_hours_since_last_click =
 
 Учитываются позиции, созданные в полуинтервале
 `[calculated_at - 90 days, calculated_at)` со статусом
-`COMPLETED`, `PAID`, `DELIVERED` или `IN_DELIVERY`. Требуются положительные
-`account_id`, `order_id` и `product_id` в signed 32-bit диапазоне.
+`COMPLETED`, `PAID`, `DELIVERED` или `IN_DELIVERY`.
 
 ```text
 pid_n_orders_Nd = COUNT(DISTINCT order_id)
