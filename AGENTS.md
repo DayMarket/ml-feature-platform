@@ -446,7 +446,7 @@ Configuration rules:
 - Feature names are not sent to the ranking service; only ordered values are sent. Reordering is a model-serving contract change.
 - Do not reuse one feature group `name` for partial vectors from multiple source tables.
 - Catalog, date column, and entity keys are derived from the source layer `config.yaml`; entity keys are the primary key without `date`.
-- Supported entity keys are `sku_group_id`, `query`, `account_id`, `query,sku_group_id`, `category_id,sku_group_id`, and `account_id,category_id`.
+- Supported entity keys are `sku_group_id`, `query`, `account_id`, `sku_id`, `query,sku_group_id`, `category_id,sku_group_id`, `promotion_id,sku_group_id`, and `account_id,category_id`.
 - `source.dependency_dag_id` names the DAG that owns the source table, and `source.dependency_execution_delta_minutes` sets the sensor delta from upload logical date to that DAG's logical date.
 - `source.dependency_task_id` must be `"dq"` for every repository-managed source: the upload waits for the owning DAG's `dq` task, never for the whole DAG and never for the legacy `dbt.source.trino.*` DQ DAG. A successful write with a failed DQ must not publish features. `scripts/validate_ranking_upload_configs.py` enforces this; only `source.external: true` groups name a different producer task, because they follow the owning team's contract.
 - `source.limit` is only for temporary smoke tests. Production configs must not contain it.

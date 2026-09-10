@@ -75,6 +75,22 @@ ENTITIES = {
             ),
         ),
     },
+    "sku_buyout": {
+        "layer": "gold",
+        "group": "sku_id",
+        "entity": "sku_buyout_features",
+        "table": "iceberg.gold.feature_platform_sku_buyout_features",
+        "primary_key": ("date", "sku_id"),
+        "schedule": "0 7 * * *",
+        "engine": "trino",
+        "dq_sources": (
+            (
+                "online_sku",
+                "feature-platform.layers.gold.sku_id."
+                "buyout_online_sku_features",
+            ),
+        ),
+    },
     "online_city": {
         "layer": "gold",
         "group": "city_id_dimensional_group",
@@ -237,24 +253,100 @@ def expected_dag_id(name: str) -> str:
     return f"feature-platform.layers.{layer}.{group}.{entity}"
 
 
-def external_task_sensors(dag_source: str) -> list[tuple[str | None, str | None]]:
-    """(external_dag_id, external_task_id) каждого сенсора; константы модуля разворачиваются."""
+def external_task_sensors(
+    dag_source: str, entity_directory: Path | None = None
+) -> list[tuple[str | None, str | None]]:
+    """(external_dag_id, external_task_id) каждого сенсора; выражения модуля разворачиваются.
+
+    Разворачивает не только строковые литералы, но и цепочки вида
+    `SOURCE_CONFIG["dag"]["id"]`, где `SOURCE_CONFIG` — результат
+    `_read_config(SOURCE_CONFIG_PATH)`: AGENTS.md запрещает дублировать
+    идентификаторы источника константой, поэтому DAG обязан читать их из
+    config.yaml источника, а не хардкодить — тест должен уметь это проверить,
+    а не только распознавать литералы.
+    """
     tree = ast.parse(dag_source)
-    constants: dict[str, str] = {}
+    env: dict[str, object] = {}
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    def _calls_yaml_safe_load(function_node: ast.FunctionDef) -> bool:
+        return any(
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "safe_load"
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "yaml"
+            for call in ast.walk(function_node)
+        )
+
+    # Функции вида `_read_config(path): return yaml.safe_load(open(path))` —
+    # общий паттерн в этом репозитории (см. AGENTS.md): открыть файл по пути
+    # из единственного аргумента и распарсить его как YAML.
+    config_loader_names = {
+        node.name
+        for node in functions.values()
+        if len(node.args.args) == 1 and _calls_yaml_safe_load(node)
+    }
+
+    def evaluate(node: ast.expr | None) -> object:
+        if node is None:
+            return None
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            if node.id == "__file__" and entity_directory is not None:
+                return str(entity_directory / "dag.py")
+            return env.get(node.id)
+        if isinstance(node, ast.Subscript):
+            base = evaluate(node.value)
+            key = evaluate(node.slice)
+            if isinstance(base, dict):
+                return base.get(key)
+            return None
+        if isinstance(node, ast.Call):
+            func = node.func
+            func_name = (
+                func.id
+                if isinstance(func, ast.Name)
+                else getattr(func, "attr", None)
+            )
+            if func_name == "join" and node.args:
+                parts = [evaluate(arg) for arg in node.args]
+                if all(isinstance(part, str) for part in parts):
+                    return str(Path(*parts))
+                return None
+            if func_name in ("abspath", "normpath") and len(node.args) == 1:
+                return evaluate(node.args[0])
+            if func_name == "dirname" and len(node.args) == 1:
+                value = evaluate(node.args[0])
+                return str(Path(value).parent) if isinstance(value, str) else None
+            if func_name in config_loader_names and len(node.args) == 1:
+                path_value = evaluate(node.args[0])
+                if not isinstance(path_value, str):
+                    return None
+                path = Path(path_value)
+                if not path.is_absolute() and entity_directory is not None:
+                    path = entity_directory / path
+                try:
+                    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+                except OSError:
+                    return None
+                return loaded if isinstance(loaded, dict) else None
+            return None
+        return None
+
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
             target = node.targets[0]
-            value = node.value
-            if isinstance(target, ast.Name) and isinstance(value, ast.Constant):
-                if isinstance(value.value, str):
-                    constants[target.id] = value.value
+            if isinstance(target, ast.Name):
+                value = evaluate(node.value)
+                if value is not None:
+                    env[target.id] = value
 
     def resolve(node: ast.expr | None) -> str | None:
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return node.value
-        if isinstance(node, ast.Name):
-            return constants.get(node.id)
-        return None
+        value = evaluate(node)
+        return value if isinstance(value, str) else None
 
     sensors = []
     for node in ast.walk(tree):
@@ -440,7 +532,7 @@ class BuyoutSensorTest(unittest.TestCase):
             if not spec["dq_sources"]:
                 continue
             dag_source = (entity_dir(name) / "dag.py").read_text(encoding="utf-8")
-            sensors = external_task_sensors(dag_source)
+            sensors = external_task_sensors(dag_source, entity_dir(name))
             with self.subTest(entity=name):
                 self.assertEqual(len(sensors), len(spec["dq_sources"]))
                 self.assertNotIn("dbt.source.trino.ml_feature_platform", dag_source)

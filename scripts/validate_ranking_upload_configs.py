@@ -18,6 +18,7 @@ SUPPORTED_ENTITY_KEYS = {
     ("account_id",),
     ("query",),
     ("sku_group_id",),
+    ("sku_id",),
     ("account_id", "category_id"),
     ("category_id", "sku_group_id"),
     ("promotion_id", "sku_group_id"),
@@ -254,11 +255,49 @@ def validate_feature_group(
     return errors
 
 
+KAFKA_SINK = "kafka"
+
+
+def sink_type(config: dict[str, Any]) -> str:
+    """Тип потребителя выгрузки. Отсутствие ключа — исторический Kafka-контракт."""
+    sink = config.get("sink")
+    if not isinstance(sink, dict):
+        return KAFKA_SINK
+    value = sink.get("type")
+    return str(value).strip() if isinstance(value, str) and value.strip() else KAFKA_SINK
+
+
+SINK_REQUIRED_STRING_FIELDS = ("connection_id", "schema", "table")
+
+
+def validate_sink(config_path: Path, config: dict[str, Any]) -> list[str]:
+    """Проверяет весь sink-блок non-kafka выгрузки, а не только sink.type.
+
+    Опечатка в connection_id/schema/table сегодня доезжает до продакшена
+    незамеченной — валидатор смотрел только на sink.type.
+    """
+    if sink_type(config) == KAFKA_SINK:
+        return []
+    sink = config.get("sink")
+    if not isinstance(sink, dict):
+        sink = {}
+    errors = []
+    for field in SINK_REQUIRED_STRING_FIELDS:
+        value = sink.get(field)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{config_path}: sink.{field} must be a non-empty string")
+    return errors
+
+
 def validate_models(
     config_path: Path,
     config: dict[str, Any],
     feature_groups_by_name: dict[str, dict[str, Any]],
 ) -> list[str]:
+    # models — protobuf-контракт ranking-сервиса поверх Kafka. У других
+    # выгрузок (например PostgreSQL) его может не быть вовсе.
+    if sink_type(config) != KAFKA_SINK:
+        return []
     errors = []
     models = config.get("models")
     if not isinstance(models, list) or not models:
@@ -398,6 +437,8 @@ def main() -> int:
 
     for config_path in config_paths:
         config = json.loads(config_path.read_text(encoding="utf-8"))
+        config_sink = sink_type(config)
+        errors.extend(validate_sink(config_path, config))
         feature_groups = config.get("feature_groups", [])
         if not feature_groups:
             errors.append(f"{config_path}: feature_groups must not be empty")
@@ -405,16 +446,22 @@ def main() -> int:
             str(feature_group.get("name", "")): feature_group
             for feature_group in feature_groups
         }
-        errors.extend(validate_models(config_path, config, feature_groups_by_name))
+        # models и глобальная уникальность имён групп — контракт protobuf-вектора
+        # ranking-сервиса. У выгрузки в PostgreSQL их нет: колонки адресуются
+        # по имени, а не по позиции.
+        if config_sink == KAFKA_SINK:
+            errors.extend(validate_models(config_path, config, feature_groups_by_name))
         for feature_group in feature_groups:
             group_name = feature_group.get("name", "")
-            if group_name in group_names:
-                errors.append(
-                    f"{config_path}: duplicate ranking feature group name {group_name}"
-                )
-            group_names.add(group_name)
+            if config_sink == KAFKA_SINK:
+                if group_name in group_names:
+                    errors.append(
+                        f"{config_path}: duplicate ranking feature group name {group_name}"
+                    )
+                group_names.add(group_name)
+            # Сверка колонок с миграциями источника полезна любой выгрузке.
             errors.extend(validate_feature_group(config_path, feature_group, tables))
-        if not errors:
+        if not errors and config_sink == KAFKA_SINK:
             print_model_components(config_path, config)
 
     if errors:
