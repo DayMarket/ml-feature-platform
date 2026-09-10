@@ -14,6 +14,44 @@ def load_validator():
     return module
 
 
+def check_postgres_sink_skips_ranking_checks(validator) -> list[str]:
+    """Postgres-выгрузка не имеет models и не обязана иметь ranking-группы."""
+    errors = []
+    if validator.sink_type({}) != "kafka":
+        errors.append("конфиг без ключа sink обязан считаться kafka-выгрузкой")
+    if validator.sink_type({"sink": {"type": "postgres"}}) != "postgres":
+        errors.append("sink.type postgres не распознан")
+    postgres_config = {
+        "sink": {"type": "postgres"},
+        "feature_groups": [
+            {
+                "name": "sku_buyout_features_postgres",
+                "source": {
+                    "schema": "gold",
+                    "table": "feature_platform_sku_buyout_features",
+                    "dependency_dag_id": (
+                        "feature-platform.layers.gold.sku_id.sku_buyout_features"
+                    ),
+                    "dependency_execution_delta_minutes": 0,
+                    "dependency_task_id": "dq",
+                },
+                "features": ["sku_buyout"],
+            }
+        ],
+    }
+    model_errors = validator.validate_models(
+        Path("upload/buyout_sku_postgres_upload/v1/config.yaml"),
+        postgres_config,
+        {},
+    )
+    if model_errors:
+        errors.append(
+            "validate_models не должен вызываться для postgres-выгрузки, "
+            f"получено: {model_errors}"
+        )
+    return errors
+
+
 def main() -> int:
     validator = load_validator()
     config_path = Path("upload/features_service_upload/v1/config.yaml")
@@ -175,6 +213,9 @@ def main() -> int:
         external_feature_group,
         {},
     ) == []
+
+    errors = check_postgres_sink_skips_ranking_checks(validator)
+    assert not errors, errors
 
     print("Ranking upload model manifest validation tests completed successfully")
     return 0
