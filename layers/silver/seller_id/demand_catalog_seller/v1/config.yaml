@@ -1,0 +1,75 @@
+table:
+  key: demand_catalog_seller
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_demand_catalog_seller
+  primary_key: date,seller_id
+  meta:
+    team: team:operations
+source:
+  conn_id: clickhouse_dwh_team_logistics
+  database: marts
+  table: sellers_info
+  contract_version: current_seller_catalog_v1
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  cpu: "2"
+  memory: 8Gi
+  run_timeout_seconds:
+    regular: 21600
+    manual: 604800
+  max_batch_rows: 100000
+  max_batch_bytes: 67108864
+  max_catalog_bytes: 536870912
+  delivery_status: prepared_local
+dag:
+  id: feature-platform.layers.silver.seller_id.demand_catalog_seller
+  group_tag: demand-forecast
+  team: operations
+  owner: team:operations
+  schedule: 0 4 * * *
+  start_date: "2026-09-08T00:00:00Z"
+  catchup: false
+alerts:
+  team: operations-analytics
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_operations
+# Read-only 2026-09-09: 468864 строки/уникальных seller, invalid IDs/collisions=0.
+# Это один срез, не основание фиксировать объём. Штатный growth ±20% сохраняется.
+# Полный захват и строгий DQ без warmup выполняет один owner DAG.
+dq:
+  scope: partition
+  trino_conn_id: trino_search
+  warmup_days: 0
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_catalog")["ingested_at"] }}'
+  tests:
+    - name: row_count_growth
+      enabled: false
+    - name: accepted_range
+      column: seller_id
+      min: 1
+    - name: accepted_values
+      column: seller_mapping_status
+      values: [matched, unmatched, unavailable, conflict]
+    - name: not_accepted_values
+      column: seller_mapping_status
+      values: [unavailable, conflict]
+    - name: not_null
+      columns: [master_seller_id, has_master, catalog_version, source_contract_version, source_manifest_id, ingested_at]
+    - name: string_not_blank
+      columns: [master_seller_id, catalog_version, source_contract_version, source_manifest_id]
+    - name: distinct_count_between
+      columns: [catalog_version, source_manifest_id]
+      min: 1
+      max: 1
+feature_stats:
+  enabled: true
+  trino_conn_id: trino_search
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_catalog")["ingested_at"] }}'
+  exclude_columns: []
