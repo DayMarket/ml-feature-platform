@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     l3_category BIGINT COMMENT 'Категория 3 уровня; при нуле подставляется последний ненулевой уровень выше',
     l4_category BIGINT COMMENT 'Категория 4 уровня; при нуле подставляется последний ненулевой уровень выше',
     l5_category BIGINT COMMENT 'Категория 5 уровня; при нуле подставляется последний ненулевой уровень выше',
-    type VARCHAR COMMENT 'Тип товара: 1p при продавце is_1p = 1 с известной себестоимостью, иначе 3p',
+    type STRING COMMENT 'Тип товара: 1p при продавце is_1p = 1 с известной себестоимостью, иначе 3p',
     commission DECIMAL(5,2) COMMENT 'Процент комиссии из kazanexpress.public.sku.commission; NULL у 1p',
     cost_price BIGINT COMMENT 'Себестоимость за штуку из последней приёмки stock_flow_1p; NULL у 3p',
     is_not_block BOOLEAN COMMENT 'Правило «не отключать постоплату». Источника правила пока нет, колонка всегда false',
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     category_no_show DOUBLE COMMENT 'Доля NO SHOW категории за 90 дней, сглаженная к маркетплейсу (category_no_show_rate_90d)',
     sku_n_delivered BIGINT COMMENT 'Позиций sku доставлено за 90 дней (sku_n_delivered_90d); вес сглаживания',
     product_n_delivered BIGINT COMMENT 'Позиций карточки товара доставлено за 90 дней (product_n_delivered_90d)',
-    predicted_dimensional_group VARCHAR COMMENT 'Габаритная группа по сумме height+length+width; при неизвестных габаритах берётся silver.sku.dimensional_group'
+    predicted_dimensional_group STRING COMMENT 'Габаритная группа по сумме height+length+width; при неизвестных габаритах берётся silver.sku.dimensional_group'
 )
 USING iceberg
 COMMENT 'Экономика корзины и выкупаемость на грейне sku_id для сервиса невыкупов: 1p/3p с себестоимостью или комиссией, выкупаемость sku/карточки/категории/магазина в _shrunk-версиях, категорийное дерево l1..l5. Строки — весь sku-универс silver.sku; у sku вне feature_platform_buyout_online_sku_features колонки выкупаемости NULL. Сервис читает последнюю дату: WHERE date = (SELECT max(date) ...)'
