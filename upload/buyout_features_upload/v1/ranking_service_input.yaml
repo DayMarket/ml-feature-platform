@@ -4,6 +4,6 @@ input-labels:
     type: OFFLINE
     missing-feature-value: 0.0
     feature-sets:
-      - name: fs_buyout_account_features_v1
+      - name: account_features
         schema: ACCOUNT
         size: 82
