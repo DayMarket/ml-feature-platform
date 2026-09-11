@@ -724,6 +724,31 @@ def _config_environment(
         for target_name in target_names:
             if target_name.endswith("CONFIG_PATH"):
                 resolved = _resolve_config_path(repo_root, assignment.value)
+                expression = assignment.value
+                if (
+                    isinstance(expression, ast.Call)
+                    and _call_name(expression.func) == "str"
+                    and expression.args
+                ):
+                    expression = expression.args[0]
+                if (
+                    resolved is None
+                    and isinstance(expression, ast.BinOp)
+                    and isinstance(expression.op, ast.Div)
+                    and isinstance(expression.left, ast.Call)
+                    and _call_name(expression.left.func) == "Path"
+                    and len(expression.left.args) == 1
+                    and isinstance(expression.left.args[0], ast.Name)
+                    and expression.left.args[0].id == "REPO_ROOT"
+                ):
+                    relative = _eval_string(expression.right, env)
+                    candidate = (repo_root / relative).resolve() if relative else None
+                    if (
+                        candidate
+                        and candidate.is_relative_to(repo_root.resolve())
+                        and candidate.name == "config.yaml"
+                    ):
+                        resolved = candidate
                 if resolved:
                     path_variables[target_name] = resolved
     for assignment in (node for node in tree.body if isinstance(node, ast.Assign)):

@@ -1,0 +1,55 @@
+{
+  "sink": {
+    "type": "postgres",
+    "connection_id": "postgres_non_buyout_service_connect",
+    "database": "mlgrowth",
+    "schema": "public",
+    "table": "account_buyout_features",
+    "column_map": {
+      "account_id": "account_id",
+      "orders_count": "orders_created_prev_365d",
+      "last_order_date": "CAST(last_order_date_win AS timestamptz)",
+      "updated_at": "updated_at"
+    },
+    "constants": {
+      "no_block": "true",
+      "segment_description": "''",
+      "text_description_ru": "''",
+      "text_description_uz": "''"
+    }
+  },
+  "runtime": {
+    "image": "ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2"
+  },
+  "dag": {
+    "id": "feature-platform.upload.buyout_account_postgres_upload",
+    "schedule": "0 7 * * *",
+    "start_date": "2026-09-10T00:00:00+00:00",
+    "team": "buyer",
+    "team_tag": "team::buyer",
+    "owner": "team:buyer"
+  },
+  "alerts": {
+    "team": "buyer",
+    "severity": "P3",
+    "oncall_webhook_conn_id": "team:buyer"
+  },
+  "feature_groups": [
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_buyout_online_account_features",
+        "entity_path": "layers/gold/account_id/buyout_online_account_features/v1",
+        "dependency_dag_id": "feature-platform.layers.gold.account_id.buyout_online_account_features",
+        "dependency_execution_delta_minutes": 60,
+        "dependency_task_id": "dq"
+      },
+      "name": "account_buyout_features_postgres",
+      "features": [
+        "account_id",
+        "orders_created_prev_365d",
+        "last_order_date_win"
+      ]
+    }
+  ]
+}

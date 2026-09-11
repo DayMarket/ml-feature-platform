@@ -14,6 +14,110 @@ def load_validator():
     return module
 
 
+def check_postgres_sink_skips_ranking_checks(validator) -> list[str]:
+    """Postgres-выгрузка не имеет models и не обязана иметь ranking-группы."""
+    errors = []
+    if validator.sink_type({}) != "kafka":
+        errors.append("конфиг без ключа sink обязан считаться kafka-выгрузкой")
+    if validator.sink_type({"sink": {"type": "postgres"}}) != "postgres":
+        errors.append("sink.type postgres не распознан")
+    postgres_config = {
+        "sink": {"type": "postgres"},
+        "feature_groups": [
+            {
+                "name": "sku_buyout_features_postgres",
+                "source": {
+                    "schema": "gold",
+                    "table": "feature_platform_sku_buyout_features",
+                    "dependency_dag_id": (
+                        "feature-platform.layers.gold.sku_id.sku_buyout_features"
+                    ),
+                    "dependency_execution_delta_minutes": 0,
+                    "dependency_task_id": "dq",
+                },
+                "features": ["sku_buyout"],
+            }
+        ],
+    }
+    model_errors = validator.validate_models(
+        Path("upload/buyout_sku_postgres_upload/v1/config.yaml"),
+        postgres_config,
+        {},
+    )
+    if model_errors:
+        errors.append(
+            "validate_models не должен вызываться для postgres-выгрузки, "
+            f"получено: {model_errors}"
+        )
+    return errors
+
+
+def check_sink_requires_connection_schema_table(validator) -> list[str]:
+    """Postgres sink обязан объявить БД, connection_id, schema и table."""
+    errors = []
+    config_path = Path("upload/buyout_sku_postgres_upload/v1/config.yaml")
+
+    full_sink_errors = validator.validate_sink(
+        config_path,
+        {
+            "sink": {
+                "type": "postgres",
+                "connection_id": "postgres_non_buyout_service_connect",
+                "database": "mlgrowth",
+                "schema": "public",
+                "table": "sku_buyout_features",
+            }
+        },
+    )
+    if full_sink_errors:
+        errors.append(
+            f"полный sink-блок не должен давать ошибок, получено: {full_sink_errors}"
+        )
+
+    kafka_sink_errors = validator.validate_sink(config_path, {"sink": {"type": "kafka"}})
+    if kafka_sink_errors:
+        errors.append(
+            f"kafka-выгрузка не должна проверяться на connection_id/schema/table, "
+            f"получено: {kafka_sink_errors}"
+        )
+
+    for missing_field in ("database", "connection_id", "schema", "table"):
+        sink = {
+            "type": "postgres",
+            "connection_id": "postgres_non_buyout_service_connect",
+            "database": "mlgrowth",
+            "schema": "public",
+            "table": "sku_buyout_features",
+        }
+        sink.pop(missing_field)
+        found = validator.validate_sink(config_path, {"sink": sink})
+        if not any(f"sink.{missing_field}" in error for error in found):
+            errors.append(
+                f"отсутствие sink.{missing_field} должно быть замечено, "
+                f"получено: {found}"
+            )
+
+    empty_string_errors = validator.validate_sink(
+        config_path,
+        {
+            "sink": {
+                "type": "postgres",
+                "connection_id": "",
+                "database": "mlgrowth",
+                "schema": "public",
+                "table": "sku_buyout_features",
+            }
+        },
+    )
+    if not any("sink.connection_id" in error for error in empty_string_errors):
+        errors.append(
+            f"пустая строка в sink.connection_id должна считаться ошибкой, "
+            f"получено: {empty_string_errors}"
+        )
+
+    return errors
+
+
 def main() -> int:
     validator = load_validator()
     config_path = Path("upload/features_service_upload/v1/config.yaml")
@@ -175,6 +279,12 @@ def main() -> int:
         external_feature_group,
         {},
     ) == []
+
+    errors = check_postgres_sink_skips_ranking_checks(validator)
+    assert not errors, errors
+
+    errors = check_sink_requires_connection_schema_table(validator)
+    assert not errors, errors
 
     print("Ranking upload model manifest validation tests completed successfully")
     return 0

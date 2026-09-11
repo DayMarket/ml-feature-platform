@@ -103,7 +103,7 @@ def get_dag_default_args() -> dict:
     catchup=False,
 )
 def search_query_sku_group_es_elasticsearch_collect_dag() -> None:
-    @task(executor_config=_executor_config())
+    @task(executor_config=_executor_config(), execution_timeout=timedelta(hours=20))
     def collect_raw(partition_value: str, run_id_value: str) -> str:
         runtime = _load_job_module("runtime.py", "search_es_features_raw_runtime")
         trino_query = _load_job_module("query.py", "search_es_features_raw_query")

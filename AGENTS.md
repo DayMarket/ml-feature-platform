@@ -69,7 +69,7 @@ Use repository files as the source of truth. Do not duplicate their contents in 
 - Human-readable feature or dataset contract and caveats: `layers/**/README.md` and `datasets/**/README.md`.
 - Orchestration, schedule, sensors, task names, and Airflow details: `layers/**/dag.py`, `datasets/**/dag.py`, each entity's `config.yaml` `spark` or `spark_applications` block, and any local `config/factory.py`.
 - Spark runtime template and resource profiles: `config/spark/layer_spark_application.yaml`, `config/spark/resources.yaml`, and each entity's `config.yaml` `spark` or `spark_applications` block. These are Spark-specific and should not be forced onto Trino/ClickHouse-source Airflow/Python jobs.
-- Ranking-service publication: `upload/features_service_upload/v1/config.yaml` and `upload/features_service_upload/v1/ranking_service_input.yaml`.
+- Ranking-service publication: `upload/**/config.yaml` and `upload/**/ranking_service_input.yaml`. There are three upload DAGs today: `features_service_upload` (search ranking, `04:00 UTC`), `dynamic_pricing_inference_upload` (every 3 hours) and `buyout_features_upload` (buyout model, `07:00 UTC`). Job code and the SparkApplication template live only in `upload/features_service_upload/v1`; the other two carry just `config.yaml`, `dag.py` and `config/factory.py`. A new upload DAG is the right shape when the producer's schedule cannot give a non-negative `dependency_execution_delta_minutes` against an existing upload DAG, or when owner/alert routing differs.
 - CI and generated downstream sync behavior: `.drone.yaml`, `scripts/`, and `ci_test/`.
 - Сводная карта DAG-зависимостей, расписаний и статуса миграции DQ-сенсоров: `docs/feature_platform_map.md`. Файл генерируется из `dag.py`, `config.yaml` и upload-конфигов и охраняется CI, поэтому его нельзя править руками — только перегенерировать. Источником правды остаются сами файлы энтити: карта показывает объявленные зависимости, а не фактические времена прогонов в Airflow.
 
@@ -82,7 +82,7 @@ rg -n "<feature_or_column_or_table_name>" layers upload scripts docs
 rg -n "<feature_or_column_or_table_name>" datasets 2>/dev/null
 rg -n "<source_table_or_filter_value>" layers/**/job layers/**/README.md
 rg -n "<source_table_or_filter_value>" datasets/**/job datasets/**/README.md 2>/dev/null
-rg -n "<column_name>" layers/**/migrations upload/features_service_upload/v1
+rg -n "<column_name>" layers/**/migrations upload
 rg -n "<column_name>" datasets/**/migrations 2>/dev/null
 ```
 
@@ -94,7 +94,7 @@ Before adding or renaming any feature or dataset:
 
 - Search feature names, dataset names, labels, and close variants with `rg` across `layers/`, `datasets/`, `upload/`, `scripts/`, `docs/`, and README files.
 - Inspect candidate target-table migrations under `layers/**/migrations/*.sql` and `datasets/**/migrations/*.sql`; upload validation checks ranking features against migration columns.
-- Inspect `upload/features_service_upload/v1/config.yaml` and `upload/features_service_upload/v1/ranking_service_input.yaml` for downstream usage and required feature order.
+- Inspect every `upload/**/config.yaml` and `upload/**/ranking_service_input.yaml` for downstream usage and required feature order.
 - Inspect the PySpark or Airflow/Python transformation that writes the candidate source table. Similar column names can have different windows, grains, formulas, filters, label definitions, leakage boundaries, and null semantics.
 - If the requested feature already exists with the same grain and semantics, do not create a duplicate. Report where it is produced, what table stores it, and whether/how it is uploaded.
 - If a similar feature exists but differs in grain, window, formula, filter, or null handling, call out the difference and ask whether a new feature is still required.
@@ -172,7 +172,7 @@ Use this workflow for training sample tables under `datasets/`:
 - Confirm the dataset purpose, training/evaluation consumer, entity grain, output `table.name`, `dag.group_tag` membership, primary key, label definition, sample inclusion/exclusion rules, leakage boundary, positive/negative sampling logic, source tables, source engine, source connection, date boundaries, lookbacks, freshness/DQ expectations, write mode, launch time in UTC, ownership, alerts, and on-call settings.
 - Confirm whether the dataset is a one-time/backfill artifact or a scheduled repository-managed table. Scheduled datasets should include `date` or another explicit snapshot/partition key in `table.primary_key` unless the user approves and documents a deliberate exception.
 - Dataset outputs are repository-managed Iceberg tables and must use `table.catalog: iceberg`. Keep `config.yaml` as the single source of truth for `table.catalog`, `table.schema`, `table.name`, `table.primary_key`, and `table.meta.team`.
-- Dataset tables must not be uploaded to ranking-service, inference services, or online serving systems from this repository. Do not edit `upload/features_service_upload/v1/config.yaml` or `upload/features_service_upload/v1/ranking_service_input.yaml` for a dataset output.
+- Dataset tables must not be uploaded to ranking-service, inference services, or online serving systems from this repository. Do not edit any `upload/**/config.yaml` or `upload/**/ranking_service_input.yaml` for a dataset output.
 - Run the duplicate feature or dataset check before scaffolding. Existing feature tables or older dataset versions may already contain the same labels or samples with different windows, filters, grains, or leakage boundaries.
 - After duplicate checks and clarification, summarize the selected dataset contract back to the user before editing files.
 - Keep the full dataset surface together inside `datasets/<team>/<domain>/<version>/`: `config.yaml`, `dag.py`, runtime configuration, factory or helper code when used, entrypoint/job code, migrations, and README.
@@ -194,7 +194,7 @@ Use this workflow:
 - Search downstream usage with `rg` across `layers/`, `datasets/`, `upload/`, `scripts/`, `docs/`, README files, and ranking upload configs.
 - Inspect the table's `config.yaml`, migrations, README, PySpark job, and any downstream jobs that read it.
 - If repository files do not prove that there are no external consumers, ask the user to confirm the consumer contract or allow MCP/catalog inspection before removal.
-- If the feature is published to ranking, remove it from `upload/features_service_upload/v1/config.yaml` and update `ranking_service_input.yaml` only after confirming serving compatibility and feature order changes.
+- If the feature is published, remove it from the owning `upload/**/config.yaml` and update the matching `ranking_service_input.yaml` only after confirming serving compatibility and feature order changes.
 - Prefer a staged removal when consumer risk is unclear: mark the feature, dataset, or table as deprecated in README or config, stop downstream upload first, then stop production after an agreed grace period.
 - Stopping production may mean pausing/removing the DAG or removing the layer or dataset from the repo, but physical Iceberg data should remain until an explicit drop/archive decision is approved.
 - Do not add destructive `DROP`, `DELETE`, or `TRUNCATE` migrations to ordinary repository migrations. CI rejects destructive statements, and physical table deletion must be a separate approved operational runbook.
@@ -433,6 +433,12 @@ Iceberg maintenance sync:
 - Maintenance removals need manual review; do not remove entries automatically just because a table disappeared locally.
 - Side-effecting maintenance sync runs only on `master` push.
 
+Парсинг DAG'ов и `.airflowignore`:
+
+- Репозиторий целиком синхронизируется в dags-директорию Airflow, поэтому Airflow пытается импортировать каждый `.py` в дереве. В safe mode он импортирует файл, если в нём есть подстроки `airflow` и `dag` одновременно, — под это условие легко попадает обычный тест про оркестрацию. Тесты написаны под pytest, а pytest в Airflow-образе не установлен, и такой файл валит парсер с `ModuleNotFoundError: No module named 'pytest'` — DAG'и рядом при этом остаются без импорта.
+- Единственная защита — `.airflowignore` в корне репозитория. Он уже закрывает `ci_test/**`, `dq/**`, `feature_stats/**` и вспомогательные `**/job/**`, `**/config/**`, `**/entrypoints/**`, `**/migrations/**`. Любой новый каталог с кодом, который не должен исполняться Airflow, добавляется туда же, а не чинится точечно внутри файла.
+- Файл читается в glob-синтаксисе (`core.dag_ignore_file_syntax = glob`; настройка живёт в деплое Airflow, не в этом репозитории). Все существующие записи написаны как glob — `dq/**` как регэксп даже не скомпилировался бы, — поэтому новые пишутся так же: паттерн со слэшем матчится против пути относительно корня репозитория, паттерн без слэша — против имени файла. Правило и обратная проверка (настоящие `layers/**/dag.py` не должны попасть под паттерн) закреплены в `ci_test/test_airflowignore.py`; там же сплошная проверка, что ни один видимый парсеру файл не импортирует pytest на уровне модуля.
+
 ## Ranking Feature Upload
 
 Ranking upload lives in `upload/features_service_upload/v1`.
@@ -446,7 +452,7 @@ Configuration rules:
 - Feature names are not sent to the ranking service; only ordered values are sent. Reordering is a model-serving contract change.
 - Do not reuse one feature group `name` for partial vectors from multiple source tables.
 - Catalog, date column, and entity keys are derived from the source layer `config.yaml`; entity keys are the primary key without `date`.
-- Supported entity keys are `sku_group_id`, `query`, `account_id`, `query,sku_group_id`, `category_id,sku_group_id`, and `account_id,category_id`.
+- Supported entity keys are `sku_group_id`, `query`, `account_id`, `sku_id`, `query,sku_group_id`, `category_id,sku_group_id`, `promotion_id,sku_group_id`, and `account_id,category_id`.
 - `source.dependency_dag_id` names the DAG that owns the source table, and `source.dependency_execution_delta_minutes` sets the sensor delta from upload logical date to that DAG's logical date.
 - `source.dependency_task_id` must be `"dq"` for every repository-managed source: the upload waits for the owning DAG's `dq` task, never for the whole DAG and never for the legacy `dbt.source.trino.*` DQ DAG. A successful write with a failed DQ must not publish features. `scripts/validate_ranking_upload_configs.py` enforces this; only `source.external: true` groups name a different producer task, because they follow the owning team's contract.
 - `source.limit` is only for temporary smoke tests. Production configs must not contain it.
@@ -501,6 +507,7 @@ python3 ci_test/test_spark_resources.py
 python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 python3 ci_test/test_generate_feature_platform_map.py
+python3 ci_test/test_airflowignore.py
 git diff --check
 ```
 

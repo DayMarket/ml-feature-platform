@@ -5,7 +5,9 @@
 параллельно, но реестр остаётся полным.
 """
 
+import ast
 import importlib.util
+import re
 import sys
 import unittest
 from datetime import date, datetime, timezone
@@ -65,7 +67,29 @@ ENTITIES = {
         "primary_key": ("date", "sku_id"),
         "schedule": "0 6 * * *",
         "engine": "trino",
-        "dq_sources": ("item_signal",),
+        "dq_sources": (
+            (
+                "item_signal",
+                "feature-platform.layers.gold.key_type_key_id."
+                "buyout_item_signal_features",
+            ),
+        ),
+    },
+    "sku_buyout": {
+        "layer": "gold",
+        "group": "sku_id",
+        "entity": "sku_buyout_features",
+        "table": "iceberg.gold.feature_platform_sku_buyout_features",
+        "primary_key": ("date", "sku_id"),
+        "schedule": "0 7 * * *",
+        "engine": "trino",
+        "dq_sources": (
+            (
+                "online_sku",
+                "feature-platform.layers.gold.sku_id."
+                "buyout_online_sku_features",
+            ),
+        ),
     },
     "online_city": {
         "layer": "gold",
@@ -75,7 +99,13 @@ ENTITIES = {
         "primary_key": ("date", "city_id", "dimensional_group"),
         "schedule": "0 6 * * *",
         "engine": "trino",
-        "dq_sources": ("delivery_cpi_city",),
+        "dq_sources": (
+            (
+                "delivery_cpi_city",
+                "feature-platform.layers.silver.city_id_dimensional_group."
+                "delivery_cpi_city_features",
+            ),
+        ),
     },
     # Spark-контур аккаунтов и его online-проекция.
     "account_history": {
@@ -86,7 +116,13 @@ ENTITIES = {
         "primary_key": ("date", "account_id"),
         "schedule": "0 4 * * *",
         "engine": "spark",
-        "dq_sources": ("account_lifetime_facts",),
+        "dq_sources": (
+            (
+                "account_lifetime_facts",
+                "feature-platform.layers.silver.account_id."
+                "account_lifetime_facts",
+            ),
+        ),
     },
     "online_account": {
         "layer": "gold",
@@ -96,7 +132,23 @@ ENTITIES = {
         "primary_key": ("date", "account_id"),
         "schedule": "0 6 * * *",
         "engine": "trino",
-        "dq_sources": ("account_history",),
+        "dq_sources": (
+            (
+                "account_history",
+                "feature-platform.layers.gold.account_id."
+                "buyout_account_history_features",
+            ),
+            (
+                "order_completion_city",
+                "feature-platform.layers.silver.order_city_id."
+                "order_completion_city_features",
+            ),
+            (
+                "order_completion_region",
+                "feature-platform.layers.silver.order_region_id."
+                "order_completion_region_features",
+            ),
+        ),
     },
 }
 
@@ -114,7 +166,68 @@ ITEM_SIGNAL_WINDOW_COLUMNS = (
 )
 
 
+# Источники DQ вне группы `buyout-features`: их контракт таблицы и алертов принадлежит
+# другой команде, реестр ENTITIES их не описывает — сверяется только dag id владельца.
+FOREIGN_DQ_SOURCES = {
+    "order_completion_city": ("silver", "order_city_id", "order_completion_city_features"),
+    "order_completion_region": (
+        "silver",
+        "order_region_id",
+        "order_completion_region_features",
+    ),
+}
+
+
+ACCOUNT_HISTORY_JOB = "job/getting_buyout_account_history_features.py"
+
+
+def sql_template(source: str, function: str) -> str:
+    """Текст SQL-шаблона функции: подстановки f-строки заменены на «?»."""
+    tree = ast.parse(source)
+    node = next(
+        n for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name == function
+    )
+    returned = next(n for n in ast.walk(node) if isinstance(n, ast.Return)).value
+    if isinstance(returned, ast.Constant):
+        return returned.value
+    return "".join(
+        part.value if isinstance(part, ast.Constant) else "?"
+        for part in returned.values
+    )
+
+
+def select_output_names(select_list: str) -> set[str]:
+    """Имена колонок на выходе SELECT-списка: алиас `AS x` или хвост `t.x`."""
+    cleaned = "\n".join(line.split("--")[0] for line in select_list.splitlines())
+    items: list[str] = []
+    depth = 0
+    buffer: list[str] = []
+    for char in cleaned:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char == "," and depth == 0:
+            items.append("".join(buffer))
+            buffer = []
+        else:
+            buffer.append(char)
+    items.append("".join(buffer))
+
+    names = set()
+    for item in items:
+        item = " ".join(item.split())
+        if not item:
+            continue
+        alias = re.search(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)$", item, re.IGNORECASE)
+        names.add(alias.group(1) if alias else item.rsplit(".", 1)[-1])
+    return names
+
+
 def entity_dir(name: str) -> Path:
+    if name in FOREIGN_DQ_SOURCES:
+        return LAYERS.joinpath(*FOREIGN_DQ_SOURCES[name], "v1")
     spec = ENTITIES[name]
     return LAYERS / spec["layer"] / spec["group"] / spec["entity"] / "v1"
 
@@ -132,11 +245,125 @@ def read_config(name: str) -> dict:
 
 
 def expected_dag_id(name: str) -> str:
-    spec = ENTITIES[name]
-    return (
-        f"feature-platform.layers.{spec['layer']}."
-        f"{spec['group']}.{spec['entity']}"
-    )
+    if name in FOREIGN_DQ_SOURCES:
+        layer, group, entity = FOREIGN_DQ_SOURCES[name]
+    else:
+        spec = ENTITIES[name]
+        layer, group, entity = spec["layer"], spec["group"], spec["entity"]
+    return f"feature-platform.layers.{layer}.{group}.{entity}"
+
+
+def external_task_sensors(
+    dag_source: str, entity_directory: Path | None = None
+) -> list[tuple[str | None, str | None]]:
+    """(external_dag_id, external_task_id) каждого сенсора; выражения модуля разворачиваются.
+
+    Разворачивает не только строковые литералы, но и цепочки вида
+    `SOURCE_CONFIG["dag"]["id"]`, где `SOURCE_CONFIG` — результат
+    `_read_config(SOURCE_CONFIG_PATH)`: AGENTS.md запрещает дублировать
+    идентификаторы источника константой, поэтому DAG обязан читать их из
+    config.yaml источника, а не хардкодить — тест должен уметь это проверить,
+    а не только распознавать литералы.
+    """
+    tree = ast.parse(dag_source)
+    env: dict[str, object] = {}
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    def _calls_yaml_safe_load(function_node: ast.FunctionDef) -> bool:
+        return any(
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "safe_load"
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "yaml"
+            for call in ast.walk(function_node)
+        )
+
+    # Функции вида `_read_config(path): return yaml.safe_load(open(path))` —
+    # общий паттерн в этом репозитории (см. AGENTS.md): открыть файл по пути
+    # из единственного аргумента и распарсить его как YAML.
+    config_loader_names = {
+        node.name
+        for node in functions.values()
+        if len(node.args.args) == 1 and _calls_yaml_safe_load(node)
+    }
+
+    def evaluate(node: ast.expr | None) -> object:
+        if node is None:
+            return None
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            if node.id == "__file__" and entity_directory is not None:
+                return str(entity_directory / "dag.py")
+            return env.get(node.id)
+        if isinstance(node, ast.Subscript):
+            base = evaluate(node.value)
+            key = evaluate(node.slice)
+            if isinstance(base, dict):
+                return base.get(key)
+            return None
+        if isinstance(node, ast.Call):
+            func = node.func
+            func_name = (
+                func.id
+                if isinstance(func, ast.Name)
+                else getattr(func, "attr", None)
+            )
+            if func_name == "join" and node.args:
+                parts = [evaluate(arg) for arg in node.args]
+                if all(isinstance(part, str) for part in parts):
+                    return str(Path(*parts))
+                return None
+            if func_name in ("abspath", "normpath") and len(node.args) == 1:
+                return evaluate(node.args[0])
+            if func_name == "dirname" and len(node.args) == 1:
+                value = evaluate(node.args[0])
+                return str(Path(value).parent) if isinstance(value, str) else None
+            if func_name in config_loader_names and len(node.args) == 1:
+                path_value = evaluate(node.args[0])
+                if not isinstance(path_value, str):
+                    return None
+                path = Path(path_value)
+                if not path.is_absolute() and entity_directory is not None:
+                    path = entity_directory / path
+                try:
+                    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+                except OSError:
+                    return None
+                return loaded if isinstance(loaded, dict) else None
+            return None
+        return None
+
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name):
+                value = evaluate(node.value)
+                if value is not None:
+                    env[target.id] = value
+
+    def resolve(node: ast.expr | None) -> str | None:
+        value = evaluate(node)
+        return value if isinstance(value, str) else None
+
+    sensors = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+        if name != "ExternalTaskSensor":
+            continue
+        keywords = {kw.arg: kw.value for kw in node.keywords}
+        sensors.append(
+            (
+                resolve(keywords.get("external_dag_id")),
+                resolve(keywords.get("external_task_id")),
+            )
+        )
+    return sensors
 
 
 def load_module(path: Path, name: str):
@@ -293,34 +520,29 @@ class BuyoutOrchestrationTest(unittest.TestCase):
 
 
 class BuyoutSensorTest(unittest.TestCase):
-    """Сенсоры ждут таску `dq` DAG-а-владельца источника (AGENTS.md), не dbt-DQ-DAG:
-    тот идёт в 01:00 UTC своей логической датой, и дельта до него не сходится."""
+    def test_declared_dq_sensors_match_source_configs(self):
+        """Сенсор ждёт таску dq DAG'а-владельца, а не легаси dbt-DQ-DAG.
 
-    def test_declared_dq_sensors_wait_for_owner_dq_task(self):
+        У `dbt.source.trino.ml_feature_platform_*.dq` собственное расписание
+        `0 1 * * *` и собственная логическая дата: `execution_delta`, посчитанная
+        от расписания производителя, в неё не попадает и сенсор висит до таймаута.
+        """
         for name in present_entities():
             spec = ENTITIES[name]
             if not spec["dq_sources"]:
                 continue
             dag_source = (entity_dir(name) / "dag.py").read_text(encoding="utf-8")
+            sensors = external_task_sensors(dag_source, entity_dir(name))
             with self.subTest(entity=name):
-                self.assertIn("ExternalTaskSensor", dag_source)
-                self.assertIn('external_task_id="dq"', dag_source)
-                self.assertNotIn("dbt.source.", dag_source)
-            for source_name in spec["dq_sources"]:
+                self.assertEqual(len(sensors), len(spec["dq_sources"]))
+                self.assertNotIn("dbt.source.trino.ml_feature_platform", dag_source)
+            waited = {
+                (upstream_dag_id, task_id) for upstream_dag_id, task_id in sensors
+            }
+            for source_name, expected_upstream in spec["dq_sources"]:
                 with self.subTest(entity=name, source=source_name):
-                    self.assertIn(ENTITIES[source_name]["entity"], dag_source)
-                    if not is_present(source_name):
-                        self.skipTest(
-                            f"Источник {source_name} ещё не создан: "
-                            "сверка dag id по config.yaml пропущена"
-                        )
-                    owner_dag_id = read_config(source_name)["dag"]["id"]
-                    self.assertEqual(owner_dag_id, expected_dag_id(source_name))
-                    # Владелец либо назван литералом, либо берётся из его config.yaml.
-                    self.assertTrue(
-                        owner_dag_id in dag_source or '["dag"]["id"]' in dag_source,
-                        f"{name}: сенсор не ссылается на DAG {owner_dag_id}",
-                    )
+                    self.assertEqual(expected_dag_id(source_name), expected_upstream)
+                    self.assertIn((expected_upstream, "dq"), waited)
 
     def test_entities_without_dependencies_declare_no_sensor(self):
         for name in present_entities():
@@ -486,6 +708,48 @@ class BuyoutProjectionQueryTest(unittest.TestCase):
         self.assertIn("WHERE date = DATE '2026-08-01'", sql)
         self.assertIn("dimensional_group", sql)
         self.assertIn("cpi_forward_country_uzs", sql)
+
+
+class BuyoutAccountHistoryQueryTest(unittest.TestCase):
+    """Сборка витрины склеивает три временные вьюхи — контракт колонок между ними."""
+
+    def setUp(self):
+        if not is_present("account_history"):
+            self.fail("Сущность account_history отсутствует на диске")
+        self.source = (entity_dir("account_history") / ACCOUNT_HISTORY_JOB).read_text(
+            encoding="utf-8"
+        )
+
+    def test_final_select_reads_only_columns_asof_history_projects(self):
+        asof = sql_template(self.source, "asof_history_sql")
+        final_select = re.search(r"\nSELECT\n(.*?)\nFROM agg AS a", asof, re.S)
+        self.assertIsNotNone(
+            final_select, "не найден финальный SELECT вьюхи asof_history"
+        )
+        produced = select_output_names(final_select.group(1))
+
+        features = sql_template(self.source, "features_sql")
+        consumed = set(re.findall(r"\bh\.([a-z_][a-z0-9_]*)", features))
+
+        missing = sorted(consumed - produced)
+        self.assertFalse(
+            missing,
+            "features_sql читает из asof_history колонки, которых нет в её проекции: "
+            + ", ".join(missing),
+        )
+
+    def test_geo_join_keys_reach_the_target_table(self):
+        """Ключи связи с гео-витринами обязаны дойти от agg до записи в таблицу."""
+        asof = sql_template(self.source, "asof_history_sql")
+        final_select = re.search(r"\nSELECT\n(.*?)\nFROM agg AS a", asof, re.S)
+        produced = select_output_names(final_select.group(1))
+        create_sql = (
+            entity_dir("account_history") / "migrations" / "create_table.sql"
+        ).read_text(encoding="utf-8")
+        for column in ("last_order_city_id", "last_order_region_id"):
+            with self.subTest(column=column):
+                self.assertIn(column, produced)
+                self.assertIn(f"    {column} BIGINT", create_sql)
 
 
 if __name__ == "__main__":

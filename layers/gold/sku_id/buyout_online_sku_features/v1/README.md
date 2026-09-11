@@ -34,16 +34,19 @@ sku, его карточки, категории, магазина и бренд
 
 ## Зависимости
 
-`ExternalTaskSensor` на таску `dq` DAG-а сигнала
-`feature-platform.layers.gold.key_type_key_id.buyout_item_signal_features`
-(`external_task_id="dq"`, `mode="reschedule"`, `check_existence=True`, таймаут 3 часа).
+`ExternalTaskSensor` на таску `dq` DAG'а источника:
+`feature-platform.layers.gold.key_type_key_id.buyout_item_signal_features`,
+`external_task_id="dq"` (`mode="reschedule"`, `check_existence=True`, таймаут 3 часа).
 
-`execution_delta = 3 часа` — разница расписаний (06:00 против 03:00): обе логические даты
-одного дня, оба DAG-а пишут партицию `date = data_interval_end − 1 день`.
+`execution_delta = 3 часа` — разница расписаний (06:00 против 03:00): `D 06:00 - 3ч = D 03:00`,
+логическая дата запуска сигнала, который пишет партицию `D`.
 
-dbt-DQ-DAG `dbt.source.trino.ml_feature_platform_gold.<таблица>.dq` сенсором не используется:
-он идёт в 01:00 UTC своей логической датой и проверяет партицию за `ds − 1`, так что дельта
-до него не сходится (правило платформы — AGENTS.md).
+Сенсор специально смотрит не на `dbt.source.trino.ml_feature_platform_gold.
+feature_platform_buyout_item_signal_features.dq`: у dbt-DQ-DAG'а собственное расписание
+`0 1 * * *` и собственная логическая дата (`D-1 01:00`), она не совпадает с расписанием
+производителя ни при какой дельте — сенсор опрашивал несуществующий ран и висел до таймаута.
+Сигнал считает свой DQ таской `dq` внутри себя, ждать надо её (AGENTS.md,
+«Downstream-DAG'и»).
 
 ## Логика
 

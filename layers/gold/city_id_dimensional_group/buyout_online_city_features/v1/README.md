@@ -32,16 +32,20 @@ Online-проекция CPI логистики по городу и габари
 
 ## Зависимости
 
-`ExternalTaskSensor` на таску `dq` silver-DAG-а
-`feature-platform.layers.silver.city_id_dimensional_group.delivery_cpi_city_features`
-(`external_task_id="dq"`, `mode="reschedule"`, `check_existence=True`, таймаут 3 часа).
+`ExternalTaskSensor` на таску `dq` silver-DAG'а источника:
+`feature-platform.layers.silver.city_id_dimensional_group.delivery_cpi_city_features`,
+`external_task_id="dq"` (`mode="reschedule"`, `check_existence=True`, таймаут 3 часа).
 
-`execution_delta = 3 часа` — разница расписаний (06:00 против 03:00): обе логические даты
-одного дня.
+`execution_delta = 3 часа` — разница расписаний (06:00 против 03:00): `D 06:00 - 3ч = D 03:00`,
+логическая дата запуска silver, который пишет партицию `D+1` — её же читает `materialize`
+(Pattern DE: партиция за `data_interval_end` без сдвига).
 
-dbt-DQ-DAG `dbt.source.trino.ml_feature_platform_silver.<таблица>.dq` сенсором не используется:
-он идёт в 01:00 UTC своей логической датой и проверяет партицию за `ds − 1`, так что дельта
-до него не сходится (правило платформы — AGENTS.md).
+Сенсор специально смотрит не на `dbt.source.trino.ml_feature_platform_silver.
+feature_platform_delivery_cpi_city_features.dq`: у dbt-DQ-DAG'а собственное расписание
+`0 1 * * *` и собственная логическая дата (`D-1 01:00`), она не совпадает с расписанием
+производителя ни при какой дельте — сенсор опрашивал несуществующий ран и висел до таймаута.
+Silver-витрина считает свой DQ таской `dq` внутри себя, ждать надо её (AGENTS.md,
+«Downstream-DAG'и»).
 
 ## Логика
 

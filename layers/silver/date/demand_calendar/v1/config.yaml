@@ -1,0 +1,81 @@
+table:
+  key: demand_calendar
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_demand_calendar
+  primary_key: date
+  meta:
+    team: team:operations
+
+source:
+  engine: clickhouse
+  schema: silver
+  name: calendar
+  calendar_id: uz_official
+  clickhouse_conn_id: clickhouse_dwh_team_logistics
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  cpu: "1"
+  memory: 2Gi
+
+# Один исполнитель записи для штатных и ручных полных загрузок.
+dag:
+  id: feature-platform.layers.silver.date.demand_calendar
+  group_tag: demand-forecast
+  team: operations
+  owner: team:operations
+  schedule: 0 3 * * *
+  start_date: "2026-09-08T00:00:00Z"
+  catchup: false
+
+alerts:
+  team: operations-analytics
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_operations
+
+# Источник: 2191 дата, 2021-01-01..2026-12-31 (read-only аудит 2026-09-08).
+# Объём не фиксируем на этом числе: календарь будет дополняться.
+# Штатные пороги сохранены: непусто, изменение объёма ±20%, freshness 2 дня.
+# Scope полного справочника, не одна business-date; ошибки блокируют с первого запуска.
+dq:
+  scope: table
+  trino_conn_id: trino_search
+  warmup_days: 0
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_calendar")["ingested_at"] }}'
+  tests:
+    - name: row_count_growth
+      enabled: false
+    - name: freshness
+      enabled: false
+    - name: not_null
+      columns: [ingested_at, source_manifest_id]
+    - name: distinct_count_between
+      columns: [source_manifest_id]
+      min: 1
+      max: 1
+    - name: accepted_values
+      column: calendar_id
+      values: [uz_official]
+    - name: string_not_blank
+      columns: [calendar_id]
+    - name: accepted_range
+      column: day_of_week_iso
+      min: 1
+      max: 7
+    - name: accepted_range
+      column: month
+      min: 1
+      max: 12
+
+feature_stats:
+  enabled: false
+  trino_conn_id: trino_search
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_calendar")["ingested_at"] }}'
+  exclude_columns: []

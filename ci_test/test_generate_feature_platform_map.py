@@ -34,7 +34,9 @@ def test_generated_feature_platform_map_is_current():
     assert "section Backfill" in actual
     assert "section Other" in actual
     assert "UTC 03:00" in actual
-    assert 'd0["`search_query_atc_features\nUTC 03:00 · P3 · medium`"]' in actual
+    # Идентификатор ноды не проверяем: он зависит от порядка обхода и сдвигается
+    # от любого нового DAG'а. Значение имеет подпись — расписание, severity, размер.
+    assert '["`search_query_atc_features\nUTC 03:00 · P3 · medium`"]' in actual
     assert "<br" not in actual
 
 
@@ -118,11 +120,39 @@ def test_module_level_constants_resolve_sensor_dependencies():
         "feature-platform.layers.gold.account_id.buyout_account_history_features"
     ]
     assert generator.Dependency(
-        "dbt.source.trino.ml_feature_platform_silver."
-        "feature_platform_account_lifetime_facts.dq",
-        "legacy-dq",
+        "feature-platform.layers.silver.account_id.account_lifetime_facts",
+        "dq",
         1560,
     ) in history.dependencies
+
+    online = records[
+        "feature-platform.layers.gold.account_id.buyout_online_account_features"
+    ]
+    assert generator.Dependency(
+        "feature-platform.layers.gold.account_id.buyout_account_history_features",
+        "dq",
+        120,
+    ) in online.dependencies
+
+
+def test_path_config_references_resolve_sensor_dependencies():
+    """DAG может читать upstream config через Path(REPO_ROOT) / CONFIG inputs."""
+    generator = load_generator_module()
+    records = {record.dag_id: record for record in generator.discover_dags(ROOT)}
+
+    observed = records[
+        "feature-platform.layers.gold.sku_id.demand_observed_daily"
+    ]
+    assert generator.Dependency(
+        "feature-platform.layers.silver.sku_id.demand_sales_daily",
+        "dq",
+        0,
+    ) in observed.dependencies
+    assert generator.Dependency(
+        "feature-platform.layers.silver.sku_id.demand_stock_daily",
+        "dq",
+        0,
+    ) in observed.dependencies
 
 
 def test_fstring_dag_id_resolves():

@@ -1,0 +1,81 @@
+table:
+  key: demand_event_calendar
+  catalog: iceberg
+  schema: silver
+  name: feature_platform_demand_event_calendar
+  primary_key: date,event_code
+  meta:
+    team: team:operations
+
+source:
+  engine: clickhouse
+  schema: silver
+  name: b2b_marketing_sale
+  clickhouse_conn_id: clickhouse_dwh_team_logistics
+
+inputs:
+  calendar_config: layers/silver/date/demand_calendar/v1/config.yaml
+
+runtime:
+  image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
+  cpu: "1"
+  memory: 2Gi
+
+# Один исполнитель сериализует штатную и ручную запись с DQ.
+dag:
+  id: feature-platform.layers.silver.event_code.demand_event_calendar
+  group_tag: demand-forecast
+  team: operations
+  owner: team:operations
+  schedule: 10 3 * * *
+  start_date: "2026-09-08T00:00:00Z"
+  catchup: false
+
+alerts:
+  team: operations-analytics
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_operations
+
+# Временные штатные пороги: min_rows=0 (непусто), growth=20%, freshness=2 дня.
+# Уточнить объёмы до backfill; DQ всего справочника на точном snapshot без warmup.
+dq:
+  scope: table
+  trino_conn_id: trino_search
+  warmup_days: 0
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_events")["ingested_at"] }}'
+  tests:
+    - name: row_count_growth
+      enabled: false
+    - name: freshness
+      enabled: false
+    - name: not_null
+      columns: [source_kind, source_event_id, source_manifest_id, ingested_at]
+    - name: distinct_count_between
+      columns: [source_manifest_id]
+      min: 1
+      max: 1
+    - name: accepted_values
+      column: source_kind
+      values: [calendar, marketing_sale]
+    - name: string_not_blank
+      columns: [event_code, source_event_id, source_manifest_id]
+    - name: expression_is_true
+      expression: "source_kind <> 'calendar' OR (calendar_id = 'uz_official' AND source_event_id = CAST(date AS VARCHAR) AND event_code = 'calendar:uz_official:' || source_event_id)"
+    - name: expression_is_true
+      expression: "source_kind <> 'calendar' OR (source_status IS NULL AND source_type IS NULL AND source_started_at IS NULL AND source_finished_at IS NULL AND source_announced_at IS NULL AND source_created_at IS NULL AND source_updated_at IS NULL)"
+    - name: expression_is_true
+      expression: "source_kind <> 'marketing_sale' OR (calendar_id IS NULL AND regexp_like(source_event_id, '^[1-9][0-9]*$') AND event_code = 'marketing_sale:' || source_event_id)"
+    - name: expression_is_true
+      expression: "source_kind <> 'marketing_sale' OR (source_started_at IS NOT NULL AND source_finished_at > source_started_at AND with_timezone(CAST(source_started_at AS TIMESTAMP(6)), 'UTC') < with_timezone(CAST(date_add('day', 1, date) AS TIMESTAMP(6)), 'Asia/Tashkent') AND with_timezone(CAST(source_finished_at AS TIMESTAMP(6)), 'UTC') > with_timezone(CAST(date AS TIMESTAMP(6)), 'Asia/Tashkent'))"
+
+feature_stats:
+  enabled: false
+  trino_conn_id: trino_search
+  partition_column: ingested_at
+  partition_granularity: timestamp
+  snapshot_interval_hours: 24
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_events")["ingested_at"] }}'
+  exclude_columns: []
