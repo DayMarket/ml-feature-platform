@@ -17,9 +17,9 @@ brand) + сглаженные выкупаемости. Сервис невык�
 Магазин стягивается к общей выкупаемости маркетплейса (shop_buyout_rate_shrunk_90d),
 сама общая выкупаемость отдаётся колонкой marketplace_buyout_rate_90d.
 
-В таблице (MAD-13695) все активные sku в наличии (status = 'ACTIVE', остаток
-quantity_active + quantity_additional + quantity_fbs > 0) плюс все sku с
-доставками за 90 дней. У sku без доставок сырые доли NULL, число доставок 0,
+В таблице (MAD-13695) все активные sku (status = 'ACTIVE' в silver.sku) плюс все sku
+с доставками за 90 дней: потребитель грузит партицию целиком, и подстановки для
+товаров без истории должны лежать здесь, а не собираться в сервисе. У sku без доставок сырые доли NULL, число доставок 0,
 сглаженные выкупаемости равны выкупаемости категории, а у категории без
 доставок — маркетплейса: те же подстановки, что видела модель при обучении.
 """
@@ -73,12 +73,11 @@ cat_smooth AS (
     WHERE s.key_type = 'category'
 ),
 
--- в таблицу входят активные sku в наличии плюс все sku с доставками за 90 дней
+-- в таблицу входят все активные sku плюс все sku с доставками за 90 дней
 sku_map AS (
     SELECT id AS sku_id, product_id, category_id, shop_id, brand_name_id
     FROM {SKU_TABLE}
-    WHERE (status = 'ACTIVE'
-           AND COALESCE(quantity_active, 0) + COALESCE(quantity_additional, 0) + COALESCE(quantity_fbs, 0) > 0)
+    WHERE status = 'ACTIVE'
        OR id IN (SELECT key_id FROM sig WHERE key_type = 'sku')
 ),
 
