@@ -71,7 +71,7 @@ dq:
       values: [conflict]
     - name: not_accepted_values
       column: golden_mapping_status
-      values: [unavailable, conflict]
+      values: [unavailable]
     - name: not_accepted_values
       column: seller_mapping_status
       values: [unavailable, conflict]
