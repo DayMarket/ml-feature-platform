@@ -671,9 +671,10 @@ class BuyoutProjectionQueryTest(unittest.TestCase):
                        "marketplace_no_show_rate_90d"):
             with self.subTest(column=column):
                 self.assertIn(column, sql)
-        # MAD-13695: население — активные sku в наличии плюс sku с доставками; подстановки
-        # категории и маркетплейса считаются здесь, а не в сервисе
-        self.assertIn("status = 'ACTIVE'", sql)
+        # MAD-13695: в таблице все активные sku плюс sku с доставками, без проверки остатка;
+        # подстановки категории и маркетплейса считаются здесь, а не в сервисе
+        self.assertIn("WHERE status = 'ACTIVE'", sql)
+        self.assertNotIn("quantity_active", sql)
         self.assertIn("OR id IN (SELECT key_id FROM sig WHERE key_type = 'sku')", sql)
         self.assertIn("LEFT JOIN sig s       ON s.key_type = 'sku'", sql)
         self.assertIn("COALESCE(c.cat_buyout_90d,  g.g_buyout)", sql)
