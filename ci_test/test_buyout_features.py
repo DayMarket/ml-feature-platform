@@ -673,8 +673,17 @@ class BuyoutProjectionQueryTest(unittest.TestCase):
                 self.assertIn(column, sql)
         # MAD-13695: в таблице все активные sku плюс sku с доставками, без проверки остатка;
         # подстановки категории и маркетплейса считаются здесь, а не в сервисе
-        self.assertIn("WHERE status = 'ACTIVE'", sql)
+        self.assertIn("WHERE (status = 'ACTIVE'", sql)
+        self.assertIn("OR id IN (SELECT key_id FROM sig WHERE key_type = 'sku'))", sql)
         self.assertNotIn("quantity_active", sql)
+        # партиция читается срезами по остатку sku_id; без аргументов — один срез
+        self.assertIn("AND id % 1 = 0", sql)
+        sharded = query.build_query(date(2026, 8, 1), signal_table, 8, 3)
+        self.assertIn("AND id % 8 = 3", sharded)
+        with self.assertRaises(ValueError):
+            query.build_query(date(2026, 8, 1), signal_table, 0, 0)
+        with self.assertRaises(ValueError):
+            query.build_query(date(2026, 8, 1), signal_table, 8, 8)
         self.assertIn("OR id IN (SELECT key_id FROM sig WHERE key_type = 'sku')", sql)
         self.assertIn("LEFT JOIN sig s       ON s.key_type = 'sku'", sql)
         self.assertIn("COALESCE(c.cat_buyout_90d,  g.g_buyout)", sql)

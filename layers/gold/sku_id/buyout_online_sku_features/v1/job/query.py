@@ -19,7 +19,9 @@ brand) + сглаженные выкупаемости. Сервис невык�
 
 В таблице (MAD-13695) все активные sku (status = 'ACTIVE' в silver.sku) плюс все sku
 с доставками за 90 дней: потребитель грузит партицию целиком, и подстановки для
-товаров без истории должны лежать здесь, а не собираться в сервисе. У sku без доставок сырые доли NULL, число доставок 0,
+товаров без истории должны лежать здесь, а не собираться в сервисе.
+Партиция читается срезами по остатку sku_id % shards (config source.shards):
+одна выгрузка на ≈9.5 млн строк не помещается в память задачи. У sku без доставок сырые доли NULL, число доставок 0,
 сглаженные выкупаемости равны выкупаемости категории, а у категории без
 доставок — маркетплейса: те же подстановки, что видела модель при обучении.
 """
@@ -38,9 +40,13 @@ def _sql_string(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def build_query(partition_date: date, signal_table: str) -> str:
+def build_query(partition_date: date, signal_table: str, shards: int = 1, shard: int = 0) -> str:
     """SQL таблицы на дату партиции; signal_table — Trino-имя gold-источника."""
     partition_date_sql = f"DATE {_sql_string(partition_date.isoformat())}"
+    if shards < 1:
+        raise ValueError(f"shards must be positive, got {shards}")
+    if not 0 <= shard < shards:
+        raise ValueError(f"shard {shard} is out of range for shards={shards}")
     k = SHRINKAGE_K
 
     return f"""
@@ -73,12 +79,14 @@ cat_smooth AS (
     WHERE s.key_type = 'category'
 ),
 
--- в таблицу входят все активные sku плюс все sku с доставками за 90 дней
+-- в таблицу входят все активные sku плюс все sku с доставками за 90 дней;
+-- партиция читается срезами по остатку sku_id, чтобы одна выгрузка не занимала всю память задачи
 sku_map AS (
     SELECT id AS sku_id, product_id, category_id, shop_id, brand_name_id
     FROM {SKU_TABLE}
-    WHERE status = 'ACTIVE'
-       OR id IN (SELECT key_id FROM sig WHERE key_type = 'sku')
+    WHERE (status = 'ACTIVE'
+           OR id IN (SELECT key_id FROM sig WHERE key_type = 'sku'))
+      AND id % {shards} = {shard}
 ),
 
 -- родитель для sku и карточки: выкупаемость категории, а без доставок у категории — маркетплейса

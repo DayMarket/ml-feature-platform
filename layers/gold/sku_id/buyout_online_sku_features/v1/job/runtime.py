@@ -191,7 +191,28 @@ def _to_arrow_for_table(table, frame):
     )
 
 
-def write_daily_snapshot(table, frame, partition_date: date) -> None:
+def shard_count(config: Mapping[str, Any]) -> int:
+    source = config.get("source")
+    if not isinstance(source, Mapping):
+        raise ValueError("config.yaml must contain a source mapping")
+
+    raw = source.get("shards")
+    try:
+        shards = int(str(raw).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"config source.shards must be an integer, got {raw!r}") from exc
+    if shards <= 0:
+        raise ValueError(f"config source.shards must be positive, got {shards}")
+    return shards
+
+
+def write_partition_shard(table, frame, partition_date: date, replace: bool) -> None:
+    """Записать один срез партиции.
+
+    Первый срез перезаписывает партицию целиком, остальные дописываются. Повтор задачи
+    начинается снова с первого среза, поэтому запись идемпотентна; падение в середине
+    оставляет партицию неполной до следующего успешного запуска.
+    """
     from pyiceberg.expressions import EqualTo
 
     import pandas as pd
@@ -206,13 +227,14 @@ def write_daily_snapshot(table, frame, partition_date: date) -> None:
         raise ValueError(f"Outgoing rows contain a date other than {partition_date}")
 
     arrow_table = _to_arrow_for_table(table, frame)
-    table.overwrite(
-        arrow_table,
-        overwrite_filter=EqualTo("date", partition_date),
-    )
+    if replace:
+        table.overwrite(arrow_table, overwrite_filter=EqualTo("date", partition_date))
+    else:
+        table.append(arrow_table)
     logger.info(
-        "Wrote %d rows to %s for date=%s",
+        "Wrote %d rows to %s for date=%s (replace=%s)",
         arrow_table.num_rows,
         table.name(),
         partition_date,
+        replace,
     )
