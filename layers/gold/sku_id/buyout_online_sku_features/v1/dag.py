@@ -154,10 +154,23 @@ def buyout_online_sku_features_dag() -> None:
         # Партиция совпадает с партицией сигнала: analyze_date снапшота
         # history_order_items, то есть дата конца интервала минус сутки.
         partition_date = runtime.previous_utc_date(interval_end_value)
-        sql = query.build_query(partition_date, runtime.trino_table_name(signal_ref))
-        frame = runtime.query_trino(config["source"]["trino_conn_id"], sql)
-        runtime.require_non_empty(frame, partition_date)
-        runtime.write_daily_snapshot(table, frame, partition_date)
+        signal_table = runtime.trino_table_name(signal_ref)
+        shards = runtime.shard_count(config)
+
+        # Партиция читается срезами по остатку sku_id: одна выгрузка на ≈9.5 млн строк
+        # не помещается в память задачи. Первый срез перезаписывает партицию, остальные
+        # дописываются; повтор начинается с первого среза, поэтому запись идемпотентна.
+        for shard in range(shards):
+            sql = query.build_query(partition_date, signal_table, shards, shard)
+            frame = runtime.query_trino(config["source"]["trino_conn_id"], sql)
+            if shard == 0:
+                runtime.require_non_empty(frame, partition_date)
+            runtime.write_partition_shard(
+                table,
+                frame,
+                partition_date,
+                replace=shard == 0,
+            )
 
     gold_task = materialize(
         '{{ data_interval_end.in_timezone("UTC").strftime("%Y-%m-%d %H:%M:%S") }}'
