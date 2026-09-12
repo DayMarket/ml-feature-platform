@@ -24,7 +24,7 @@
       "name": "buyout_checkout_main",
       "feature_groups": [
         {
-          "name": "fs_buyout_account_features_v1",
+          "name": "account_features",
           "features": [
             "avg_items_per_order_win",
             "avg_ticket_win",
@@ -122,7 +122,7 @@
         "dependency_execution_delta_minutes": 60,
         "dependency_task_id": "dq"
       },
-      "name": "fs_buyout_account_features_v1",
+      "name": "account_features",
       "features": [
         "avg_items_per_order_win",
         "avg_ticket_win",
