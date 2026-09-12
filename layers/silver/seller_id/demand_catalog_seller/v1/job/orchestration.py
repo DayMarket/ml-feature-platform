@@ -23,6 +23,8 @@ logger = logging.getLogger("airflow.task")
 def connection_ids(config):
     dq = load_dq_settings(config)
     stats = load_feature_stats_settings(config)
+    if dq.warmup_days != 0:
+        raise ValueError("Полная замена seller-каталога требует dq.warmup_days: 0")
     if (dq.scope != "partition" or dq.partition_column != "ingested_at"
             or dq.partition_granularity != "timestamp" or not stats.enabled):
         raise ValueError("Catalog seller требует DQ и stats точного времени захвата")

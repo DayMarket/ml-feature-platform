@@ -19,7 +19,9 @@ def remaining_seconds(config, context, *, now=None):
     conf = run.conf or {}
     if not isinstance(conf, dict):
         raise ValueError("Неверный conf запуска")
-    default_mode = "manual" if str(getattr(run, "run_type", "scheduled")) == "manual" else "regular"
+    raw_type = getattr(run, "run_type", "scheduled")
+    run_type = getattr(raw_type, "value", raw_type)
+    default_mode = "manual" if run_type == "manual" else "regular"
     mode = conf.get("mode", default_mode)
     limits = configured_limits(config)
     if mode not in limits:

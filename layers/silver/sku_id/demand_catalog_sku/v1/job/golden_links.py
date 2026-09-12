@@ -6,8 +6,8 @@ from .golden_graph import _uuid
 
 
 def prepare_active_links(rows, *, expected_rows, expected_uzum_rows):
-    """Проверить весь raw capture до отбора Uzum; orphan не может исчезнуть при фильтрации."""
-    output, count = [], 0
+    """Проверить весь raw capture; orphan учесть, но не приписывать marketplace."""
+    output, count, orphan_meta_link_rows = [], 0, 0
     stream = iter(rows)
     try:
         if any(type(value) is not int or not 0 < value <= 2**63 - 1 for value in (expected_rows, expected_uzum_rows)):
@@ -24,7 +24,8 @@ def prepare_active_links(rows, *, expected_rows, expected_uzum_rows):
                     or row["meta_present"] not in (0, 1)):
                 raise ValueError("Неверные provenance/meta_present активной связи")
             if not row["meta_present"]:
-                raise ValueError("Активная MDM связь без meta: source readiness не подтверждена")
+                orphan_meta_link_rows += 1
+                continue
             if (not isinstance(row["meta_source"], str) or not row["meta_source"].strip()
                     or not isinstance(row["source_sku_id"], str)):
                 raise ValueError("Нет marketplace/SKU identity активной связи")
@@ -42,7 +43,11 @@ def prepare_active_links(rows, *, expected_rows, expected_uzum_rows):
         close = getattr(stream, "close", None)
         if callable(close):
             close()
-    return output
+    return output, {
+        "source_active_link_rows": count,
+        "orphan_meta_link_rows": orphan_meta_link_rows,
+        "recognized_uzum_link_rows": len(output),
+    }
 
 
 def resolve_sku_links(rows, terminals, *, expected_rows):
@@ -82,10 +87,10 @@ def resolve_sku_links(rows, terminals, *, expected_rows):
             close()
     result = {}
     for sku, choices in candidates.items():
-        status = "conflict" if len(choices) > 1 else "unavailable" if sku in missing else "matched"
+        status = "unavailable" if sku in missing else "conflict" if len(choices) > 1 else "matched"
         golden = next(iter(choices)) if status == "matched" else None
         result[sku] = {"golden_sku_id": golden, "golden_mapping_status": status,
-                       "unit_id": f"g:{golden}" if golden is not None else None}
+                       "unit_id": f"g:{golden}" if golden is not None else f"s:{sku}" if status == "conflict" else None}
     audit = {"active_uzum_link_rows": count, "duplicate_relation_rows": count - len(seen_pairs),
              "linked_sku": len(result), "sku_with_missing_golden": len(missing),
              **{f"{status}_sku": sum(row["golden_mapping_status"] == status for row in result.values())
