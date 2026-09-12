@@ -65,9 +65,11 @@ def calendar_dag():
         conf = context["dag_run"].conf or {}
         if set(conf) - {"mode", "openlineage"}:
             raise ValueError("Календарь загружается целиком; неизвестные параметры запуска")
+        raw_type = context["dag_run"].run_type
+        run_type = getattr(raw_type, "value", raw_type)
         mode = conf.get("mode", "regular")
-        if ((str(context["dag_run"].run_type) == "scheduled" and mode != "regular")
-                or (str(context["dag_run"].run_type) == "manual" and mode != "manual")):
+        if ((run_type, mode) != ("scheduled", "regular")
+                and (run_type, mode) != ("manual", "manual")):
             raise ValueError("Scheduled требует regular, ручной запуск — mode=manual")
         return execute_load(CONFIG, REPO_ROOT, context["run_id"], mode)
 

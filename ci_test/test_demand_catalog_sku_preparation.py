@@ -154,7 +154,7 @@ def test_category_conflict_blocks_used_paths_but_not_unreferenced_categories():
     assert audit["category"]["conflict_category_rows"] == 2
 
 
-@pytest.mark.parametrize("kind", ["cycle", "missing_target", "missing_golden", "orphan", "ambiguous"])
+@pytest.mark.parametrize("kind", ["cycle", "missing_target", "missing_golden"])
 def test_mdm_errors_never_produce_fallback(kind):
     args = arguments()
     if kind == "cycle":
@@ -163,14 +163,32 @@ def test_mdm_errors_never_produce_fallback(kind):
         args["goldens"][-1] = golden(3, 99)
     elif kind == "missing_golden":
         args["active_links"] = [link(target=99)]
-    elif kind == "orphan":
-        args["active_links"][0].update(meta_present=0, meta_source=None, source_sku_id=None)
-    else:
-        args["goldens"].append(golden(4))
-        args["active_links"].append(link(target=4))
-        args["counts"].update(golden=4, active_links=2, uzum_links=2)
     with pytest.raises(ValueError):
         run(**args)
+
+
+def test_ambiguous_golden_keeps_standalone_sku_and_conflict_status():
+    args = arguments()
+    args["goldens"].append(golden(4))
+    args["active_links"].append(link(target=4))
+    args["counts"].update(golden=4, active_links=2, uzum_links=2)
+    output, audit = run(**args)
+    first = output.to_pylist()[0]
+    assert first["golden_sku_id"] is None
+    assert first["golden_mapping_status"] == "conflict"
+    assert first["unit_id"] == "s:1"
+    assert audit["golden_links"]["conflict_sku"] == 1
+
+
+def test_orphan_link_is_skipped_and_reported_without_fallback():
+    args = arguments()
+    orphan = link(sku=999)
+    orphan.update(meta_present=0, meta_source=None, source_sku_id=None)
+    args["active_links"].append(orphan)
+    args["counts"]["active_links"] = 2
+    output, audit = run(**args)
+    assert output["golden_mapping_status"].to_pylist() == ["matched", "unmatched", "unmatched"]
+    assert audit["golden_links"]["orphan_meta_link_rows"] == 1
 
 
 @pytest.mark.parametrize("values", [[42, 99, 42], [42, None, 42], [42, 0, 42]])

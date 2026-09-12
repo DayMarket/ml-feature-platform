@@ -56,6 +56,9 @@ source/DQ/stats; точный XCom task=dq, include_prior_dates=False. Пере�
 
 ## Оркестрация и DQ
 
+Полная замена не накапливает историю захватов в текущем содержимом таблицы.
+Поэтому `dq.warmup_days` должен быть `0`; ненулевое значение отклоняется до открытия подключений.
+
 Один owner DAG `feature-platform.layers.silver.level_node_id.demand_catalog_tree` с `max_active_runs=1` заменяет полный текущий справочник дерева. Scheduled run идёт ежедневно в `04:00 UTC` и ждёт точный DQ SKU catalog. Ручной полный refresh запускается в этом же DAG с `mode=manual` и точной `reference` на SKU catalog.
 
 Отдельного history/full-history DAG нет. После атомарной записи выполняются DQ и feature statistics по точному writer receipt.

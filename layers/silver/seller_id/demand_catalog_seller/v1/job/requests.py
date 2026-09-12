@@ -33,6 +33,7 @@ def checked_reference(source, reference):
 
 
 def capture_request(config, source, conf, *, run_id, run_type, logical_date, interval_start, interval_end):
+    run_type = getattr(run_type, "value", run_type)
     if conf is None:
         conf = {}
     allowed = {"mode", "openlineage"} | ({"reference"} if source is not None else set())
@@ -41,7 +42,7 @@ def capture_request(config, source, conf, *, run_id, run_type, logical_date, int
             or not isinstance(run_id, str) or not run_id.strip()):
         raise ValueError("Каталог принимает только полный срез и известные параметры")
     reference = None
-    if str(run_type) == "scheduled":
+    if run_type == "scheduled":
         start, end = instant(interval_start), instant(interval_end)
         if (conf.get("mode", "regular") != "regular" or "reference" in conf
                 or config["dag"]["schedule"] != "0 4 * * *"
@@ -54,7 +55,7 @@ def capture_request(config, source, conf, *, run_id, run_type, logical_date, int
                     or instant(source["dag"]["start_date"]) != instant(config["dag"]["start_date"])):
                 raise ValueError("Изменился source timetable каталога")
             reference = {"dag_id": source["dag"]["id"], "run_id": run_id, "logical_date": start.isoformat()}
-    elif str(run_type) == "manual":
+    elif run_type == "manual":
         if conf.get("mode") != "manual":
             raise ValueError("Ручной полный срез требует mode=manual")
         if source is not None:

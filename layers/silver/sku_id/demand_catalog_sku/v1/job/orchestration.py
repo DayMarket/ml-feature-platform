@@ -12,6 +12,8 @@ from .runtime import execute_load, validate_arguments
 
 def connection_ids(config):
     dq, stats = load_dq_settings(config), load_feature_stats_settings(config)
+    if dq.warmup_days != 0:
+        raise ValueError("Полная замена SKU-каталога требует dq.warmup_days: 0")
     names = (config["source"].get("conn_id"), config["dq"].get("trino_conn_id"),
              config.get("feature_stats", {}).get("trino_conn_id"))
     if (any(not isinstance(name, str) or not name.strip() or name != name.strip() for name in names)

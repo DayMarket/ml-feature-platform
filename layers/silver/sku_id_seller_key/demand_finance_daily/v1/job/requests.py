@@ -26,6 +26,7 @@ def run_instant(value):
 def owner_arguments(config, conf, *, run_id, run_type, interval_start, interval_end, run_after,
                     logical_date=None):
     """Scheduled обновляет 31 день; manual принимает точный полуоткрытый диапазон."""
+    run_type = getattr(run_type, "value", run_type)
     if conf is None:
         conf = {}
     if not isinstance(conf, dict) or set(conf) - {"mode", "start", "end", "openlineage"}:
@@ -33,16 +34,16 @@ def owner_arguments(config, conf, *, run_id, run_type, interval_start, interval_
     if not isinstance(run_id, str) or not run_id.strip():
         raise ValueError("Нужен непустой owner run_id")
     now = run_instant(run_after)
-    mode = conf.get("mode", "manual" if str(run_type) == "manual" else "regular")
+    mode = conf.get("mode", "manual" if run_type == "manual" else "regular")
     floor = iso_date(config.get("runtime", {}).get("history_start"), "runtime.history_start")
-    if str(run_type) == "scheduled":
+    if run_type == "scheduled":
         if mode != "regular" or "start" in conf or "end" in conf:
             raise ValueError("Scheduled run не принимает ручные границы")
         start, end = interval_utc(interval_start), interval_utc(interval_end)
         if end - start != timedelta(days=1):
             raise ValueError("Scheduled run требует суточный data interval")
         first, stop = floor, end.date()
-    elif str(run_type) == "manual":
+    elif run_type == "manual":
         if mode != "manual":
             raise ValueError("Ручной запуск требует mode=manual")
         if ("start" in conf) != ("end" in conf):

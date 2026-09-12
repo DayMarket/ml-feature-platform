@@ -67,13 +67,15 @@ def calendar_dag():
         conf = context["dag_run"].conf or {}
         if set(conf) - {"mode", "references", "openlineage"}:
             raise ValueError("Gold calendar не принимает фильтры")
+        raw_type = context["dag_run"].run_type
+        run_type = getattr(raw_type, "value", raw_type)
         mode = conf.get("mode", "regular")
         if mode == "regular":
-            if str(context["dag_run"].run_type) != "scheduled" or "references" in conf:
+            if run_type != "scheduled" or "references" in conf:
                 raise ValueError("Regular разрешён только плановому запуску")
             refs = scheduled_references(CONFIG, SOURCES, context["data_interval_start"], context["data_interval_end"])
         elif mode == "manual":
-            if str(context["dag_run"].run_type) != "manual":
+            if run_type != "manual":
                 raise ValueError("Mode manual разрешён только ручному запуску")
             refs = validate_references(conf.get("references"), SOURCES)
         else:
