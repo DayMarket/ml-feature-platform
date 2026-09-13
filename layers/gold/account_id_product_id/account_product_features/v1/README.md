@@ -4,8 +4,9 @@ DAG id: `feature-platform.layers.gold.account_id_product_id.account_product_feat
 
 Airflow group tag: `recsys-features`.
 
-Ошибки задач отправляют alert уровня `P3` команде `recsys` через
-`oncall_webhook_recsys`.
+Alert уровня `P3` для команды `recsys` через `oncall_webhook_recsys` полностью
+настроен, но callback основного DAG, DQ и feature_stats временно отключены на
+период отладки.
 
 Целевая таблица: `iceberg.gold.feature_platform_account_product_features`.
 
@@ -14,6 +15,8 @@ Airflow group tag: `recsys-features`.
 Путь сущности: `layers/gold/account_id_product_id/account_product_features/v1`.
 
 Grain и primary key: `calculated_at,account_id,product_id`.
+
+Идентификаторы и счётчики в физическом контракте имеют тип `INT`.
 
 `calculated_at` — граница Gold snapshot: `00:00` или `12:00 Asia/Tashkent`.
 Таблица содержит account-product пары, у которых есть хотя бы одно action-событие
@@ -66,7 +69,12 @@ pid_neg_n_hours_since_last_click =
 
 Учитываются позиции, созданные в полуинтервале
 `[calculated_at - 90 days, calculated_at)` со статусом
-`COMPLETED`, `PAID`, `DELIVERED` или `IN_DELIVERY`.
+`COMPLETED`, `PAID`, `DELIVERED` или `IN_DELIVERY`. B2B-позиции исключаются
+условием `order_items.b2b_order = FALSE`.
+
+Корректность идентификаторов `order_items` и `sku` считается гарантией Silver;
+Gold не повторяет range-фильтры входных ID. Положительность ключей проверяется
+после записи целевой партиции.
 
 ```text
 pid_n_orders_Nd = COUNT(DISTINCT order_id)
@@ -119,9 +127,11 @@ Asia/Tashkent`. `start_date = 2026-08-08T07:00:00Z`, `catchup=true`.
 ## DQ и потребители
 
 DQ проверяет primary key, положительные ID, неотрицательные counts/GMV, диапазон
-ratios `[0,1]`, монотонность `orders_28d <= orders_90d`, неположительную recency
-и домен legacy-флага. Freshness и проверки объёма при первой раскатке имеют
-severity `warn`.
+ratios `[0,1]`, монотонность `orders_28d <= orders_90d`, неположительную recency,
+максимум `pid_neg_n_hours_since_last_click_rel = 0` для каждого account с
+кликами и домен legacy-флага. Freshness и проверки объёма при первой раскатке
+имеют severity `warn`. Alert callbacks DQ и feature_stats остаются отключёнными
+до окончания отладки.
 
 Потребители: Main, push, train и account-candidate joins. Ranking upload в этом
 контракте пока не настраивается.

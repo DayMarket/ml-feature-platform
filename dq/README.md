@@ -114,10 +114,12 @@ dq:
 | `not_accepted_values` | domain_values | `column`, `values` | `ignore_nulls` |
 | `accepted_range` | domain_values | `column`, `min`/`max` | `min_inclusive`, `max_inclusive`, `ignore_nulls` |
 | `non_negative` | domain_values | `columns` | `ignore_nulls` |
+| `finite` | domain_values | `columns` | `ignore_nulls` |
 | `string_not_blank` | domain_values | `columns` | — |
 | `distinct_count_between` | consistency | `columns`, `min`/`max` | — |
 | `columns_sum_equals` | consistency | `parts`, `total` | `tolerance` |
 | `row_count_matches_reference` | consistency | `reference_table`, `reference_date_column` | `reference_where`, `tolerance_ratio` |
+| `group_max_equals` | consistency | `column`, `group_by`, `value` | `tolerance`, `ignore_all_null_groups` |
 | `expression_is_true` | row_expr | `expression` | `where` |
 | `relationships` | referential_integrity | `column`, `to_table`, `to_column` | `where` |
 

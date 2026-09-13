@@ -74,7 +74,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             migration_columns = set(
                 re.findall(
                     r"^\s{4}([a-z][a-z0-9_]*)\s+"
-                    r"(?:INT|BIGINT|DOUBLE|TIMESTAMP)\b",
+                    r"(?:INT|DOUBLE|TIMESTAMP)\b",
                     migration,
                     flags=re.MULTILINE,
                 )
@@ -87,6 +87,8 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             }
             with self.subTest(level=level):
                 self.assertEqual(migration_columns, expected)
+                self.assertNotIn("BIGINT", migration)
+                self.assertNotIn("BIGINT", self.contracts[level][4])
 
     def test_l1_l2_sum_slices_and_l3_l5_deduplicate_full_window(self):
         for level, (_, _, _, _, sql) in self.contracts.items():
@@ -141,8 +143,31 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 self.assertIn("COUNT(DISTINCT CASE", sql)
                 self.assertIn("order_item.payment_price AS DOUBLE", sql)
                 self.assertIn("order_item.item_quantity AS DOUBLE", sql)
+                self.assertIn("order_item.b2b_order = FALSE", sql)
                 self.assertNotIn("BETWEEN 1", sql)
                 self.assertNotIn("order_item.account_id >", sql)
+
+    def test_cross_slice_session_product_distinct_semantics(self):
+        rows = (
+            ("2026-09-09T12:00:00", 7, "session-1", 101, "PRODUCT_VIEW"),
+            ("2026-09-10T00:00:00", 7, "session-1", 101, "PRODUCT_VIEW"),
+        )
+        slice_preserving_count = len(rows)
+        full_window_count = len({row[1:] for row in rows})
+        self.assertEqual(slice_preserving_count, 2)
+        self.assertEqual(full_window_count, 1)
+
+        for level, (_, _, _, _, sql) in self.contracts.items():
+            with self.subTest(level=level):
+                if level <= 2:
+                    self.assertIn("FROM raw_actions\n)", sql)
+                else:
+                    self.assertIn(
+                        "GROUP BY\n        account_id,\n"
+                        "        session_id,\n        product_id,\n"
+                        "        event_type",
+                        sql,
+                    )
 
     def test_l1_l2_publish_all_three_conversion_semantics(self):
         for level in (1, 2):
@@ -239,11 +264,40 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     dag_text,
                 )
                 self.assertIn("resource_profile: small", config_text)
+                self.assertIn("severity: P3", config_text)
+                self.assertIn(
+                    "oncall_webhook_conn_id: oncall_webhook_recsys",
+                    config_text,
+                )
+                self.assertIn("is_paused_upon_creation=True", dag_text)
+                self.assertIn("# default_args[\"on_failure_callback\"]", dag_text)
+                self.assertEqual(dag_text.count("failure_callback_enabled=False"), 2)
                 if level <= 2:
                     self.assertIn(
                         f"account_l{level}_imp_counts_12h",
                         dag_text,
                     )
+
+    def test_l1_l2_dq_rejects_non_finite_conversions(self):
+        for level in (1, 2):
+            entity = self.contracts[level][0]
+            config_text = (entity / "config.yaml").read_text(encoding="utf-8")
+            with self.subTest(level=level):
+                self.assertIn("- name: finite", config_text)
+                self.assertIn(f"- l{level}_account_conv_imp2click_3d", config_text)
+                self.assertIn(f"- l{level}_conv_imp2order_vs_account_28d", config_text)
+
+    def test_recency_contracts_check_relative_max_per_account(self):
+        for level in (1, 3, 5):
+            entity = self.contracts[level][0]
+            config_text = (entity / "config.yaml").read_text(encoding="utf-8")
+            with self.subTest(level=level):
+                self.assertIn("- name: group_max_equals", config_text)
+                self.assertIn(
+                    f"column: l{level}_neg_n_days_since_last_click_rel",
+                    config_text,
+                )
+                self.assertIn("group_by: [account_id]", config_text)
 
 
 if __name__ == "__main__":
