@@ -139,6 +139,56 @@ dq:
         - l2_conv_imp2order_vs_account_7d
         - l2_conv_imp2order_vs_account_14d
         - l2_conv_imp2order_vs_account_28d
+    - name: finite
+      columns:
+        - l2_account_conv_imp2click_3d
+        - l2_account_conv_imp2click_7d
+        - l2_account_conv_imp2click_14d
+        - l2_account_conv_imp2click_28d
+        - l2_account_conv_imp2atc_3d
+        - l2_account_conv_imp2atc_7d
+        - l2_account_conv_imp2atc_14d
+        - l2_account_conv_imp2atc_28d
+        - l2_account_conv_imp2atf_3d
+        - l2_account_conv_imp2atf_7d
+        - l2_account_conv_imp2atf_14d
+        - l2_account_conv_imp2atf_28d
+        - l2_account_conv_imp2order_3d
+        - l2_account_conv_imp2order_7d
+        - l2_account_conv_imp2order_14d
+        - l2_account_conv_imp2order_28d
+        - l2_conv_imp2click_3d
+        - l2_conv_imp2click_7d
+        - l2_conv_imp2click_14d
+        - l2_conv_imp2click_28d
+        - l2_conv_imp2atc_3d
+        - l2_conv_imp2atc_7d
+        - l2_conv_imp2atc_14d
+        - l2_conv_imp2atc_28d
+        - l2_conv_imp2atf_3d
+        - l2_conv_imp2atf_7d
+        - l2_conv_imp2atf_14d
+        - l2_conv_imp2atf_28d
+        - l2_conv_imp2order_3d
+        - l2_conv_imp2order_7d
+        - l2_conv_imp2order_14d
+        - l2_conv_imp2order_28d
+        - l2_conv_imp2click_vs_account_3d
+        - l2_conv_imp2click_vs_account_7d
+        - l2_conv_imp2click_vs_account_14d
+        - l2_conv_imp2click_vs_account_28d
+        - l2_conv_imp2atc_vs_account_3d
+        - l2_conv_imp2atc_vs_account_7d
+        - l2_conv_imp2atc_vs_account_14d
+        - l2_conv_imp2atc_vs_account_28d
+        - l2_conv_imp2atf_vs_account_3d
+        - l2_conv_imp2atf_vs_account_7d
+        - l2_conv_imp2atf_vs_account_14d
+        - l2_conv_imp2atf_vs_account_28d
+        - l2_conv_imp2order_vs_account_3d
+        - l2_conv_imp2order_vs_account_7d
+        - l2_conv_imp2order_vs_account_14d
+        - l2_conv_imp2order_vs_account_28d
     - name: accepted_range
       column: l2_n_imps_3d_ratio
       min: 0

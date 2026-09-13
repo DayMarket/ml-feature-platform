@@ -81,7 +81,7 @@ def _conditional_action_counts(
                 f"WHEN event_type = {_sql_string(event_type)} "
                 f"AND last_received_at >= TIMESTAMP '{calculated_at_local}' "
                 f"- INTERVAL {window} DAYS "
-                "THEN session_id END) AS BIGINT) "
+                "THEN session_id END) AS INT) "
                 f"AS pid_n_{signal}_{window}d"
             )
     return ",\n        ".join(expressions)
@@ -97,7 +97,7 @@ def _conditional_order_features(
             "CAST(COUNT(DISTINCT CASE "
             f"WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' "
             f"- INTERVAL {window} DAYS "
-            "THEN order_id END) AS BIGINT) "
+            "THEN order_id END) AS INT) "
             f"AS pid_n_orders_{window}d"
         )
     for window in settings.order_windows_days:
@@ -116,10 +116,10 @@ def _coalesced_base_features(settings: SourceSettings) -> str:
     for signal in ACTION_EVENT_TYPES:
         for window in settings.event_windows_days:
             column = f"pid_n_{signal}_{window}d"
-            expressions.append(f"COALESCE(actions.{column}, 0L) AS {column}")
+            expressions.append(f"COALESCE(actions.{column}, 0) AS {column}")
     for window in settings.order_windows_days:
         column = f"pid_n_orders_{window}d"
-        expressions.append(f"COALESCE(orders.{column}, 0L) AS {column}")
+        expressions.append(f"COALESCE(orders.{column}, 0) AS {column}")
     for window in settings.order_windows_days:
         column = f"pid_gmv_{window}d"
         expressions.append(f"COALESCE(orders.{column}, 0.0D) AS {column}")
@@ -201,7 +201,7 @@ action_features AS (
 ),
 sku_mapping AS (
     SELECT
-        CAST(id AS BIGINT) AS sku_id,
+        CAST(id AS INT) AS sku_id,
         CAST(MIN(product_id) AS INT) AS product_id
     FROM {settings.sku_table}
     GROUP BY id
@@ -210,17 +210,18 @@ filtered_orders AS (
     SELECT
         CAST(order_item.account_id AS INT) AS account_id,
         sku.product_id,
-        CAST(order_item.order_id AS BIGINT) AS order_id,
+        CAST(order_item.order_id AS INT) AS order_id,
         CAST(order_item.generated_at AS TIMESTAMP) AS generated_at,
         CAST(order_item.payment_price AS DOUBLE)
             * CAST(order_item.item_quantity AS DOUBLE) AS line_gmv
     FROM {settings.order_items_table} order_item
     INNER JOIN sku_mapping sku
-        ON CAST(order_item.sku_id AS BIGINT) = sku.sku_id
+        ON CAST(order_item.sku_id AS INT) = sku.sku_id
     WHERE order_item.generated_at >= TIMESTAMP '{calculated_at_utc}'
             - INTERVAL {max_order_window} DAYS
         AND order_item.generated_at < TIMESTAMP '{calculated_at_utc}'
         AND order_item.order_item_status IN ({statuses_sql})
+        AND order_item.b2b_order = FALSE
 ),
 order_features AS (
     SELECT

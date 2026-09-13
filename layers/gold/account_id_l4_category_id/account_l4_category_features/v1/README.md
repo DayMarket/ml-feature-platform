@@ -4,6 +4,10 @@ DAG id: feature-platform.layers.gold.account_id_l4_category_id.account_l4_catego
 
 Airflow group tag: recsys-features.
 
+Alert уровня P3 для команды recsys через oncall_webhook_recsys полностью
+настроен, но callback основного DAG, DQ и feature_stats временно отключены на
+период отладки.
+
 Целевая таблица: iceberg.gold.feature_platform_account_l4_category_features.
 
 ## Контракт
@@ -11,6 +15,8 @@ Airflow group tag: recsys-features.
 Путь сущности: layers/gold/account_id_l4_category_id/account_l4_category_features/v1.
 
 Grain и primary key: calculated_at,account_id,l4_category_id.
+
+Идентификаторы и счётчики в физическом контракте имеют тип INT.
 
 calculated_at — граница Gold snapshot: 00:00 или 12:00 Asia/Tashkent. Строка
 публикуется, если у account-category есть action за 28 дней, успешная покупка за
@@ -41,6 +47,10 @@ iceberg.silver.sku, затем применяется тот же snapshot mappi
 статусы COMPLETED, PAID, DELIVERED и IN_DELIVERY в полуинтервале
 [calculated_at - 90 days, calculated_at).
 
+B2B-позиции исключаются условием order_items.b2b_order = FALSE. Корректность
+идентификаторов order_items и sku считается гарантией Silver; Gold не повторяет
+range-фильтры входных ID. Положительность ключей проверяется после записи.
+
 Для окон 3, 7, 14, 28, 60 и 90 дней:
 
     l4_n_orders_Nd = COUNT(DISTINCT order_id) на grain категории L4
@@ -62,9 +72,10 @@ upstream DQ DAG ids не заданы.
 
 MERGE полностью синхронизирует только текущий calculated_at. Таблица
 партиционирована по days(calculated_at). После записи параллельно запускаются dq и
-feature_stats. DQ проверяет ключ, положительные ID, неотрицательные counts, GMV и
-conversions, ratios в диапазоне [0,1] и неположительную recency. Пороги freshness
-и объёма на первичной раскатке имеют severity warn.
+feature_stats. DQ проверяет ключ, положительные ID, неотрицательные counts и GMV,
+а также ratios в диапазоне [0,1]. Пороги freshness и объёма на первичной
+раскатке имеют severity warn. Alert callbacks остаются отключёнными до окончания
+отладки.
 
-Потребители: Main, push, train и candidate enrichment. L2 имеет активного
-push-ranking consumer. Ranking upload в этом контракте пока не настраивается.
+Потребители: Main, push, train и candidate enrichment. Ranking upload в этом
+контракте пока не настраивается.

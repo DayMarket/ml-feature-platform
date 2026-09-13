@@ -53,7 +53,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
         migration = (ENTITY / "migrations/create_table.sql").read_text(encoding="utf-8")
         migration_columns = set(
             re.findall(
-                r"^\s{4}([a-z][a-z0-9_]*)\s+(?:INT|BIGINT|DOUBLE|TIMESTAMP)\b",
+                r"^\s{4}([a-z][a-z0-9_]*)\s+(?:INT|DOUBLE|TIMESTAMP)\b",
                 migration,
                 flags=re.MULTILINE,
             )
@@ -65,6 +65,8 @@ class AccountProductFeaturesTest(unittest.TestCase):
             *query.feature_columns(self.settings),
         }
         self.assertEqual(migration_columns, expected)
+        self.assertNotIn("BIGINT", migration)
+        self.assertNotIn("BIGINT", self.sql)
 
     def test_actions_are_deduplicated_by_session_across_the_window(self):
         self.assertIn(
@@ -76,7 +78,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertNotIn("n_events", self.sql)
 
     def test_orders_use_sku_mapping_success_status_and_transaction_gmv(self):
-        self.assertIn("order_item.sku_id AS BIGINT) = sku.sku_id", self.sql)
+        self.assertIn("order_item.sku_id AS INT) = sku.sku_id", self.sql)
         self.assertIn(
             "order_item.order_item_status IN "
             "('COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY')",
@@ -85,6 +87,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.payment_price AS DOUBLE", self.sql)
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertIn("COUNT(DISTINCT CASE", self.sql)
+        self.assertIn("order_item.b2b_order = FALSE", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
         self.assertNotIn("order_item.order_id > 0", self.sql)
 
@@ -141,6 +144,17 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertIn('external_task_id="dq"', dag_text)
         self.assertIn("account_product_session_action_counts_12h", dag_text)
         self.assertIn("resource_profile: small", config_text)
+        self.assertIn("severity: P3", config_text)
+        self.assertIn("oncall_webhook_conn_id: oncall_webhook_recsys", config_text)
+        self.assertIn("is_paused_upon_creation=True", dag_text)
+        self.assertIn("# default_args[\"on_failure_callback\"]", dag_text)
+        self.assertEqual(dag_text.count("failure_callback_enabled=False"), 2)
+
+    def test_dq_covers_relative_recency_group_invariant(self):
+        config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
+        self.assertIn("- name: group_max_equals", config_text)
+        self.assertIn("column: pid_neg_n_hours_since_last_click_rel", config_text)
+        self.assertIn("group_by: [account_id]", config_text)
 
 
 if __name__ == "__main__":
