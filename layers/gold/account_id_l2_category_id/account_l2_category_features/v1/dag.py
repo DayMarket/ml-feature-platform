@@ -136,6 +136,7 @@ def collect_gold_account_l2_category_features():
         application_file=get_deployment(),
         kubernetes_conn_id="spark_k8s",
     )
+    # Включить вместе с on_failure_callback основного DAG после периода отладки.
     dq_task = build_dq_task(
         CONFIG_PATH,
         REPO_ROOT,

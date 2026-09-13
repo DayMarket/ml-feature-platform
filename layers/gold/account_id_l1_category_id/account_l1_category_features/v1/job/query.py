@@ -143,7 +143,7 @@ def _action_count_expressions(
                 f"WHEN event_type = {_sql_string(event_type)} "
                 f"AND last_received_at >= TIMESTAMP '{calculated_at_local}' "
                 f"- INTERVAL {window} DAYS "
-                "THEN 1 ELSE 0 END) AS BIGINT) "
+                "THEN 1 ELSE 0 END) AS INT) "
                 f"AS {prefix}_n_{signal}_{window}d"
             )
     return ",\n        ".join(expressions)
@@ -158,7 +158,7 @@ def _impression_count_expressions(
         "CAST(SUM(CASE "
         f"WHEN source_calculated_at > TIMESTAMP '{calculated_at_local}' "
         f"- INTERVAL {window} DAYS "
-        "THEN n_impressions ELSE 0 END) AS BIGINT) "
+        "THEN n_impressions ELSE 0 END) AS INT) "
         f"AS {prefix}_n_imps_{window}d"
         for window in settings.event_windows_days
     )
@@ -175,7 +175,7 @@ def _order_feature_expressions(
             "CAST(COUNT(DISTINCT CASE "
             f"WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' "
             f"- INTERVAL {window} DAYS "
-            "THEN order_id END) AS BIGINT) "
+            "THEN order_id END) AS INT) "
             f"AS {prefix}_n_orders_{window}d"
         )
     for window in settings.order_windows_days:
@@ -197,7 +197,7 @@ def _account_order_count_expressions(
         "CAST(COUNT(DISTINCT CASE "
         f"WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' "
         f"- INTERVAL {window} DAYS "
-        "THEN order_id END) AS BIGINT) "
+        "THEN order_id END) AS INT) "
         f"AS account_n_orders_{window}d"
         for window in settings.event_windows_days
     )
@@ -209,16 +209,16 @@ def _base_feature_expressions(settings: SourceSettings) -> str:
     if settings.has_impressions:
         for window in settings.event_windows_days:
             column = f"{prefix}_n_imps_{window}d"
-            expressions.append(f"COALESCE(impressions.{column}, 0L) AS {column}")
+            expressions.append(f"COALESCE(impressions.{column}, 0) AS {column}")
 
     for signal in ACTION_EVENT_TYPES:
         for window in settings.event_windows_days:
             column = f"{prefix}_n_{signal}_{window}d"
-            expressions.append(f"COALESCE(actions.{column}, 0L) AS {column}")
+            expressions.append(f"COALESCE(actions.{column}, 0) AS {column}")
 
     for window in settings.order_windows_days:
         column = f"{prefix}_n_orders_{window}d"
-        expressions.append(f"COALESCE(orders.{column}, 0L) AS {column}")
+        expressions.append(f"COALESCE(orders.{column}, 0) AS {column}")
     for window in settings.order_windows_days:
         column = f"{prefix}_gmv_{window}d"
         expressions.append(f"COALESCE(orders.{column}, 0.0D) AS {column}")
@@ -450,7 +450,7 @@ def build_account_category_features_query(
         calculated_at AS source_calculated_at,
         CAST(account_id AS INT) AS account_id,
         CAST({settings.category_column} AS INT) AS category_id,
-        CAST(n_impressions AS BIGINT) AS n_impressions
+        CAST(n_impressions AS INT) AS n_impressions
     FROM {settings.impression_counts_table}
     WHERE calculated_at > TIMESTAMP '{calculated_at_local}'
             - INTERVAL {max_event_window} DAYS
@@ -471,7 +471,7 @@ def build_account_category_features_query(
         [
             f"""sku_mapping AS (
     SELECT
-        CAST(id AS BIGINT) AS sku_id,
+        CAST(id AS INT) AS sku_id,
         CAST(MIN(product_id) AS INT) AS product_id
     FROM {settings.sku_table}
     GROUP BY id
@@ -480,17 +480,18 @@ def build_account_category_features_query(
     SELECT
         CAST(order_item.account_id AS INT) AS account_id,
         sku.product_id,
-        CAST(order_item.order_id AS BIGINT) AS order_id,
+        CAST(order_item.order_id AS INT) AS order_id,
         CAST(order_item.generated_at AS TIMESTAMP) AS generated_at,
         CAST(order_item.payment_price AS DOUBLE)
             * CAST(order_item.item_quantity AS DOUBLE) AS line_gmv
     FROM {settings.order_items_table} order_item
     INNER JOIN sku_mapping sku
-        ON CAST(order_item.sku_id AS BIGINT) = sku.sku_id
+        ON CAST(order_item.sku_id AS INT) = sku.sku_id
     WHERE order_item.generated_at >= TIMESTAMP '{calculated_at_utc}'
             - INTERVAL {max_order_window} DAYS
         AND order_item.generated_at < TIMESTAMP '{calculated_at_utc}'
         AND order_item.order_item_status IN ({statuses_sql})
+        AND order_item.b2b_order = FALSE
 )""",
             """mapped_order_lines AS (
     SELECT
@@ -562,7 +563,7 @@ def build_account_category_features_query(
         ON entity.account_id = account_orders.account_id"""
         )
         account_order_columns = ",\n        " + ",\n        ".join(
-            f"COALESCE(account_orders.account_n_orders_{window}d, 0L) "
+            f"COALESCE(account_orders.account_n_orders_{window}d, 0) "
             f"AS account_n_orders_{window}d"
             for window in settings.event_windows_days
         )
