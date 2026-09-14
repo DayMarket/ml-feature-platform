@@ -53,10 +53,10 @@ Impressions суммируются из iceberg.silver.feature_platform_account_
 
 Для click, ATC, ATF и order публикуются три conversion:
 
-- `account_conv_imp2{signal}_{window}d`: account-category conversion,
+- `conv_imp2{signal}_raw_{window}d`: исходная account-category conversion,
   `signal_count / impression_count`;
-- `conv_imp2{signal}_{window}d`: account-category conversion относительно
-  общего baseline категории;
+- `conv_imp2{signal}_div_total_category_conv_{window}d`: исходная
+  account-category conversion, делённая на общий baseline этой категории;
 - `conv_imp2{signal}_div_total_account_conv_{window}d`: account-category
   conversion, делённая на общую conversion пользователя по всем категориям.
 

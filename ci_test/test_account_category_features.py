@@ -199,11 +199,11 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                         window=window,
                     ):
                         self.assertIn(
-                            f"AS account_conv_imp2{signal}_{window}d",
+                            f"AS conv_imp2{signal}_raw_{window}d",
                             sql,
                         )
                         self.assertIn(
-                            f"AS conv_imp2{signal}_{window}d",
+                            f"AS conv_imp2{signal}_div_total_category_conv_{window}d",
                             sql,
                         )
                         self.assertIn(
@@ -325,7 +325,11 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             config_text = (entity / "config.yaml").read_text(encoding="utf-8")
             with self.subTest(level=level):
                 self.assertIn("- name: finite", config_text)
-                self.assertIn("- account_conv_imp2click_3d", config_text)
+                self.assertIn("- conv_imp2click_raw_3d", config_text)
+                self.assertIn(
+                    "- conv_imp2click_div_total_category_conv_3d",
+                    config_text,
+                )
                 self.assertIn("- conv_imp2order_div_total_account_conv_28d", config_text)
 
     def test_recency_contracts_check_relative_max_per_account(self):
