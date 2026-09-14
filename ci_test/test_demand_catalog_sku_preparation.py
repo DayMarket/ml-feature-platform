@@ -154,17 +154,26 @@ def test_category_conflict_blocks_used_paths_but_not_unreferenced_categories():
     assert audit["category"]["conflict_category_rows"] == 2
 
 
-@pytest.mark.parametrize("kind", ["cycle", "missing_target", "missing_golden"])
+@pytest.mark.parametrize("kind", ["missing_target", "missing_golden"])
 def test_mdm_errors_never_produce_fallback(kind):
     args = arguments()
-    if kind == "cycle":
-        args["goldens"][-1] = golden(3, 1)
-    elif kind == "missing_target":
+    if kind == "missing_target":
         args["goldens"][-1] = golden(3, 99)
     elif kind == "missing_golden":
         args["active_links"] = [link(target=99)]
     with pytest.raises(ValueError):
         run(**args)
+
+
+def test_cyclic_golden_keeps_sku_as_standalone_conflict():
+    args = arguments()
+    args["goldens"][-1] = golden(3, 1)
+    output, audit = run(**args)
+    first = output.to_pylist()[0]
+    assert first["golden_sku_id"] is None
+    assert first["golden_mapping_status"] == "conflict" and first["unit_id"] == "s:1"
+    assert audit["golden_graph"]["cycle_rows"] == 3
+    assert audit["golden_links"]["sku_with_cyclic_golden"] == 1
 
 
 def test_ambiguous_golden_keeps_standalone_sku_and_conflict_status():

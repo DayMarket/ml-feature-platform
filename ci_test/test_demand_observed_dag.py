@@ -49,7 +49,7 @@ def source_configs():
 
 def resolve(cfg, sources, **changes):
     requests = import_module("layers.gold.sku_id.demand_observed_daily.v1.job.requests")
-    arguments = dict(conf={}, run_type="scheduled", run_id="scheduled__2026-09-09T05:00:00+00:00",
+    arguments = dict(conf={}, run_type="scheduled", run_id="scheduled__2026-09-08T05:00:00+00:00",
                      logical_date="2026-09-08T05:00:00Z", interval_start="2026-09-08T05:00:00Z",
                      interval_end="2026-09-09T05:00:00Z")
     return requests.resolve_references(cfg, sources, **(arguments | changes))
@@ -58,7 +58,7 @@ def resolve(cfg, sources, **changes):
 def test_scheduled_both_silver_previous_hour():
     cfg, sources = source_configs()
     assert resolve(cfg, sources) == {kind: {"dag_id": source["dag"]["id"],
-        "run_id": "scheduled__2026-09-09T04:00:00+00:00", "logical_date": "2026-09-08T04:00:00+00:00"}
+        "run_id": "scheduled__2026-09-08T04:00:00+00:00", "logical_date": "2026-09-08T04:00:00+00:00"}
         for kind, source in sources.items()}
 
 

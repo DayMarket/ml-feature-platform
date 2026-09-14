@@ -55,9 +55,10 @@ def resolve_sku_links(rows, terminals, *, expected_rows):
     if not isinstance(terminals, dict) or not terminals:
         raise ValueError("Нужен полный разрешённый golden-граф")
     for node, terminal in terminals.items():
-        if _uuid(node) != node or _uuid(terminal) != terminal or terminals.get(terminal) != terminal:
+        if (_uuid(node) != node or terminal is not None
+                and (_uuid(terminal) != terminal or terminals.get(terminal) != terminal)):
             raise ValueError("Неверный terminal mapping")
-    candidates, missing, seen_pairs = {}, set(), set()
+    candidates, missing, cyclic, seen_pairs = {}, set(), set(), set()
     count = 0
     stream = iter(rows)
     try:
@@ -77,6 +78,8 @@ def resolve_sku_links(rows, terminals, *, expected_rows):
             choices = candidates.setdefault(sku, set())
             if golden not in terminals:
                 missing.add(sku)
+            elif terminals[golden] is None:
+                cyclic.add(sku)
             else:
                 choices.add(terminals[golden])
         if count != expected_rows:
@@ -87,12 +90,14 @@ def resolve_sku_links(rows, terminals, *, expected_rows):
             close()
     result = {}
     for sku, choices in candidates.items():
-        status = "unavailable" if sku in missing else "conflict" if len(choices) > 1 else "matched"
+        status = ("unavailable" if sku in missing else "conflict"
+                  if sku in cyclic or len(choices) > 1 else "matched")
         golden = next(iter(choices)) if status == "matched" else None
         result[sku] = {"golden_sku_id": golden, "golden_mapping_status": status,
                        "unit_id": f"g:{golden}" if golden is not None else f"s:{sku}" if status == "conflict" else None}
     audit = {"active_uzum_link_rows": count, "duplicate_relation_rows": count - len(seen_pairs),
              "linked_sku": len(result), "sku_with_missing_golden": len(missing),
+             "sku_with_cyclic_golden": len(cyclic),
              **{f"{status}_sku": sum(row["golden_mapping_status"] == status for row in result.values())
                 for status in ("matched", "unavailable", "conflict")}}
     return result, audit

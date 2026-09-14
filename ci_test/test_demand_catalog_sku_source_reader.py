@@ -164,7 +164,9 @@ def test_orphan_audit_is_preserved_in_full_capture():
 
 def test_audits_use_declared_sources_and_no_provenance_filter():
     cfg = config()
-    assert "FINAL" in reader.audit_query(cfg, "golden")
+    golden = reader.audit_query(cfg, "golden")
+    assert "argMax(tuple(is_merged, merged_into), updated_at)" in golden
+    assert "GROUP BY golden_sku_id" in golden and "FINAL" not in golden
     sql = reader.audit_query(cfg, "active_links")
     assert "dictHas(" in sql and "'source', meta_sku_id) = 'uzum'" in sql
     assert "deleted_at IS NULL" in sql and "source = 'uzum'" not in sql

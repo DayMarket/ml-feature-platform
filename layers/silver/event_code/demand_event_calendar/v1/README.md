@@ -102,7 +102,11 @@ Iceberg/SQLite 0.10.0, не Hive/S3 production. Проверяются retry, co
 отдельной дневной партиции загрузки, а штатный профиль рассчитан на одну партицию.
 DQ при этом проверяет весь точный текущий справочник.
 
-Scheduled run использует точный успешный DQ запуска calendar owner того же интервала. Для ручного обновления сначала запускают calendar owner с `{"mode":"manual"}`, затем этот же events owner с точной ссылкой:
+Scheduled run использует точный успешный DQ запуска calendar owner того же интервала.
+Его `run_id` строится из logical date, то есть начала календарного data interval; это
+тот же timestamp, который sensor использует для поиска upstream-задачи. Для ручного
+обновления сначала запускают calendar owner с `{"mode":"manual"}`, затем этот же
+events owner с точной ссылкой:
 
 ```json
 {

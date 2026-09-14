@@ -73,7 +73,7 @@ def interval(cfg):
     minute, hour, *_ = cfg["dag"]["schedule"].split()
     end = NOW.replace(hour=int(hour), minute=int(minute))
     start = end - timedelta(days=1)
-    return {"run_id": "scheduled__" + end.isoformat(), "logical_date": start,
+    return {"run_id": "scheduled__" + start.isoformat(), "logical_date": start,
             "interval_start": start, "interval_end": end}
 
 
@@ -179,7 +179,7 @@ def test_calendar_tasks_accept_sdk_enum_and_preserve_references(path, kind, run_
         references = [result["reference"]] if "reference" in result else result["references"].values()
         for ref in references:
             assert ref["run_id"] == ("manual-exact-source" if kind == "manual" else
-                                     "scheduled__" + (datetime.fromisoformat(ref["logical_date"]) + timedelta(days=1)).isoformat())
+                                     "scheduled__" + datetime.fromisoformat(ref["logical_date"]).isoformat())
 
 
 @pytest.mark.parametrize("path", CALENDAR_PATHS)

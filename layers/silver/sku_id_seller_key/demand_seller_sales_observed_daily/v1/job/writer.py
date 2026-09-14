@@ -15,6 +15,12 @@ from .checkpoint import PROOF_KEY, verify_proof, written_receipt
 from .controls import SkuControls
 
 
+def single_typed_value(column, expected):
+    """Проверить единое значение с учётом timezone фактического Arrow-типа."""
+    typed_expected = pa.scalar(expected, type=column.type).as_py()
+    return column.unique().to_pylist() == [typed_expected]
+
+
 def fingerprint(batch):
     """Хешировать значения и NULL-маски независимо от chunks и скрытых null-буферов."""
     schema = pa.schema([pa.field(f.name, f.type, nullable=f.nullable) for f in batch.schema])
@@ -91,7 +97,7 @@ def write_day(config, catalog, batches, *, day, expected_rows, manifest, version
                 continue
             for name, expected in [('source_manifest_id', manifest), ('source_contract_version', version),
                                    ('ingested_at', captured)]:
-                if batch[name].unique().to_pylist() != [expected]:
+                if not single_typed_value(batch[name], expected):
                     raise ValueError(f'Смешанные {name}')
             signature = tuple(tuple(batch[name].unique().to_pylist()) for name in
                               ('fx_rate_date', 'fx_rate_uzs_per_usd', 'fx_rate_source', 'fx_captured_at'))

@@ -15,6 +15,12 @@ def _uuid(value, *, allow_zero=False):
     return str(result)
 
 
+def _cycle_details(path, repeated):
+    start = path.index(repeated)
+    cycle = path[start:]
+    return cycle, cycle[:10]
+
+
 def resolve_golden_graph(rows, *, expected_rows):
     """Вернуть terminal ID для всех golden; никаких запросов и выбора первого дубля."""
     edges = {}
@@ -43,27 +49,41 @@ def resolve_golden_graph(rows, *, expected_rows):
             close()
     if any(target is not None and target not in edges for target in edges.values()):
         raise ValueError("В MDM-графе отсутствует цель merge")
-    resolved, hops = {}, {}
+    resolved, hops, cycles = {}, {}, []
     for start in edges:
         if start in resolved:
             continue
-        path, visiting = [], set()
+        path, positions = [], {}
         node = start
         while node not in resolved:
-            if node in visiting:
-                raise ValueError("Цикл в MDM merge-графе")
-            visiting.add(node)
+            if node in positions:
+                cycle, preview = _cycle_details(path, node)
+                cycles.append({"rows": len(cycle), "golden_sku_ids": preview})
+                for member in cycle:
+                    resolved[member], hops[member] = None, None
+                break
+            positions[node] = len(path)
+            path.append(node)
             target = edges[node]
             if target is None:
                 resolved[node], hops[node] = node, 0
+                path.pop()
                 break
-            path.append(node)
             node = target
         terminal, depth = resolved[node], hops[node]
         for ancestor in reversed(path):
+            if ancestor in resolved:
+                continue
+            if terminal is None:
+                resolved[ancestor], hops[ancestor] = None, None
+                continue
             depth += 1
             resolved[ancestor], hops[ancestor] = terminal, depth
     audit = {"golden_rows": len(edges), "merged_rows": sum(target is not None for target in edges.values()),
              "terminal_rows": sum(target is None for target in edges.values()),
-             "multi_hop_rows": sum(depth > 1 for depth in hops.values()), "max_merge_hops": max(hops.values())}
+             "multi_hop_rows": sum(depth is not None and depth > 1 for depth in hops.values()),
+             "max_merge_hops": max((depth for depth in hops.values() if depth is not None), default=0),
+             "cycle_components": len(cycles), "cycle_rows": sum(cycle["rows"] for cycle in cycles),
+             "cycle_affected_rows": sum(terminal is None for terminal in resolved.values()),
+             "cycle_samples": cycles[:10]}
     return resolved, audit

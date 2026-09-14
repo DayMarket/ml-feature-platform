@@ -97,7 +97,11 @@ def env(tmp_path):
                          warehouse=(tmp_path / "warehouse").as_uri())
     catalog.create_namespace("silver")
     cfg = config()
-    table = catalog.create_table(prep.target_ref(cfg, catalog.name), schema=schema())
+    target = schema().set(
+        schema().get_field_index("ingested_at"),
+        pa.field("ingested_at", pa.timestamp("us", "UTC"), nullable=False),
+    )
+    table = catalog.create_table(prep.target_ref(cfg, catalog.name), schema=target)
     with table.update_spec() as update:
         update.add_field("date", IdentityTransform(), "date")
     yield cfg, catalog, table
