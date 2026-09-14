@@ -43,7 +43,9 @@ MDM golden — ReplicatedReplacingMergeTree с ORDER BY (category_id,golden_sku_
 Подготовлены DDL/config/preparation/writer/exact seller binding, полный source loader/runtime/Connections и owner DAG.
 Добавлено чистое golden_graph.py: итеративный проход полного захваченного графа
 до terminal golden для каждого ID, с проверкой независимого count/UUID/merge flags,
-дублей, отсутствующих целей и циклов во всём графе. Path compression исключает
+дублей и отсутствующих целей во всём графе. Цикл и ведущие в него golden не получают
+произвольный terminal: связанные SKU сохраняются самостоятельными со статусом conflict.
+Path compression исключает
 повторный обход общей части цепочек; лимита одним переходом/рекурсии нет.
 Audit содержит число terminal/merged/multi-hop узлов и максимальную глубину.
 Добавлены category_paths.py/golden_links.py: полный category count/raw-типы,
@@ -54,7 +56,10 @@ conflict до commit, DQ контракт также запрещает их г�
 
 query.py даёт отдельные SKU/category/golden/active_links captures и LIMIT 0 для
 проверки native metadata. ID SKU/category не кастуются в signed до проверки диапазона.
-У golden используется FINAL. Активные links читаются без INNER JOIN: dictHas сохраняет
+Текущее состояние golden выбирается одной парой `(is_merged,merged_into)` через
+`argMax(...,updated_at)` с группировкой по `golden_sku_id`: исходный
+ReplacingMergeTree не имеет version-колонки, а его sorting key содержит category_id,
+поэтому FINAL не задаёт контракт последней бизнес-версии. Активные links читаются без INNER JOIN: dictHas сохраняет
 флаг meta_present и NULL identity orphan-связи. Links.source — provenance (manual,
 review, dedup_merge и др.), marketplace='uzum' отбирается по meta.source. Семантика
 сверена с dbt commerce/golden_sku_mapping.sql CTE verified/nasz_paired_skus.sql;
@@ -103,7 +108,8 @@ Feature statistics считаются по тому же capture. Read-back ош
 
 Дополнительный audit merge-графа: missing target/self-loop=0, но у 2861 merged
 строки target сам merged. Утверждён проход до конечного golden в одном захваченном
-графе; циклы, missing targets и повтор golden-ID блокируют запись. Один переход
+графе; missing targets и повтор golden-ID блокируют запись. Циклы учитываются в audit
+с ограниченным списком UUID, а затронутые SKU остаются самостоятельными conflict. Один переход
 не гарантирует конечный golden. Dict meta для source=uzum содержит
 10954174 уникальных source_sku_id с допустимым числовым ID; это не вся проверка JOIN.
 

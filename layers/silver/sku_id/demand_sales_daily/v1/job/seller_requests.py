@@ -38,7 +38,7 @@ def resolve_reference(config, source, conf, *, run_type, run_id, logical_date, i
                 or interval_utc(config["dag"]["start_date"]) != interval_utc(source["dag"]["start_date"])
                 or end - start != timedelta(days=1) or interval_utc(logical_date) != start
                 or (start.hour, start.minute, start.second, start.microsecond) != (4, 0, 0, 0)
-                or run_id != "scheduled__" + end.isoformat()):
+                or run_id != "scheduled__" + start.isoformat()):
             raise ValueError("Изменился scheduled интервал: требуется пересмотреть привязку seller DQ")
         reference = {"dag_id": source["dag"]["id"], "run_id": run_id, "logical_date": start.isoformat()}
     elif run_type == "manual":

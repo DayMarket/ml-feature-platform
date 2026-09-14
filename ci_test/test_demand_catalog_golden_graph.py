@@ -16,7 +16,8 @@ def test_chain_branch_and_terminal_are_order_independent():
     records = [row(1, 2), row(2, 3), row(3), row(4, 2), row(5)]
     resolved, audit = resolve_golden_graph(records, expected_rows=5)
     assert resolved == {str(UUID(int=node)): str(UUID(int=3 if node < 5 else 5)) for node in range(1, 6)}
-    assert audit == dict(golden_rows=5, merged_rows=3, terminal_rows=2, multi_hop_rows=2, max_merge_hops=2)
+    assert audit == dict(golden_rows=5, merged_rows=3, terminal_rows=2, multi_hop_rows=2, max_merge_hops=2,
+                         cycle_components=0, cycle_rows=0, cycle_affected_rows=0, cycle_samples=[])
     assert resolve_golden_graph(reversed(records), expected_rows=5) == (resolved, audit)
 
 
@@ -28,11 +29,22 @@ def test_long_chain_does_not_depend_on_python_recursion_limit():
     assert audit["max_merge_hops"] == count - 1
 
 
-@pytest.mark.parametrize("records", [[row(1, 1)], [row(1, 2), row(2, 1)],
-    [row(1), row(2, 3), row(3, 4), row(4, 2)], [row(1, 2)], [row(1), row(1)]])
-def test_cycles_missing_targets_and_duplicates_block_whole_graph(records):
-    with pytest.raises(ValueError, match="Цикл|отсутствует|Повтор"):
+@pytest.mark.parametrize("records", [[row(1, 2)], [row(1), row(1)]])
+def test_missing_targets_and_duplicates_block_whole_graph(records):
+    with pytest.raises(ValueError, match="отсутствует|Повтор"):
         resolve_golden_graph(records, expected_rows=len(records))
+
+
+def test_cycle_and_its_ancestors_are_unresolved_with_bounded_audit():
+    records = [row(n, n + 1 if n < 12 else 1) for n in range(1, 13)]
+    records.insert(0, row(13, 1))
+    resolved, audit = resolve_golden_graph(records, expected_rows=len(records))
+    assert set(resolved) == {str(UUID(int=n)) for n in range(1, 14)}
+    assert set(resolved.values()) == {None}
+    assert audit["cycle_components"] == 1 and audit["cycle_rows"] == 12
+    assert audit["cycle_affected_rows"] == 13
+    assert audit["cycle_samples"] == [{"rows": 12,
+        "golden_sku_ids": [str(UUID(int=n)) for n in range(1, 11)]}]
 
 
 @pytest.mark.parametrize("field,value", [("golden_sku_id", None), ("golden_sku_id", "wrong"),

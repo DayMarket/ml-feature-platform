@@ -73,7 +73,13 @@ def env(tmp_path):
     cat = SqlCatalog("iceberg", uri=f"sqlite:///{tmp_path}/catalog.db",
                      warehouse=(tmp_path / "warehouse").as_uri())
     cat.create_namespace("silver")
-    table = cat.create_table(mod("preparation").target_ref(cfg, cat.name), schema=schema())
+    target = pa.schema([
+        pa.field(field.name,
+                 pa.timestamp("us", "UTC") if pa.types.is_timestamp(field.type) else field.type,
+                 nullable=field.nullable)
+        for field in schema()
+    ])
+    table = cat.create_table(mod("preparation").target_ref(cfg, cat.name), schema=target)
     with table.update_spec() as spec:
         spec.add_identity("date")
     yield cfg, cat, table

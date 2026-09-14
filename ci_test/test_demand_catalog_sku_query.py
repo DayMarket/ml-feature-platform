@@ -36,7 +36,9 @@ def test_category_and_sku_preserve_source_values():
     assert "l6_category AS raw_l6_category_id" in category and "title_ru AS leaf_title" in category
     assert "WHERE" not in sku and "product_id, category_id, seller_id, shop_id" in sku
     assert "toTimeZone(created_at, 'UTC')" in sku and "toInt64(id)" not in sku
-    assert " FINAL" in capture_query(CONFIG, "golden")
+    golden = capture_query(CONFIG, "golden")
+    assert "argMax(tuple(is_merged, merged_into), updated_at)" in golden
+    assert "GROUP BY golden_sku_id" in golden and " FINAL" not in golden
 
 
 @pytest.mark.parametrize("key,kind", [("sku", "sku"), ("category", "category"),

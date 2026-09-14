@@ -40,10 +40,10 @@ def resolve_references(config, sources, conf, *, run_type, run_id, logical_date,
                        for source in sources.values())
                 or end - start != timedelta(days=1) or interval_utc(logical_date) != start
                 or (start.hour, start.minute, start.second, start.microsecond) != (5, 0, 0, 0)
-                or run_id != "scheduled__" + end.isoformat()):
+                or run_id != "scheduled__" + start.isoformat()):
             raise ValueError("Изменился scheduled интервал: пересмотреть привязку silver DQ")
         references = {kind: {"dag_id": source["dag"]["id"],
-                      "run_id": "scheduled__" + (end - timedelta(hours=1)).isoformat(),
+                      "run_id": "scheduled__" + (start - timedelta(hours=1)).isoformat(),
                       "logical_date": (start - timedelta(hours=1)).isoformat()}
                       for kind, source in sources.items()}
     elif run_type == "manual":

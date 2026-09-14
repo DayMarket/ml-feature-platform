@@ -10,7 +10,7 @@ import pyarrow.compute as pc
 
 from .category_paths import CATEGORY_FIELDS
 from .preparation import SOURCE_FIELDS
-from .query import capture_query, source_ref
+from .query import capture_query, current_golden_source, source_ref
 
 FIELDS = {"sku": SOURCE_FIELDS, "category": CATEGORY_FIELDS,
           "golden": ("golden_sku_id", "is_merged", "merged_into"),
@@ -24,7 +24,7 @@ def audit_query(config, kind):
     if kind == "golden":
         return ("SELECT count(), uniqExact(golden_sku_id), countIf(golden_sku_id = "
                 "toUUID('00000000-0000-0000-0000-000000000000') OR is_merged NOT IN (0,1)) FROM "
-                + source_ref(config, "golden") + " FINAL SETTINGS max_threads=1, max_execution_time=300")
+                + current_golden_source(config) + " SETTINGS max_threads=1, max_execution_time=300")
     if kind == "active_links":
         source_ref(config, "meta_sku")
         dictionary = config["source"]["meta_sku"]

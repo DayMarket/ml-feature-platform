@@ -59,7 +59,7 @@ dq_status=passed, dag_id, run_id и receipt записи. События чит�
 сенсора dq по exact run_id, без include_prior_dates/latest. Старый запуск без этого
 payload нужно повторить после развёртывания; written XCom не заменяет успешный DQ.
 Regular DAG использует явный CronDataIntervalTimetable UTC (cron 03:00 не меняется).
-В Airflow 3.1.8 scheduled run_id содержит run_after, logical_date — начало интервала.
+В Airflow 3.1.8 scheduled run_id содержит logical_date — начало интервала.
 
 Терминальный `dq` проверяет всю атомарно заменённую current-таблицу: PK,
 непустой срез, диапазоны месяца/дня недели, provenance и единый capture. Downstream

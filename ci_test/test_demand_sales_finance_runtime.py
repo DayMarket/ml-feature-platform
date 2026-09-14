@@ -128,6 +128,25 @@ class Client:
             self.closed = True
 
 
+def test_finance_bounds_prepared_arrow_batches_by_rows_and_bytes():
+    runtime = module("finance", "runtime")
+    batch = pa.table({"value": ["a", "bb", "ccc", "dddd"]})
+    byte_limit = batch.slice(0, 2).nbytes
+
+    result = list(runtime.bounded_batches(batch, max_rows=3, max_bytes=byte_limit))
+
+    assert pa.concat_tables(result).equals(batch)
+    assert all(part.num_rows <= 3 and part.nbytes <= byte_limit for part in result)
+
+
+def test_finance_bounds_reject_row_larger_than_byte_limit():
+    batch = pa.table({"value": ["oversized"]})
+
+    with pytest.raises(ValueError, match="Одна строка"):
+        list(module("finance", "runtime").bounded_batches(
+            batch, max_rows=1, max_bytes=batch.nbytes - 1))
+
+
 @pytest.fixture
 def loader(env, monkeypatch):  # noqa: F811
     kind, cfg, catalog, table = env
@@ -157,6 +176,28 @@ def test_load_streams_each_key_and_copies_raw_money(loader):
     amount = "sales_gmv" if kind == "sales" else "finance_gmv_net"
     assert sorted(data[amount].to_pylist()) == sorted(client.source[amount].to_pylist())
     assert client.coverage_calls == client.fx_calls == 2
+
+
+def test_finance_splits_source_block_by_arrow_byte_limit(loader):
+    (kind, cfg, _, table), _ = loader
+    assert kind == "finance"
+    one_row = module(kind, "preparation").prepare_batch(
+        raw(kind), table.schema().as_arrow(), day=DAY, fx=fx(), manifest="capture-1",
+        version=cfg["source"]["contract_version"], ingested_at=CAPTURE,
+    )
+    cfg["runtime"]["max_batch_bytes"] = one_row.nbytes
+
+    receipt = load(loader)
+
+    assert receipt["rows_written"] == 2
+
+
+def test_finance_rejects_single_row_over_arrow_byte_limit(loader):
+    _, cfg, _, _ = loader[0]
+    cfg["runtime"]["max_batch_bytes"] = 1
+
+    with pytest.raises(ValueError, match="Одна строка"):
+        load(loader)
 
 
 def test_load_without_operational_statuses_still_checks_source(loader):

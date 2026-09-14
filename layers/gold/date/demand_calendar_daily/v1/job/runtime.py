@@ -64,7 +64,7 @@ def scheduled_references(config, sources, interval_start, interval_end):
     if end - start != timedelta(days=1) or (start.hour, start.minute, start.second, start.microsecond) != (4, 0, 0, 0):
         raise ValueError("Нужен полный scheduled интервал 04:00 UTC")
     return {name: {"dag_id": sources[name]["dag"]["id"],
-                   "run_id": "scheduled__" + (end - timedelta(minutes=delta)).isoformat(),
+                   "run_id": "scheduled__" + (start - timedelta(minutes=delta)).isoformat(),
                    "logical_date": (start - timedelta(minutes=delta)).isoformat()}
             for name, delta in (("calendar", 60), ("events", 50))}
 

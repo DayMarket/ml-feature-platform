@@ -43,7 +43,7 @@ def test_prepare_and_write_have_whole_task_guard():
 
 def resolve(cfg, source, **changes):
     requests = import_module("layers.silver.sku_id.demand_sales_daily.v1.job.seller_requests")
-    kwargs = dict(conf={}, run_type="scheduled", run_id="scheduled__2026-09-09T04:00:00+00:00",
+    kwargs = dict(conf={}, run_type="scheduled", run_id="scheduled__2026-09-08T04:00:00+00:00",
                   logical_date="2026-09-08T04:00:00Z", interval_start="2026-09-08T04:00:00Z",
                   interval_end="2026-09-09T04:00:00Z")
     return requests.resolve_reference(cfg, source, **(kwargs | changes))
@@ -58,11 +58,11 @@ def configs():
 def test_scheduled_reference_exact_same_interval():
     cfg, source = configs()
     assert resolve(cfg, source) == {"dag_id": source["dag"]["id"],
-        "run_id": "scheduled__2026-09-09T04:00:00+00:00", "logical_date": "2026-09-08T04:00:00+00:00"}
+        "run_id": "scheduled__2026-09-08T04:00:00+00:00", "logical_date": "2026-09-08T04:00:00+00:00"}
 
 
 @pytest.mark.parametrize("changes", [
-    {"run_id": "scheduled__2026-09-08T04:00:00+00:00"},
+    {"run_id": "scheduled__2026-09-09T04:00:00+00:00"},
     {"logical_date": "2026-09-09T04:00:00Z"},
     {"interval_start": "2026-09-07T04:00:00Z"},
     {"conf": {"reference": {}}}, {"conf": {"mode": "manual"}},
