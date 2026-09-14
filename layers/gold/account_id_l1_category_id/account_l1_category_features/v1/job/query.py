@@ -145,7 +145,8 @@ order_features AS (
         CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 14 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS gmv_14d,
         CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 28 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS gmv_28d,
         CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 60 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS gmv_60d,
-        CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS gmv_90d
+        CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS gmv_90d,
+        MAX(generated_at) AS last_purchase_at
     FROM mapped_order_lines
     GROUP BY account_id, l1_category_id
 ),
@@ -216,7 +217,12 @@ base_features AS (
         COALESCE(orders.gmv_60d, 0.0D) AS gmv_60d,
         COALESCE(orders.gmv_90d, 0.0D) AS gmv_90d,
         recency.neg_n_days_since_last_click,
-        recency.neg_n_days_since_last_click_rel
+        recency.neg_n_days_since_last_click_rel,
+        CAST(
+            UNIX_TIMESTAMP(orders.last_purchase_at)
+            - UNIX_TIMESTAMP(TO_UTC_TIMESTAMP(actions.last_click_at, '{settings.business_timezone}'))
+            AS DOUBLE
+        ) / 86400.0 AS n_days_between_last_click_and_last_purchase
     FROM entity_keys entity
     LEFT JOIN impression_features impressions USING (account_id, l1_category_id)
     LEFT JOIN action_features actions USING (account_id, l1_category_id)

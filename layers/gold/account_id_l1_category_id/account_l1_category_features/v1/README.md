@@ -97,6 +97,18 @@ category-level показателя пользователя.
 Relative recency равна recency категории минус наиболее свежее category-recency
 пользователя. Самая свежая категория получает 0.
 
+Для той же пары `account_id × l1_category_id` публикуется знаковый интервал:
+
+```text
+n_days_between_last_click_and_last_purchase =
+    n_days_since_last_click - n_days_since_last_purchase
+```
+
+Click берётся за 28 дней, purchase — за 90 дней. Отрицательное значение означает,
+что click произошёл позднее purchase; положительное — что purchase произошла
+позднее click. `COALESCE` не применяется, поэтому без одного из timestamps
+результат равен `NULL`.
+
 ## Запись, зависимости и наблюдаемость
 
 DAG запускается в 07:00 и 19:00 UTC, то есть в 12:00 и 00:00 Asia/Tashkent.
