@@ -91,6 +91,10 @@ def test_upload_publishes_whole_table():
 
     (feature_group,) = config["feature_groups"]
     assert feature_group["source"]["read_mode"] == "full_table"
+    assert feature_group["source"]["query_id_dictionary"] == {
+        "schema": "gold",
+        "table": "feature_platform_search_query_id",
+    }
     assert feature_group["features"] == ["relevance"]
 
 

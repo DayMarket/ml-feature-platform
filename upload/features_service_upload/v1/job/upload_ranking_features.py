@@ -251,6 +251,25 @@ def _latest_date_per_entity(
     )
 
 
+def _merge_query_id_dictionary(
+    spark: SparkSession,
+    frame: DataFrame,
+    feature_group: dict[str, Any],
+    metadata: dict[str, Any],
+) -> DataFrame:
+    # Источник хранит одну формулировку на query_id, а ranking-service ищет признак
+    # по тексту запроса: строки дублируются на все формулировки этого query_id
+    # из справочника. Итоговый текст только приводится к нижнему регистру.
+    dictionary = feature_group["source"]["query_id_dictionary"]
+    dictionary_frame = spark.table(
+        f"{metadata['catalog']}.{dictionary['schema']}.{dictionary['table']}"
+    ).select(F.col("query_id"), F.col("query_text"))
+    expanded = frame.drop("query_text").join(dictionary_frame, "query_id", "inner")
+    return frame.unionByName(expanded).withColumn(
+        "query_text", F.lower(F.col("query_text"))
+    )
+
+
 def _prepare_source_frame(
     spark: SparkSession,
     feature_group: dict[str, Any],
@@ -259,6 +278,8 @@ def _prepare_source_frame(
 ) -> DataFrame:
     frame = spark.table(_source_table(feature_group, metadata))
     if feature_group["source"].get("read_mode") == "full_table":
+        if feature_group["source"].get("query_id_dictionary"):
+            frame = _merge_query_id_dictionary(spark, frame, feature_group, metadata)
         frame = _latest_date_per_entity(frame, feature_group, metadata)
     elif metadata["date_column"]:
         frame = frame.filter(
