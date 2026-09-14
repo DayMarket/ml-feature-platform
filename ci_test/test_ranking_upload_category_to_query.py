@@ -250,7 +250,8 @@ def test_full_table_read_keeps_latest_date_per_key_without_date_filter():
     assert rank_expression[1] == ("row_number",)
     window = rank_expression[2]
     assert window.partition_by == ("category_id", "query_text")
-    assert window.order_by == (("desc", "date"),)
+    # При одинаковой date ключ, совпавший после lower, получает максимальный relevance.
+    assert window.order_by == (("desc", "date"), ("desc", "relevance"))
     assert ("filter", ("eq", rank_name, 1)) in frame.calls
     assert frame.calls[-2] == ("select", ("category_id", "query_text", "relevance"))
     assert frame.calls[-1] == ("na.fill", 0.0, ("relevance",))

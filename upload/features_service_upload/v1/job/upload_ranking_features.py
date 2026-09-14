@@ -236,6 +236,7 @@ def _latest_date_per_entity(
 ) -> DataFrame:
     # Ключ сущности повторяется в разных партициях, а порядок сообщений в Kafka
     # при записи из Spark не определён: публикуем только строку самой свежей даты.
+    # При равной дате (ключи, совпавшие после lower) побеждают максимальные признаки.
     if not metadata["date_column"]:
         raise ValueError(
             f"Source {_source_table(feature_group, metadata)} with "
@@ -243,7 +244,10 @@ def _latest_date_per_entity(
         )
     window = Window.partitionBy(
         *[F.col(key) for key in metadata["entity_keys"]]
-    ).orderBy(F.col(metadata["date_column"]).desc())
+    ).orderBy(
+        F.col(metadata["date_column"]).desc(),
+        *[F.col(feature_name).desc() for feature_name in feature_group["features"]],
+    )
     return (
         frame.withColumn(LATEST_DATE_RANK_COLUMN, F.row_number().over(window))
         .filter(F.col(LATEST_DATE_RANK_COLUMN) == 1)

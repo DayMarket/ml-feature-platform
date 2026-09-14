@@ -48,7 +48,8 @@ Upload `feature-platform.upload.query_category_relevance_upload`
 (`upload/query_category_relevance_upload/v1`) публикует всю таблицу, а не одну
 партицию. Строки дополняются всеми формулировками того же `query_id` из
 `iceberg.gold.feature_platform_search_query_id`, `query_text` приводится к нижнему
-регистру, и по каждой паре `category_id, query_text` берётся строка с самой свежей `date`.
+регистру, и по каждой паре `category_id, query_text` берётся строка с самой свежей `date`,
+а при равной `date` — с максимальным `relevance`.
 `query_text` уходит ключом `query`, `category_id` — ключом `skuGroupCategoryId`,
 `relevance` — единственным признаком (NULL отправляется как `0.0`).
 
