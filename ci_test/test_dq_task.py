@@ -1,13 +1,20 @@
 import sys
 from datetime import date, datetime
 from pathlib import Path
+from types import ModuleType
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import yaml
 
 from dq.config import DqConfigError
-from dq.task import build_render_context, parse_partition_value
+from dq.task import build_dq_task, build_render_context, parse_partition_value
+
+
+def _fake_module(monkeypatch, name: str, **attributes) -> None:
+    module = ModuleType(name)
+    module.__dict__.update(attributes)
+    monkeypatch.setitem(sys.modules, name, module)
 
 
 def test_render_context_from_entity_config() -> None:
@@ -72,6 +79,31 @@ def test_parse_partition_value_rejects_date_only_snapshot_template() -> None:
         assert "partition_date_template" in str(error)
     else:
         raise AssertionError("ожидали DqConfigError для шаблона без времени")
+
+
+def test_failure_callback_can_be_temporarily_disabled(monkeypatch) -> None:
+    options = []
+
+    def decorator(**kwargs):
+        options.append(kwargs)
+        return lambda function: function
+
+    def unexpected_notification(**kwargs):
+        raise AssertionError("send_oncall_notification не должен вызываться")
+
+    _fake_module(monkeypatch, "airflow.providers.trino.hooks.trino", TrinoHook=object)
+    _fake_module(monkeypatch, "airflow.sdk", get_current_context=dict, task=decorator)
+    _fake_module(
+        monkeypatch,
+        "airflow_commons.helpers.oncall",
+        send_oncall_notification=unexpected_notification,
+    )
+    build_dq_task(
+        "layers/gold/account_id_brand_id/account_brand_features/v1/config.yaml",
+        ".",
+        failure_callback_enabled=False,
+    )
+    assert options[-1]["on_failure_callback"] is None
 
 
 def main() -> int:
