@@ -108,6 +108,26 @@ def test_migration_leaves_no_temporary_column_behind():
     assert set(schema) == {"date", "query_id", "query_text", "category_id", "relevance"}
 
 
+def test_rerun_after_a_break_between_add_and_drop_removes_only_the_temporary_column():
+    """Единственное состояние, где обе колонки сосуществуют, — обрыв до DROP.
+
+    Повторный прогон обязан снять ровно временную колонку и не тронуть строковую:
+    так же выглядит таблица, если бы в прод успела уехать версия миграции без DROP.
+    """
+    interrupted = [FakeField(name, type_name) for name, type_name in PRODUCTION_FIELDS]
+    interrupted[1] = FakeField("query_id_bigint", "bigint")
+    interrupted.append(FakeField("query_id", "string"))
+
+    spark = _run(interrupted)
+
+    assert spark.sql_calls == [
+        f"ALTER TABLE {TARGET_TABLE} DROP COLUMN query_id_bigint",
+    ]
+    schema = {field.name: field.dataType.simpleString() for field in spark.fields}
+    assert schema["query_id"] == "string"
+    assert "query_id_bigint" not in schema
+
+
 def test_migration_is_idempotent_on_its_own_result():
     """Второй прогон не должен ни трогать строковую колонку, ни удалять что-либо."""
     migrated = [FakeField(name, type_name) for name, type_name in PRODUCTION_FIELDS]
@@ -173,6 +193,7 @@ def test_dropping_a_whole_table_is_still_rejected():
 def main() -> int:
     test_migration_recreates_query_id_as_string_on_the_production_schema()
     test_migration_leaves_no_temporary_column_behind()
+    test_rerun_after_a_break_between_add_and_drop_removes_only_the_temporary_column()
     test_migration_is_idempotent_on_its_own_result()
     test_drop_column_requires_if_exists()
     test_dropping_a_whole_table_is_still_rejected()
