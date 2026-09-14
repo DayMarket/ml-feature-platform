@@ -38,6 +38,7 @@ Grain и primary key: `calculated_at,account_id,product_id`.
 - `n_orders_28d_over_90d`;
 - `gmv_{3,7,14,28,60,90}d` и `*_ratio`;
 - `neg_n_days_since_last_purchase`;
+- `n_days_between_last_click_and_last_purchase`;
 - `last_click_before_last_purchase`.
 
 ## Action-события
@@ -97,6 +98,19 @@ neg_n_days_since_last_purchase =
 ```
 
 Результат остаётся дробным числом дней; округление не применяется.
+
+Знаковый интервал между последними click и purchase:
+
+```text
+n_days_between_last_click_and_last_purchase =
+    n_days_since_last_click - n_days_since_last_purchase
+```
+
+В терминах публикуемых отрицательных recency это
+`neg_n_days_since_last_purchase - neg_n_days_since_last_click`. Отрицательное
+значение означает, что click произошёл позднее purchase; положительное — что
+purchase произошла позднее click. `COALESCE` не применяется: если одного из
+timestamps нет, результат равен `NULL`.
 
 `last_click_before_last_purchase = 1`, если последний click за 28 дней произошёл
 позднее последней purchase за 90 дней. Несмотря на legacy-название, сравнение

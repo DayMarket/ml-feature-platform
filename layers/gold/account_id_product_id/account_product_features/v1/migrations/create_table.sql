@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     gmv_60d_ratio DOUBLE COMMENT 'Доля GMV товара в GMV всех товаров пользователя за 60 дней',
     gmv_90d_ratio DOUBLE COMMENT 'Доля GMV товара в GMV всех товаров пользователя за 90 дней',
     neg_n_days_since_last_purchase DOUBLE COMMENT 'Отрицательная точная давность последней успешной покупки в днях за 90 дней, без округления',
+    n_days_between_last_click_and_last_purchase DOUBLE COMMENT 'Знаковая разница: положительная давность последнего click минус положительная давность последней purchase; NULL без одного из timestamps',
     last_click_before_last_purchase INT COMMENT 'Legacy-флаг: 1, когда последний click за 28 дней произошёл позднее последней purchase за 90 дней; 0 иначе; NULL без одного из timestamps'
 )
 USING iceberg

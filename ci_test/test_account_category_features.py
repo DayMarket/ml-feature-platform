@@ -223,6 +223,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
     def test_recency_is_only_published_for_l1_l3_l5(self):
         for level, (entity, _, _, _, sql) in self.contracts.items():
             column = "neg_n_days_since_last_click"
+            interval_column = "n_days_between_last_click_and_last_purchase"
             migration = (entity / "migrations/create_table.sql").read_text(
                 encoding="utf-8"
             )
@@ -236,9 +237,24 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                         migration,
                         rf"(?m)^\s+{column} DOUBLE\b",
                     )
+                    self.assertIn("MAX(generated_at) AS last_purchase_at", sql)
+                    self.assertIn(f"AS {interval_column}", sql)
+                    self.assertIn(interval_column, migration)
+                    self.assertRegex(
+                        migration,
+                        rf"(?m)^\s+{interval_column} DOUBLE\b",
+                    )
+                    interval_line = next(
+                        line
+                        for line in sql.splitlines()
+                        if f"AS {interval_column}" in line
+                    )
+                    self.assertNotIn("COALESCE", interval_line)
                 else:
                     self.assertNotIn(column, sql)
                     self.assertNotIn(column, migration)
+                    self.assertNotIn(interval_column, sql)
+                    self.assertNotIn(interval_column, migration)
 
     def test_cutoffs_are_half_open_and_snapshot_is_local_time(self):
         for level, (_, _, _, _, sql) in self.contracts.items():
