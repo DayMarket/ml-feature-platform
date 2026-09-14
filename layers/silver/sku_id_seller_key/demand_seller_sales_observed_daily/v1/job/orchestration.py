@@ -24,6 +24,12 @@ from .runtime import read_fx, source_arrow
 logger = logging.getLogger("airflow.task")
 
 
+def same_type(actual, expected):
+    if pa.types.is_timestamp(expected):
+        return pa.types.is_timestamp(actual) and actual.unit == expected.unit and actual.tz in {None, "UTC"}
+    return actual == expected or pa.types.is_string(expected) and pa.types.is_large_string(actual)
+
+
 def validate_service_schema(table, migration_path):
     types = {"DATE": pa.date32(), "TIMESTAMP": pa.timestamp("us"), "STRING": pa.string(),
              "BIGINT": pa.int64(), "INT": pa.int32(), "DOUBLE": pa.float64(), "BOOLEAN": pa.bool_()}
@@ -41,8 +47,7 @@ def validate_service_schema(table, migration_path):
         raise ValueError("Служебная схема не совпадает с DDL")
     for field in expected:
         found = actual.field(field.name)
-        compatible = found.type == field.type or pa.types.is_string(field.type) and pa.types.is_large_string(found.type)
-        if not compatible or field.nullable != found.nullable:
+        if not same_type(found.type, field.type) or field.nullable != found.nullable:
             raise ValueError(f"Неверный тип/nullable служебного поля: {field.name}")
 
 

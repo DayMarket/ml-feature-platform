@@ -7,7 +7,7 @@ from datetime import date, timezone
 from decimal import Decimal
 import math
 
-from .preparation import MONEY, QUANTITIES, TECH, utc_naive, validate_batch, validate_fx, validate_schema
+from .preparation import MONEY, QUANTITIES, TECH, same_type, utc_naive, validate_batch, validate_fx, validate_schema
 
 COUNTS = ("sales_orders", "sales_order_items")
 KEYS = ("date", "sku_id")
@@ -65,8 +65,7 @@ def validate_seller_schema(source, target):
         raise ValueError("Нужны все 42 поля seller-sales")
     for field in source:
         wanted = expected[field.name]
-        same = field.type == wanted.type or pa.types.is_string(wanted.type) and pa.types.is_large_string(field.type)
-        if not same or field.nullable != wanted.nullable:
+        if not same_type(field.type, wanted.type) or field.nullable != wanted.nullable:
             raise ValueError(f"Неверный тип/nullable seller-sales.{field.name}")
 
 

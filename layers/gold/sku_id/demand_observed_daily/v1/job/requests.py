@@ -25,11 +25,12 @@ def run_instant(value):
 
 def resolve_references(config, sources, conf, *, run_type, run_id, logical_date, interval_start, interval_end):
     """Scheduled gold 05:00 UTC читает оба silver-run 04:00 UTC того же дня."""
+    run_type = getattr(run_type, "value", run_type)
     if conf is None:
         conf = {}
     if not isinstance(conf, dict) or set(sources) != {"sales", "stock"}:
         raise ValueError("Неверный conf или набор источников observed")
-    if str(run_type) == "scheduled":
+    if run_type == "scheduled":
         if conf.get("mode", "regular") != "regular" or "references" in conf:
             raise ValueError("Scheduled observed использует silver-runs своего интервала")
         start, end = interval_utc(interval_start), interval_utc(interval_end)
@@ -45,7 +46,7 @@ def resolve_references(config, sources, conf, *, run_type, run_id, logical_date,
                       "run_id": "scheduled__" + (end - timedelta(hours=1)).isoformat(),
                       "logical_date": (start - timedelta(hours=1)).isoformat()}
                       for kind, source in sources.items()}
-    elif str(run_type) == "manual":
+    elif run_type == "manual":
         references = checked_references(conf.get("references"))
     else:
         raise ValueError("Поддерживаются только scheduled regular и manual run")
@@ -57,6 +58,7 @@ def resolve_references(config, sources, conf, *, run_type, run_id, logical_date,
 def owner_arguments(config, conf, *, run_id, run_type, interval_start, interval_end, run_after,
                     references=None, logical_date=None):
     """Ручное окно — start/end либо logical_date; references всегда точные."""
+    run_type = getattr(run_type, "value", run_type)
     if conf is None:
         conf = {}
     if not isinstance(conf, dict) or set(conf) - {"mode", "start", "end", "references", "openlineage"}:
@@ -67,9 +69,9 @@ def owner_arguments(config, conf, *, run_id, run_type, interval_start, interval_
         raise ValueError("References должны задаваться одним способом")
     refs = checked_references(conf.get("references") if references is None else references)
     now = run_instant(run_after)
-    mode = conf.get("mode", "manual" if str(run_type) == "manual" else "regular")
+    mode = conf.get("mode", "manual" if run_type == "manual" else "regular")
     floor = iso_date(config.get("runtime", {}).get("history_start"), "runtime.history_start")
-    if str(run_type) == "manual":
+    if run_type == "manual":
         if mode != "manual":
             raise ValueError("Ручной запуск требует mode=manual")
         if ("start" in conf) != ("end" in conf):
@@ -89,7 +91,7 @@ def owner_arguments(config, conf, *, run_id, run_type, interval_start, interval_
         end = datetime.combine(stop, time.min, tzinfo=timezone.utc)
         if first < floor:
             raise ValueError("Ручной диапазон начинается раньше доступной истории")
-    elif str(run_type) == "scheduled":
+    elif run_type == "scheduled":
         if mode != "regular" or "start" in conf or "end" in conf:
             raise ValueError("Scheduled run не принимает ручные границы")
         first = floor

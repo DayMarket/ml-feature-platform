@@ -9,7 +9,7 @@ import pyarrow as pa
 import yaml
 
 from dq.day_range import capture_time, validate_written
-from .preparation import target_ref, validate_schema
+from .preparation import same_type, target_ref, validate_schema
 from .seller_rollup import validate_seller_schema
 
 
@@ -107,8 +107,7 @@ def preflight_source(source, catalog, bound, expected_schema):
         raise ValueError("Seller-sales snapshot не соответствует DDL владельца")
     for field in expected_schema:
         found = actual.field(field.name)
-        same = found.type == field.type or pa.types.is_string(field.type) and pa.types.is_large_string(found.type)
-        if not same or found.nullable != field.nullable:
+        if not same_type(found.type, field.type) or found.nullable != field.nullable:
             raise ValueError(f"Неверный тип/nullable seller-sales.{field.name}")
     return table, actual
 

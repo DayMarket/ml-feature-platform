@@ -29,6 +29,27 @@ def prepare(raw=None, **options):
     return PREP.prepare_catalog(source() if raw is None else raw, PREP.expected_schema(), **(defaults | options))
 
 
+def test_preparation_accepts_iceberg_utc_timestamps():
+    target = pa.schema([
+        pa.field(
+            field.name,
+            pa.timestamp("us", "UTC") if pa.types.is_timestamp(field.type) else field.type,
+            nullable=field.nullable,
+        )
+        for field in PREP.expected_schema()
+    ])
+    result = PREP.prepare_catalog(
+        source(),
+        target,
+        expected_source_rows=3,
+        catalog_version="catalog-1",
+        source_manifest_id="source-1",
+        source_contract_version="current_seller_catalog_v1",
+        ingested_at=NOW,
+    )
+    assert result.schema == target
+
+
 def test_null_master_is_not_unmatched_and_source_text_is_preserved():
     rows = prepare().to_pylist()
     assert [row["seller_id"] for row in rows] == [1, 2, 3]

@@ -14,6 +14,12 @@ TECH = ("fx_rate_date","fx_rate_uzs_per_usd","fx_rate_source","fx_captured_at","
 RAW_COLUMNS = ("date","sku_id","seller_key","seller_id","finance_units_generated","finance_units_assembled","finance_units_delivered","finance_units_completed","finance_units_returned","finance_units_net","finance_returned_units_current_period","finance_returned_units_previous_period","finance_gmv_generated","finance_gmv_assembled","finance_gmv_delivered","finance_gmv_completed","finance_gmv_returned","finance_gmv_net","finance_gmv_generated_without_promo","finance_gmv_delivered_without_promo","finance_gmv_completed_without_promo","finance_gmv_returned_without_promo","finance_gmv_net_without_promo","finance_promocodes_generated","finance_seller_discount_generated","finance_discount_generated","finance_promocodes_completed","finance_seller_discount_completed","finance_discount_completed","finance_promocodes_returned","finance_seller_discount_returned","finance_discount_returned","finance_gmv_generated_usd","finance_gmv_assembled_usd","finance_gmv_delivered_usd","finance_gmv_completed_usd","finance_gmv_returned_usd","finance_gmv_net_usd","finance_gmv_generated_without_promo_usd","finance_gmv_delivered_without_promo_usd","finance_gmv_completed_without_promo_usd","finance_gmv_returned_without_promo_usd","finance_gmv_net_without_promo_usd","finance_promocodes_generated_usd","finance_seller_discount_generated_usd","finance_discount_generated_usd","finance_promocodes_completed_usd","finance_seller_discount_completed_usd","finance_discount_completed_usd","finance_promocodes_returned_usd","finance_seller_discount_returned_usd","finance_discount_returned_usd","source_rows",)
 REQUIRED = ("date","sku_id","seller_key","source_rows","fx_rate_source","fx_captured_at","source_manifest_id","source_contract_version","ingested_at",)
 
+
+def same_type(actual, expected):
+    if pa.types.is_timestamp(expected):
+        return pa.types.is_timestamp(actual) and actual.unit == expected.unit and actual.tz in {None, "UTC"}
+    return actual == expected or pa.types.is_string(expected) and pa.types.is_large_string(actual)
+
 def target_ref(config, catalog_name):
     table = config['table']
     for key in ('catalog', 'schema', 'name'):
@@ -91,7 +97,7 @@ def validate_schema(schema):
         raise ValueError("Колонки не совпадают с миграцией")
     for name, kind in expected.items():
         field = schema.field(name)
-        if field.type != kind and not (pa.types.is_string(kind) and pa.types.is_large_string(field.type)):
+        if not same_type(field.type, kind):
             raise ValueError(f"Несовместимый тип {name}: {field.type}")
         if name in REQUIRED and field.nullable:
             raise ValueError(f"{name} должен быть required")

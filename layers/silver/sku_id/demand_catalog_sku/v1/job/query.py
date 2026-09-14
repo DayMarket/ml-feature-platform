@@ -12,7 +12,7 @@ def source_ref(config, key):
 
 
 def capture_query(config, kind, *, metadata_only=False):
-    """active_links включает orphan meta для явного отказа source readiness, не скрытого INNER JOIN."""
+    """active_links включает orphan meta для явного DQ-учёта до marketplace-фильтра."""
     if type(metadata_only) is not bool:
         raise ValueError("Нужен Boolean metadata_only")
     if kind == "sku":

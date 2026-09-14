@@ -35,6 +35,18 @@ def schema():
     return pa.schema([pa.field(n, types[t], nullable=not required) for n, t, required in fields])
 
 
+def test_preparation_accepts_iceberg_utc_timestamps():
+    target = pa.schema([
+        pa.field(
+            field.name,
+            pa.timestamp("us", "UTC") if pa.types.is_timestamp(field.type) else field.type,
+            nullable=field.nullable,
+        )
+        for field in schema()
+    ])
+    assert prepared(target=target).schema == target
+
+
 def raw(**changes):
     base = sales_raw("sales").to_pylist()[0]
     base.update(seller_key="seller:7", seller_id=7, sku_sales_orders=1, sku_sales_order_items=1)

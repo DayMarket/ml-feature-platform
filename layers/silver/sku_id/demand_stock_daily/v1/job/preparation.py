@@ -16,6 +16,12 @@ REQUIRED = (
 )
 
 
+def same_type(actual, expected):
+    if pa.types.is_timestamp(expected):
+        return pa.types.is_timestamp(actual) and actual.unit == expected.unit and actual.tz in {None, "UTC"}
+    return actual == expected or pa.types.is_string(expected) and pa.types.is_large_string(actual)
+
+
 def target_ref(config, catalog_name):
     table = config["table"]
     for key in ("catalog", "schema", "name"):
@@ -39,8 +45,7 @@ def validate_schema(schema):
         raise ValueError("Не совпадает набор колонок stock migration")
     for name, dtype in expected.items():
         field = schema.field(name)
-        same_string = pa.types.is_string(dtype) and pa.types.is_large_string(field.type)
-        if field.type != dtype and not same_string:
+        if not same_type(field.type, dtype):
             raise ValueError(f"Неверный тип {name}: {field.type}")
         if field.nullable:
             raise ValueError(f"{name} должен быть required")
@@ -71,7 +76,9 @@ def prepare_batch(raw, schema, *, day, manifest, version, ingested_at):
         "source_contract_version": pa.array(
             [version] * raw.num_rows, type=schema.field("source_contract_version").type
         ),
-        "ingested_at": pa.array([captured] * raw.num_rows, type=pa.timestamp("us")),
+        "ingested_at": pa.array(
+            [captured] * raw.num_rows, type=schema.field("ingested_at").type
+        ),
     }
     prepared = pa.Table.from_arrays([arrays[field.name] for field in schema], schema=schema)
     return validate_batch(prepared, schema, day=day)

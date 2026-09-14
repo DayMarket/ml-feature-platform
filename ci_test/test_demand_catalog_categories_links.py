@@ -71,7 +71,7 @@ def test_duplicates_and_converging_paths_do_not_create_a_false_conflict():
 
 def test_multiple_terminal_golden_is_conflict_not_arbitrary_matching():
     result, audit = resolve_sku_links([link(), link(golden=3)], graph(), expected_rows=2)
-    assert result[1] == dict(golden_mapping_status="conflict", golden_sku_id=None, unit_id=None)
+    assert result[1] == dict(golden_mapping_status="conflict", golden_sku_id=None, unit_id="s:1")
     assert audit["conflict_sku"] == 1
 
 
@@ -120,15 +120,30 @@ def raw_link(**changes):
 def test_raw_links_filter_marketplace_not_link_provenance():
     records = [raw_link(), raw_link(link_provenance="review", source_sku_id="2"),
                raw_link(meta_source="other", source_sku_id="ASIN-text")]
-    known = prepare_active_links(records, expected_rows=3, expected_uzum_rows=2)
+    known, audit = prepare_active_links(records, expected_rows=3, expected_uzum_rows=2)
     assert [row["sku_id"] for row in known] == [1, 2]
     assert all(row["golden_sku_id"] == str(UUID(int=1)) for row in known)
+    assert audit["orphan_meta_link_rows"] == 0
 
 
-@pytest.mark.parametrize("changes", [{"meta_present": 0, "meta_source": None, "source_sku_id": None},
-    {"meta_present": True}, {"meta_source": ""}, {"source_sku_id": "not-id"},
+def test_orphan_is_skipped_and_audited_before_marketplace_filter():
+    orphan = raw_link(meta_present=0, meta_source=None, source_sku_id=None)
+    known, audit = prepare_active_links(
+        [orphan, raw_link()],
+        expected_rows=2,
+        expected_uzum_rows=1,
+    )
+    assert [row["sku_id"] for row in known] == [1]
+    assert audit == {
+        "source_active_link_rows": 2,
+        "orphan_meta_link_rows": 1,
+        "recognized_uzum_link_rows": 1,
+    }
+
+
+@pytest.mark.parametrize("changes", [{"meta_present": True}, {"meta_source": ""}, {"source_sku_id": "not-id"},
     {"source_sku_id": "0"}, {"source_sku_id": str(2**63)}])
-def test_orphan_or_invalid_identity_never_becomes_unmatched(changes):
+def test_invalid_identity_never_becomes_unmatched(changes):
     with pytest.raises(ValueError):
         prepare_active_links([raw_link(**changes)], expected_rows=1, expected_uzum_rows=1)
 

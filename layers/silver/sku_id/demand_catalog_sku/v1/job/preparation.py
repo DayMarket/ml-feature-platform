@@ -42,14 +42,19 @@ def expected_schema():
     return pa.schema([pa.field(name, kind, nullable=nullable) for name, kind, nullable in fields])
 
 
+def same_type(actual, expected):
+    if pa.types.is_timestamp(expected):
+        return pa.types.is_timestamp(actual) and actual.unit == expected.unit and actual.tz in {None, "UTC"}
+    return actual == expected or pa.types.is_string(expected) and pa.types.is_large_string(actual)
+
+
 def validate_schema(schema):
     expected = expected_schema()
     if len(schema) != len(expected) or set(schema.names) != set(expected.names):
         raise ValueError("SKU-каталог требует 38 согласованных полей")
     for field in expected:
         found = schema.field(field.name)
-        same = found.type == field.type or pa.types.is_string(field.type) and pa.types.is_large_string(found.type)
-        if not same or found.nullable != field.nullable:
+        if not same_type(found.type, field.type) or found.nullable != field.nullable:
             raise ValueError(f"Неверный тип/nullable SKU.{field.name}")
 
 
@@ -81,12 +86,15 @@ def _seller_source(seller, bound, captured_at):
              "seller_registered_at": pa.timestamp("us"), "ingested_at": pa.timestamp("us")}
     for name in names:
         actual, expected = seller[name].type, types.get(name, pa.string())
-        if actual != expected and not (pa.types.is_string(expected) and pa.types.is_large_string(actual)):
+        if not same_type(actual, expected):
             raise ValueError(f"Неверный тип seller.{name}")
+    captured = bound["captured_at"].astimezone(timezone.utc)
+    if seller["ingested_at"].type.tz is None:
+        captured = captured.replace(tzinfo=None)
     for name, value in {"date": bound["date"], "catalog_version": receipt["catalog_version"],
                         "source_contract_version": receipt["source_contract_version"],
                         "source_manifest_id": receipt["source_manifest_id"],
-                        "ingested_at": bound["captured_at"].astimezone(timezone.utc).replace(tzinfo=None)}.items():
+                        "ingested_at": captured}.items():
         if not _all_equal(seller[name], value):
             raise ValueError(f"Seller snapshot содержит чужой {name}")
     ids = seller["seller_id"]
@@ -150,8 +158,17 @@ def prepare_catalog(source, schema, *, categories, goldens, active_links, counts
     seller = _seller_source(seller, bound_seller, ingested_at)
     category_index, category_audit = build_category_index(categories, expected_rows=counts["category"])
     terminals, graph_audit = resolve_golden_graph(goldens, expected_rows=counts["golden"])
-    links = prepare_active_links(active_links, expected_rows=counts["active_links"], expected_uzum_rows=counts["uzum_links"])
-    golden_index, links_audit = resolve_sku_links(links, terminals, expected_rows=counts["uzum_links"])
+    links, link_capture_audit = prepare_active_links(
+        active_links,
+        expected_rows=counts["active_links"],
+        expected_uzum_rows=counts["uzum_links"],
+    )
+    golden_index, links_audit = resolve_sku_links(
+        links,
+        terminals,
+        expected_rows=counts["uzum_links"],
+    )
+    links_audit = link_capture_audit | links_audit
     dimensions = (("category_id", category_index), ("sku_id", golden_index))
     for key, index in dimensions:
         records = [{key: ident, **record} for ident, record in index.items()]
@@ -164,13 +181,17 @@ def prepare_catalog(source, schema, *, categories, goldens, active_links, counts
     values["category_path_status"] = pc.fill_null(values["category_path_status"], "missing")
     values["golden_mapping_status"] = pc.fill_null(values["golden_mapping_status"], "unmatched")
     fallback = pc.binary_join_element_wise("s:", ids.cast(pa.string()), "")
-    values["unit_id"] = pc.if_else(pc.equal(values["golden_mapping_status"], "unmatched"), fallback, values["unit_id"])
+    standalone = pc.is_in(
+        values["golden_mapping_status"],
+        value_set=pa.array(["unmatched", "conflict"], type=values["golden_mapping_status"].type),
+    )
+    values["unit_id"] = pc.if_else(standalone, fallback, values["unit_id"])
     positions = pc.index_in(values["seller_id"], value_set=seller["seller_id"])
     for name in SELLER_FIELDS:
         values[name] = pc.take(seller[name], positions)
     values["seller_mapping_status"] = pc.fill_null(values["seller_mapping_status"], "unavailable")
     for name, allowed in (("category_path_status", ["valid", "missing"]),
-                          ("golden_mapping_status", ["matched", "unmatched"]),
+                          ("golden_mapping_status", ["matched", "unmatched", "conflict"]),
                           ("seller_mapping_status", ["matched", "unmatched"])):
         if not pc.all(pc.is_in(values[name], value_set=pa.array(allowed, type=values[name].type))).as_py():
             raise ValueError(f"Запись запрещена: {name} содержит conflict/unavailable")
