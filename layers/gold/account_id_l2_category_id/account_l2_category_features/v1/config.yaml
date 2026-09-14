@@ -13,6 +13,7 @@ table:
   schema: gold
   name: feature_platform_account_l2_category_features
   primary_key: calculated_at,account_id,l2_category_id
+  feature_namespace: ACCOUNT_L2
   meta:
     team: team::recsys
     create_dbt_pr: false
@@ -58,242 +59,242 @@ dq:
       expression: "account_id > 0 AND l2_category_id > 0"
     - name: non_negative
       columns:
-        - l2_n_imps_3d
-        - l2_n_imps_7d
-        - l2_n_imps_14d
-        - l2_n_imps_28d
-        - l2_n_clicks_3d
-        - l2_n_clicks_7d
-        - l2_n_clicks_14d
-        - l2_n_clicks_28d
-        - l2_n_atcs_3d
-        - l2_n_atcs_7d
-        - l2_n_atcs_14d
-        - l2_n_atcs_28d
-        - l2_n_atfs_3d
-        - l2_n_atfs_7d
-        - l2_n_atfs_14d
-        - l2_n_atfs_28d
-        - l2_n_orders_3d
-        - l2_n_orders_7d
-        - l2_n_orders_14d
-        - l2_n_orders_28d
-        - l2_n_orders_60d
-        - l2_n_orders_90d
-        - l2_gmv_3d
-        - l2_gmv_7d
-        - l2_gmv_14d
-        - l2_gmv_28d
-        - l2_gmv_60d
-        - l2_gmv_90d
-        - l2_account_conv_imp2click_3d
-        - l2_account_conv_imp2click_7d
-        - l2_account_conv_imp2click_14d
-        - l2_account_conv_imp2click_28d
-        - l2_account_conv_imp2atc_3d
-        - l2_account_conv_imp2atc_7d
-        - l2_account_conv_imp2atc_14d
-        - l2_account_conv_imp2atc_28d
-        - l2_account_conv_imp2atf_3d
-        - l2_account_conv_imp2atf_7d
-        - l2_account_conv_imp2atf_14d
-        - l2_account_conv_imp2atf_28d
-        - l2_account_conv_imp2order_3d
-        - l2_account_conv_imp2order_7d
-        - l2_account_conv_imp2order_14d
-        - l2_account_conv_imp2order_28d
-        - l2_conv_imp2click_3d
-        - l2_conv_imp2click_7d
-        - l2_conv_imp2click_14d
-        - l2_conv_imp2click_28d
-        - l2_conv_imp2atc_3d
-        - l2_conv_imp2atc_7d
-        - l2_conv_imp2atc_14d
-        - l2_conv_imp2atc_28d
-        - l2_conv_imp2atf_3d
-        - l2_conv_imp2atf_7d
-        - l2_conv_imp2atf_14d
-        - l2_conv_imp2atf_28d
-        - l2_conv_imp2order_3d
-        - l2_conv_imp2order_7d
-        - l2_conv_imp2order_14d
-        - l2_conv_imp2order_28d
-        - l2_conv_imp2click_vs_account_3d
-        - l2_conv_imp2click_vs_account_7d
-        - l2_conv_imp2click_vs_account_14d
-        - l2_conv_imp2click_vs_account_28d
-        - l2_conv_imp2atc_vs_account_3d
-        - l2_conv_imp2atc_vs_account_7d
-        - l2_conv_imp2atc_vs_account_14d
-        - l2_conv_imp2atc_vs_account_28d
-        - l2_conv_imp2atf_vs_account_3d
-        - l2_conv_imp2atf_vs_account_7d
-        - l2_conv_imp2atf_vs_account_14d
-        - l2_conv_imp2atf_vs_account_28d
-        - l2_conv_imp2order_vs_account_3d
-        - l2_conv_imp2order_vs_account_7d
-        - l2_conv_imp2order_vs_account_14d
-        - l2_conv_imp2order_vs_account_28d
+        - n_imps_3d
+        - n_imps_7d
+        - n_imps_14d
+        - n_imps_28d
+        - n_clicks_3d
+        - n_clicks_7d
+        - n_clicks_14d
+        - n_clicks_28d
+        - n_atcs_3d
+        - n_atcs_7d
+        - n_atcs_14d
+        - n_atcs_28d
+        - n_atfs_3d
+        - n_atfs_7d
+        - n_atfs_14d
+        - n_atfs_28d
+        - n_orders_3d
+        - n_orders_7d
+        - n_orders_14d
+        - n_orders_28d
+        - n_orders_60d
+        - n_orders_90d
+        - gmv_3d
+        - gmv_7d
+        - gmv_14d
+        - gmv_28d
+        - gmv_60d
+        - gmv_90d
+        - account_conv_imp2click_3d
+        - account_conv_imp2click_7d
+        - account_conv_imp2click_14d
+        - account_conv_imp2click_28d
+        - account_conv_imp2atc_3d
+        - account_conv_imp2atc_7d
+        - account_conv_imp2atc_14d
+        - account_conv_imp2atc_28d
+        - account_conv_imp2atf_3d
+        - account_conv_imp2atf_7d
+        - account_conv_imp2atf_14d
+        - account_conv_imp2atf_28d
+        - account_conv_imp2order_3d
+        - account_conv_imp2order_7d
+        - account_conv_imp2order_14d
+        - account_conv_imp2order_28d
+        - conv_imp2click_3d
+        - conv_imp2click_7d
+        - conv_imp2click_14d
+        - conv_imp2click_28d
+        - conv_imp2atc_3d
+        - conv_imp2atc_7d
+        - conv_imp2atc_14d
+        - conv_imp2atc_28d
+        - conv_imp2atf_3d
+        - conv_imp2atf_7d
+        - conv_imp2atf_14d
+        - conv_imp2atf_28d
+        - conv_imp2order_3d
+        - conv_imp2order_7d
+        - conv_imp2order_14d
+        - conv_imp2order_28d
+        - conv_imp2click_vs_account_3d
+        - conv_imp2click_vs_account_7d
+        - conv_imp2click_vs_account_14d
+        - conv_imp2click_vs_account_28d
+        - conv_imp2atc_vs_account_3d
+        - conv_imp2atc_vs_account_7d
+        - conv_imp2atc_vs_account_14d
+        - conv_imp2atc_vs_account_28d
+        - conv_imp2atf_vs_account_3d
+        - conv_imp2atf_vs_account_7d
+        - conv_imp2atf_vs_account_14d
+        - conv_imp2atf_vs_account_28d
+        - conv_imp2order_vs_account_3d
+        - conv_imp2order_vs_account_7d
+        - conv_imp2order_vs_account_14d
+        - conv_imp2order_vs_account_28d
     - name: finite
       columns:
-        - l2_account_conv_imp2click_3d
-        - l2_account_conv_imp2click_7d
-        - l2_account_conv_imp2click_14d
-        - l2_account_conv_imp2click_28d
-        - l2_account_conv_imp2atc_3d
-        - l2_account_conv_imp2atc_7d
-        - l2_account_conv_imp2atc_14d
-        - l2_account_conv_imp2atc_28d
-        - l2_account_conv_imp2atf_3d
-        - l2_account_conv_imp2atf_7d
-        - l2_account_conv_imp2atf_14d
-        - l2_account_conv_imp2atf_28d
-        - l2_account_conv_imp2order_3d
-        - l2_account_conv_imp2order_7d
-        - l2_account_conv_imp2order_14d
-        - l2_account_conv_imp2order_28d
-        - l2_conv_imp2click_3d
-        - l2_conv_imp2click_7d
-        - l2_conv_imp2click_14d
-        - l2_conv_imp2click_28d
-        - l2_conv_imp2atc_3d
-        - l2_conv_imp2atc_7d
-        - l2_conv_imp2atc_14d
-        - l2_conv_imp2atc_28d
-        - l2_conv_imp2atf_3d
-        - l2_conv_imp2atf_7d
-        - l2_conv_imp2atf_14d
-        - l2_conv_imp2atf_28d
-        - l2_conv_imp2order_3d
-        - l2_conv_imp2order_7d
-        - l2_conv_imp2order_14d
-        - l2_conv_imp2order_28d
-        - l2_conv_imp2click_vs_account_3d
-        - l2_conv_imp2click_vs_account_7d
-        - l2_conv_imp2click_vs_account_14d
-        - l2_conv_imp2click_vs_account_28d
-        - l2_conv_imp2atc_vs_account_3d
-        - l2_conv_imp2atc_vs_account_7d
-        - l2_conv_imp2atc_vs_account_14d
-        - l2_conv_imp2atc_vs_account_28d
-        - l2_conv_imp2atf_vs_account_3d
-        - l2_conv_imp2atf_vs_account_7d
-        - l2_conv_imp2atf_vs_account_14d
-        - l2_conv_imp2atf_vs_account_28d
-        - l2_conv_imp2order_vs_account_3d
-        - l2_conv_imp2order_vs_account_7d
-        - l2_conv_imp2order_vs_account_14d
-        - l2_conv_imp2order_vs_account_28d
+        - account_conv_imp2click_3d
+        - account_conv_imp2click_7d
+        - account_conv_imp2click_14d
+        - account_conv_imp2click_28d
+        - account_conv_imp2atc_3d
+        - account_conv_imp2atc_7d
+        - account_conv_imp2atc_14d
+        - account_conv_imp2atc_28d
+        - account_conv_imp2atf_3d
+        - account_conv_imp2atf_7d
+        - account_conv_imp2atf_14d
+        - account_conv_imp2atf_28d
+        - account_conv_imp2order_3d
+        - account_conv_imp2order_7d
+        - account_conv_imp2order_14d
+        - account_conv_imp2order_28d
+        - conv_imp2click_3d
+        - conv_imp2click_7d
+        - conv_imp2click_14d
+        - conv_imp2click_28d
+        - conv_imp2atc_3d
+        - conv_imp2atc_7d
+        - conv_imp2atc_14d
+        - conv_imp2atc_28d
+        - conv_imp2atf_3d
+        - conv_imp2atf_7d
+        - conv_imp2atf_14d
+        - conv_imp2atf_28d
+        - conv_imp2order_3d
+        - conv_imp2order_7d
+        - conv_imp2order_14d
+        - conv_imp2order_28d
+        - conv_imp2click_vs_account_3d
+        - conv_imp2click_vs_account_7d
+        - conv_imp2click_vs_account_14d
+        - conv_imp2click_vs_account_28d
+        - conv_imp2atc_vs_account_3d
+        - conv_imp2atc_vs_account_7d
+        - conv_imp2atc_vs_account_14d
+        - conv_imp2atc_vs_account_28d
+        - conv_imp2atf_vs_account_3d
+        - conv_imp2atf_vs_account_7d
+        - conv_imp2atf_vs_account_14d
+        - conv_imp2atf_vs_account_28d
+        - conv_imp2order_vs_account_3d
+        - conv_imp2order_vs_account_7d
+        - conv_imp2order_vs_account_14d
+        - conv_imp2order_vs_account_28d
     - name: accepted_range
-      column: l2_n_imps_3d_ratio
+      column: n_imps_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_imps_7d_ratio
+      column: n_imps_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_imps_14d_ratio
+      column: n_imps_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_imps_28d_ratio
+      column: n_imps_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_clicks_3d_ratio
+      column: n_clicks_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_clicks_7d_ratio
+      column: n_clicks_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_clicks_14d_ratio
+      column: n_clicks_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_clicks_28d_ratio
+      column: n_clicks_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_atcs_3d_ratio
+      column: n_atcs_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_atcs_7d_ratio
+      column: n_atcs_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_atcs_14d_ratio
+      column: n_atcs_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_atcs_28d_ratio
+      column: n_atcs_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_atfs_3d_ratio
+      column: n_atfs_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_atfs_7d_ratio
+      column: n_atfs_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_atfs_14d_ratio
+      column: n_atfs_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_atfs_28d_ratio
+      column: n_atfs_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_orders_3d_ratio
+      column: n_orders_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_orders_7d_ratio
+      column: n_orders_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_orders_14d_ratio
+      column: n_orders_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_orders_28d_ratio
+      column: n_orders_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_orders_60d_ratio
+      column: n_orders_60d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_n_orders_90d_ratio
+      column: n_orders_90d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_gmv_3d_ratio
+      column: gmv_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_gmv_7d_ratio
+      column: gmv_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_gmv_14d_ratio
+      column: gmv_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_gmv_28d_ratio
+      column: gmv_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_gmv_60d_ratio
+      column: gmv_60d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: l2_gmv_90d_ratio
+      column: gmv_90d_ratio
       min: 0
       max: 1
 
