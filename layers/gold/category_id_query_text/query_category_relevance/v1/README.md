@@ -54,10 +54,10 @@ DAG — заглушка без записи партиций, и на пуст�
 
 ## Downstream
 
-`query_category_relevance_expanded` читает всю витрину (`date <= даты прогона`),
+`query_category_relevance_expanded` читает всю витрину без фильтра по `date`,
 добавляет все формулировки `query_id` из `iceberg.gold.feature_platform_search_query_id`,
 приводит `query_text` к нижнему регистру и оставляет одну строку на пару
-`category_id, query_text`. В ranking-service уходит уже она.
+`category_id, query_text` с максимальным `relevance`. В ranking-service уходит уже она.
 
 ## Требования к будущему job'у
 
