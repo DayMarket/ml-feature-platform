@@ -29,6 +29,11 @@ RENAME_COLUMN_IF_EXISTS_PATTERN = re.compile(
     r"(?:\s+WHEN\s+SOURCE\s+TYPE\s+IS\s+NOT\s+(?P<expected_type>.+?))?\s*$",
     re.IGNORECASE | re.DOTALL,
 )
+DROP_COLUMN_IF_EXISTS_PATTERN = re.compile(
+    r"^\s*ALTER\s+TABLE\s+(?P<table>\S+)\s+DROP\s+COLUMN\s+IF\s+EXISTS\s+"
+    r"(?P<column>`?[\w]+`?)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
 ALTER_COLUMN_TYPE_PATTERN = re.compile(
     r"^\s*ALTER\s+TABLE\s+(?P<table>\S+)\s+ALTER\s+COLUMN\s+"
     r"(?P<column>`?[\w]+`?)\s+TYPE\s+(?P<target_type>.+?)"
@@ -130,6 +135,11 @@ def validate_idempotent_statement(statement: str, migration_path: Path) -> None:
         if " RENAME COLUMN IF EXISTS " not in normalized:
             raise RuntimeError(
                 f"{migration_path}: RENAME COLUMN migration must use IF EXISTS"
+            )
+    if normalized.startswith("ALTER TABLE") and " DROP COLUMN " in normalized:
+        if " DROP COLUMN IF EXISTS " not in normalized:
+            raise RuntimeError(
+                f"{migration_path}: DROP COLUMN migration must use IF EXISTS"
             )
     if normalized.startswith(("DROP ", "DELETE ", "TRUNCATE ")):
         raise RuntimeError(f"{migration_path}: destructive migrations are not allowed")
@@ -300,6 +310,22 @@ def run_statement(spark: SparkSession, statement: str) -> None:
             f"ALTER TABLE {table_name} RENAME COLUMN "
             f"{rename_column_match.group('column')} TO "
             f"{rename_column_match.group('new_column')}"
+        )
+        return
+
+    drop_column_match = DROP_COLUMN_IF_EXISTS_PATTERN.match(statement)
+    if drop_column_match:
+        table_name = drop_column_match.group("table")
+        column_name = normalize_identifier(drop_column_match.group("column"))
+        if column_name not in get_existing_columns(spark, table_name):
+            print(f"Skip missing column {table_name}.{column_name}")
+            return
+
+        # IF EXISTS разрешается здесь, а не передаётся в Spark: поддержка этой формы
+        # у Iceberg-каталога зависит от версии, а простой DROP COLUMN есть всегда.
+        spark.sql(
+            f"ALTER TABLE {table_name} DROP COLUMN "
+            f"{drop_column_match.group('column')}"
         )
         return
 
