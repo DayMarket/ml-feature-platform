@@ -230,7 +230,12 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 if level in (1, 3, 5):
                     self.assertIn(f"AS {column}", sql)
                     self.assertIn("/ 86400.0", sql)
+                    self.assertNotIn("CEIL(", sql)
                     self.assertIn(column, migration)
+                    self.assertRegex(
+                        migration,
+                        rf"(?m)^\s+{column} DOUBLE\b",
+                    )
                 else:
                     self.assertNotIn(column, sql)
                     self.assertNotIn(column, migration)

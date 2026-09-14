@@ -50,8 +50,8 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     gmv_28d_ratio DOUBLE COMMENT 'Доля GMV категории L3 в GMV пользователя за 28 дней',
     gmv_60d_ratio DOUBLE COMMENT 'Доля GMV категории L3 в GMV пользователя за 60 дней',
     gmv_90d_ratio DOUBLE COMMENT 'Доля GMV категории L3 в GMV пользователя за 90 дней',
-    neg_n_days_since_last_click INT COMMENT 'Отрицательная давность последнего PRODUCT_VIEW категории L3 за 28 дней: минус ceil суток',
-    neg_n_days_since_last_click_rel INT COMMENT 'Click-recency категории L3 минус самая свежая category-recency пользователя; максимум внутри account равен 0'
+    neg_n_days_since_last_click DOUBLE COMMENT 'Отрицательная точная давность последнего PRODUCT_VIEW категории L3 в днях за 28 дней, без округления',
+    neg_n_days_since_last_click_rel DOUBLE COMMENT 'Дробная click-recency категории L3 в днях минус самая свежая category-recency пользователя; максимум внутри account равен 0'
 )
 USING iceberg
 COMMENT 'Account-category L3 actions, orders, GMV, ratios, recency для рекомендательных моделей'

@@ -86,11 +86,11 @@ dq:
     - name: expression_is_true
       expression: "n_orders_28d_over_90d IS NULL OR n_orders_28d_over_90d BETWEEN 0 AND 1"
     - name: expression_is_true
-      expression: "neg_n_hours_since_last_click IS NULL OR neg_n_hours_since_last_click <= 0"
+      expression: "neg_n_days_since_last_click IS NULL OR neg_n_days_since_last_click <= 0"
     - name: expression_is_true
-      expression: "neg_n_hours_since_last_click_rel IS NULL OR neg_n_hours_since_last_click_rel <= 0"
+      expression: "neg_n_days_since_last_click_rel IS NULL OR neg_n_days_since_last_click_rel <= 0"
     - name: group_max_equals
-      column: neg_n_hours_since_last_click_rel
+      column: neg_n_days_since_last_click_rel
       group_by: [account_id]
       value: 0
       tolerance: 0

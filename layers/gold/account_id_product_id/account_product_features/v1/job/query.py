@@ -27,8 +27,8 @@ FEATURE_COLUMNS = (
     "n_atfs_7d_ratio",
     "n_atfs_14d_ratio",
     "n_atfs_28d_ratio",
-    "neg_n_hours_since_last_click",
-    "neg_n_hours_since_last_click_rel",
+    "neg_n_days_since_last_click",
+    "neg_n_days_since_last_click_rel",
     "n_orders_3d",
     "n_orders_7d",
     "n_orders_14d",
@@ -224,9 +224,9 @@ features_with_ratios AS (
         CASE WHEN SUM(gmv_28d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_28d / SUM(gmv_28d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_28d_ratio,
         CASE WHEN SUM(gmv_60d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_60d / SUM(gmv_60d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_60d_ratio,
         CASE WHEN SUM(gmv_90d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_90d / SUM(gmv_90d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_90d_ratio,
-        CASE WHEN last_click_at IS NOT NULL THEN -CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_local}') - UNIX_TIMESTAMP(last_click_at) AS DOUBLE) / 3600.0 END AS neg_n_hours_since_last_click,
+        CASE WHEN last_click_at IS NOT NULL THEN -CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_local}') - UNIX_TIMESTAMP(last_click_at) AS DOUBLE) / 86400.0 END AS neg_n_days_since_last_click,
         CASE WHEN n_orders_90d > 0 THEN CAST(n_orders_28d AS DOUBLE) / n_orders_90d END AS n_orders_28d_over_90d,
-        CASE WHEN last_purchase_at IS NOT NULL THEN CAST(-CEIL(CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_utc}') - UNIX_TIMESTAMP(last_purchase_at) AS DOUBLE) / 86400.0) AS INT) END AS neg_n_days_since_last_purchase,
+        CASE WHEN last_purchase_at IS NOT NULL THEN -CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_utc}') - UNIX_TIMESTAMP(last_purchase_at) AS DOUBLE) / 86400.0 END AS neg_n_days_since_last_purchase,
         CASE
             WHEN last_click_at IS NULL OR last_purchase_at IS NULL THEN NULL
             WHEN TO_UTC_TIMESTAMP(last_click_at, '{settings.business_timezone}') > last_purchase_at THEN 1
@@ -237,7 +237,7 @@ features_with_ratios AS (
 features_with_relative_recency AS (
     SELECT
         *,
-        neg_n_hours_since_last_click - MAX(neg_n_hours_since_last_click) OVER (PARTITION BY calculated_at, account_id) AS neg_n_hours_since_last_click_rel
+        neg_n_days_since_last_click - MAX(neg_n_days_since_last_click) OVER (PARTITION BY calculated_at, account_id) AS neg_n_days_since_last_click_rel
     FROM features_with_ratios
 )
 SELECT
@@ -250,7 +250,7 @@ SELECT
     n_atcs_3d_ratio, n_atcs_7d_ratio, n_atcs_14d_ratio, n_atcs_28d_ratio,
     n_atfs_3d, n_atfs_7d, n_atfs_14d, n_atfs_28d,
     n_atfs_3d_ratio, n_atfs_7d_ratio, n_atfs_14d_ratio, n_atfs_28d_ratio,
-    neg_n_hours_since_last_click, neg_n_hours_since_last_click_rel,
+    neg_n_days_since_last_click, neg_n_days_since_last_click_rel,
     n_orders_3d, n_orders_7d, n_orders_14d, n_orders_28d, n_orders_60d, n_orders_90d,
     n_orders_3d_ratio, n_orders_7d_ratio, n_orders_14d_ratio, n_orders_28d_ratio, n_orders_60d_ratio, n_orders_90d_ratio,
     n_orders_28d_over_90d,

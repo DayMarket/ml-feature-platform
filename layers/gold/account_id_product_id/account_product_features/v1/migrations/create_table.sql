@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     n_atfs_7d_ratio DOUBLE COMMENT 'Доля ATF-сессий товара среди ATF-сессий всех товаров пользователя за 7 дней',
     n_atfs_14d_ratio DOUBLE COMMENT 'Доля ATF-сессий товара среди ATF-сессий всех товаров пользователя за 14 дней',
     n_atfs_28d_ratio DOUBLE COMMENT 'Доля ATF-сессий товара среди ATF-сессий всех товаров пользователя за 28 дней',
-    neg_n_hours_since_last_click DOUBLE COMMENT 'Отрицательная точная давность последнего PRODUCT_VIEW в часах за 28 дней, без округления',
-    neg_n_hours_since_last_click_rel DOUBLE COMMENT 'Часовая click-recency товара минус самая свежая click-recency пользователя; максимум внутри account равен 0',
+    neg_n_days_since_last_click DOUBLE COMMENT 'Отрицательная точная давность последнего PRODUCT_VIEW в днях за 28 дней, без округления',
+    neg_n_days_since_last_click_rel DOUBLE COMMENT 'Дробная click-recency товара в днях минус самая свежая click-recency пользователя; максимум внутри account равен 0',
     n_orders_3d INT COMMENT 'Число distinct успешных order_id пользователя с товаром за 3 дня',
     n_orders_7d INT COMMENT 'Число distinct успешных order_id пользователя с товаром за 7 дней',
     n_orders_14d INT COMMENT 'Число distinct успешных order_id пользователя с товаром за 14 дней',
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     gmv_28d_ratio DOUBLE COMMENT 'Доля GMV товара в GMV всех товаров пользователя за 28 дней',
     gmv_60d_ratio DOUBLE COMMENT 'Доля GMV товара в GMV всех товаров пользователя за 60 дней',
     gmv_90d_ratio DOUBLE COMMENT 'Доля GMV товара в GMV всех товаров пользователя за 90 дней',
-    neg_n_days_since_last_purchase INT COMMENT 'Отрицательная давность последней успешной покупки за 90 дней: минус ceil полных суток до calculated_at',
+    neg_n_days_since_last_purchase DOUBLE COMMENT 'Отрицательная точная давность последней успешной покупки в днях за 90 дней, без округления',
     last_click_before_last_purchase INT COMMENT 'Legacy-флаг: 1, когда последний click за 28 дней произошёл позднее последней purchase за 90 дней; 0 иначе; NULL без одного из timestamps'
 )
 USING iceberg
