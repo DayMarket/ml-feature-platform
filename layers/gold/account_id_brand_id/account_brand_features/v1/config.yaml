@@ -25,9 +25,6 @@ source:
   order_items_table: iceberg.silver.order_items
   sku_table: iceberg.silver.sku
   business_timezone: Asia/Tashkent
-  event_windows_days: 3,7,14,28
-  order_windows_days: 3,7,14,28,60,90
-  successful_order_statuses: COMPLETED,PAID,DELIVERED,IN_DELIVERY
 
 dag:
   id: feature-platform.layers.gold.account_id_brand_id.account_brand_features
