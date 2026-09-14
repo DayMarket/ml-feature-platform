@@ -119,22 +119,22 @@ dq:
         - conv_imp2order_7d
         - conv_imp2order_14d
         - conv_imp2order_28d
-        - conv_imp2click_vs_account_3d
-        - conv_imp2click_vs_account_7d
-        - conv_imp2click_vs_account_14d
-        - conv_imp2click_vs_account_28d
-        - conv_imp2atc_vs_account_3d
-        - conv_imp2atc_vs_account_7d
-        - conv_imp2atc_vs_account_14d
-        - conv_imp2atc_vs_account_28d
-        - conv_imp2atf_vs_account_3d
-        - conv_imp2atf_vs_account_7d
-        - conv_imp2atf_vs_account_14d
-        - conv_imp2atf_vs_account_28d
-        - conv_imp2order_vs_account_3d
-        - conv_imp2order_vs_account_7d
-        - conv_imp2order_vs_account_14d
-        - conv_imp2order_vs_account_28d
+        - conv_imp2click_div_total_account_conv_3d
+        - conv_imp2click_div_total_account_conv_7d
+        - conv_imp2click_div_total_account_conv_14d
+        - conv_imp2click_div_total_account_conv_28d
+        - conv_imp2atc_div_total_account_conv_3d
+        - conv_imp2atc_div_total_account_conv_7d
+        - conv_imp2atc_div_total_account_conv_14d
+        - conv_imp2atc_div_total_account_conv_28d
+        - conv_imp2atf_div_total_account_conv_3d
+        - conv_imp2atf_div_total_account_conv_7d
+        - conv_imp2atf_div_total_account_conv_14d
+        - conv_imp2atf_div_total_account_conv_28d
+        - conv_imp2order_div_total_account_conv_3d
+        - conv_imp2order_div_total_account_conv_7d
+        - conv_imp2order_div_total_account_conv_14d
+        - conv_imp2order_div_total_account_conv_28d
     - name: finite
       columns:
         - account_conv_imp2click_3d
@@ -169,22 +169,22 @@ dq:
         - conv_imp2order_7d
         - conv_imp2order_14d
         - conv_imp2order_28d
-        - conv_imp2click_vs_account_3d
-        - conv_imp2click_vs_account_7d
-        - conv_imp2click_vs_account_14d
-        - conv_imp2click_vs_account_28d
-        - conv_imp2atc_vs_account_3d
-        - conv_imp2atc_vs_account_7d
-        - conv_imp2atc_vs_account_14d
-        - conv_imp2atc_vs_account_28d
-        - conv_imp2atf_vs_account_3d
-        - conv_imp2atf_vs_account_7d
-        - conv_imp2atf_vs_account_14d
-        - conv_imp2atf_vs_account_28d
-        - conv_imp2order_vs_account_3d
-        - conv_imp2order_vs_account_7d
-        - conv_imp2order_vs_account_14d
-        - conv_imp2order_vs_account_28d
+        - conv_imp2click_div_total_account_conv_3d
+        - conv_imp2click_div_total_account_conv_7d
+        - conv_imp2click_div_total_account_conv_14d
+        - conv_imp2click_div_total_account_conv_28d
+        - conv_imp2atc_div_total_account_conv_3d
+        - conv_imp2atc_div_total_account_conv_7d
+        - conv_imp2atc_div_total_account_conv_14d
+        - conv_imp2atc_div_total_account_conv_28d
+        - conv_imp2atf_div_total_account_conv_3d
+        - conv_imp2atf_div_total_account_conv_7d
+        - conv_imp2atf_div_total_account_conv_14d
+        - conv_imp2atf_div_total_account_conv_28d
+        - conv_imp2order_div_total_account_conv_3d
+        - conv_imp2order_div_total_account_conv_7d
+        - conv_imp2order_div_total_account_conv_14d
+        - conv_imp2order_div_total_account_conv_28d
     - name: expression_is_true
       expression: "neg_n_days_since_last_click IS NULL OR neg_n_days_since_last_click <= 0"
     - name: expression_is_true
