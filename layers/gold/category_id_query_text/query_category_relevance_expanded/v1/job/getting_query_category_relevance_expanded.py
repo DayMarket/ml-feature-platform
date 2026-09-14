@@ -50,22 +50,22 @@ def render_query(run_date: str) -> str:
     if date.fromisoformat(run_date).isoformat() != run_date:
         raise ValueError(f"run_date must be YYYY-MM-DD, got {run_date!r}")
 
-    # 1. Строки витрины не новее даты прогона: перезапуск старого дня не видит будущее.
-    # 2. К ним добавляются копии со всеми query_text того же query_id из справочника.
+    # 1. Вся витрина, без фильтра по date: даты источника не важны.
+    # 2. К строкам добавляются копии со всеми query_text того же query_id из справочника
+    #    (связь только по query_id).
     # 3. Текст запроса только приводится к нижнему регистру.
-    # 4. На пару category_id, query_text остаётся одна строка: самая свежая date,
-    #    при равной date — максимальный relevance (разные query_id, совпавшие после lower).
+    # 4. На пару category_id, query_text остаётся одна строка с максимальным relevance.
+    # run_date задаёт только партицию, в которую пишется снимок.
     return f"""
 WITH source AS (
-    SELECT date, query_id, query_text, category_id, relevance
+    SELECT query_id, query_text, category_id, relevance
     FROM {SOURCE_TABLE}
-    WHERE date <= DATE '{run_date}'
 ),
 merged AS (
-    SELECT date, category_id, query_text, relevance
+    SELECT category_id, query_text, relevance
     FROM source
     UNION ALL
-    SELECT source.date, source.category_id, dictionary.query_text, source.relevance
+    SELECT source.category_id, dictionary.query_text, source.relevance
     FROM source
     JOIN {QUERY_ID_TABLE} AS dictionary ON dictionary.query_id = source.query_id
 ),
@@ -76,13 +76,13 @@ ranked AS (
         relevance,
         row_number() OVER (
             PARTITION BY category_id, lower(query_text)
-            ORDER BY date DESC, relevance DESC NULLS LAST
-        ) AS latest_rank
+            ORDER BY relevance DESC NULLS LAST
+        ) AS relevance_rank
     FROM merged
 )
 SELECT DATE '{run_date}' AS date, category_id, query_text, relevance
 FROM ranked
-WHERE latest_rank = 1
+WHERE relevance_rank = 1
 """
 
 

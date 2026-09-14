@@ -181,7 +181,9 @@ class ExpandedJobTest(unittest.TestCase):
     def test_query_merges_dictionary_lowercases_and_keeps_one_row_per_pair(self):
         query = " ".join(self.job.render_query("2026-09-14").split())
 
-        self.assertIn("WHERE date <= DATE '2026-09-14'", query)
+        # Даты источника не участвуют: берётся вся витрина, все формулировки всех query_id.
+        self.assertNotIn("date <=", query)
+        self.assertNotIn("ORDER BY date", query)
         self.assertIn("UNION ALL", query)
         self.assertIn(
             f"JOIN {self.job.QUERY_ID_TABLE} AS dictionary ON dictionary.query_id = source.query_id",
@@ -190,7 +192,7 @@ class ExpandedJobTest(unittest.TestCase):
         self.assertIn("lower(query_text) AS query_text", query)
         self.assertIn(
             "row_number() OVER ( PARTITION BY category_id, lower(query_text) "
-            "ORDER BY date DESC, relevance DESC NULLS LAST )",
+            "ORDER BY relevance DESC NULLS LAST )",
             query,
         )
         self.assertIn("DATE '2026-09-14' AS date", query)
