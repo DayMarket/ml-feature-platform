@@ -26,7 +26,7 @@ EVENTS_CONFIG_PATH = str(Path(REPO_ROOT) / CONFIG["inputs"]["events_config"])
 CALENDAR_CONFIG = load_config(CALENDAR_CONFIG_PATH)
 EVENTS_CONFIG = load_config(EVENTS_CONFIG_PATH)
 SOURCES = {"calendar": CALENDAR_CONFIG, "events": EVENTS_CONFIG}
-CAPTURE_TIMESTAMP = '{{ ti.xcom_pull(task_ids="write_calendar")["ingested_at"] }}'
+CAPTURE_TIMESTAMP = '{{ (ti.xcom_pull(task_ids="write_calendar", include_prior_dates=False) or {}).get("ingested_at", "") }}'
 
 
 def default_args():

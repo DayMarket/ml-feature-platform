@@ -81,10 +81,10 @@ def execute_load(config, repo_root, *, catalog, client, connection, reference, g
     metadata_query(connection, f"SELECT * FROM {table_ref(seller_config, repo_root)} "
                    f"FOR VERSION AS OF {bound['receipt']['snapshot_id']} LIMIT 0", seller_schema)
     metadata = read_metadata(config, client)
-    counts = read_counts(config, client)
+    preliminary_counts = read_counts(config, client)
     seller = read_seller(seller_config, repo_root, connection, bound, seller_schema, **limits)
     _seller_source(seller, bound, captured)
-    captures = capture_all(config, client, counts, metadata, **limits)
+    captures, counts = capture_all(config, client, preliminary_counts, metadata, **limits)
 
     def verify_seller():
         current = deepcopy(get_checked(deepcopy(reference)))
@@ -104,7 +104,8 @@ def execute_load(config, repo_root, *, catalog, client, connection, reference, g
         seller=seller, bound_seller=bound, source_manifest_id=source_manifest_id, ingested_at=captured,
         verify_source=verify_source, expected_metadata_location=initial_target)
     result["source_audit"].update(
-        captures={kind: {"rows_count": counts[kind], "source_columns": [list(item) for item in metadata[kind]],
+        captures={kind: {"rows_count": counts[kind], "preliminary_rows_count": preliminary_counts[kind],
+                         "source_columns": [list(item) for item in metadata[kind]],
                          "query_sha256": sha256(capture_query(config, kind).encode()).hexdigest()}
                   for kind in FIELDS},
         seller={"reference": reference, "receipt": bound["receipt"], "schema_id": schema_id,

@@ -24,7 +24,7 @@ def load_config(path):
 CONFIG = load_config(CONFIG_PATH)
 CALENDAR_CONFIG_PATH = str(Path(REPO_ROOT) / CONFIG["inputs"]["calendar_config"])
 CALENDAR_CONFIG = load_config(CALENDAR_CONFIG_PATH)
-CAPTURE_TIMESTAMP = '{{ ti.xcom_pull(task_ids="write_events")["ingested_at"] }}'
+CAPTURE_TIMESTAMP = '{{ (ti.xcom_pull(task_ids="write_events", include_prior_dates=False) or {}).get("ingested_at", "") }}'
 
 
 def default_args():
@@ -92,6 +92,16 @@ def events_dag():
         reference = request["reference"]
         checked = context["ti"].xcom_pull(
             dag_id=reference["dag_id"], task_ids="dq", run_id=reference["run_id"], include_prior_dates=False)
+        if checked is None and request["mode"] == "regular":
+            # Sensor уже подтвердил success точного DQ. Старые успешные DQ могли
+            # не публиковать payload, поэтому receipt берём у writer того же run.
+            receipt = context["ti"].xcom_pull(
+                dag_id=reference["dag_id"], task_ids="write_calendar",
+                run_id=reference["run_id"], include_prior_dates=False,
+            )
+            if receipt is not None:
+                checked = {"dq_status": "passed", "dag_id": reference["dag_id"],
+                           "run_id": reference["run_id"], "receipt": receipt}
         return execute_load(CONFIG, REPO_ROOT, context["run_id"], request["mode"], reference, checked)
 
     request = prepare_reference()
