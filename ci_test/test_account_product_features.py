@@ -114,10 +114,12 @@ class AccountProductFeaturesTest(unittest.TestCase):
             self.sql,
         )
 
-    def test_click_recency_is_fractional_hours_only(self):
-        self.assertIn("AS neg_n_hours_since_last_click", self.sql)
-        self.assertIn("/ 3600.0", self.sql)
-        self.assertNotIn("neg_n_days_since_last_click", self.sql)
+    def test_click_and_purchase_recency_are_fractional_days_without_rounding(self):
+        self.assertIn("AS neg_n_days_since_last_click", self.sql)
+        self.assertIn("AS neg_n_days_since_last_purchase", self.sql)
+        self.assertGreaterEqual(self.sql.count("/ 86400.0"), 2)
+        self.assertNotIn("neg_n_hours_since_last_click", self.sql)
+        self.assertNotIn("CEIL(", self.sql)
 
     def test_legacy_click_purchase_flag_compares_timestamps_in_right_direction(self):
         self.assertIn(
@@ -165,7 +167,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
     def test_dq_covers_relative_recency_group_invariant(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("- name: group_max_equals", config_text)
-        self.assertIn("column: neg_n_hours_since_last_click_rel", config_text)
+        self.assertIn("column: neg_n_days_since_last_click_rel", config_text)
         self.assertIn("group_by: [account_id]", config_text)
 
 
