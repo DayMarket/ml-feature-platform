@@ -154,17 +154,26 @@ def test_category_conflict_blocks_used_paths_but_not_unreferenced_categories():
     assert audit["category"]["conflict_category_rows"] == 2
 
 
-@pytest.mark.parametrize("kind", ["cycle", "missing_target", "missing_golden"])
+@pytest.mark.parametrize("kind", ["missing_target", "missing_golden"])
 def test_mdm_errors_never_produce_fallback(kind):
     args = arguments()
-    if kind == "cycle":
-        args["goldens"][-1] = golden(3, 1)
-    elif kind == "missing_target":
+    if kind == "missing_target":
         args["goldens"][-1] = golden(3, 99)
     elif kind == "missing_golden":
         args["active_links"] = [link(target=99)]
     with pytest.raises(ValueError):
         run(**args)
+
+
+def test_cyclic_golden_keeps_sku_as_standalone_conflict():
+    args = arguments()
+    args["goldens"][-1] = golden(3, 1)
+    output, audit = run(**args)
+    first = output.to_pylist()[0]
+    assert first["golden_sku_id"] is None
+    assert first["golden_mapping_status"] == "conflict" and first["unit_id"] == "s:1"
+    assert audit["golden_graph"]["cycle_rows"] == 3
+    assert audit["golden_links"]["sku_with_cyclic_golden"] == 1
 
 
 def test_ambiguous_golden_keeps_standalone_sku_and_conflict_status():
@@ -193,8 +202,10 @@ def test_orphan_link_is_skipped_and_reported_without_fallback():
 
 @pytest.mark.parametrize("values", [[42, 99, 42], [42, None, 42], [42, 0, 42]])
 def test_missing_seller_is_not_unmatched(values):
-    with pytest.raises(ValueError, match="seller_mapping_status"):
-        run(replace(raw_source(), "seller_id", values))
+    result, audit = run(replace(raw_source(), "seller_id", values))
+    assert result["seller_mapping_status"].to_pylist() == ["matched", "unavailable", "matched"]
+    assert result["master_seller_id"].to_pylist()[1] is None
+    assert audit["seller_mapping_status"] == {"matched": 2, "unavailable": 1}
 
 
 @pytest.mark.parametrize("field,values", [("catalog_version", ["other", "catalog1"]),
@@ -208,13 +219,14 @@ def test_invalid_seller_snapshot_payload(field, values):
         run(**args)
 
 
-def test_unknown_seller_master_blocks_and_unknown_is_1p_does_not():
+def test_unknown_seller_master_is_preserved_and_unknown_is_1p_does_not_change_it():
     args = arguments()
     for field, values in [("source_master_seller_id", [None, ""]), ("master_seller_id", [None, "43"]),
                           ("seller_mapping_status", ["unavailable", "unmatched"]), ("has_master", [None, False])]:
         args["seller"] = replace(args["seller"], field, values)
-    with pytest.raises(ValueError, match="seller_mapping_status"):
-        run(**args)
+    result, _ = run(**args)
+    assert result["seller_mapping_status"].to_pylist() == ["unavailable", "unmatched", "unavailable"]
+    assert result["master_seller_id"].to_pylist() == [None, "43", None]
 
 
 def test_capture_date_uses_tashkent_and_seller_version_is_retained():

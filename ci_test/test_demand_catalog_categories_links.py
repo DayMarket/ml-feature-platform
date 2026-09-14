@@ -82,6 +82,12 @@ def test_unknown_golden_never_becomes_unmatched_even_with_known_candidate():
         assert audit["sku_with_missing_golden"] == 1 and 2 not in result
 
 
+def test_cyclic_golden_becomes_standalone_conflict():
+    result, audit = resolve_sku_links([link()], {str(UUID(int=1)): None}, expected_rows=1)
+    assert result[1] == dict(golden_mapping_status="conflict", golden_sku_id=None, unit_id="s:1")
+    assert audit["sku_with_cyclic_golden"] == 1
+
+
 @pytest.mark.parametrize("field,value", [("sku_id", 0), ("sku_id", True), ("sku_id", 2**63),
     ("meta_sku_id", None), ("golden_sku_id", str(UUID(int=0)))])
 def test_invalid_raw_link_is_not_discarded(field, value):

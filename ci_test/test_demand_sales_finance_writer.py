@@ -18,7 +18,13 @@ def env(request, tmp_path):
                      warehouse=(tmp_path / "warehouse").as_uri())
     cat.create_namespace("silver")
     cfg = config(kind)
-    table = cat.create_table(module(kind, "preparation").target_ref(cfg, cat.name), schema=schema(kind))
+    target = pa.schema([
+        pa.field(field.name,
+                 pa.timestamp("us", "UTC") if pa.types.is_timestamp(field.type) else field.type,
+                 nullable=field.nullable)
+        for field in schema(kind)
+    ])
+    table = cat.create_table(module(kind, "preparation").target_ref(cfg, cat.name), schema=target)
     with table.update_spec() as spec:
         spec.add_identity("date")
     yield kind, cfg, cat, table

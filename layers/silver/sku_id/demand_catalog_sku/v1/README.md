@@ -18,7 +18,8 @@ Raw L1–L6 сохраняют нули и NULL отдельно. Нормали
 протяжкой нулей от предыдущего уровня, leaf из category_id. Missing-category SKU
 не удаляются, путь NULL; конфликт родителя блокирует ready. Golden/master только
 готовые связи. Unmatched — доказанное отсутствие; conflict не выбирает одну golden и
-остаётся самостоятельным `unit_id=s:<sku_id>`. Unavailable блокирует запись.
+остаётся самостоятельным `unit_id=s:<sku_id>`. Seller unavailable сохраняется как
+явный лаг между независимыми source captures и даёт DQ warning; seller conflict блокирует DQ.
 NULL is_1p не FALSE, created_at не first_observed_alive_date.
 
 Дата capture — фактическая Asia/Tashkent, timestamps UTC. Полная атомарная замена
@@ -43,18 +44,23 @@ MDM golden — ReplicatedReplacingMergeTree с ORDER BY (category_id,golden_sku_
 Подготовлены DDL/config/preparation/writer/exact seller binding, полный source loader/runtime/Connections и owner DAG.
 Добавлено чистое golden_graph.py: итеративный проход полного захваченного графа
 до terminal golden для каждого ID, с проверкой независимого count/UUID/merge flags,
-дублей, отсутствующих целей и циклов во всём графе. Path compression исключает
+дублей и отсутствующих целей во всём графе. Цикл и ведущие в него golden не получают
+произвольный terminal: связанные SKU сохраняются самостоятельными со статусом conflict.
+Path compression исключает
 повторный обход общей части цепочек; лимита одним переходом/рекурсии нет.
 Audit содержит число terminal/merged/multi-hop узлов и максимальную глубину.
 Добавлены category_paths.py/golden_links.py: полный category count/raw-типы,
 нормализация L2–L5 с сохранением raw L1–L6, leaf=category_id. Неоднозначные parent
 помечают все затронутые категории conflict, без выбора первого; normalized paths
 у них NULL. Отсутствующий L1 остаётся missing. SKU preparation блокирует использованные
-conflict до commit, DQ контракт также запрещает их готовому срезу.
+category conflict до commit, DQ контракт также запрещает их готовому срезу.
 
 query.py даёт отдельные SKU/category/golden/active_links captures и LIMIT 0 для
 проверки native metadata. ID SKU/category не кастуются в signed до проверки диапазона.
-У golden используется FINAL. Активные links читаются без INNER JOIN: dictHas сохраняет
+Текущее состояние golden выбирается одной парой `(is_merged,merged_into)` через
+`argMax(...,updated_at)` с группировкой по `golden_sku_id`: исходный
+ReplacingMergeTree не имеет version-колонки, а его sorting key содержит category_id,
+поэтому FINAL не задаёт контракт последней бизнес-версии. Активные links читаются без INNER JOIN: dictHas сохраняет
 флаг meta_present и NULL identity orphan-связи. Links.source — provenance (manual,
 review, dedup_merge и др.), marketplace='uzum' отбирается по meta.source. Семантика
 сверена с dbt commerce/golden_sku_mapping.sql CTE verified/nasz_paired_skus.sql;
@@ -78,8 +84,9 @@ golden и active links captures с независимыми counts и полны
 Все 38 полей собираются через колоночные index/take: нет Python-списка миллионов SKU
 строк. Нули/NULL исходных полей сохраняются; missing category оставляет NULL-путь,
 но не удаляет SKU. Unmatched MDM появляется только после проверки полного capture.
-Использованные category/seller conflict и golden unavailable блокируют запись;
-golden conflict остаётся самостоятельным SKU. Missing seller не становится unmatched.
+Использованные category conflict и golden unavailable блокируют запись; golden conflict
+остаётся самостоятельным SKU. Seller, появившийся после закреплённого seller snapshot,
+сохраняется как unavailable с NULL-атрибутами и даёт DQ warning, а не unmatched.
 Master/raw/status seller повторно сверяются, unknown is_1p сохраняется.
 
 job/inputs.py проверяет passed DQ точного seller owner run, writer receipt, UUID,
@@ -90,7 +97,7 @@ fallback. Подготовка сверяет полный seller payload/count/
 job/writer.py выполняет preflight существующей таблицы/identity date, подготовку,
 атомарную полную замену и полный read-back. Исчезнувшие SKU и старые даты удаляются
 из текущего среза. verify_source обязателен и непосредственно перед commit повторно
-проверяет source captures/exact seller DQ; callback теперь реализован в runtime.
+проверяет exact seller DQ/snapshot; каждый CH capture фиксируется своим завершённым запросом.
 Проверка смены target metadata и optimistic commit запрещают потерю чужой записи.
 Receipt written передаётся DQ точного `ingested_at`, но не означает passed.
 Feature statistics считаются по тому же capture. Read-back ошибка
@@ -103,7 +110,8 @@ Feature statistics считаются по тому же capture. Read-back ош
 
 Дополнительный audit merge-графа: missing target/self-loop=0, но у 2861 merged
 строки target сам merged. Утверждён проход до конечного golden в одном захваченном
-графе; циклы, missing targets и повтор golden-ID блокируют запись. Один переход
+графе; missing targets и повтор golden-ID блокируют запись. Циклы учитываются в audit
+с ограниченным списком UUID, а затронутые SKU остаются самостоятельными conflict. Один переход
 не гарантирует конечный golden. Dict meta для source=uzum содержит
 10954174 уникальных source_sku_id с допустимым числовым ID; это не вся проверка JOIN.
 
@@ -121,10 +129,10 @@ UUID не заменяется неявной строковой конверс�
 seller_reader.py читает все 12 полей exact snapshot через Trino, без фильтра SKU,
 со строгими native типами, count/порядком/лимитами и закрытием cursor при ошибках.
 runtime.py проверяет полные схемы input/output/DQ/stats до большого скана и связывает
-writer с повторной проверкой: все raw captures читаются дважды и сравниваются целиком,
-counts проверяются до/между/после. Неизменный count не скрывает изменённый статус,
-название категории или MDM provenance. Это не snapshot isolation ClickHouse.
-Seller DQ/UUID/snapshot/schema перепроверяются до и после повторного CH чтения.
+writer с полными CH captures. Независимый count сверяется с каждой завершённой выборкой;
+изменения источника после захвата не отменяют уже собранный срез. Общей snapshot isolation
+между таблицами ClickHouse нет, поэтому новый seller в SKU сохраняется как unavailable.
+Seller DQ/UUID/snapshot/schema повторно проверяются непосредственно перед commit.
 
 orchestration.execute_capture использует clickhouse_dwh_team_logistics/use_numpy=False,
 trino_search и общий Hive/S3 catalog из штатного DQ loader. Exact XCom читает task=dq

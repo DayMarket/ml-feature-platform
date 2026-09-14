@@ -36,7 +36,7 @@ def scheduled_calendar_reference(config, calendar_config, interval_start, interv
     if end - start != timedelta(days=1) or (start.hour, start.minute, start.second, start.microsecond) != (3, 10, 0, 0):
         raise ValueError("Нужен полный scheduled data interval 03:10 UTC")
     cal_start, cal_end = start - timedelta(minutes=10), end - timedelta(minutes=10)
-    # В Airflow 3.1.8 scheduled run_id содержит run_after (конец интервала), не logical_date.
+    # Airflow 3 формирует scheduled run_id из run_after — конца data interval.
     return {"dag_id": calendar_config["dag"]["id"],
             "run_id": "scheduled__" + cal_end.isoformat(), "logical_date": cal_start.isoformat()}
 

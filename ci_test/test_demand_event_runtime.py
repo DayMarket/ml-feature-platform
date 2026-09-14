@@ -27,7 +27,7 @@ def checked():
             "receipt": {"status": "written", "source_manifest_id": ref["run_id"]}}
 
 
-def test_calendar_logical_date_is_not_run_id_suffix():
+def test_calendar_logical_date_is_run_id_suffix():
     ref = reference()
     assert ref["logical_date"] == "2026-09-08T03:00:00+00:00"
     assert ref["run_id"] == "scheduled__2026-09-09T03:00:00+00:00"

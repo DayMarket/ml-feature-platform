@@ -47,6 +47,13 @@ def test_preparation_accepts_iceberg_utc_timestamps():
     assert prepared(target=target).schema == target
 
 
+def test_ingestion_covers_fx_server_clock_skew(monkeypatch):
+    receipt = fx() | {"fx_captured_at": CAPTURE + timedelta(seconds=2)}
+    monkeypatch.setattr(mod("runtime"), "utc_now", lambda: CAPTURE)
+
+    assert mod("runtime").capture_after_fx(receipt) == receipt["fx_captured_at"]
+
+
 def raw(**changes):
     base = sales_raw("sales").to_pylist()[0]
     base.update(seller_key="seller:7", seller_id=7, sku_sales_orders=1, sku_sales_order_items=1)
@@ -73,7 +80,13 @@ def env(tmp_path):
     cat = SqlCatalog("iceberg", uri=f"sqlite:///{tmp_path}/catalog.db",
                      warehouse=(tmp_path / "warehouse").as_uri())
     cat.create_namespace("silver")
-    table = cat.create_table(mod("preparation").target_ref(cfg, cat.name), schema=schema())
+    target = pa.schema([
+        pa.field(field.name,
+                 pa.timestamp("us", "UTC") if pa.types.is_timestamp(field.type) else field.type,
+                 nullable=field.nullable)
+        for field in schema()
+    ])
+    table = cat.create_table(mod("preparation").target_ref(cfg, cat.name), schema=target)
     with table.update_spec() as spec:
         spec.add_identity("date")
     yield cfg, cat, table

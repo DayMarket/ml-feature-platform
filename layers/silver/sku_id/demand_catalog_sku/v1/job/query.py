@@ -11,6 +11,16 @@ def source_ref(config, key):
     return f"`{match[1]}`.`{match[2]}`"
 
 
+def current_golden_source(config):
+    """Выбрать одну согласованную последнюю merge-запись на golden UUID."""
+    source = source_ref(config, "golden")
+    return (
+        "(SELECT golden_sku_id, latest.1 AS is_merged, latest.2 AS merged_into FROM "
+        "(SELECT golden_sku_id, argMax(tuple(is_merged, merged_into), updated_at) AS latest FROM "
+        f"{source} GROUP BY golden_sku_id))"
+    )
+
+
 def capture_query(config, kind, *, metadata_only=False):
     """active_links включает orphan meta для явного DQ-учёта до marketplace-фильтра."""
     if type(metadata_only) is not bool:
@@ -25,7 +35,7 @@ def capture_query(config, kind, *, metadata_only=False):
         source, where, order = source_ref(config, "category"), "", "category_id"
     elif kind == "golden":
         fields = "golden_sku_id, is_merged, merged_into"
-        source, where, order = source_ref(config, "golden") + " FINAL", "", "golden_sku_id"
+        source, where, order = current_golden_source(config), "", "golden_sku_id"
     elif kind == "active_links":
         source_ref(config, "meta_sku")
         dictionary = config["source"]["meta_sku"]

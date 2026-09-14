@@ -98,6 +98,16 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
+def capture_after_fx(fx):
+    """Не ставить ingestion раньше времени FX при небольшом рассогласовании часов."""
+    captured = utc_now()
+    fx_captured = fx.get("fx_captured_at") if isinstance(fx, dict) else None
+    if (not isinstance(captured, datetime) or captured.utcoffset() is None
+            or not isinstance(fx_captured, datetime) or fx_captured.utcoffset() is None):
+        raise ValueError("Нужны timezone-aware времена ingestion и FX")
+    return max(captured.astimezone(timezone.utc), fx_captured.astimezone(timezone.utc))
+
+
 def source_signature(coverage, fx):
     """Связать контрольные суммы и применённый курс, исключая время повторного захвата."""
     values = [v.astimezone(timezone.utc).isoformat() if isinstance(v, datetime) else str(v)
@@ -107,6 +117,30 @@ def source_signature(coverage, fx):
                'fx_date': fx['fx_rate_date'].isoformat() if fx['fx_rate_date'] else None,
                'fx_rate': float(rate).hex() if rate is not None else None}
     return sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def bounded_batches(batch, *, max_rows, max_bytes):
+    """Разделить готовую Arrow-таблицу по обоим лимитам без изменения порядка."""
+    if not isinstance(batch, pa.Table) or any(
+            type(value) is not int or value <= 0 for value in (max_rows, max_bytes)):
+        raise ValueError("Неверная Arrow-порция или лимиты")
+    offset = 0
+    while offset < batch.num_rows:
+        high = min(max_rows, batch.num_rows - offset)
+        candidate = batch.slice(offset, high)
+        if candidate.nbytes > max_bytes:
+            low = 1
+            while low < high:
+                middle = (low + high + 1) // 2
+                if batch.slice(offset, middle).nbytes <= max_bytes:
+                    low = middle
+                else:
+                    high = middle - 1
+            candidate = batch.slice(offset, low)
+            if candidate.nbytes > max_bytes:
+                raise ValueError("Одна строка превышает max_batch_bytes")
+        yield candidate
+        offset += candidate.num_rows
 
 
 def load_day(config, catalog, client, *, day, manifest, require_source_ready=None,
@@ -142,7 +176,7 @@ def load_day(config, catalog, client, *, day, manifest, require_source_ready=Non
     signature = source_signature(coverage, receipt)
     if expected_source_signature is not None and signature != expected_source_signature:
         raise ValueError("Source/FX изменился после проверки диапазона")
-    captured = utc_now()
+    captured = capture_after_fx(receipt)
     sql = source_query(config, day, fx_available=receipt["fx_rate_source"] != "unavailable")
     seen = [0] * (len(TOTAL_COLUMNS) + 1)
 
@@ -163,7 +197,7 @@ def load_day(config, catalog, client, *, day, manifest, require_source_ready=Non
                 for index, name in enumerate(TOTAL_COLUMNS, 1):
                     # Python int не округляет Decimal(38,0) при суммировании порций.
                     seen[index] += sum(exact_total(v) for v in batch[name].to_pylist())
-                yield batch
+                yield from bounded_batches(batch, max_rows=limit, max_bytes=max_bytes)
         finally:
             close = getattr(stream, "close", None)
             if callable(close):

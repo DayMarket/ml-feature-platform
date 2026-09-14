@@ -187,14 +187,19 @@ def prepare_catalog(source, schema, *, categories, goldens, active_links, counts
     )
     values["unit_id"] = pc.if_else(standalone, fallback, values["unit_id"])
     positions = pc.index_in(values["seller_id"], value_set=seller["seller_id"])
+    missing_seller_rows = positions.null_count
     for name in SELLER_FIELDS:
         values[name] = pc.take(seller[name], positions)
     values["seller_mapping_status"] = pc.fill_null(values["seller_mapping_status"], "unavailable")
     for name, allowed in (("category_path_status", ["valid", "missing"]),
                           ("golden_mapping_status", ["matched", "unmatched", "conflict"]),
-                          ("seller_mapping_status", ["matched", "unmatched"])):
-        if not pc.all(pc.is_in(values[name], value_set=pa.array(allowed, type=values[name].type))).as_py():
-            raise ValueError(f"Запись запрещена: {name} содержит conflict/unavailable")
+                          ("seller_mapping_status", ["matched", "unmatched", "unavailable"])):
+        accepted = pc.is_in(values[name], value_set=pa.array(allowed, type=values[name].type))
+        if not pc.all(accepted).as_py():
+            rejected = pc.value_counts(pc.filter(values[name], pc.invert(accepted))).to_pylist()
+            details = {row["values"]: row["counts"] for row in rejected}
+            suffix = f", отсутствуют в seller snapshot={missing_seller_rows}" if name == "seller_mapping_status" else ""
+            raise ValueError(f"Запись запрещена: {name}={details}{suffix}")
     constants = {"date": ingested_at.astimezone(ZoneInfo("Asia/Tashkent")).date(),
                  "catalog_version": catalog_version, "catalog_seller_snapshot_id": snapshot_id,
                  "source_manifest_id": source_manifest_id, "source_contract_version": source_contract_version,

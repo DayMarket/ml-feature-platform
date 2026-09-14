@@ -74,7 +74,11 @@ dq:
       values: [unavailable]
     - name: not_accepted_values
       column: seller_mapping_status
-      values: [unavailable, conflict]
+      values: [unavailable]
+      severity: warn
+    - name: not_accepted_values
+      column: seller_mapping_status
+      values: [conflict]
     - name: string_not_blank
       columns: [catalog_version, source_contract_version, source_manifest_id]
     - name: distinct_count_between
