@@ -207,7 +207,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                             sql,
                         )
                         self.assertIn(
-                            f"AS conv_imp2{signal}_vs_account_{window}d",
+                            f"AS conv_imp2{signal}_div_total_account_conv_{window}d",
                             sql,
                         )
             self.assertIn("account_order_features AS", sql)
@@ -310,7 +310,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             with self.subTest(level=level):
                 self.assertIn("- name: finite", config_text)
                 self.assertIn("- account_conv_imp2click_3d", config_text)
-                self.assertIn("- conv_imp2order_vs_account_28d", config_text)
+                self.assertIn("- conv_imp2order_div_total_account_conv_28d", config_text)
 
     def test_recency_contracts_check_relative_max_per_account(self):
         for level in (1, 3, 5):
