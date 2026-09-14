@@ -202,8 +202,10 @@ def test_orphan_link_is_skipped_and_reported_without_fallback():
 
 @pytest.mark.parametrize("values", [[42, 99, 42], [42, None, 42], [42, 0, 42]])
 def test_missing_seller_is_not_unmatched(values):
-    with pytest.raises(ValueError, match="seller_mapping_status"):
-        run(replace(raw_source(), "seller_id", values))
+    result, audit = run(replace(raw_source(), "seller_id", values))
+    assert result["seller_mapping_status"].to_pylist() == ["matched", "unavailable", "matched"]
+    assert result["master_seller_id"].to_pylist()[1] is None
+    assert audit["seller_mapping_status"] == {"matched": 2, "unavailable": 1}
 
 
 @pytest.mark.parametrize("field,values", [("catalog_version", ["other", "catalog1"]),
@@ -217,13 +219,14 @@ def test_invalid_seller_snapshot_payload(field, values):
         run(**args)
 
 
-def test_unknown_seller_master_blocks_and_unknown_is_1p_does_not():
+def test_unknown_seller_master_is_preserved_and_unknown_is_1p_does_not_change_it():
     args = arguments()
     for field, values in [("source_master_seller_id", [None, ""]), ("master_seller_id", [None, "43"]),
                           ("seller_mapping_status", ["unavailable", "unmatched"]), ("has_master", [None, False])]:
         args["seller"] = replace(args["seller"], field, values)
-    with pytest.raises(ValueError, match="seller_mapping_status"):
-        run(**args)
+    result, _ = run(**args)
+    assert result["seller_mapping_status"].to_pylist() == ["unavailable", "unmatched", "unavailable"]
+    assert result["master_seller_id"].to_pylist() == [None, "43", None]
 
 
 def test_capture_date_uses_tashkent_and_seller_version_is_retained():

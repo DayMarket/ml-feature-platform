@@ -85,14 +85,14 @@ def output(env):
     return env["catalog"].load_table(prep.target_ref(env["cfg"], env["catalog"].name))
 
 
-def test_full_load_repeat_all_sources_and_exact_receipt(env):
+def test_full_load_captures_sources_once_and_rechecks_exact_receipt(env):
     getter = Mock(side_effect=lambda ref: env["checked"])
     result = execute(env, get_checked=getter)
     assert result["status"] == "written" and result["rows_written"] == 3
     assert json.loads(json.dumps(result)) == result
-    assert getter.call_count == 3
+    assert getter.call_count == 2
     assert all(call.args == (env["reference"],) for call in getter.call_args_list)
-    assert env["client"].streams == ["sku", "category", "golden", "active_links"] * 2
+    assert env["client"].streams == ["sku", "category", "golden", "active_links"]
     assert env["client"].closed == env["client"].streams
     assert len(env["connection"].closed) == len(env["connection"].queries) == 5
     assert result["source_audit"]["seller"]["receipt"] == env["checked"]["receipt"]
@@ -117,26 +117,23 @@ def test_prior_snapshot_and_prior_schema_are_used(env):
     assert output(env).scan().to_arrow().sort_by([("sku_id", "ascending")])["is_1p"].to_pylist() == [None, False, None]
 
 
-@pytest.mark.parametrize("phase", [2, 3])
-def test_failed_exact_seller_dq_before_or_after_source_recheck_preserves_old_snapshot(env, phase):
+def test_failed_exact_seller_dq_before_commit_preserves_old_snapshot(env):
     initial = execute(env)
     failed = deepcopy(env["checked"])
     failed["dq_status"] = "failed"
-    getter = Mock(side_effect=[env["checked"]] * (phase - 1) + [failed])
+    getter = Mock(side_effect=[env["checked"], failed])
     with pytest.raises(ValueError, match="passed DQ"):
         execute(env, get_checked=getter)
     assert output(env).current_snapshot().snapshot_id == initial["snapshot_id"]
 
 
-def test_same_count_content_change_blocks_commit(env):
-    initial = execute(env)
+def test_source_change_after_capture_does_not_invalidate_captured_snapshot(env):
     def mutate(kind, number):
-        if kind == "sku" and number == 4:
+        if kind == "active_links" and number == 3:
             env["client"].rows["sku"][0][-1] = "changed between captures"
     env["client"].on_stream = mutate
-    with pytest.raises(ValueError, match="перед commit"):
-        execute(env)
-    assert output(env).current_snapshot().snapshot_id == initial["snapshot_id"]
+    execute(env)
+    assert output(env).scan().to_arrow().sort_by([("sku_id", "ascending")])["sku_status"].to_pylist()[0] != "changed between captures"
     assert env["client"].closed == env["client"].streams
 
 

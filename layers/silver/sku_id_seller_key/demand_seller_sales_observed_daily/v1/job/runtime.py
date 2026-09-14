@@ -103,6 +103,16 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
+def capture_after_fx(fx):
+    """Не ставить ingestion раньше времени FX при небольшом рассогласовании часов."""
+    captured = utc_now()
+    fx_captured = fx.get("fx_captured_at") if isinstance(fx, dict) else None
+    if (not isinstance(captured, datetime) or captured.utcoffset() is None
+            or not isinstance(fx_captured, datetime) or fx_captured.utcoffset() is None):
+        raise ValueError("Нужны timezone-aware времена ingestion и FX")
+    return max(captured.astimezone(timezone.utc), fx_captured.astimezone(timezone.utc))
+
+
 def source_signature(coverage, fx):
     """Связать контрольные суммы и применённый курс, исключая время повторного захвата."""
     values = [v.astimezone(timezone.utc).isoformat() if isinstance(v, datetime) else str(v)
@@ -148,7 +158,7 @@ def load_day(config, catalog, client, *, day, manifest, require_source_ready=Non
     signature = source_signature(coverage, receipt)
     if expected_source_signature is not None and signature != expected_source_signature:
         raise ValueError("Source/FX изменился после проверки диапазона")
-    captured = utc_now()
+    captured = capture_after_fx(receipt)
     sql = source_query(config, day, fx_available=receipt["fx_rate_source"] != "unavailable")
     seen = [0] * (len(TOTAL_COLUMNS) + 1)
     updated = None
