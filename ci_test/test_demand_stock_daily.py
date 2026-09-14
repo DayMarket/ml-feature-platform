@@ -29,6 +29,14 @@ def schema():
                       for name, kind, required in fields])
 
 
+def test_preparation_accepts_iceberg_utc_timestamp():
+    target = schema().set(
+        schema().get_field_index("ingested_at"),
+        pa.field("ingested_at", pa.timestamp("us", "UTC"), nullable=False),
+    )
+    assert batch(target).schema == target
+
+
 def config():
     result = yaml.safe_load((ENTITY / "config.yaml").read_text())
     result["runtime"]["max_batch_rows"] = 2

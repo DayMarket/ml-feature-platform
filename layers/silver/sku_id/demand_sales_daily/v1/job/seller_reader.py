@@ -40,7 +40,8 @@ def trino_type_matches(dtype, value):
     if pa.types.is_string(dtype) or pa.types.is_large_string(dtype):
         return re.fullmatch(r"varchar(?:\(\d+\))?", value) is not None
     if pa.types.is_timestamp(dtype):
-        return dtype.unit == "us" and dtype.tz is None and value == "timestamp(6)"
+        expected = "timestamp(6)withtimezone" if dtype.tz == "UTC" else "timestamp(6)"
+        return dtype.unit == "us" and value == expected
     mapping = {pa.date32(): "date", pa.int32(): "integer", pa.int64(): "bigint", pa.float64(): "double",
                pa.bool_(): "boolean", pa.decimal128(38, 0): "decimal(38,0)"}
     return mapping.get(dtype) == value
@@ -68,7 +69,8 @@ def exact_value(value, field):
     elif pa.types.is_floating(dtype):
         valid = type(value) is float and math.isfinite(value)
     elif pa.types.is_timestamp(dtype):
-        valid = isinstance(value, datetime) and value.utcoffset() is None
+        valid = (isinstance(value, datetime)
+                 and (value.utcoffset() is None if dtype.tz is None else value.utcoffset() is not None))
     elif pa.types.is_date(dtype):
         valid = type(value) is date
     elif pa.types.is_boolean(dtype):

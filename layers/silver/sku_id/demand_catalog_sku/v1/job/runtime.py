@@ -6,11 +6,10 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-import pyarrow as pa
 import yaml
 
 from .inputs import bind_source, migration_schema, preflight_source, source_config, validate_reference
-from .preparation import _seller_source, target_ref
+from .preparation import _seller_source, same_type, target_ref
 from .query import capture_query
 from .seller_reader import metadata_query, read_seller, source_sql, table_ref
 from .source_reader import FIELDS, capture_all, read_counts, read_metadata, verify_captures
@@ -53,8 +52,7 @@ def _preflight_services(config, repo_root, catalog, connection, target):
             raise ValueError("Схема служебной таблицы не соответствует миграции")
         for field in expected:
             found = actual.field(field.name)
-            same = found.type == field.type or pa.types.is_string(field.type) and pa.types.is_large_string(found.type)
-            if not same or found.nullable != field.nullable:
+            if not same_type(found.type, field.type) or found.nullable != field.nullable:
                 raise ValueError(f"Неверный тип/nullable служебной таблицы: {field.name}")
         entries.append((service, actual))
     for cfg, schema in entries:

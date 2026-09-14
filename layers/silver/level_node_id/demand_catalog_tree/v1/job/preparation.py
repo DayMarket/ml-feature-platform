@@ -29,14 +29,19 @@ def expected_schema():
     return pa.schema([pa.field(name, kind, nullable=nullable) for name, kind, nullable in fields])
 
 
+def same_type(actual, expected):
+    if pa.types.is_timestamp(expected):
+        return pa.types.is_timestamp(actual) and actual.unit == expected.unit and actual.tz in {None, "UTC"}
+    return actual == expected or pa.types.is_string(expected) and pa.types.is_large_string(actual)
+
+
 def validate_schema(schema):
     expected = expected_schema()
     if len(schema) != len(expected) or set(schema.names) != set(expected.names):
         raise ValueError("Tree требует 11 согласованных полей")
     for field in expected:
         actual = schema.field(field.name)
-        same = actual.type == field.type or pa.types.is_string(field.type) and pa.types.is_large_string(actual.type)
-        if not same or actual.nullable != field.nullable:
+        if not same_type(actual.type, field.type) or actual.nullable != field.nullable:
             raise ValueError(f"Неверный тип/nullable tree.{field.name}")
 
 

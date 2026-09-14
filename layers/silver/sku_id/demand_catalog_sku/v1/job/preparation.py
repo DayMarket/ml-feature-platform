@@ -42,14 +42,19 @@ def expected_schema():
     return pa.schema([pa.field(name, kind, nullable=nullable) for name, kind, nullable in fields])
 
 
+def same_type(actual, expected):
+    if pa.types.is_timestamp(expected):
+        return pa.types.is_timestamp(actual) and actual.unit == expected.unit and actual.tz in {None, "UTC"}
+    return actual == expected or pa.types.is_string(expected) and pa.types.is_large_string(actual)
+
+
 def validate_schema(schema):
     expected = expected_schema()
     if len(schema) != len(expected) or set(schema.names) != set(expected.names):
         raise ValueError("SKU-каталог требует 38 согласованных полей")
     for field in expected:
         found = schema.field(field.name)
-        same = found.type == field.type or pa.types.is_string(field.type) and pa.types.is_large_string(found.type)
-        if not same or found.nullable != field.nullable:
+        if not same_type(found.type, field.type) or found.nullable != field.nullable:
             raise ValueError(f"Неверный тип/nullable SKU.{field.name}")
 
 
@@ -81,12 +86,15 @@ def _seller_source(seller, bound, captured_at):
              "seller_registered_at": pa.timestamp("us"), "ingested_at": pa.timestamp("us")}
     for name in names:
         actual, expected = seller[name].type, types.get(name, pa.string())
-        if actual != expected and not (pa.types.is_string(expected) and pa.types.is_large_string(actual)):
+        if not same_type(actual, expected):
             raise ValueError(f"Неверный тип seller.{name}")
+    captured = bound["captured_at"].astimezone(timezone.utc)
+    if seller["ingested_at"].type.tz is None:
+        captured = captured.replace(tzinfo=None)
     for name, value in {"date": bound["date"], "catalog_version": receipt["catalog_version"],
                         "source_contract_version": receipt["source_contract_version"],
                         "source_manifest_id": receipt["source_manifest_id"],
-                        "ingested_at": bound["captured_at"].astimezone(timezone.utc).replace(tzinfo=None)}.items():
+                        "ingested_at": captured}.items():
         if not _all_equal(seller[name], value):
             raise ValueError(f"Seller snapshot содержит чужой {name}")
     ids = seller["seller_id"]
