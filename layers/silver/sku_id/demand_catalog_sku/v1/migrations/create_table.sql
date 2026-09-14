@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     unit_id STRING COMMENT 'g:<golden UUID> при matched, s:<sku_id> при unmatched/conflict, NULL при unavailable',
     source_master_seller_id STRING COMMENT 'Raw master из точного catalog_seller, NULL и пустота различаются',
     master_seller_id STRING COMMENT 'Готовый master или seller_id строкой только при доказанном unmatched',
-    seller_mapping_status STRING NOT NULL COMMENT 'matched, unmatched, unavailable или conflict, последние два блокируют DQ',
+    seller_mapping_status STRING NOT NULL COMMENT 'matched, unmatched, unavailable или conflict; unavailable предупреждает о лаге, conflict блокирует DQ',
     has_master BOOLEAN COMMENT 'TRUE при matched, FALSE при unmatched, иначе NULL',
     is_1p BOOLEAN COMMENT 'Текущий признак точного seller-каталога, unknown не FALSE',
     seller_registered_at TIMESTAMP COMMENT 'Регистрация seller в UTC, не наблюдаемый возраст master',

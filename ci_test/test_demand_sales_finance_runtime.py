@@ -147,6 +147,14 @@ def test_finance_bounds_reject_row_larger_than_byte_limit():
             batch, max_rows=1, max_bytes=batch.nbytes - 1))
 
 
+def test_finance_ingestion_covers_fx_server_clock_skew(monkeypatch):
+    runtime = module("finance", "runtime")
+    receipt = fx() | {"fx_captured_at": CAPTURE + timedelta(seconds=2)}
+    monkeypatch.setattr(runtime, "utc_now", lambda: CAPTURE)
+
+    assert runtime.capture_after_fx(receipt) == receipt["fx_captured_at"]
+
+
 @pytest.fixture
 def loader(env, monkeypatch):  # noqa: F811
     kind, cfg, catalog, table = env

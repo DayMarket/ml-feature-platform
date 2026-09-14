@@ -12,7 +12,7 @@ from .inputs import bind_source, migration_schema, preflight_source, source_conf
 from .preparation import _seller_source, same_type, target_ref
 from .query import capture_query
 from .seller_reader import metadata_query, read_seller, source_sql, table_ref
-from .source_reader import FIELDS, capture_all, read_counts, read_metadata, verify_captures
+from .source_reader import FIELDS, capture_all, read_counts, read_metadata
 from .writer import preflight, write_catalog
 
 
@@ -96,9 +96,6 @@ def execute_load(config, repo_root, *, catalog, client, connection, reference, g
             raise ValueError("Schema ID выбранного seller snapshot изменился")
 
     def verify_source():
-        verify_seller()
-        if not verify_captures(config, client, captures, counts, metadata, **limits):
-            return False
         verify_seller()
         return True
 

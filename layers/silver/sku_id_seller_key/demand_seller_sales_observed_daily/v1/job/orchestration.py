@@ -1,7 +1,6 @@
 """Подключить диапазонный writer через Airflow Connections после preflight."""
 
 from contextlib import ExitStack
-from datetime import datetime, timezone
 import logging
 import re
 
@@ -19,7 +18,7 @@ from feature_stats.day_range import validate_range_settings
 from .preparation import prepare_batch, target_ref, validate_schema
 from .query import source_query, source_ref
 from .ranges import load_range, validate_request
-from .runtime import read_fx, source_arrow
+from .runtime import capture_after_fx, read_fx, source_arrow
 
 logger = logging.getLogger("airflow.task")
 
@@ -111,7 +110,7 @@ def preflight(config, repo_root, catalog, client, queries, day):
     raw = source_arrow([], result[1])
     fx = read_fx(client, day)
     prepare_batch(raw, schema, day=day, fx=fx, manifest="metadata-preflight",
-                  version=config["source"]["contract_version"], ingested_at=datetime.now(timezone.utc))
+                  version=config["source"]["contract_version"], ingested_at=capture_after_fx(fx))
     logger.info("Preflight: catalog=%s, namespace=%s, table=%s, service_tables=%d",
                 catalog.name, config["table"]["schema"], config["table"]["name"], len(tables) - 1)
     return True
