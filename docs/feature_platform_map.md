@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **63**. Внутренних зависимостей: **28**. Внешних зависимостей: **28**. P1: **0**. P2: **9**. P3: **49**. P4: **5**.
+Всего DAG: **65**. Внутренних зависимостей: **29**. Внешних зависимостей: **28**. P1: **0**. P2: **9**. P3: **51**. P4: **5**.
 
-Таска `dq`: **58** из **63**. Таска `feature_stats`: **58** из **63** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
+Таска `dq`: **58** из **65**. Таска `feature_stats`: **58** из **65** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
 
 Severity policy:
 
@@ -37,41 +37,45 @@ flowchart LR
 UTC 04:00 · P2 · large`"]
     d1["`buyout_online_account_features
 UTC 06:00 · P2 · airflow-python`"]
-    d2["`buyout_item_signal_features
+    d2["`query_category_relevance
+UTC 03:00 · P3 · unspecified`"]
+    d3["`buyout_item_signal_features
 UTC 03:00 · P2 · airflow-python`"]
-    d3["`search_query_atc_features
+    d4["`search_query_atc_features
 UTC 03:00 · P3 · medium`"]
-    d4["`sku_group_query_atc_order_features.v2
+    d5["`sku_group_query_atc_order_features.v2
 UTC 03:00 · P3 · large`"]
-    d5["`feedback_sku_group_id
+    d6["`feedback_sku_group_id
 UTC 03:10 · P3 · small`"]
-    d6["`sku_group_price_features
+    d7["`sku_group_price_features
 UTC 02:00 · P3 · small`"]
-    d7["`sku_group_search_conversion_features.v2
+    d8["`sku_group_search_conversion_features.v2
 UTC 03:00 · P3 · large`"]
-    d8["`sku_group_stock_features
+    d9["`sku_group_stock_features
 UTC 03:00 · P3 · small`"]
-    d9["`buyout_online_sku_features
+    d10["`buyout_online_sku_features
 UTC 06:00 · P2 · airflow-python`"]
-    d10["`sku_buyout_features
+    d11["`sku_buyout_features
 UTC 07:00 · P2 · airflow-python`"]
-    d11["`account_lifetime_facts
+    d12["`account_lifetime_facts
 UTC 02:00 · P2 · airflow-python`"]
-    d12["`sku_group_query_search_orders
+    d13["`sku_group_query_search_orders
 UTC 01:00 · P3 · medium`"]
-    d13["`sku_group_id_prices
+    d14["`sku_group_id_prices
 UTC 01:00 · P3 · small`"]
-    d14["`sku_group_install
+    d15["`sku_group_install
 UTC 01:00 · P3 · mem_heavy`"]
-    d15["`sku_stock_daily
+    d16["`sku_stock_daily
 UTC 00:00 · P3 · small`"]
-    d16["`buyout_account_postgres_upload
+    d17["`buyout_account_postgres_upload
 UTC 07:00 · P3 · airflow-python`"]
-    d17["`buyout_features_upload
+    d18["`buyout_features_upload
 UTC 07:00 · P3 · spark-custom`"]
-    d18["`buyout_sku_postgres_upload
+    d19["`buyout_sku_postgres_upload
 UTC 07:00 · P3 · airflow-python`"]
-    d19["`ranking_features_upload_dag
+    d20["`query_category_relevance_upload
+UTC 04:00 · P3 · spark-custom`"]
+    d21["`ranking_features_upload_dag
 UTC 04:00 · P3 · spark-custom`"]
     x0["dwh_trino.sku_eod"]
     x1["events.dq"]
@@ -79,37 +83,38 @@ UTC 04:00 · P3 · spark-custom`"]
     x3["order_completion_city_features"]
     x4["order_completion_region_features"]
     x5["spark.pyspark_feature_store_dag"]
-    d11 -->|"dq Δ26h"| d0
+    d12 -->|"dq Δ26h"| d0
     d0 -->|"dq Δ2h"| d1
     x3 -->|"dq Δ3h"| d1
     x4 -->|"dq Δ3h"| d1
-    d12 -.->|"dbt DQ (legacy) Δ2h"| d3
-    d14 -.->|"dbt DQ (legacy) Δ2h"| d3
-    d12 -.->|"dbt DQ (legacy) Δ2h"| d4
-    d14 -.->|"dbt DQ (legacy) Δ2h"| d4
-    d13 -->|"dq Δ1h"| d6
-    d12 -.->|"dbt DQ (legacy) Δ2h"| d7
-    d14 -.->|"dbt DQ (legacy) Δ2h"| d7
+    d13 -.->|"dbt DQ (legacy) Δ2h"| d4
+    d15 -.->|"dbt DQ (legacy) Δ2h"| d4
+    d13 -.->|"dbt DQ (legacy) Δ2h"| d5
+    d15 -.->|"dbt DQ (legacy) Δ2h"| d5
+    d14 -->|"dq Δ1h"| d7
+    d13 -.->|"dbt DQ (legacy) Δ2h"| d8
     d15 -.->|"dbt DQ (legacy) Δ2h"| d8
-    d2 -->|"dq Δ3h"| d9
-    d9 -->|"dq Δ1h"| d10
-    x0 -->|"sensor Δ1h"| d13
-    x1 -->|"sensor"| d14
-    x2 -->|"sensor"| d14
-    x0 -->|"sensor"| d15
-    d1 -->|"upload-sensor Δ1h"| d16
+    d16 -.->|"dbt DQ (legacy) Δ2h"| d9
+    d3 -->|"dq Δ3h"| d10
+    d10 -->|"dq Δ1h"| d11
+    x0 -->|"sensor Δ1h"| d14
+    x1 -->|"sensor"| d15
+    x2 -->|"sensor"| d15
+    x0 -->|"sensor"| d16
     d1 -->|"upload-sensor Δ1h"| d17
-    d10 -->|"upload-sensor"| d18
-    d3 -->|"upload-sensor Δ1h"| d19
-    d4 -->|"upload-sensor Δ1h"| d19
-    d5 -->|"upload-sensor Δ50m"| d19
-    d6 -->|"upload-sensor Δ2h"| d19
-    d7 -->|"upload-sensor Δ1h"| d19
-    d8 -->|"upload-sensor Δ1h"| d19
-    x5 -->|"upload-sensor Δ4h"| d19
-    class d11,d12,d13,d14,d15 silver
-    class d0,d1,d2,d3,d4,d5,d6,d7,d8,d9,d10 gold
-    class d16,d17,d18,d19 upload
+    d1 -->|"upload-sensor Δ1h"| d18
+    d11 -->|"upload-sensor"| d19
+    d2 -->|"upload-sensor Δ1h"| d20
+    d4 -->|"upload-sensor Δ1h"| d21
+    d5 -->|"upload-sensor Δ1h"| d21
+    d6 -->|"upload-sensor Δ50m"| d21
+    d7 -->|"upload-sensor Δ2h"| d21
+    d8 -->|"upload-sensor Δ1h"| d21
+    d9 -->|"upload-sensor Δ1h"| d21
+    x5 -->|"upload-sensor Δ4h"| d21
+    class d12,d13,d14,d15,d16 silver
+    class d0,d1,d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold
+    class d17,d18,d19,d20,d21 upload
     class x0,x1,x2,x3,x4,x5 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef gold fill:#fef3c7,stroke:#d97706,color:#451a03
@@ -133,9 +138,9 @@ gantt
     00h00 · 1 DAG · small×1 :milestone, s0_0000, 00:00, 0m
     01h00 · 3 DAG · medium×1 · small×1 · mem_heavy×1 :milestone, s0_0060, 01:00, 0m
     02h00 · 2 DAG · small×1 · airflow-python×1 :milestone, s0_0120, 02:00, 0m
-    03h00 · 5 DAG · large×2 · medium×1 · small×1 · airflow-python×1 :milestone, s0_0180, 03:00, 0m
+    03h00 · 6 DAG · large×2 · medium×1 · small×1 · airflow-python×1 · unspecified×1 :milestone, s0_0180, 03:00, 0m
     03h10 · 1 DAG · small×1 :milestone, s0_0190, 03:10, 0m
-    04h00 · 2 DAG · large×1 · spark-custom×1 :milestone, s0_0240, 04:00, 0m
+    04h00 · 3 DAG · large×1 · spark-custom×2 :milestone, s0_0240, 04:00, 0m
     06h00 · 2 DAG · airflow-python×2 :milestone, s0_0360, 06:00, 0m
     07h00 · 4 DAG · spark-custom×1 · airflow-python×3 :milestone, s0_0420, 07:00, 0m
 ```
@@ -364,9 +369,13 @@ flowchart LR
     classDef profile fill:#dcfce7,stroke:#16a34a,color:#052e16
 ```
 
-Таска `dq` есть во всех DAG'ах энтити.
+DAG энтити без таски `dq`:
 
-Таска `feature_stats` есть во всех DAG'ах энтити.
+- `feature-platform.layers.gold.category_id_query_text.query_category_relevance`
+
+DAG энтити без таски `feature_stats`:
+
+- `feature-platform.layers.gold.category_id_query_text.query_category_relevance`
 
 Сенсоров на устаревшем dbt-DQ-контракте: **20**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
 

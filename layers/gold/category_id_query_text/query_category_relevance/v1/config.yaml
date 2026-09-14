@@ -1,0 +1,24 @@
+table:
+  key: query_category_relevance
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_query_category_relevance
+  primary_key: date,category_id,query_text
+  meta:
+    team: team:search
+
+dag:
+  id: feature-platform.layers.gold.category_id_query_text.query_category_relevance
+  group_tag: query-category-relevance
+  schedule: "0 3 * * *"
+  start_date: "2026-09-14T00:00:00Z"
+  team: search
+  owner: team:search
+
+alerts:
+  team: search
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_search
+
+# Блоков dq: и feature_stats: нет намеренно: DAG — заглушка без записи партиций,
+# и владелец (2026-09-13) решил не подключать таски dq и feature_stats. См. README.
