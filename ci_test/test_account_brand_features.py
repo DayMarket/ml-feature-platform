@@ -39,14 +39,11 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         )
 
     def test_fixed_windows_and_statuses(self):
-        self.assertEqual(self.settings.event_windows_days, (3, 7, 14, 28))
-        self.assertEqual(
-            self.settings.order_windows_days,
-            (3, 7, 14, 28, 60, 90),
-        )
-        self.assertEqual(
-            self.settings.successful_order_statuses,
-            ("COMPLETED", "PAID", "DELIVERED", "IN_DELIVERY"),
+        for window in (3, 7, 14, 28, 60, 90):
+            self.assertIn(f"INTERVAL {window} DAYS", self.sql)
+        self.assertIn(
+            "'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'",
+            self.sql,
         )
 
     def test_migration_matches_all_physical_features(self):
@@ -62,12 +59,19 @@ class AccountBrandFeaturesTest(unittest.TestCase):
             "calculated_at",
             "account_id",
             "brand_id",
-            *query.feature_columns(self.settings),
+            *query.FEATURE_COLUMNS,
         }
         self.assertEqual(migration_columns, expected)
         self.assertNotIn("BIGINT", migration)
         self.assertNotIn("BIGINT", self.sql)
         self.assertNotIn("bid_n_clicks_3d_ratio", migration_columns)
+
+    def test_business_sql_is_explicit_and_has_no_feature_fragment_builders(self):
+        query_text = (ENTITY / "job/query.py").read_text(encoding="utf-8")
+        self.assertNotIn("_click_count_expressions", query_text)
+        self.assertNotIn("_gmv_expressions", query_text)
+        self.assertNotIn("_ratio_expressions", query_text)
+        self.assertNotIn("for window in", query_text)
 
     def test_clicks_are_product_session_counts_mapped_through_daily_s1(self):
         self.assertIn(
@@ -90,8 +94,9 @@ class AccountBrandFeaturesTest(unittest.TestCase):
     def test_orders_use_sku_mapping_statuses_b2b_filter_and_transaction_gmv(self):
         self.assertIn("order_item.sku_id AS INT) = sku.sku_id", self.sql)
         self.assertIn(
-            "order_item.order_item_status IN "
-            "('COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY')",
+            "order_item.order_item_status IN (\n"
+            "            'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'\n"
+            "        )",
             self.sql,
         )
         self.assertIn("order_item.payment_price AS DOUBLE", self.sql)
