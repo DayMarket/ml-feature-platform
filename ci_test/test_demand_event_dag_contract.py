@@ -5,7 +5,7 @@ from pathlib import Path
 import runpy
 import sys
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import call, Mock
 
 import pytest
 
@@ -79,7 +79,8 @@ def test_checked_receipt_only_after_successful_dq_and_results(monkeypatch, failu
               "source_manifest_id": "run-1", "ingested_at": "2026-09-08T03:10:00+00:00"}
     ti = Mock(dag_id="owner", run_id="run-1", try_number=1)
     ti.xcom_pull.return_value = result
-    monkeypatch.setattr(airflow.sdk, "get_current_context", lambda: {"task_instance": ti})
+    monkeypatch.setattr(airflow.sdk, "get_current_context", lambda: {
+        "task_instance": ti, "logical_date": pendulum.parse("2026-09-08T03:10:00Z")})
     monkeypatch.setattr(airflow.providers.trino.hooks.trino, "TrinoHook", Mock())
     monkeypatch.setattr(module, "run_dq", Mock(return_value=SimpleNamespace(has_errors=failure == "dq")))
     monkeypatch.setattr(module, "format_log", Mock(return_value="checked"))
@@ -91,8 +92,48 @@ def test_checked_receipt_only_after_successful_dq_and_results(monkeypatch, failu
     assert not task.multiple_outputs
     if failure:
         with pytest.raises((RuntimeError, module.DqTestsFailed)):
-            task.python_callable(result["ingested_at"])
+            task.python_callable("")
     else:
-        assert task.python_callable(result["ingested_at"]) == {
+        assert task.python_callable("") == {
             "dq_status": "passed", "dag_id": "owner", "run_id": "run-1", "receipt": result}
+    ti.xcom_pull.assert_called_once_with(task_ids="write_events", include_prior_dates=False)
     saved.assert_called_once()
+
+
+def test_writer_uses_exact_legacy_receipt_after_successful_sensor(namespace, monkeypatch):
+    runtime = import_module("layers.silver.event_code.demand_event_calendar.v1.job.runtime")
+    load = Mock(return_value={"status": "written"})
+    monkeypatch.setattr(runtime, "execute_load", load)
+    receipt = {"status": "written", "source_manifest_id": "exact-run"}
+    ti = Mock()
+    ti.xcom_pull.side_effect = [None, receipt]
+    fn = namespace["dag"].get_task("write_events").python_callable
+    monkeypatch.setitem(fn.__globals__, "get_current_context", lambda: {"ti": ti, "run_id": "event-run"})
+    reference = {"dag_id": "calendar-owner", "run_id": "exact-run",
+                 "logical_date": "2026-09-08T03:00:00Z"}
+    fn({"mode": "regular", "reference": reference})
+    assert ti.xcom_pull.call_args_list == [
+        call(dag_id="calendar-owner", task_ids="dq", run_id="exact-run", include_prior_dates=False),
+        call(dag_id="calendar-owner", task_ids="write_calendar", run_id="exact-run",
+             include_prior_dates=False),
+    ]
+    assert load.call_args.args[-1] == {
+        "dq_status": "passed", "dag_id": "calendar-owner", "run_id": "exact-run", "receipt": receipt}
+
+
+def test_manual_writer_does_not_infer_dq_from_another_logical_date(namespace, monkeypatch):
+    runtime = import_module("layers.silver.event_code.demand_event_calendar.v1.job.runtime")
+    load = Mock(return_value={"status": "written"})
+    monkeypatch.setattr(runtime, "execute_load", load)
+    ti = Mock()
+    ti.xcom_pull.return_value = None
+    fn = namespace["dag"].get_task("write_events").python_callable
+    monkeypatch.setitem(fn.__globals__, "get_current_context", lambda: {"ti": ti, "run_id": "event-run"})
+    reference = {"dag_id": "calendar-owner", "run_id": "manual-calendar-run",
+                 "logical_date": "2026-09-08T03:00:00Z"}
+    fn({"mode": "manual", "reference": reference})
+    ti.xcom_pull.assert_called_once_with(
+        dag_id="calendar-owner", task_ids="dq", run_id="manual-calendar-run",
+        include_prior_dates=False,
+    )
+    assert load.call_args.args[-1] is None

@@ -25,7 +25,7 @@ from layers.silver.seller_id.demand_catalog_seller.v1.job.budget import (  # noq
 
 CONFIG = yaml.safe_load(Path(CONFIG_PATH).read_text(encoding="utf-8"))
 MAX_RUN_SECONDS = configured_limits(CONFIG)["manual"]
-CAPTURE_TIMESTAMP = '{{ ti.xcom_pull(task_ids="write_catalog")["ingested_at"] }}'
+CAPTURE_TIMESTAMP = '{{ (ti.xcom_pull(task_ids="write_catalog", include_prior_dates=False) or {}).get("ingested_at", "") }}'
 
 
 

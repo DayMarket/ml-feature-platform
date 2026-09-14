@@ -26,7 +26,7 @@ from layers.silver.level_node_id.demand_catalog_tree.v1.job.budget import (  # n
 
 CONFIG = yaml.safe_load(Path(CONFIG_PATH).read_text(encoding="utf-8"))
 MAX_RUN_SECONDS = configured_limits(CONFIG)["manual"]
-CAPTURE_TIMESTAMP = '{{ ti.xcom_pull(task_ids="write_catalog")["ingested_at"] }}'
+CAPTURE_TIMESTAMP = '{{ (ti.xcom_pull(task_ids="write_catalog", include_prior_dates=False) or {}).get("ingested_at", "") }}'
 SOURCE_CONFIG_PATH = str(Path(REPO_ROOT) / CONFIG["inputs"]["sku_config"])
 
 

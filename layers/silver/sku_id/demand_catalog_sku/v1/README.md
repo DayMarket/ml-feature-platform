@@ -120,7 +120,7 @@ Feature statistics считаются по тому же capture. Read-back ош
 ## Полный загрузчик
 
 source_reader.py читает четыре полных CH captures порциями 100000 строк/64 MiB.
-Native metadata проверяется через LIMIT 0, counts — независимыми агрегатами.
+Native metadata проверяется через LIMIT 0, предварительные counts — независимыми агрегатами.
 У dict.sku подтверждены id UInt64, product/category Int64, nullable seller/shop Int64;
 UUID не заменяется неявной строковой конверсией, даты приходят явно UTC. Orphan meta
 блокирует загрузку до больших captures. Весь raw результат собирается в Arrow;
@@ -129,8 +129,9 @@ UUID не заменяется неявной строковой конверс�
 seller_reader.py читает все 12 полей exact snapshot через Trino, без фильтра SKU,
 со строгими native типами, count/порядком/лимитами и закрытием cursor при ошибках.
 runtime.py проверяет полные схемы input/output/DQ/stats до большого скана и связывает
-writer с полными CH captures. Независимый count сверяется с каждой завершённой выборкой;
-изменения источника после захвата не отменяют уже собранный срез. Общей snapshot isolation
+writer с полными CH captures. Фактический count берётся из каждой завершённой выборки;
+предварительный агрегат остаётся в audit, потому что отдельные COUNT и SELECT не имеют
+общей snapshot isolation. Изменения источника после захвата не отменяют уже собранный срез. Общей snapshot isolation
 между таблицами ClickHouse нет, поэтому новый seller в SKU сохраняется как unavailable.
 Seller DQ/UUID/snapshot/schema повторно проверяются непосредственно перед commit.
 

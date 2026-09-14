@@ -141,6 +141,17 @@ def build_dq_task(
         import logging
 
         logger = logging.getLogger("airflow.task")
+        airflow_context = get_current_context()
+        task_instance = airflow_context["task_instance"]
+        receipt = None
+        if receipt_task_id is not None:
+            receipt = task_instance.xcom_pull(
+                task_ids=receipt_task_id,
+                include_prior_dates=False,
+            )
+            if not isinstance(receipt, dict) or receipt.get("status") != "written":
+                raise DqConfigError("DQ не получил writer receipt текущего запуска")
+            partition_date_value = receipt.get("ingested_at")
         ctx = build_render_context(config, Path(repo_root), partition_date_value)
 
         hook = TrinoHook(trino_conn_id=settings.trino_conn_id)
@@ -149,8 +160,6 @@ def build_dq_task(
             logger.info("DQ query:\n%s", sql)
             return hook.get_records(sql)
 
-        airflow_context = get_current_context()
-        task_instance = airflow_context["task_instance"]
         if range_receipt_task_id is not None:
             from dq.day_range import run_range_dq, validate_written
 
@@ -203,12 +212,6 @@ def build_dq_task(
             log_url = getattr(task_instance, "log_url", "")
             raise DqTestsFailed(format_alert(outcome, ctx, log_url))
         if receipt_task_id is not None:
-            receipt = task_instance.xcom_pull(
-                task_ids=receipt_task_id,
-                include_prior_dates=False,
-            )
-            if not isinstance(receipt, dict) or receipt.get("status") != "written":
-                raise DqConfigError("DQ не получил writer receipt")
             return {
                 "dq_status": "passed",
                 "dag_id": task_instance.dag_id,
