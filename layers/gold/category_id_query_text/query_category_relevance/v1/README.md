@@ -1,8 +1,11 @@
 # iceberg.gold.feature_platform_query_category_relevance
 
-Метка релевантности категории-кандидата поисковому запросу. Витрина — источник набора
-признаков `query_category_relevance` модели `search_unified_model_clusters`
-в ranking-service (коллекция `SKU_GROUP_CATEGORY_TO_QUERY`).
+Метка релевантности категории-кандидата поисковому запросу, одна формулировка на
+`query_id`. Витрина наполняется отдельным процессом и напрямую в ranking-service не
+выгружается: её читает
+`iceberg.gold.feature_platform_query_category_relevance_expanded`
+([README](../../query_category_relevance_expanded/v1/README.md)), которая раскладывает
+метку на все формулировки `query_id` и уже публикуется.
 
 **Статус: заглушка.** Таблица создаётся миграцией, DAG запускается ежедневно, но job'а
 ещё нет: единственная таска `materialize` — `EmptyOperator`, партиции не пишутся.
@@ -33,33 +36,28 @@
 - DAG id: `feature-platform.layers.gold.category_id_query_text.query_category_relevance`
   (`layers/gold/category_id_query_text/query_category_relevance/v1/dag.py`).
 - Групповой тег Airflow: `dag.group_tag = query-category-relevance`
-  (общий с upload `feature-platform.upload.query_category_relevance_upload`).
+  (общий с `query_category_relevance_expanded` и upload'ом).
 - Расписание: ежедневно в 03:00 UTC, `0 3 * * *`, `start_date=2026-09-14T00:00:00Z`,
   `catchup=False`, `max_active_runs=1`, DAG создаётся на паузе.
 - Сенсоров нет: у заглушки нет источников.
-- Таска `materialize`. Upload ждёт именно её, поэтому при замене заглушки настоящим
-  job'ом `task_id` сохраняется.
+- Таска `materialize`. DAG
+  `feature-platform.layers.gold.category_id_query_text.query_category_relevance_expanded`
+  ждёт именно её, поэтому при замене заглушки настоящим job'ом `task_id` сохраняется.
 
 ## DQ и feature_stats
 
 Тасок `dq` и `feature_stats` в DAG'е нет — осознанное решение владельца от 2026-09-13:
 DAG — заглушка без записи партиций, и на пустой таблице базовые `freshness` и
-`row_count_min` падали бы каждый день. Из-за этого upload ждёт таску `materialize`,
-а не `dq`, и объявляет это исключение полем `source.dq_waiver_reason`.
-`scripts/validate_ranking_upload_configs.py` отклонит исключение, как только в этом
-`dag.py` появится `build_dq_task`: тогда сенсор upload'а переключается на `dq`,
-а поле удаляется.
+`row_count_min` падали бы каждый день. Поэтому downstream-DAG ждёт таску `materialize`,
+а не `dq`. Когда здесь появится `build_dq_task`, сенсор в `query_category_relevance_expanded`
+переключается на `dq`.
 
-## Выгрузка
+## Downstream
 
-Upload `feature-platform.upload.query_category_relevance_upload`
-(`upload/query_category_relevance_upload/v1`) публикует всю таблицу, а не одну
-партицию. Строки дополняются всеми формулировками того же `query_id` из
-`iceberg.gold.feature_platform_search_query_id`, `query_text` приводится к нижнему
-регистру, и по каждой паре `category_id, query_text` берётся строка с самой свежей `date`,
-а при равной `date` — с максимальным `relevance`.
-`query_text` уходит ключом `query`, `category_id` — ключом `skuGroupCategoryId`,
-`relevance` — единственным признаком (NULL отправляется как `0.0`).
+`query_category_relevance_expanded` читает всю витрину (`date <= даты прогона`),
+добавляет все формулировки `query_id` из `iceberg.gold.feature_platform_search_query_id`,
+приводит `query_text` к нижнему регистру и оставляет одну строку на пару
+`category_id, query_text`. В ranking-service уходит уже она.
 
 ## Требования к будущему job'у
 

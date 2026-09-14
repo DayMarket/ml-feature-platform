@@ -37,16 +37,10 @@
     {
       "source": {
         "schema": "gold",
-        "table": "feature_platform_query_category_relevance",
-        "read_mode": "full_table",
-        "query_id_dictionary": {
-          "schema": "gold",
-          "table": "feature_platform_search_query_id"
-        },
-        "dependency_dag_id": "feature-platform.layers.gold.category_id_query_text.query_category_relevance",
-        "dependency_execution_delta_minutes": 60,
-        "dependency_task_id": "materialize",
-        "dq_waiver_reason": "Решение владельца 2026-09-13: DAG витрины — заглушка без тасок dq и feature_stats. Когда в DAG появится build_dq_task, сменить dependency_task_id на dq и удалить это поле."
+        "table": "feature_platform_query_category_relevance_expanded",
+        "dependency_dag_id": "feature-platform.layers.gold.category_id_query_text.query_category_relevance_expanded",
+        "dependency_execution_delta_minutes": 30,
+        "dependency_task_id": "dq"
       },
       "name": "query_category_relevance",
       "features": [
