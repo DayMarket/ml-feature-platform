@@ -7,7 +7,7 @@
   "driver_memory_overhead": "1g",
   "executor_cores": "4",
   "executor_core_request": "3",
-  "executor_instances": "2",
+  "executor_instances": "4",
   "executor_memory": "8g",
   "executor_memory_overhead": "2g"
 }

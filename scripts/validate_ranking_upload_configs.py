@@ -107,54 +107,6 @@ def discover_tables(repo_root: Path) -> dict[tuple[str, str], dict[str, Any]]:
     return tables
 
 
-QUERY_ID_DICTIONARY_COLUMNS = {"query_id", "query_text"}
-
-
-def validate_query_id_dictionary(
-    config_path: Path,
-    group_name: str,
-    source: dict[str, Any],
-    table: dict[str, Any],
-    tables: dict[tuple[str, str], dict[str, Any]],
-    entity_keys: list[str],
-) -> list[str]:
-    """Справочник размножает строки источника по query_id на все его query_text."""
-    dictionary = source.get("query_id_dictionary")
-    if dictionary is None:
-        return []
-    prefix = f"{config_path}: feature group {group_name} source.query_id_dictionary"
-    if not isinstance(dictionary, dict) or not all(
-        isinstance(dictionary.get(field), str) and dictionary[field].strip()
-        for field in ("schema", "table")
-    ):
-        return [f"{prefix} must be an object with non-empty schema and table"]
-
-    errors = []
-    if source.get("read_mode") != "full_table":
-        errors.append(f"{prefix} is only supported with read_mode=full_table")
-    if "query_text" not in entity_keys:
-        errors.append(f"{prefix} requires query_text in entity keys, got {entity_keys}")
-    if "query_id" not in table["columns"]:
-        errors.append(
-            f"{prefix} requires query_id in "
-            f"{table['schema']}.{table['table']} migrations"
-        )
-    dictionary_table = tables.get((dictionary["schema"], dictionary["table"]))
-    if dictionary_table is None:
-        errors.append(
-            f"{prefix} references unknown table "
-            f"{dictionary['schema']}.{dictionary['table']}"
-        )
-        return errors
-    missing_columns = sorted(QUERY_ID_DICTIONARY_COLUMNS - dictionary_table["columns"])
-    if missing_columns:
-        errors.append(
-            f"{prefix} columns are missing from "
-            f"{dictionary['schema']}.{dictionary['table']} migrations: {missing_columns}"
-        )
-    return errors
-
-
 def validate_feature_group(
     config_path: Path,
     feature_group: dict[str, Any],
@@ -338,11 +290,6 @@ def validate_feature_group(
             f"{config_path}: feature group {group_name} columns are missing from "
             f"{table['schema']}.{table['table']} migrations: {missing_columns}"
         )
-    errors.extend(
-        validate_query_id_dictionary(
-            config_path, group_name, source, table, tables, expected_entity_keys
-        )
-    )
 
     unknown_log_features = sorted(
         set(feature_group.get("log1p_features", [])) - set(features)

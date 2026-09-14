@@ -98,28 +98,19 @@ class FakeFrame:
         self.calls.append(("limit", value))
         return self
 
-    def join(self, other, on, how):
-        self.calls.append(("join", other, on, how))
-        return self
-
-    def unionByName(self, other):
-        self.calls.append(("unionByName", other))
-        return self
-
     @property
     def na(self):
         return FakeNa(self)
 
 
 class FakeSpark:
-    def __init__(self, frame, frames=None):
+    def __init__(self, frame):
         self.frame = frame
-        self.frames = frames or {}
         self.tables = []
 
     def table(self, name):
         self.tables.append(name)
-        return self.frames.get(name, self.frame)
+        return self.frame
 
 
 def _install_stubs():
@@ -132,7 +123,6 @@ def _install_stubs():
     functions.col = FakeColumn
     functions.lit = lambda value: FakeColumn(("lit", value))
     functions.row_number = lambda: FakeColumn(("row_number",))
-    functions.lower = lambda column: FakeColumn(("lower", column.expression))
     pyspark_sql_types_module = types.ModuleType("pyspark.sql.types")
     pyspark_sql_types_module.BinaryType = object
     pyspark_sql_module.functions = functions
@@ -250,14 +240,10 @@ def test_full_table_read_keeps_latest_date_per_key_without_date_filter():
     assert rank_expression[1] == ("row_number",)
     window = rank_expression[2]
     assert window.partition_by == ("category_id", "query_text")
-    # При одинаковой date ключ, совпавший после lower, получает максимальный relevance.
-    assert window.order_by == (("desc", "date"), ("desc", "relevance"))
+    assert window.order_by == (("desc", "date"),)
     assert ("filter", ("eq", rank_name, 1)) in frame.calls
     assert frame.calls[-2] == ("select", ("category_id", "query_text", "relevance"))
     assert frame.calls[-1] == ("na.fill", 0.0, ("relevance",))
-    assert not [
-        call for call in frame.calls if call[0] in ("join", "unionByName")
-    ], frame.calls
 
 
 def test_full_table_read_requires_date_column():
@@ -272,53 +258,12 @@ def test_full_table_read_requires_date_column():
         raise AssertionError("full_table без колонки date должен падать")
 
 
-QUERY_ID_DICTIONARY_TABLE = "iceberg.gold.feature_platform_search_query_id"
-
-
-def test_query_id_dictionary_adds_query_texts_and_lowercases_them():
-    """Метка query_id уходит и на формулировки из справочника; текст — в нижнем регистре."""
-    upload = _load_upload_module()
-    source = FakeFrame()
-    dictionary = FakeFrame()
-    spark = FakeSpark(source, {QUERY_ID_DICTIONARY_TABLE: dictionary})
-    feature_group = {
-        **FEATURE_GROUP,
-        "source": {
-            **FEATURE_GROUP["source"],
-            "query_id_dictionary": {
-                "schema": "gold",
-                "table": "feature_platform_search_query_id",
-            },
-        },
-    }
-
-    upload._prepare_source_frame(spark, feature_group, METADATA, "2026-09-14")
-
-    assert spark.tables == [
-        "iceberg.gold.feature_platform_query_category_relevance",
-        QUERY_ID_DICTIONARY_TABLE,
-    ]
-    assert dictionary.calls == [("select", ("query_id", "query_text"))]
-    merge_steps = [
-        ("drop", ("query_text",)),
-        ("join", dictionary, "query_id", "inner"),
-        ("unionByName", source),
-        ("withColumn", "query_text", ("lower", "query_text")),
-    ]
-    positions = [source.calls.index(step) for step in merge_steps]
-    assert positions == sorted(positions), source.calls
-    column_calls = [call[1] for call in source.calls if call[0] == "withColumn"]
-    # Регистр приводится до выбора самой свежей даты, и других преобразований нет.
-    assert column_calls == ["query_text", upload.LATEST_DATE_RANK_COLUMN], source.calls
-
-
 def main() -> int:
     test_category_query_source_uses_sku_group_category_to_query_proto()
     test_null_relevance_is_sent_as_zero()
     test_other_category_entities_keep_category_id_argument()
     test_full_table_read_keeps_latest_date_per_key_without_date_filter()
     test_full_table_read_requires_date_column()
-    test_query_id_dictionary_adds_query_texts_and_lowercases_them()
     print("Ranking upload category-to-query tests completed successfully")
     return 0
 

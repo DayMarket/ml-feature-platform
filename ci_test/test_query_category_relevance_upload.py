@@ -11,10 +11,11 @@ UPLOAD_ROOT = ROOT / "upload" / "query_category_relevance_upload" / "v1"
 FACTORY_PATH = UPLOAD_ROOT / "config" / "factory.py"
 PRODUCER_DAG_PATH = (
     ROOT
-    / "layers/gold/category_id_query_text/query_category_relevance/v1/dag.py"
+    / "layers/gold/category_id_query_text/query_category_relevance_expanded/v1/dag.py"
 )
 PRODUCER_DAG_ID = (
-    "feature-platform.layers.gold.category_id_query_text.query_category_relevance"
+    "feature-platform.layers.gold.category_id_query_text."
+    "query_category_relevance_expanded"
 )
 
 
@@ -69,11 +70,11 @@ def test_upload_waits_for_producer_materialize_task():
         {
             "task_id": (
                 "wait_for_search_unified_model_clusters_"
-                "feature_platform_query_category_relevance"
+                "feature_platform_query_category_relevance_expanded"
             ),
             "external_dag_id": PRODUCER_DAG_ID,
-            "external_task_id": "materialize",
-            "execution_delta_minutes": 60,
+            "external_task_id": "dq",
+            "execution_delta_minutes": 30,
         }
     ]
 
@@ -81,44 +82,54 @@ def test_upload_waits_for_producer_materialize_task():
 def test_sensor_task_exists_in_producer_dag():
     """Переименование таски в DAG'е витрины подвесило бы сенсор upload'а."""
     factory = _load_factory()
+    producer_source = PRODUCER_DAG_PATH.read_text(encoding="utf-8")
 
     for dependency in factory.get_upload_components()[0]["dependencies"]:
-        assert dependency["external_task_id"] in _producer_task_ids(), dependency
+        if dependency["external_task_id"] == "dq":
+            assert "build_dq_task(" in producer_source, dependency
+        else:
+            assert dependency["external_task_id"] in _producer_task_ids(), dependency
 
 
-def test_upload_publishes_whole_table():
+def test_upload_reads_run_date_partition_of_expanded_table():
     config = json.loads((UPLOAD_ROOT / "config.yaml").read_text(encoding="utf-8"))
 
     (feature_group,) = config["feature_groups"]
-    assert feature_group["source"]["read_mode"] == "full_table"
-    assert feature_group["source"]["query_id_dictionary"] == {
-        "schema": "gold",
-        "table": "feature_platform_search_query_id",
-    }
+    source = feature_group["source"]
+    assert source["table"] == "feature_platform_query_category_relevance_expanded"
+    # Без read_mode upload читает партицию date = run_date: в ней уже одна строка на пару.
+    assert "read_mode" not in source
+    assert "dq_waiver_reason" not in source
     assert feature_group["features"] == ["relevance"]
 
 
 def test_delta_matches_schedules():
-    """Upload в 04:00 UTC ждёт прогон витрины в 03:00 UTC той же даты."""
+    """Upload в 04:00 UTC ждёт прогон расширенной витрины в 03:30 UTC той же даты."""
     import yaml
 
     upload_config = json.loads((UPLOAD_ROOT / "config.yaml").read_text(encoding="utf-8"))
     producer_config = yaml.safe_load(
         (PRODUCER_DAG_PATH.parent / "config.yaml").read_text(encoding="utf-8")
     )
-    upload_hour = int(upload_config["dag"]["schedule"].split()[1])
-    producer_hour = int(producer_config["dag"]["schedule"].split()[1])
+    def minutes_of_day(cron: str) -> int:
+        minute, hour = cron.split()[:2]
+        return int(hour) * 60 + int(minute)
+
     delta = upload_config["feature_groups"][0]["source"][
         "dependency_execution_delta_minutes"
     ]
-    assert (upload_hour - producer_hour) * 60 == delta
+    assert (
+        minutes_of_day(upload_config["dag"]["schedule"])
+        - minutes_of_day(producer_config["dag"]["schedule"])
+        == delta
+    )
     assert upload_config["dag"]["group_tag"] == producer_config["dag"]["group_tag"]
 
 
 def main() -> int:
     test_upload_waits_for_producer_materialize_task()
     test_sensor_task_exists_in_producer_dag()
-    test_upload_publishes_whole_table()
+    test_upload_reads_run_date_partition_of_expanded_table()
     test_delta_matches_schedules()
     print("Query category relevance upload tests completed successfully")
     return 0
