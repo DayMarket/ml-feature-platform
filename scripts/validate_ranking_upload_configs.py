@@ -1,3 +1,4 @@
+import ast
 import json
 import re
 from pathlib import Path
@@ -23,7 +24,22 @@ SUPPORTED_ENTITY_KEYS = {
     ("category_id", "sku_group_id"),
     ("promotion_id", "sku_group_id"),
     ("query", "sku_group_id"),
+    ("category_id", "query_text"),
 }
+# Без read_mode группа читает партицию date = run_date.
+READ_MODES = ("latest_timestamp", "full_table")
+
+
+def builds_dq_task(dag_path: Path) -> bool:
+    if not dag_path.is_file():
+        return False
+    tree = ast.parse(dag_path.read_text(encoding="utf-8"))
+    return any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "build_dq_task"
+        for node in ast.walk(tree)
+    )
 
 
 def read_simple_nested_config(config_path: Path) -> dict[str, Any]:
@@ -86,6 +102,7 @@ def discover_tables(repo_root: Path) -> dict[tuple[str, str], dict[str, Any]]:
             "primary_key": parse_primary_key(str(table["primary_key"])),
             "columns": extract_migration_columns(config_path.parent),
             "config_path": config_path,
+            "has_dq_task": builds_dq_task(config_path.parent / "dag.py"),
         }
     return tables
 
@@ -126,6 +143,13 @@ def validate_feature_group(
             "source.dependency_execution_delta_minutes must be a non-negative integer"
         )
     dependency_task_id = source.get("dependency_task_id")
+    dq_waiver_reason = source.get("dq_waiver_reason")
+    has_dq_waiver = isinstance(dq_waiver_reason, str) and bool(dq_waiver_reason.strip())
+    if dq_waiver_reason is not None and not has_dq_waiver:
+        errors.append(
+            f"{config_path}: feature group {group_name} "
+            "source.dq_waiver_reason must be a non-empty string"
+        )
     if dependency_task_id is not None and (
         not isinstance(dependency_task_id, str) or not dependency_task_id.strip()
     ):
@@ -133,7 +157,11 @@ def validate_feature_group(
             f"{config_path}: feature group {group_name} "
             "source.dependency_task_id must be a non-empty string"
         )
-    elif source.get("external") is not True and dependency_task_id != "dq":
+    elif (
+        source.get("external") is not True
+        and dependency_task_id != "dq"
+        and not has_dq_waiver
+    ):
         # Репозиторная gold-таблица публикуется только после своего DQ. Ожидание
         # целого DAG'а-владельца пропустило бы упавшую проверку качества.
         errors.append(
@@ -177,6 +205,20 @@ def validate_feature_group(
             f"{config_path}: feature group {group_name} references unknown source "
             f"{source_key[0]}.{source_key[1]}"
         ]
+    if dq_waiver_reason is not None:
+        if dependency_task_id == "dq":
+            errors.append(
+                f"{config_path}: feature group {group_name} "
+                'source.dq_waiver_reason is only allowed when dependency_task_id is not "dq"'
+            )
+        elif table.get("has_dq_task"):
+            # Исключение живёт, пока у DAG'а-владельца нет таски dq; появилась —
+            # upload обязан ждать её.
+            errors.append(
+                f"{config_path}: feature group {group_name} source DAG of "
+                f"{table['schema']}.{table['table']} builds the dq task: "
+                'set dependency_task_id to "dq" and remove source.dq_waiver_reason'
+            )
     if not table.get("external") and table["schema"] != "gold":
         errors.append(
             f"{config_path}: feature group {group_name} must use a gold source table, "
@@ -212,6 +254,17 @@ def validate_feature_group(
             "must contain date or configured timestamp_column"
         )
         expected_entity_keys = []
+    read_mode = source.get("read_mode")
+    if read_mode is not None and read_mode not in READ_MODES:
+        errors.append(
+            f"{config_path}: feature group {group_name} source.read_mode must be "
+            f"one of {', '.join(READ_MODES)}, got {read_mode!r}"
+        )
+    if read_mode == "full_table" and not date_column:
+        errors.append(
+            f"{config_path}: feature group {group_name} source table primary_key "
+            "must contain date to use read_mode=full_table"
+        )
     if tuple(sorted(expected_entity_keys)) not in SUPPORTED_ENTITY_KEYS:
         errors.append(
             f"{config_path}: feature group {group_name} has unsupported entity keys "
