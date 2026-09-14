@@ -53,9 +53,12 @@ Impressions суммируются из iceberg.silver.feature_platform_account_
 
 Для click, ATC, ATF и order публикуются три conversion:
 
-- account-category conversion: signal_count / impression_count;
-- conversion относительно общего baseline категории;
-- conversion относительно общей conversion пользователя.
+- `account_conv_imp2{signal}_{window}d`: account-category conversion,
+  `signal_count / impression_count`;
+- `conv_imp2{signal}_{window}d`: account-category conversion относительно
+  общего baseline категории;
+- `conv_imp2{signal}_div_total_account_conv_{window}d`: account-category
+  conversion, делённая на общую conversion пользователя по всем категориям.
 
 Для account-level order baseline используется marketplace COUNT(DISTINCT order_id), а
 не сумма category counts: один заказ может включать несколько категорий. Нулевой
