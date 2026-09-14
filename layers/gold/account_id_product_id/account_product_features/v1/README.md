@@ -18,21 +18,26 @@ Grain и primary key: `calculated_at,account_id,product_id`.
 
 Идентификаторы и счётчики в физическом контракте имеют тип `INT`.
 
+Физические feature-колонки хранятся без entity-префикса, например
+`n_clicks_7d`. Логический namespace контракта — `ACCOUNT_PRODUCT`; при
+публикации или сборке model input полное имя становится
+`ACCOUNT_PRODUCT__n_clicks_7d`.
+
 `calculated_at` — граница Gold snapshot: `00:00` или `12:00 Asia/Tashkent`.
 Таблица содержит account-product пары, у которых есть хотя бы одно action-событие
 за 28 дней или успешная покупка за 90 дней.
 
 Семейства колонок:
 
-- `pid_n_clicks_{3,7,14,28}d` и `*_ratio`;
-- `pid_n_atcs_{3,7,14,28}d` и `*_ratio`;
-- `pid_n_atfs_{3,7,14,28}d` и `*_ratio`;
-- `pid_neg_n_hours_since_last_click` и
-  `pid_neg_n_hours_since_last_click_rel`;
-- `pid_n_orders_{3,7,14,28,60,90}d` и `*_ratio`;
-- `pid_n_orders_28d_over_90d`;
-- `pid_gmv_{3,7,14,28,60,90}d` и `*_ratio`;
-- `pid_neg_n_days_since_last_purchase`;
+- `n_clicks_{3,7,14,28}d` и `*_ratio`;
+- `n_atcs_{3,7,14,28}d` и `*_ratio`;
+- `n_atfs_{3,7,14,28}d` и `*_ratio`;
+- `neg_n_hours_since_last_click` и
+  `neg_n_hours_since_last_click_rel`;
+- `n_orders_{3,7,14,28,60,90}d` и `*_ratio`;
+- `n_orders_28d_over_90d`;
+- `gmv_{3,7,14,28,60,90}d` и `*_ratio`;
+- `neg_n_days_since_last_purchase`;
 - `last_click_before_last_purchase`.
 
 ## Action-события
@@ -44,15 +49,15 @@ Grain и primary key: `calculated_at,account_id,product_id`.
 Для фиксированных `account_id,product_id,event_type` считается
 `COUNT(DISTINCT session_id)`:
 
-- `PRODUCT_VIEW` формирует `pid_n_clicks_*`;
-- `ADD_TO_CART` формирует `pid_n_atcs_*`;
-- `ADD_TO_FAVORITES` формирует `pid_n_atfs_*`.
+- `PRODUCT_VIEW` формирует `n_clicks_*`;
+- `ADD_TO_CART` формирует `n_atcs_*`;
+- `ADD_TO_FAVORITES` формирует `n_atfs_*`.
 
 Для recency берётся максимальный `last_received_at` события `PRODUCT_VIEW` за
 28 дней:
 
 ```text
-pid_neg_n_hours_since_last_click =
+neg_n_hours_since_last_click =
     -(calculated_at - last_click_at) / 1 hour
 ```
 
@@ -77,17 +82,17 @@ Gold не повторяет range-фильтры входных ID. Полож�
 после записи целевой партиции.
 
 ```text
-pid_n_orders_Nd = COUNT(DISTINCT order_id)
-pid_gmv_Nd = SUM(payment_price * item_quantity)
+n_orders_Nd = COUNT(DISTINCT order_id)
+gmv_Nd = SUM(payment_price * item_quantity)
 ```
 
-`pid_n_orders_28d_over_90d` равна `pid_n_orders_28d / pid_n_orders_90d` и
+`n_orders_28d_over_90d` равна `n_orders_28d / n_orders_90d` и
 остаётся `NULL` при нулевом denominator.
 
 Purchase recency использует последний `generated_at` успешной позиции за 90 дней:
 
 ```text
-pid_neg_n_days_since_last_purchase =
+neg_n_days_since_last_purchase =
     -CEIL((calculated_at - last_purchase_at) / 24 hours)
 ```
 
@@ -128,7 +133,7 @@ Asia/Tashkent`. `start_date = 2026-08-08T07:00:00Z`, `catchup=true`.
 
 DQ проверяет primary key, положительные ID, неотрицательные counts/GMV, диапазон
 ratios `[0,1]`, монотонность `orders_28d <= orders_90d`, неположительную recency,
-максимум `pid_neg_n_hours_since_last_click_rel = 0` для каждого account с
+максимум `neg_n_hours_since_last_click_rel = 0` для каждого account с
 кликами и домен legacy-флага. Freshness и проверки объёма при первой раскатке
 имеют severity `warn`. Alert callbacks DQ и feature_stats остаются отключёнными
 до окончания отладки.

@@ -18,6 +18,10 @@ Grain и primary key: calculated_at,account_id,l4_category_id.
 
 Идентификаторы и счётчики в физическом контракте имеют тип INT.
 
+Физические feature-колонки хранятся без level-префикса, например
+`n_clicks_7d`. Логический namespace контракта — `ACCOUNT_L4`; при публикации
+или сборке model input полное имя становится `ACCOUNT_L4__n_clicks_7d`.
+
 calculated_at — граница Gold snapshot: 00:00 или 12:00 Asia/Tashkent. Строка
 публикуется, если у account-category есть action за 28 дней, успешная покупка за
 90 дней.
@@ -53,8 +57,8 @@ range-фильтры входных ID. Положительность ключ�
 
 Для окон 3, 7, 14, 28, 60 и 90 дней:
 
-    l4_n_orders_Nd = COUNT(DISTINCT order_id) на grain категории L4
-    l4_gmv_Nd = SUM(payment_price * item_quantity)
+    n_orders_Nd = COUNT(DISTINCT order_id) на grain категории L4
+    gmv_Nd = SUM(payment_price * item_quantity)
 
 Повторные строки одного заказа в category count не дублируют order_id, но весь
 GMV позиций сохраняется. Ratios считаются относительно суммы соответствующего

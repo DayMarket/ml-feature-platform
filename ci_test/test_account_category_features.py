@@ -86,6 +86,17 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 self.assertNotIn("BIGINT", migration)
                 self.assertNotIn("BIGINT", self.contracts[level][4])
 
+    def test_feature_namespace_is_not_duplicated_in_physical_columns(self):
+        for level, (entity, _, _, _, _) in self.contracts.items():
+            config_text = (entity / "config.yaml").read_text(encoding="utf-8")
+            migration = (entity / "migrations/create_table.sql").read_text(
+                encoding="utf-8"
+            )
+            with self.subTest(level=level):
+                self.assertIn(f"feature_namespace: ACCOUNT_L{level}", config_text)
+                self.assertIn("n_clicks_7d", migration)
+                self.assertNotIn(f"l{level}_n_clicks_7d", migration)
+
     def test_business_sql_is_explicit_for_every_physical_contract(self):
         forbidden_fragments = (
             "feature_columns",
@@ -180,7 +191,6 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
     def test_l1_l2_publish_all_three_conversion_semantics(self):
         for level in (1, 2):
             _, _, _, _, sql = self.contracts[level]
-            prefix = f"l{level}"
             for signal in ("click", "atc", "atf", "order"):
                 for window in EVENT_WINDOWS:
                     with self.subTest(
@@ -189,15 +199,15 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                         window=window,
                     ):
                         self.assertIn(
-                            f"AS {prefix}_account_conv_imp2{signal}_{window}d",
+                            f"AS account_conv_imp2{signal}_{window}d",
                             sql,
                         )
                         self.assertIn(
-                            f"AS {prefix}_conv_imp2{signal}_{window}d",
+                            f"AS conv_imp2{signal}_{window}d",
                             sql,
                         )
                         self.assertIn(
-                            f"AS {prefix}_conv_imp2{signal}_vs_account_{window}d",
+                            f"AS conv_imp2{signal}_vs_account_{window}d",
                             sql,
                         )
             self.assertIn("account_order_features AS", sql)
@@ -212,7 +222,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
 
     def test_recency_is_only_published_for_l1_l3_l5(self):
         for level, (entity, _, _, _, sql) in self.contracts.items():
-            column = f"l{level}_neg_n_days_since_last_click"
+            column = "neg_n_days_since_last_click"
             migration = (entity / "migrations/create_table.sql").read_text(
                 encoding="utf-8"
             )
@@ -294,8 +304,8 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             config_text = (entity / "config.yaml").read_text(encoding="utf-8")
             with self.subTest(level=level):
                 self.assertIn("- name: finite", config_text)
-                self.assertIn(f"- l{level}_account_conv_imp2click_3d", config_text)
-                self.assertIn(f"- l{level}_conv_imp2order_vs_account_28d", config_text)
+                self.assertIn("- account_conv_imp2click_3d", config_text)
+                self.assertIn("- conv_imp2order_vs_account_28d", config_text)
 
     def test_recency_contracts_check_relative_max_per_account(self):
         for level in (1, 3, 5):
@@ -304,7 +314,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             with self.subTest(level=level):
                 self.assertIn("- name: group_max_equals", config_text)
                 self.assertIn(
-                    f"column: l{level}_neg_n_days_since_last_click_rel",
+                    "column: neg_n_days_since_last_click_rel",
                     config_text,
                 )
                 self.assertIn("group_by: [account_id]", config_text)

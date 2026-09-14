@@ -64,6 +64,13 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertEqual(migration_columns, expected)
         self.assertNotIn("BIGINT", migration)
         self.assertNotIn("BIGINT", self.sql)
+        self.assertTrue(all(not column.startswith("pid_") for column in query.FEATURE_COLUMNS))
+
+    def test_feature_namespace_is_not_duplicated_in_physical_columns(self):
+        config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
+        self.assertIn("feature_namespace: ACCOUNT_PRODUCT", config_text)
+        self.assertIn("n_clicks_7d", query.FEATURE_COLUMNS)
+        self.assertNotIn("pid_n_clicks_7d", query.FEATURE_COLUMNS)
 
     def test_business_sql_is_explicit_and_has_no_feature_fragment_builders(self):
         query_text = (ENTITY / "job/query.py").read_text(encoding="utf-8")
@@ -108,9 +115,9 @@ class AccountProductFeaturesTest(unittest.TestCase):
         )
 
     def test_click_recency_is_fractional_hours_only(self):
-        self.assertIn("AS pid_neg_n_hours_since_last_click", self.sql)
+        self.assertIn("AS neg_n_hours_since_last_click", self.sql)
         self.assertIn("/ 3600.0", self.sql)
-        self.assertNotIn("pid_neg_n_days_since_last_click", self.sql)
+        self.assertNotIn("neg_n_days_since_last_click", self.sql)
 
     def test_legacy_click_purchase_flag_compares_timestamps_in_right_direction(self):
         self.assertIn(
@@ -158,7 +165,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
     def test_dq_covers_relative_recency_group_invariant(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("- name: group_max_equals", config_text)
-        self.assertIn("column: pid_neg_n_hours_since_last_click_rel", config_text)
+        self.assertIn("column: neg_n_hours_since_last_click_rel", config_text)
         self.assertIn("group_by: [account_id]", config_text)
 
 
