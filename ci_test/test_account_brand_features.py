@@ -64,7 +64,14 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertEqual(migration_columns, expected)
         self.assertNotIn("BIGINT", migration)
         self.assertNotIn("BIGINT", self.sql)
-        self.assertNotIn("bid_n_clicks_3d_ratio", migration_columns)
+        self.assertNotIn("n_clicks_3d_ratio", migration_columns)
+        self.assertTrue(all(not column.startswith("bid_") for column in query.FEATURE_COLUMNS))
+
+    def test_feature_namespace_is_not_duplicated_in_physical_columns(self):
+        config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
+        self.assertIn("feature_namespace: ACCOUNT_BRAND", config_text)
+        self.assertIn("n_clicks_7d", query.FEATURE_COLUMNS)
+        self.assertNotIn("bid_n_clicks_7d", query.FEATURE_COLUMNS)
 
     def test_business_sql_is_explicit_and_has_no_feature_fragment_builders(self):
         query_text = (ENTITY / "job/query.py").read_text(encoding="utf-8")

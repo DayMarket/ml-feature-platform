@@ -13,6 +13,7 @@ table:
   schema: gold
   name: feature_platform_account_brand_features
   primary_key: calculated_at,account_id,brand_id
+  feature_namespace: ACCOUNT_BRAND
   meta:
     team: team::recsys
     create_dbt_pr: false
@@ -59,38 +60,38 @@ dq:
       expression: "account_id > 0 AND brand_id > 0 AND brand_id != 160078"
     - name: non_negative
       columns:
-        - bid_n_clicks_3d
-        - bid_n_clicks_7d
-        - bid_n_clicks_14d
-        - bid_n_clicks_28d
-        - bid_gmv_3d
-        - bid_gmv_7d
-        - bid_gmv_14d
-        - bid_gmv_28d
-        - bid_gmv_60d
-        - bid_gmv_90d
+        - n_clicks_3d
+        - n_clicks_7d
+        - n_clicks_14d
+        - n_clicks_28d
+        - gmv_3d
+        - gmv_7d
+        - gmv_14d
+        - gmv_28d
+        - gmv_60d
+        - gmv_90d
     - name: accepted_range
-      column: bid_gmv_3d_ratio
+      column: gmv_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: bid_gmv_7d_ratio
+      column: gmv_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: bid_gmv_14d_ratio
+      column: gmv_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: bid_gmv_28d_ratio
+      column: gmv_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: bid_gmv_60d_ratio
+      column: gmv_60d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: bid_gmv_90d_ratio
+      column: gmv_90d_ratio
       min: 0
       max: 1
 

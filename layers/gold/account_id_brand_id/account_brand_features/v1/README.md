@@ -13,15 +13,19 @@ Airflow group tag: `recsys-features`.
 Grain и primary key: `calculated_at,account_id,brand_id`.
 
 Идентификаторы и счётчики в физическом контракте имеют тип `INT`.
+Физические feature-колонки хранятся без entity-префикса, например
+`n_clicks_7d`. Логический namespace контракта — `ACCOUNT_BRAND`; при публикации
+или сборке model input полное имя становится `ACCOUNT_BRAND__n_clicks_7d`.
+
 `calculated_at` — граница Gold snapshot: `00:00` или `12:00 Asia/Tashkent`.
 Публикуются только содержательные `brand_id`: `NULL` и business placeholder
 `160078`, уже нормализованный S1 в `NULL`, в результат не попадают.
 
 Колонки:
 
-- `bid_n_clicks_{3,7,14,28}d`;
-- `bid_gmv_{3,7,14,28,60,90}d`;
-- `bid_gmv_{3,7,14,28,60,90}d_ratio`.
+- `n_clicks_{3,7,14,28}d`;
+- `gmv_{3,7,14,28,60,90}d`;
+- `gmv_{3,7,14,28,60,90}d_ratio`.
 
 ## Clicks
 
@@ -39,7 +43,7 @@ session counts по товарам бренда. Поэтому одна сес�
 наблюдения.
 
 ```text
-bid_n_clicks_Nd = SUM(product-level distinct session_id)
+n_clicks_Nd = SUM(product-level distinct session_id)
 ```
 
 S1 читается по точному дневному snapshot, соответствующему локальной дате
@@ -59,11 +63,11 @@ S1 читается по точному дневному snapshot, соотве�
 Gold доверяет идентификаторам Silver и не повторяет входные range-фильтры.
 
 ```text
-bid_gmv_Nd = SUM(payment_price * item_quantity)
+gmv_Nd = SUM(payment_price * item_quantity)
 ```
 
 ```text
-bid_gmv_Nd_ratio = bid_gmv_Nd / total_account_gmv_Nd
+gmv_Nd_ratio = gmv_Nd / total_account_gmv_Nd
 ```
 
 `total_account_gmv_Nd` считается до фильтра `brand_id IS NOT NULL`: в
