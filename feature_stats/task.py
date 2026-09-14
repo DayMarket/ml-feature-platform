@@ -156,6 +156,9 @@ def build_feature_stats_task(
         import logging
 
         logger = logging.getLogger("airflow.task")
+        if not settings.enabled:
+            logger.info("Feature stats отключены в config.yaml")
+            return
         ctx = build_stats_context(config, Path(repo_root), partition_date_value)
 
         hook = TrinoHook(trino_conn_id=settings.trino_conn_id)

@@ -77,6 +77,8 @@ feature_stats читает тот же snapshot и весь uz_official одни
 ## DAG и запуск
 
 Один owner DAG `feature-platform.layers.silver.date.demand_calendar` работает с `max_active_runs=1`.
+DQ читает `ingested_at` из writer receipt текущего запуска внутри Python-задачи;
+отсутствующий XCom даёт явную ошибку receipt, а не ошибку рендера Jinja.
 По расписанию `03:00 UTC` он заменяет полный текущий справочник. Ручной полный refresh запускается в этом же DAG с JSON:
 
 ```json

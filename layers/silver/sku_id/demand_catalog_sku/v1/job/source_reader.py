@@ -122,8 +122,9 @@ def read_metadata(config, client):
     return result
 
 
-def read_batches(config, client, kind, *, expected_rows, columns, max_batch_rows, max_batch_bytes):
-    if any(type(value) is not int or value <= 0 for value in (expected_rows, max_batch_rows, max_batch_bytes)):
+def read_batches(config, client, kind, *, expected_rows=None, columns, max_batch_rows, max_batch_bytes):
+    if (expected_rows is not None and (type(expected_rows) is not int or expected_rows <= 0)
+            or any(type(value) is not int or value <= 0 for value in (max_batch_rows, max_batch_bytes))):
         raise ValueError("Нужны положительные count и лимиты порций")
     source_arrow(kind, [], columns)
     stream = iter(client.execute_iter(capture_query(config, kind), with_column_types=True,
@@ -153,10 +154,12 @@ def read_batches(config, client, kind, *, expected_rows, columns, max_batch_rows
                     raise ValueError("Повторный/неупорядоченный source ID")
                 previous = ids[-1].as_py()
             seen += batch.num_rows
-            if seen > expected_rows:
+            if expected_rows is not None and seen > expected_rows:
                 raise ValueError("Source строк больше независимого count")
             yield batch
-        if seen != expected_rows:
+        if seen == 0:
+            raise ValueError("Пустой source capture")
+        if expected_rows is not None and seen != expected_rows:
             raise ValueError("Неполный source capture")
     finally:
         close = getattr(stream, "close", None)
@@ -165,15 +168,29 @@ def read_batches(config, client, kind, *, expected_rows, columns, max_batch_rows
 
 
 def capture_all(config, client, counts, metadata, *, max_batch_rows, max_batch_bytes):
+    """Захватить консистентный результат каждого SELECT и вернуть его фактические counts."""
+    if (not isinstance(counts, dict) or set(counts) != {*FIELDS, "uzum_links"}
+            or any(type(value) is not int or value <= 0 for value in counts.values())):
+        raise ValueError("Нужны положительные предварительные source counts")
     output = {}
     for kind in FIELDS:
-        stream = read_batches(config, client, kind, expected_rows=counts[kind], columns=metadata[kind],
+        # COUNT и SELECT не образуют общий CH snapshot: источник может вырасти между
+        # запросами. Полноту задаёт завершение самого упорядоченного SELECT.
+        stream = read_batches(config, client, kind, columns=metadata[kind],
                               max_batch_rows=max_batch_rows, max_batch_bytes=max_batch_bytes)
         try:
             output[kind] = pa.concat_tables(list(stream))
         finally:
             stream.close()
-    return output
+    actual = {kind: output[kind].num_rows for kind in FIELDS}
+    uzum = pc.and_(
+        pc.equal(output["active_links"]["meta_present"], 1),
+        pc.equal(output["active_links"]["meta_source"], "uzum"),
+    )
+    actual["uzum_links"] = pc.sum(pc.cast(pc.fill_null(uzum, False), pa.int64())).as_py()
+    if any(type(value) is not int or value <= 0 for value in actual.values()):
+        raise ValueError("Полный capture не содержит положительный Uzum source")
+    return output, actual
 
 
 def verify_captures(config, client, captures, counts, metadata, *, max_batch_rows, max_batch_bytes):

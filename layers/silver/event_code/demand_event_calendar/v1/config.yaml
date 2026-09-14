@@ -45,7 +45,7 @@ dq:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ ti.xcom_pull(task_ids="write_events")["ingested_at"] }}'
+  partition_date_template: '{{ (ti.xcom_pull(task_ids="write_events", include_prior_dates=False) or {}).get("ingested_at", "") }}'
   tests:
     - name: row_count_growth
       enabled: false
@@ -77,5 +77,5 @@ feature_stats:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ ti.xcom_pull(task_ids="write_events")["ingested_at"] }}'
+  partition_date_template: '{{ (ti.xcom_pull(task_ids="write_events", include_prior_dates=False) or {}).get("ingested_at", "") }}'
   exclude_columns: []

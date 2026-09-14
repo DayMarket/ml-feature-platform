@@ -20,7 +20,7 @@ from dq.task import build_dq_task  # noqa: E402
 from feature_stats.task import build_feature_stats_task  # noqa: E402
 
 CONFIG = yaml.safe_load(Path(CONFIG_PATH).read_text(encoding="utf-8"))
-CAPTURE_TIMESTAMP = '{{ ti.xcom_pull(task_ids="write_calendar")["ingested_at"] }}'
+CAPTURE_TIMESTAMP = '{{ (ti.xcom_pull(task_ids="write_calendar", include_prior_dates=False) or {}).get("ingested_at", "") }}'
 
 
 def executor_config():
@@ -58,7 +58,7 @@ def default_args():
     tags=["feature-platform", CONFIG["dag"]["group_tag"], CONFIG["dag"]["team"], "silver"],
 )
 def calendar_dag():
-    @task(task_id="write_calendar")
+    @task(task_id="write_calendar", multiple_outputs=False)
     def write_calendar():
         from layers.silver.date.demand_calendar.v1.job.runtime import execute_load
         context = get_current_context()

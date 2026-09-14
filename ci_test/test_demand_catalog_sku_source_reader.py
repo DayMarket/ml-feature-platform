@@ -67,9 +67,9 @@ class Client:
 
 def capture(client, **limits):
     meta = reader.read_metadata(client.cfg, client)
-    counts = reader.read_counts(client.cfg, client)
+    preliminary = reader.read_counts(client.cfg, client)
     args = dict(max_batch_rows=2, max_batch_bytes=100000) | limits
-    result = reader.capture_all(client.cfg, client, counts, meta, **args)
+    result, counts = reader.capture_all(client.cfg, client, preliminary, meta, **args)
     return result, counts, meta
 
 
@@ -82,6 +82,19 @@ def test_all_four_sources_and_exact_repeat_with_different_chunks():
     assert captures["golden"]["golden_sku_id"][0].as_py() == str(UUID(int=1))
     assert reader.verify_captures(client.cfg, client, captures, counts, metadata, max_batch_rows=1, max_batch_bytes=100000)
     assert client.streams == list(reader.FIELDS) * 2 and client.closed == client.streams
+
+
+def test_completed_select_owns_count_when_source_grows_after_audit():
+    client = Client()
+    added = deepcopy(client.rows["sku"][-1])
+    added[0] = 4
+    def grow(kind, number):
+        if (kind, number) == ("sku", 1):
+            client.rows["sku"].append(added)
+
+    client.on_stream = grow
+    captures, counts, _ = capture(client)
+    assert captures["sku"].num_rows == counts["sku"] == 4
 
 
 @pytest.mark.parametrize("kind,position,value", [("sku", 6, "changed status"), ("category", 8, "changed title"),
