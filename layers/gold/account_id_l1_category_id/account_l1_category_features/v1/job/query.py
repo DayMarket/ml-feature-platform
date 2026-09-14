@@ -178,7 +178,7 @@ recency_features AS (
         SELECT
             account_id,
             l1_category_id,
-            CASE WHEN last_click_at IS NOT NULL THEN -CAST(CEIL(CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_local}') - UNIX_TIMESTAMP(last_click_at) AS DOUBLE) / 86400.0) AS INT) END AS neg_n_days_since_last_click
+            CASE WHEN last_click_at IS NOT NULL THEN -CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_local}') - UNIX_TIMESTAMP(last_click_at) AS DOUBLE) / 86400.0 END AS neg_n_days_since_last_click
         FROM action_features
     ) recency
 ),

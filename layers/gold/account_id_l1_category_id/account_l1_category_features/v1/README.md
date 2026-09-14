@@ -84,10 +84,12 @@ category-level показателя пользователя.
 
 ## Recency
 
-По PRODUCT_VIEW за 28 дней публикуется отрицательная целочисленная давность в днях:
+По PRODUCT_VIEW за 28 дней публикуется отрицательная дробная давность в днях:
 
     neg_n_days_since_last_click =
-        -CEIL((calculated_at - MAX(last_received_at)) / 24 hours)
+        -(calculated_at - MAX(last_received_at)) / 24 hours
+
+Округление не применяется.
 
 Relative recency равна recency категории минус наиболее свежее category-recency
 пользователя. Самая свежая категория получает 0.

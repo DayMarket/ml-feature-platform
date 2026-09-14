@@ -210,7 +210,7 @@ features_with_ratios AS (
         CASE WHEN SUM(gmv_28d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_28d / SUM(gmv_28d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_28d_ratio,
         CASE WHEN SUM(gmv_60d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_60d / SUM(gmv_60d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_60d_ratio,
         CASE WHEN SUM(gmv_90d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_90d / SUM(gmv_90d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_90d_ratio,
-        CASE WHEN last_click_at IS NOT NULL THEN -CAST(CEIL(CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_local}') - UNIX_TIMESTAMP(last_click_at) AS DOUBLE) / 86400.0) AS INT) END AS neg_n_days_since_last_click
+        CASE WHEN last_click_at IS NOT NULL THEN -CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_local}') - UNIX_TIMESTAMP(last_click_at) AS DOUBLE) / 86400.0 END AS neg_n_days_since_last_click
     FROM base_features
 ),
 features_with_recency AS (
