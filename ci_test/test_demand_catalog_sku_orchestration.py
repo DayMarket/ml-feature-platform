@@ -92,6 +92,17 @@ def test_invalid_connections_rejected(env, block, value):
         bridge.connection_ids(cfg)
 
 
+@pytest.mark.parametrize("warmup_days", [1, 3])
+def test_warmup_rejected_before_connections_or_xcom(env, monkeypatch, warmup_days):
+    env["cfg"]["dq"]["warmup_days"] = warmup_days
+    loader, getter = Mock(), Mock()
+    monkeypatch.setattr(bridge, "load_results_catalog", loader)
+    with pytest.raises(ValueError, match="warmup_days"):
+        execute(env, catalog=None, client=None, connection=None, get_checked=getter)
+    loader.assert_not_called()
+    getter.assert_not_called()
+
+
 def test_failed_or_different_xcom_cannot_be_latest_fallback(env):
     ti = Mock()
     for value in (None, {**env["checked"], "run_id": "other"}, {**env["checked"], "dq_status": "failed"}):

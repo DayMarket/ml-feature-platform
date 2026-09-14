@@ -17,8 +17,9 @@ Catalog_version общий с seller/tree; table UUID/schema и captures зак�
 Raw L1–L6 сохраняют нули и NULL отдельно. Нормализованный путь — market, L1–L5 с
 протяжкой нулей от предыдущего уровня, leaf из category_id. Missing-category SKU
 не удаляются, путь NULL; конфликт родителя блокирует ready. Golden/master только
-готовые связи. Unmatched — доказанное отсутствие, unavailable/conflict не становятся
-fallback. NULL is_1p не FALSE, created_at не first_observed_alive_date.
+готовые связи. Unmatched — доказанное отсутствие; conflict не выбирает одну golden и
+остаётся самостоятельным `unit_id=s:<sku_id>`. Unavailable блокирует запись.
+NULL is_1p не FALSE, created_at не first_observed_alive_date.
 
 Дата capture — фактическая Asia/Tashkent, timestamps UTC. Полная атомарная замена
 текущего среза, включая исчезнувшие SKU; manual не выдумывает прошлый каталог.
@@ -59,13 +60,16 @@ review, dedup_merge и др.), marketplace='uzum' отбирается по meta
 сверена с dbt commerce/golden_sku_mapping.sql CTE verified/nasz_paired_skus.sql;
 их ML extended matching/ранжирование не переносится. Все четыре LIMIT 0 прошли CH.
 
-prepare_active_links проверяет весь capture/count до отбора Uzum и отказывает при
-orphan meta. resolve_sku_links считает повторную идентичную связь в audit, но не
+prepare_active_links проверяет весь capture/count до отбора Uzum. Orphan без meta
+невозможно приписать marketplace или SKU: он пропускается, но явно учитывается как
+`golden_links.orphan_meta_link_rows` в source audit. resolve_sku_links считает
+повторную идентичную связь в audit, но не
 выбирает одну из разных: после merge resolution один terminal даёт matched, разные —
-conflict, отсутствующий golden — unavailable. Ни один из последних статусов не даёт
-unit_id/fallback. Отсутствие SKU в этом индексе само не доказывает unmatched.
+conflict с `golden_sku_id=NULL` и `unit_id=s:<sku_id>`, отсутствующий golden —
+блокирующий unavailable. Отсутствие SKU в этом индексе само не доказывает unmatched.
 
-Source orphan gate сохраняется: отсутствующий meta нельзя исключать молча.
+Orphan не становится `unmatched` и не получает fallback; полный raw capture остаётся
+проверяемым до и после подготовки.
 
 ## Подготовка и атомарная запись SKU
 
@@ -74,8 +78,9 @@ golden и active links captures с независимыми counts и полны
 Все 38 полей собираются через колоночные index/take: нет Python-списка миллионов SKU
 строк. Нули/NULL исходных полей сохраняются; missing category оставляет NULL-путь,
 но не удаляет SKU. Unmatched MDM появляется только после проверки полного capture.
-Использованные conflict/unavailable блокируют запись, missing seller не становится
-unmatched. Master/raw/status seller повторно сверяются, unknown is_1p сохраняется.
+Использованные category/seller conflict и golden unavailable блокируют запись;
+golden conflict остаётся самостоятельным SKU. Missing seller не становится unmatched.
+Master/raw/status seller повторно сверяются, unknown is_1p сохраняется.
 
 job/inputs.py проверяет passed DQ точного seller owner run, writer receipt, UUID,
 snapshot ID и схему выбранной версии по DDL владельца. Новый head/schema не является
@@ -127,6 +132,9 @@ trino_search и общий Hive/S3 catalog из штатного DQ loader. Exac
 закрываются при ошибке, переданные caller не закрываются. Owner DAG подключён локально.
 
 ## Оркестрация и DQ
+
+Полная замена не накапливает историю захватов в текущем содержимом таблицы.
+Поэтому `dq.warmup_days` должен быть `0`; ненулевое значение отклоняется до открытия подключений.
 
 Один owner DAG `feature-platform.layers.silver.sku_id.demand_catalog_sku` с `max_active_runs=1` заменяет полный текущий SKU-каталог. Scheduled run идёт ежедневно в `04:00 UTC` и ждёт точный DQ seller catalog. Ручной полный refresh запускается в этом же DAG:
 

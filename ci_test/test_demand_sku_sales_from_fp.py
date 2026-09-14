@@ -254,14 +254,39 @@ def test_full_range_and_resume(case):
     assert all(r["resumed"] for r in resumed["day_receipts"])
 
 
-def test_missing_later_day_prevents_first_write(case):
+@pytest.mark.parametrize("existing_later_day", [False, True])
+def test_missing_later_day_preserves_completed_and_previous_days_then_resumes(case, existing_later_day):
     days = two_days(case)
-    connection = case[-1]
-    connection.batch = connection.batch.slice(0, 3)
+    cfg, catalog, target, reference, checked, connection = case
+    if existing_later_day:
+        runtime.load_day(cfg, ROOT, catalog, connection, day=days[1], reference=reference,
+            fetch_checked=lambda _: deepcopy(checked), manifest="previous-output", ingested_at=CAPTURE)
+    target.refresh()
+    previous_rows = target.scan().to_arrow().to_pylist()
+    complete_source = connection.batch
+    connection.batch = complete_source.slice(0, 3)
     with pytest.raises(ValueError, match="count"):
         load_range(case, days)
-    case[2].refresh()
-    assert case[2].current_snapshot() is None
+    target.refresh()
+    rows = target.scan().to_arrow().to_pylist()
+    first_rows = [row for row in rows if row["date"] == days[0]]
+    assert len(first_rows) == 1
+    assert first_rows[0]["sales_orders"] == 2 and first_rows[0]["sales_order_items"] == 3
+    assert first_rows[0]["source_manifest_id"] == "range-output"
+    assert [row for row in rows if row["date"] == days[1]] == previous_rows
+    assert all(cursor.closed for cursor in connection.cursors)
+
+    connection.batch = complete_source
+    connection.queries.clear()
+    resumed = load_range(case, days)
+    assert resumed["dates"] == [day.isoformat() for day in days]
+    assert [receipt["resumed"] for receipt in resumed["day_receipts"]] == [True, False]
+    assert all(f"DATE '{days[0].isoformat()}'" not in sql for sql in connection.queries)
+    target.refresh()
+    rows = target.scan().to_arrow().to_pylist()
+    assert [row for row in rows if row["date"] == days[0]] == first_rows
+    assert len(rows) == 2 and {row["date"] for row in rows} == set(days)
+    assert {row["source_manifest_id"] for row in rows} == {"range-output"}
 
 
 def test_retry_resumes_finished_day_after_partial_range(case, monkeypatch):

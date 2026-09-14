@@ -43,13 +43,13 @@ def read_counts(config, client):
                 or len(rows[0]) != 3 or any(type(value) is not int or not 0 <= value <= 2**63 - 1 for value in rows[0])):
             raise ValueError(f"Неверная форма/count source audit {kind}")
         count, distinct_or_uzum, invalid = rows[0]
-        if count <= 0 or invalid != 0:
-            raise ValueError(f"Пустой/недопустимый source {kind}; orphan meta блокирует active_links")
+        if count <= 0:
+            raise ValueError(f"Пустой source {kind}")
         if kind == "active_links":
-            if not 0 < distinct_or_uzum <= count:
+            if not 0 < distinct_or_uzum <= count or invalid > count:
                 raise ValueError("Нет полного положительного Uzum links count")
             counts["uzum_links"] = distinct_or_uzum
-        elif distinct_or_uzum != count:
+        elif invalid != 0 or distinct_or_uzum != count:
             raise ValueError(f"Повторные ключи source {kind}")
         counts[kind] = count
     return counts

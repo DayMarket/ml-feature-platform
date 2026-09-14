@@ -151,12 +151,15 @@ def test_order_across_batches_and_byte_limit():
     assert client.closed == client.streams
 
 
-def test_orphan_audit_blocks_before_large_capture():
+def test_orphan_audit_is_preserved_in_full_capture():
     client = Client()
-    client.rows["active_links"][0][3] = 0
-    with pytest.raises(ValueError, match="orphan"):
-        capture(client)
-    assert not client.streams
+    orphan = deepcopy(client.rows["active_links"][0])
+    orphan[0] = UUID(int=999)
+    orphan[3:] = [0, None, None]
+    client.rows["active_links"].append(orphan)
+    captures, counts, _ = capture(client)
+    assert counts["active_links"] == 2 and counts["uzum_links"] == 1
+    assert captures["active_links"]["meta_present"].to_pylist() == [1, 0]
 
 
 def test_audits_use_declared_sources_and_no_provenance_filter():

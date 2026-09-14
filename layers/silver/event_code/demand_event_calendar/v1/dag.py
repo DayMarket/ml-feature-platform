@@ -69,14 +69,16 @@ def events_dag():
         conf = context["dag_run"].conf or {}
         if set(conf) - {"mode", "calendar_reference", "openlineage"}:
             raise ValueError("События загружаются целиком; неизвестные параметры")
+        raw_type = context["dag_run"].run_type
+        run_type = getattr(raw_type, "value", raw_type)
         mode = conf.get("mode", "regular")
         if mode == "regular":
-            if str(context["dag_run"].run_type) != "scheduled" or "calendar_reference" in conf:
+            if run_type != "scheduled" or "calendar_reference" in conf:
                 raise ValueError("Regular разрешён только плановому запуску")
             reference = scheduled_calendar_reference(CONFIG, CALENDAR_CONFIG,
                                                        context["data_interval_start"], context["data_interval_end"])
         elif mode == "manual":
-            if str(context["dag_run"].run_type) != "manual":
+            if run_type != "manual":
                 raise ValueError("Mode manual разрешён только ручному запуску")
             reference = validate_reference(conf.get("calendar_reference"), CALENDAR_CONFIG)
         else:

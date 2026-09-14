@@ -62,6 +62,9 @@ FP-ветке не найдено; product_metadata не содержит эту
 
 ## Оркестрация
 
+Полная замена не накапливает историю захватов в текущем содержимом таблицы.
+Поэтому `dq.warmup_days` должен быть `0`; ненулевое значение отклоняется до открытия подключений.
+
 Один owner DAG `feature-platform.layers.silver.seller_id.demand_catalog_seller` с `max_active_runs=1` заменяет полный текущий каталог. Scheduled run идёт ежедневно в `04:00 UTC`; ручной полный refresh запускается в том же DAG с `{"mode":"manual"}`.
 
 Отдельного history/full-history DAG нет. Запись, DQ и feature statistics образуют один сериализованный интервал; ручной запуск не содержит исторических дат, потому что каталог является текущим reference snapshot.
