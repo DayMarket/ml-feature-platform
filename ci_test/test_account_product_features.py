@@ -128,6 +128,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
             "neg_n_days_since_last_click",
             "neg_n_days_since_last_click_rel",
             "neg_n_days_since_last_purchase",
+            "n_days_between_last_click_and_last_purchase",
         ):
             self.assertRegex(migration, rf"(?m)^\s+{column} DOUBLE\b")
 
@@ -137,6 +138,24 @@ class AccountProductFeaturesTest(unittest.TestCase):
             "> last_purchase_at THEN 1",
             self.sql,
         )
+
+    def test_click_purchase_interval_is_signed_fractional_days_without_coalesce(self):
+        self.assertIn(
+            "UNIX_TIMESTAMP(last_purchase_at)\n"
+            "            - UNIX_TIMESTAMP(TO_UTC_TIMESTAMP("
+            "last_click_at, 'Asia/Tashkent'))",
+            self.sql,
+        )
+        self.assertIn(
+            "/ 86400.0 AS n_days_between_last_click_and_last_purchase",
+            self.sql,
+        )
+        feature_line = next(
+            line
+            for line in self.sql.splitlines()
+            if "AS n_days_between_last_click_and_last_purchase" in line
+        )
+        self.assertNotIn("COALESCE", feature_line)
 
     def test_partition_parser_accepts_airflow_timestamps(self):
         self.assertEqual(

@@ -55,6 +55,7 @@ FEATURE_COLUMNS = (
     "gmv_60d_ratio",
     "gmv_90d_ratio",
     "neg_n_days_since_last_purchase",
+    "n_days_between_last_click_and_last_purchase",
     "last_click_before_last_purchase",
 )
 
@@ -227,6 +228,11 @@ features_with_ratios AS (
         CASE WHEN last_click_at IS NOT NULL THEN -CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_local}') - UNIX_TIMESTAMP(last_click_at) AS DOUBLE) / 86400.0 END AS neg_n_days_since_last_click,
         CASE WHEN n_orders_90d > 0 THEN CAST(n_orders_28d AS DOUBLE) / n_orders_90d END AS n_orders_28d_over_90d,
         CASE WHEN last_purchase_at IS NOT NULL THEN -CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_utc}') - UNIX_TIMESTAMP(last_purchase_at) AS DOUBLE) / 86400.0 END AS neg_n_days_since_last_purchase,
+        CAST(
+            UNIX_TIMESTAMP(last_purchase_at)
+            - UNIX_TIMESTAMP(TO_UTC_TIMESTAMP(last_click_at, '{settings.business_timezone}'))
+            AS DOUBLE
+        ) / 86400.0 AS n_days_between_last_click_and_last_purchase,
         CASE
             WHEN last_click_at IS NULL OR last_purchase_at IS NULL THEN NULL
             WHEN TO_UTC_TIMESTAMP(last_click_at, '{settings.business_timezone}') > last_purchase_at THEN 1
@@ -257,6 +263,7 @@ SELECT
     gmv_3d, gmv_7d, gmv_14d, gmv_28d, gmv_60d, gmv_90d,
     gmv_3d_ratio, gmv_7d_ratio, gmv_14d_ratio, gmv_28d_ratio, gmv_60d_ratio, gmv_90d_ratio,
     neg_n_days_since_last_purchase,
+    n_days_between_last_click_and_last_purchase,
     last_click_before_last_purchase
 FROM features_with_relative_recency
 """
