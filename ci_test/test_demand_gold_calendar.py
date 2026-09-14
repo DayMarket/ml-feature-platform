@@ -106,7 +106,7 @@ def test_timestamp_and_schedule(value):
     assert runtime.utc_timestamp(value) == NOW
     cfg = config()
     refs = runtime.scheduled_references(cfg, runtime.source_configs(cfg, ROOT), value, "2026-09-09T04:00:00Z")
-    assert refs["calendar"]["run_id"] == "scheduled__2026-09-08T03:00:00+00:00"
+    assert refs["calendar"]["run_id"] == "scheduled__2026-09-09T03:00:00+00:00"
     assert refs["events"]["logical_date"] == "2026-09-08T03:10:00+00:00"
 
 

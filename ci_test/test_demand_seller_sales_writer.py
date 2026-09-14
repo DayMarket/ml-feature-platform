@@ -47,6 +47,13 @@ def test_preparation_accepts_iceberg_utc_timestamps():
     assert prepared(target=target).schema == target
 
 
+def test_ingestion_covers_fx_server_clock_skew(monkeypatch):
+    receipt = fx() | {"fx_captured_at": CAPTURE + timedelta(seconds=2)}
+    monkeypatch.setattr(mod("runtime"), "utc_now", lambda: CAPTURE)
+
+    assert mod("runtime").capture_after_fx(receipt) == receipt["fx_captured_at"]
+
+
 def raw(**changes):
     base = sales_raw("sales").to_pylist()[0]
     base.update(seller_key="seller:7", seller_id=7, sku_sales_orders=1, sku_sales_order_items=1)
