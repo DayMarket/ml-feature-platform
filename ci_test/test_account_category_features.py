@@ -5,7 +5,6 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 GOLD_ROOT = ROOT / "layers/gold"
 EVENT_WINDOWS = (3, 7, 14, 28)
@@ -52,22 +51,17 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             cls.contracts[level] = (entity, runtime, query, settings, sql)
 
     def test_all_five_physical_contracts_have_fixed_windows(self):
-        for level, (_, _, _, settings, _) in self.contracts.items():
+        for level, (_, _, _, _, sql) in self.contracts.items():
             with self.subTest(level=level):
-                self.assertEqual(settings.category_level, level)
-                self.assertEqual(
-                    settings.category_column,
-                    f"l{level}_category_id",
-                )
-                self.assertEqual(settings.event_windows_days, EVENT_WINDOWS)
-                self.assertEqual(settings.order_windows_days, ORDER_WINDOWS)
-                self.assertEqual(
-                    settings.successful_order_statuses,
-                    ("COMPLETED", "PAID", "DELIVERED", "IN_DELIVERY"),
+                for window in ORDER_WINDOWS:
+                    self.assertIn(f"INTERVAL {window} DAYS", sql)
+                self.assertIn(
+                    "'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'",
+                    sql,
                 )
 
     def test_migrations_match_generated_feature_contracts(self):
-        for level, (entity, _, query, settings, _) in self.contracts.items():
+        for level, (entity, _, _, _, sql) in self.contracts.items():
             migration = (entity / "migrations/create_table.sql").read_text(
                 encoding="utf-8"
             )
@@ -79,16 +73,36 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     flags=re.MULTILINE,
                 )
             )
-            expected = {
-                "calculated_at",
-                "account_id",
-                f"l{level}_category_id",
-                *query.feature_columns(settings),
-            }
             with self.subTest(level=level):
-                self.assertEqual(migration_columns, expected)
+                self.assertIn("calculated_at", migration_columns)
+                self.assertIn("account_id", migration_columns)
+                self.assertIn(f"l{level}_category_id", migration_columns)
+                for column in migration_columns - {
+                    "calculated_at",
+                    "account_id",
+                    f"l{level}_category_id",
+                }:
+                    self.assertIn(column, sql)
                 self.assertNotIn("BIGINT", migration)
                 self.assertNotIn("BIGINT", self.contracts[level][4])
+
+    def test_business_sql_is_explicit_for_every_physical_contract(self):
+        forbidden_fragments = (
+            "feature_columns",
+            "_prefix",
+            "_action_count_expressions",
+            "_impression_count_expressions",
+            "_order_feature_expressions",
+            "_ratio_expressions",
+            "has_impressions",
+            "has_recency",
+            "for window in",
+        )
+        for level, (entity, _, _, _, _) in self.contracts.items():
+            query_text = (entity / "job/query.py").read_text(encoding="utf-8")
+            with self.subTest(level=level):
+                for fragment in forbidden_fragments:
+                    self.assertNotIn(fragment, query_text)
 
     def test_l1_l2_sum_slices_and_l3_l5_deduplicate_full_window(self):
         for level, (_, _, _, _, sql) in self.contracts.items():
@@ -99,10 +113,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                         f"feature_platform_account_l{level}_imp_counts_12h",
                         sql,
                     )
-                    self.assertIn(
-                        "FROM raw_actions\n)",
-                        sql,
-                    )
+                    self.assertNotIn("deduplicated_actions AS", sql)
                     self.assertNotIn(
                         "MAX(source_calculated_at) AS source_calculated_at",
                         sql,
@@ -110,25 +121,23 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 else:
                     self.assertNotIn("impression_features AS", sql)
                     self.assertIn(
-                        "MAX(source_calculated_at) AS source_calculated_at",
+                        "deduplicated_actions AS",
                         sql,
                     )
                     self.assertIn(
-                        "GROUP BY\n        account_id,\n"
-                        "        session_id,\n        product_id,\n"
-                        "        event_type",
+                        "GROUP BY account_id, session_id, product_id, event_type",
                         sql,
                     )
 
     def test_product_categories_use_same_day_s1_snapshot(self):
-        for level, (_, _, _, settings, sql) in self.contracts.items():
+        for level, (_, _, _, _, sql) in self.contracts.items():
             with self.subTest(level=level):
                 self.assertIn(
                     "WHERE dt = TIMESTAMP '2026-09-10 00:00:00'",
                     sql,
                 )
                 self.assertIn(
-                    f"AND {settings.category_column} IS NOT NULL",
+                    f"AND l{level}_category_id IS NOT NULL",
                     sql,
                 )
 
@@ -136,8 +145,9 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
         for level, (_, _, _, _, sql) in self.contracts.items():
             with self.subTest(level=level):
                 self.assertIn(
-                    "order_item.order_item_status IN "
-                    "('COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY')",
+                    "order_item.order_item_status IN (\n"
+                    "            'COMPLETED', 'PAID', 'DELIVERED', "
+                    "'IN_DELIVERY'\n        )",
                     sql,
                 )
                 self.assertIn("COUNT(DISTINCT CASE", sql)
@@ -160,12 +170,10 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
         for level, (_, _, _, _, sql) in self.contracts.items():
             with self.subTest(level=level):
                 if level <= 2:
-                    self.assertIn("FROM raw_actions\n)", sql)
+                    self.assertNotIn("deduplicated_actions AS", sql)
                 else:
                     self.assertIn(
-                        "GROUP BY\n        account_id,\n"
-                        "        session_id,\n        product_id,\n"
-                        "        event_type",
+                        "GROUP BY account_id, session_id, product_id, event_type",
                         sql,
                     )
 
@@ -194,7 +202,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                         )
             self.assertIn("account_order_features AS", sql)
             self.assertIn(
-                "THEN CAST(account_n_orders_3d AS DOUBLE)",
+                "MAX(account_orders.account_n_orders_3d)",
                 sql,
             )
 
@@ -203,16 +211,19 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             self.assertNotIn("_conv_imp2", sql)
 
     def test_recency_is_only_published_for_l1_l3_l5(self):
-        for level, (_, _, query, settings, sql) in self.contracts.items():
+        for level, (entity, _, _, _, sql) in self.contracts.items():
             column = f"l{level}_neg_n_days_since_last_click"
+            migration = (entity / "migrations/create_table.sql").read_text(
+                encoding="utf-8"
+            )
             with self.subTest(level=level):
                 if level in (1, 3, 5):
                     self.assertIn(f"AS {column}", sql)
                     self.assertIn("/ 86400.0", sql)
-                    self.assertIn(column, query.feature_columns(settings))
+                    self.assertIn(column, migration)
                 else:
                     self.assertNotIn(column, sql)
-                    self.assertNotIn(column, query.feature_columns(settings))
+                    self.assertNotIn(column, migration)
 
     def test_cutoffs_are_half_open_and_snapshot_is_local_time(self):
         for level, (_, _, _, _, sql) in self.contracts.items():
@@ -244,8 +255,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 )
                 self.assertIn("WHEN NOT MATCHED BY SOURCE", merge_sql)
                 self.assertIn(
-                    f"target.l{level}_category_id = "
-                    f"source.l{level}_category_id",
+                    f"target.l{level}_category_id = source.l{level}_category_id",
                     merge_sql,
                 )
 
@@ -270,7 +280,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     config_text,
                 )
                 self.assertIn("is_paused_upon_creation=True", dag_text)
-                self.assertIn("# default_args[\"on_failure_callback\"]", dag_text)
+                self.assertIn('# default_args["on_failure_callback"]', dag_text)
                 self.assertEqual(dag_text.count("failure_callback_enabled=False"), 2)
                 if level <= 2:
                     self.assertIn(
