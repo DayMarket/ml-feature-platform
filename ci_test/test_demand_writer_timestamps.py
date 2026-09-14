@@ -12,6 +12,8 @@ WRITERS = [
     "layers.silver.sku_id.demand_sales_daily.v1.job.writer",
     "layers.silver.sku_id_seller_key.demand_finance_daily.v1.job.writer",
     "layers.silver.sku_id_seller_key.demand_seller_sales_observed_daily.v1.job.writer",
+    "layers.silver.sku_id_estimate_kind.demand_restored_daily.v1.job.writer",
+    "layers.gold.sku_id.demand_observed_daily.v1.job.writer",
 ]
 CAPTURE = datetime(2026, 9, 14, 10, 0, tzinfo=timezone.utc)
 

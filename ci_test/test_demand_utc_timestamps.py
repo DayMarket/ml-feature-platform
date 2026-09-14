@@ -1,6 +1,8 @@
 """UTC timestamp Iceberg совместим с валидаторами и Trino readers demand-цепочки."""
 
+from datetime import date, datetime, timezone
 from importlib import import_module
+from pathlib import Path
 
 import pyarrow as pa
 import pytest
@@ -53,3 +55,67 @@ def test_catalog_reader_accepts_trino_utc_timestamp_metadata(module_name):
     schema = pa.schema([pa.field("captured", pa.timestamp("us", "UTC"), nullable=False)])
     description = [("captured", "timestamp(6) with time zone", None, None, None, None, None)]
     reader.validate_description(description, schema)
+
+
+def test_sku_sales_reader_matches_utc_receipt_timestamp(monkeypatch):
+    reader = import_module("layers.silver.sku_id.demand_sales_daily.v1.job.seller_reader")
+    day = date(2022, 9, 1)
+    captured = datetime(2026, 9, 14, 18, 14, 47, 580801, tzinfo=timezone.utc)
+    schema = pa.schema([
+        pa.field("date", pa.date32(), nullable=False),
+        pa.field("sku_id", pa.int64(), nullable=False),
+        pa.field("seller_key", pa.string(), nullable=False),
+        pa.field("source_manifest_id", pa.string(), nullable=False),
+        pa.field("source_contract_version", pa.string(), nullable=False),
+        pa.field("ingested_at", pa.timestamp("us", "UTC"), nullable=False),
+    ])
+    receipt = {
+        "date": day.isoformat(),
+        "rows_written": 1,
+        "table_uuid": "source-uuid",
+        "source_manifest_id": "source-manifest",
+        "source_contract_version": "source-v1",
+        "ingested_at": captured.isoformat(),
+    }
+    version = {"snapshot_id": 17, "table_uuid": "source-uuid", "day_receipt": receipt}
+    description = [
+        ("date", "date", None, None, None, None, None),
+        ("sku_id", "bigint", None, None, None, None, None),
+        ("seller_key", "varchar", None, None, None, None, None),
+        ("source_manifest_id", "varchar", None, None, None, None, None),
+        ("source_contract_version", "varchar", None, None, None, None, None),
+        ("ingested_at", "timestamp(6) with time zone", None, None, None, None, None),
+    ]
+
+    class Cursor:
+        def __init__(self):
+            self.description = description
+            self.rows = [[day, 1, "seller:1", "source-manifest", "source-v1", captured]]
+            self.closed = False
+
+        def execute(self, _sql):
+            return None
+
+        def fetchmany(self, size):
+            result, self.rows = self.rows[:size], self.rows[size:]
+            return result
+
+        def close(self):
+            self.closed = True
+
+    cursor = Cursor()
+
+    class Connection:
+        def cursor(self):
+            return cursor
+
+    source = {"table": {"catalog": "iceberg", "schema": "silver", "name": "source_table"}}
+    monkeypatch.setattr(reader, "trino_catalog_alias", lambda *_: "dwh-iceberg")
+
+    batches = list(reader.read_batches(
+        Connection(), source, Path("."), version, schema, day=day,
+        max_batch_rows=10, max_batch_bytes=100000,
+    ))
+
+    assert batches[0]["ingested_at"][0].as_py() == captured
+    assert cursor.closed

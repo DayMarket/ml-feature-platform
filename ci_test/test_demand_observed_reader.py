@@ -17,6 +17,7 @@ READER = import_module("layers.gold.sku_id.demand_observed_daily.v1.job.reader")
 def description(schema, columns):
     types = {pa.date32(): "date", pa.int32(): "integer", pa.int64(): "bigint", pa.float64(): "double",
              pa.decimal128(38, 0): "decimal(38,0)", pa.timestamp("us"): "timestamp(6)",
+             pa.timestamp("us", "UTC"): "timestamp(6) with time zone",
              pa.string(): "varchar", pa.large_string(): "varchar", pa.bool_(): "boolean"}
     return [(name, types[schema.field(name).type], None, None, None, None, None) for name in columns]
 
@@ -77,6 +78,24 @@ def test_sorted_batches_preserve_all_fields_and_exact_values(kind):
     assert f'FOR VERSION AS OF {fix[2][kind]["snapshot_id"]}' in fix[3].sql
     assert '"dwh-iceberg"."silver".' in fix[3].sql
     assert fix[3].sql.endswith('ORDER BY "sku_id"') and 'LIMIT' not in fix[3].sql
+
+
+@pytest.mark.parametrize("kind", ["sales", "stock"])
+def test_utc_batches_match_receipt_capture(kind):
+    data, batch, inputs, cursor = fixture(kind)
+    schema = pa.schema([
+        pa.field(field.name, pa.timestamp("us", "UTC") if pa.types.is_timestamp(field.type)
+                 else field.type, nullable=field.nullable)
+        for field in batch.schema
+    ])
+    batch = batch.cast(schema, safe=True)
+    columns = PREP.SOURCE_FIELDS[kind]
+    cursor.rows = [[row[name] for name in columns] for row in batch.to_pylist()]
+    cursor.description = description(schema, columns)
+
+    chunks = list(read((data, batch, inputs, cursor), kind))
+
+    assert pa.concat_tables(chunks).equals(batch, check_metadata=False)
 
 
 @pytest.mark.parametrize("field,value", [("sku_id", 1.0), ("sku_id", True), ("sku_id", None),

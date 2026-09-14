@@ -106,6 +106,9 @@ def rollup_batches(batches, schema, *, day, manifest, version, ingested_at,
                 or batch.nbytes > max_batch_bytes):
             raise ValueError("Неверная/слишком большая входная seller-порция")
         validate_seller_schema(batch.schema, schema)
+        source_capture_limit = pa.scalar(
+            ingested_at, type=batch.schema.field("ingested_at").type
+        ).as_py()
         for row in batch.to_pylist():
             sku, seller, sid = row["sku_id"], row["seller_key"], row["seller_id"]
             if (row["date"] != day or sku is None or sku <= 0 or seller is None
@@ -125,7 +128,7 @@ def rollup_batches(batches, schema, *, day, manifest, version, ingested_at,
             signature = tuple(row[n] for n in TECH)
             if (any(row[n] is None for n in ("source_manifest_id", "source_contract_version", "ingested_at", "source_updated_at"))
                     or not row["source_manifest_id"] or not row["source_contract_version"]
-                    or row["ingested_at"] > captured):
+                    or row["ingested_at"] > source_capture_limit):
                 raise ValueError("Нет согласованного source capture")
             if common is not None and signature != common:
                 raise ValueError("Смешанные source/FX captures внутри дня")

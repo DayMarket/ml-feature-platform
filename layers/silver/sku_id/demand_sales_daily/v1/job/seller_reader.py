@@ -1,7 +1,7 @@
 """Читать полный seller-sales день порциями из точного проверенного snapshot."""
 
 from contextlib import closing
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from decimal import Decimal
 import math
 from pathlib import Path
@@ -93,7 +93,9 @@ def read_batches(connection, source, repo_root, version, schema, *, day,
     if (receipt.get("date") != day.isoformat() or type(expected) is not int or expected <= 0
             or receipt.get("table_uuid") != version.get("table_uuid")):
         raise ValueError("Неверный дневной receipt silver")
-    captured = capture_time(receipt).astimezone(timezone.utc).replace(tzinfo=None)
+    captured = pa.scalar(
+        capture_time(receipt), type=schema.field("ingested_at").type
+    ).as_py()
     columns = schema.names
     previous, seen = None, 0
     with closing(connection.cursor()) as cursor:

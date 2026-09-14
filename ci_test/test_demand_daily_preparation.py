@@ -64,6 +64,20 @@ def test_finance_accepts_iceberg_utc_timestamps():
     assert result.schema == target
 
 
+def test_restored_accepts_iceberg_utc_timestamps():
+    target = utc_timestamps(schema("restored"))
+    result = module("restored", "preparation").prepare_batch(
+        raw("restored"),
+        target,
+        selected=selected(),
+        run=run(),
+        manifest="capture-1",
+        version="v1",
+        ingested_at=CAPTURE,
+    )
+    assert result.schema == target
+
+
 def fx():
     return {"date": DAY, "fx_rate_date": DAY, "fx_rate_uzs_per_usd": 10.0,
             "fx_rate_source": "exact_date", "fx_captured_at": CAPTURE}

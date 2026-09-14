@@ -48,6 +48,26 @@ def test_output_batches_preserve_sku_order_and_max_update():
     assert result["source_updated_at"][0].as_py() == second.replace(tzinfo=None)
 
 
+def test_utc_source_and_target_timestamps_use_one_time_basis():
+    def utc_schema(value):
+        return pa.schema([
+            pa.field(field.name, pa.timestamp("us", "UTC") if pa.types.is_timestamp(field.type)
+                     else field.type, nullable=field.nullable)
+            for field in value
+        ])
+
+    batches = [prepared(item) for item in shared()]
+    batches = [batch.cast(utc_schema(batch.schema), safe=True) for batch in batches]
+    target = utc_schema(schema("sales"))
+
+    result = pa.concat_tables(list(rollup.rollup_batches(
+        batches, target, day=DAY, manifest="m", version="v", ingested_at=CAPTURE,
+        max_batch_rows=10, max_batch_bytes=1000000,
+    )))
+
+    assert result.schema == target
+
+
 def test_raw_precision_is_independent_of_decimal_context():
     value = Decimal("123456789012345678901234567890123456")
     sources = [raw(seller_id=sid, seller_key=f"seller:{sid}", sku_sales_orders=2, sku_sales_order_items=2,
