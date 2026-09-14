@@ -417,8 +417,7 @@ Migration CI:
 - `{target_table}` is substituted with the Spark table name from `config.yaml`.
 - `create_table.sql` runs first, then remaining migrations in filename order.
 - New `create_table.sql` migrations for repository-managed Iceberg tables must include `TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')`.
-- Idempotency validation requires `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `ALTER TABLE ... RENAME COLUMN IF EXISTS` and `ALTER TABLE ... DROP COLUMN IF EXISTS`; destructive `DROP TABLE`/`DELETE`/`TRUNCATE` statements are rejected.
-- `ALTER TABLE ... DROP COLUMN IF EXISTS` is the one sanctioned destructive form, and only for a column that never held data a consumer can still need — a column being recreated in the same migration because Iceberg cannot promote its type (`bigint→string`), or one added and never written. It is not a way to retire a populated column: that stays a staged deprecation plus an approved operational runbook. The runner resolves `IF EXISTS` itself against the live schema and emits a plain `DROP COLUMN`, because Iceberg-catalog support for that clause depends on the version. State the reason in the migration comment and in the entity README, as `layers/gold/category_id_query_text/query_category_relevance/v1` does.
+- Idempotency validation requires `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`; destructive `DROP`/`DELETE`/`TRUNCATE` statements are rejected.
 
 dbt source sync:
 

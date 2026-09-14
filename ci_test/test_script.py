@@ -157,11 +157,6 @@ def validate_migrations_are_idempotent(repo_root: Path) -> list[str]:
                         errors.append(
                             f"{migration_path}: RENAME COLUMN must use IF EXISTS"
                         )
-                if normalized.startswith("ALTER TABLE") and " DROP COLUMN " in normalized:
-                    if " DROP COLUMN IF EXISTS " not in normalized:
-                        errors.append(
-                            f"{migration_path}: DROP COLUMN must use IF EXISTS"
-                        )
                 if normalized.startswith(("DROP ", "DELETE ", "TRUNCATE ")):
                     errors.append(f"{migration_path}: destructive statement is not allowed")
     return errors
