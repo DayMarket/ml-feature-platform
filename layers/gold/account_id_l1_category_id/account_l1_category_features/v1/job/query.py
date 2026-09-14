@@ -2,45 +2,20 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-ACTION_EVENT_TYPES = {
-    "clicks": "PRODUCT_VIEW",
-    "atcs": "ADD_TO_CART",
-    "atfs": "ADD_TO_FAVORITES",
-}
-CONVERSION_SIGNALS = {
-    "click": "clicks",
-    "atc": "atcs",
-    "atf": "atfs",
-    "order": "orders",
-}
-
 
 class SourceSettings(Protocol):
-    category_level: int
-    category_column: str
     product_metadata_table: str
     action_counts_table: str
-    impression_counts_table: str | None
+    impression_counts_table: str
     order_items_table: str
     sku_table: str
     business_timezone: str
-    event_windows_days: tuple[int, ...]
-    order_windows_days: tuple[int, ...]
-    successful_order_statuses: tuple[str, ...]
-    has_impressions: bool
-    has_recency: bool
-
-
-def _prefix(settings: SourceSettings) -> str:
-    return f"l{settings.category_level}"
 
 
 def _utc_timestamp_literal(value: datetime) -> str:
     if value.tzinfo is None:
-        normalized = value.replace(tzinfo=timezone.utc)
-    else:
-        normalized = value.astimezone(timezone.utc)
-    return normalized.strftime("%Y-%m-%d %H:%M:%S")
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _local_timestamp_literal(value: datetime, timezone_name: str) -> str:
@@ -58,640 +33,344 @@ def _local_day_start_literal(value: datetime, timezone_name: str) -> str:
     )
 
 
-def _sql_string(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
-
-
-def feature_columns(settings: SourceSettings) -> tuple[str, ...]:
-    prefix = _prefix(settings)
-    columns: list[str] = []
-
-    if settings.has_impressions:
-        columns.extend(
-            f"{prefix}_n_imps_{window}d"
-            for window in settings.event_windows_days
-        )
-        columns.extend(
-            f"{prefix}_n_imps_{window}d_ratio"
-            for window in settings.event_windows_days
-        )
-
-    for signal in ACTION_EVENT_TYPES:
-        columns.extend(
-            f"{prefix}_n_{signal}_{window}d"
-            for window in settings.event_windows_days
-        )
-        columns.extend(
-            f"{prefix}_n_{signal}_{window}d_ratio"
-            for window in settings.event_windows_days
-        )
-
-    if settings.has_impressions:
-        for output_signal in CONVERSION_SIGNALS:
-            columns.extend(
-                f"{prefix}_account_conv_imp2{output_signal}_{window}d"
-                for window in settings.event_windows_days
-            )
-        for output_signal in CONVERSION_SIGNALS:
-            columns.extend(
-                f"{prefix}_conv_imp2{output_signal}_{window}d"
-                for window in settings.event_windows_days
-            )
-        for output_signal in CONVERSION_SIGNALS:
-            columns.extend(
-                f"{prefix}_conv_imp2{output_signal}_vs_account_{window}d"
-                for window in settings.event_windows_days
-            )
-
-    columns.extend(
-        f"{prefix}_n_orders_{window}d"
-        for window in settings.order_windows_days
-    )
-    columns.extend(
-        f"{prefix}_n_orders_{window}d_ratio"
-        for window in settings.order_windows_days
-    )
-    columns.extend(
-        f"{prefix}_gmv_{window}d"
-        for window in settings.order_windows_days
-    )
-    columns.extend(
-        f"{prefix}_gmv_{window}d_ratio"
-        for window in settings.order_windows_days
-    )
-
-    if settings.has_recency:
-        columns.extend(
-            (
-                f"{prefix}_neg_n_days_since_last_click",
-                f"{prefix}_neg_n_days_since_last_click_rel",
-            )
-        )
-    return tuple(columns)
-
-
-def _action_count_expressions(
-    settings: SourceSettings,
-    calculated_at_local: str,
-) -> str:
-    prefix = _prefix(settings)
-    expressions: list[str] = []
-    for signal, event_type in ACTION_EVENT_TYPES.items():
-        for window in settings.event_windows_days:
-            expressions.append(
-                "CAST(SUM(CASE "
-                f"WHEN event_type = {_sql_string(event_type)} "
-                f"AND last_received_at >= TIMESTAMP '{calculated_at_local}' "
-                f"- INTERVAL {window} DAYS "
-                "THEN 1 ELSE 0 END) AS INT) "
-                f"AS {prefix}_n_{signal}_{window}d"
-            )
-    return ",\n        ".join(expressions)
-
-
-def _impression_count_expressions(
-    settings: SourceSettings,
-    calculated_at_local: str,
-) -> str:
-    prefix = _prefix(settings)
-    return ",\n        ".join(
-        "CAST(SUM(CASE "
-        f"WHEN source_calculated_at > TIMESTAMP '{calculated_at_local}' "
-        f"- INTERVAL {window} DAYS "
-        "THEN n_impressions ELSE 0 END) AS INT) "
-        f"AS {prefix}_n_imps_{window}d"
-        for window in settings.event_windows_days
-    )
-
-
-def _order_feature_expressions(
-    settings: SourceSettings,
-    calculated_at_utc: str,
-) -> str:
-    prefix = _prefix(settings)
-    expressions: list[str] = []
-    for window in settings.order_windows_days:
-        expressions.append(
-            "CAST(COUNT(DISTINCT CASE "
-            f"WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' "
-            f"- INTERVAL {window} DAYS "
-            "THEN order_id END) AS INT) "
-            f"AS {prefix}_n_orders_{window}d"
-        )
-    for window in settings.order_windows_days:
-        expressions.append(
-            "CAST(SUM(CASE "
-            f"WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' "
-            f"- INTERVAL {window} DAYS "
-            "THEN line_gmv ELSE 0.0 END) AS DOUBLE) "
-            f"AS {prefix}_gmv_{window}d"
-        )
-    return ",\n        ".join(expressions)
-
-
-def _account_order_count_expressions(
-    settings: SourceSettings,
-    calculated_at_utc: str,
-) -> str:
-    return ",\n        ".join(
-        "CAST(COUNT(DISTINCT CASE "
-        f"WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' "
-        f"- INTERVAL {window} DAYS "
-        "THEN order_id END) AS INT) "
-        f"AS account_n_orders_{window}d"
-        for window in settings.event_windows_days
-    )
-
-
-def _base_feature_expressions(settings: SourceSettings) -> str:
-    prefix = _prefix(settings)
-    expressions: list[str] = []
-    if settings.has_impressions:
-        for window in settings.event_windows_days:
-            column = f"{prefix}_n_imps_{window}d"
-            expressions.append(f"COALESCE(impressions.{column}, 0) AS {column}")
-
-    for signal in ACTION_EVENT_TYPES:
-        for window in settings.event_windows_days:
-            column = f"{prefix}_n_{signal}_{window}d"
-            expressions.append(f"COALESCE(actions.{column}, 0) AS {column}")
-
-    for window in settings.order_windows_days:
-        column = f"{prefix}_n_orders_{window}d"
-        expressions.append(f"COALESCE(orders.{column}, 0) AS {column}")
-    for window in settings.order_windows_days:
-        column = f"{prefix}_gmv_{window}d"
-        expressions.append(f"COALESCE(orders.{column}, 0.0D) AS {column}")
-    return ",\n        ".join(expressions)
-
-
-def _ratio_expressions(settings: SourceSettings) -> str:
-    prefix = _prefix(settings)
-    metric_columns: list[str] = []
-    if settings.has_impressions:
-        metric_columns.extend(
-            f"{prefix}_n_imps_{window}d"
-            for window in settings.event_windows_days
-        )
-    for signal in ACTION_EVENT_TYPES:
-        metric_columns.extend(
-            f"{prefix}_n_{signal}_{window}d"
-            for window in settings.event_windows_days
-        )
-    metric_columns.extend(
-        f"{prefix}_n_orders_{window}d"
-        for window in settings.order_windows_days
-    )
-    metric_columns.extend(
-        f"{prefix}_gmv_{window}d"
-        for window in settings.order_windows_days
-    )
-
-    return ",\n        ".join(
-        "CASE WHEN SUM(" + column + ") OVER ("
-        "PARTITION BY calculated_at, account_id) > 0 "
-        "THEN CAST(" + column + " AS DOUBLE) / SUM(" + column + ") OVER ("
-        "PARTITION BY calculated_at, account_id) END "
-        f"AS {column}_ratio"
-        for column in metric_columns
-    )
-
-
-def _account_conversion_expressions(settings: SourceSettings) -> str:
-    prefix = _prefix(settings)
-    expressions: list[str] = []
-    for output_signal, count_signal in CONVERSION_SIGNALS.items():
-        for window in settings.event_windows_days:
-            count_column = f"{prefix}_n_{count_signal}_{window}d"
-            impressions_column = f"{prefix}_n_imps_{window}d"
-            expressions.append(
-                f"CASE WHEN {impressions_column} > 0 "
-                f"THEN CAST({count_column} AS DOUBLE) / {impressions_column} END "
-                f"AS {prefix}_account_conv_imp2{output_signal}_{window}d"
-            )
-    return ",\n        ".join(expressions)
-
-
-def _conversion_baseline_expressions(settings: SourceSettings) -> str:
-    prefix = _prefix(settings)
-    category_column = settings.category_column
-    expressions: list[str] = []
-    for output_signal, count_signal in CONVERSION_SIGNALS.items():
-        for window in settings.event_windows_days:
-            count_column = f"{prefix}_n_{count_signal}_{window}d"
-            impressions_column = f"{prefix}_n_imps_{window}d"
-            expressions.append(
-                f"CASE WHEN SUM({impressions_column}) OVER ("
-                f"PARTITION BY calculated_at, {category_column}) > 0 "
-                f"THEN CAST(SUM({count_column}) OVER ("
-                f"PARTITION BY calculated_at, {category_column}) AS DOUBLE) "
-                f"/ SUM({impressions_column}) OVER ("
-                f"PARTITION BY calculated_at, {category_column}) END "
-                f"AS category_{output_signal}_conversion_{window}d"
-            )
-
-            if output_signal == "order":
-                account_numerator = f"account_n_orders_{window}d"
-            else:
-                account_numerator = (
-                    f"SUM({count_column}) OVER "
-                    "(PARTITION BY calculated_at, account_id)"
-                )
-            expressions.append(
-                f"CASE WHEN SUM({impressions_column}) OVER ("
-                "PARTITION BY calculated_at, account_id) > 0 "
-                f"THEN CAST({account_numerator} AS DOUBLE) "
-                f"/ SUM({impressions_column}) OVER ("
-                "PARTITION BY calculated_at, account_id) END "
-                f"AS account_total_{output_signal}_conversion_{window}d"
-            )
-    return ",\n        ".join(expressions)
-
-
-def _relative_conversion_expressions(settings: SourceSettings) -> str:
-    prefix = _prefix(settings)
-    expressions: list[str] = []
-    for output_signal in CONVERSION_SIGNALS:
-        for window in settings.event_windows_days:
-            account_conversion = (
-                f"{prefix}_account_conv_imp2{output_signal}_{window}d"
-            )
-            category_baseline = (
-                f"category_{output_signal}_conversion_{window}d"
-            )
-            account_baseline = (
-                f"account_total_{output_signal}_conversion_{window}d"
-            )
-            expressions.append(
-                f"CASE WHEN {category_baseline} > 0 "
-                f"THEN {account_conversion} / {category_baseline} END "
-                f"AS {prefix}_conv_imp2{output_signal}_{window}d"
-            )
-            expressions.append(
-                f"CASE WHEN {account_baseline} > 0 "
-                f"THEN {account_conversion} / {account_baseline} END "
-                f"AS {prefix}_conv_imp2{output_signal}_vs_account_{window}d"
-            )
-    return ",\n        ".join(expressions)
-
-
 def build_account_category_features_query(
-    settings: SourceSettings,
-    calculated_at: datetime,
+    settings: SourceSettings, calculated_at: datetime
 ) -> str:
-    prefix = _prefix(settings)
     calculated_at_utc = _utc_timestamp_literal(calculated_at)
     calculated_at_local = _local_timestamp_literal(
-        calculated_at,
-        settings.business_timezone,
+        calculated_at, settings.business_timezone
     )
     metadata_dt_local = _local_day_start_literal(
-        calculated_at,
-        settings.business_timezone,
+        calculated_at, settings.business_timezone
     )
-    max_event_window = max(settings.event_windows_days)
-    max_order_window = max(settings.order_windows_days)
-    statuses_sql = ", ".join(
-        _sql_string(status) for status in settings.successful_order_statuses
-    )
-
-    ctes = [
-        f"""product_categories AS (
+    return f"""
+WITH product_categories AS (
     SELECT
         CAST(product_id AS INT) AS product_id,
-        CAST({settings.category_column} AS INT) AS category_id
+        CAST(l1_category_id AS INT) AS l1_category_id
     FROM {settings.product_metadata_table}
     WHERE dt = TIMESTAMP '{metadata_dt_local}'
-        AND {settings.category_column} IS NOT NULL
-)""",
-        f"""raw_actions AS (
+        AND l1_category_id IS NOT NULL
+),
+mapped_actions AS (
     SELECT
-        calculated_at AS source_calculated_at,
-        CAST(account_id AS INT) AS account_id,
-        session_id,
-        CAST(product_id AS INT) AS product_id,
-        event_type,
-        last_received_at
-    FROM {settings.action_counts_table}
-    WHERE calculated_at > TIMESTAMP '{calculated_at_local}'
-            - INTERVAL {max_event_window} DAYS
-        AND calculated_at <= TIMESTAMP '{calculated_at_local}'
-        AND last_received_at >= TIMESTAMP '{calculated_at_local}'
-            - INTERVAL {max_event_window} DAYS
-        AND last_received_at < TIMESTAMP '{calculated_at_local}'
-)""",
-    ]
-
-    if settings.has_impressions:
-        ctes.append(
-            """actions_for_aggregation AS (
-    SELECT
-        source_calculated_at,
-        account_id,
-        session_id,
-        product_id,
-        event_type,
-        last_received_at
-    FROM raw_actions
-)"""
-        )
-    else:
-        ctes.append(
-            """actions_for_aggregation AS (
-    SELECT
-        MAX(source_calculated_at) AS source_calculated_at,
-        account_id,
-        session_id,
-        product_id,
-        event_type,
-        MAX(last_received_at) AS last_received_at
-    FROM raw_actions
-    GROUP BY
-        account_id,
-        session_id,
-        product_id,
-        event_type
-)"""
-        )
-
-    ctes.extend(
-        [
-            """mapped_actions AS (
-    SELECT
-        action.account_id,
-        action.session_id,
-        action.product_id,
+        CAST(action.account_id AS INT) AS account_id,
         action.event_type,
         action.last_received_at,
-        product.category_id
-    FROM actions_for_aggregation action
+        product.l1_category_id
+    FROM {settings.action_counts_table} action
     INNER JOIN product_categories product
-        ON action.product_id = product.product_id
-)""",
-            f"""action_features AS (
+        ON CAST(action.product_id AS INT) = product.product_id
+    WHERE action.calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
+        AND action.calculated_at <= TIMESTAMP '{calculated_at_local}'
+        AND action.last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
+        AND action.last_received_at < TIMESTAMP '{calculated_at_local}'
+),
+action_features AS (
     SELECT
         account_id,
-        category_id,
-        {_action_count_expressions(settings, calculated_at_local)},
-        MAX(CASE
-            WHEN event_type = 'PRODUCT_VIEW' THEN last_received_at
-        END) AS last_click_at
+        l1_category_id,
+        CAST(SUM(CASE WHEN event_type = 'PRODUCT_VIEW' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 3 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_clicks_3d,
+        CAST(SUM(CASE WHEN event_type = 'PRODUCT_VIEW' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 7 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_clicks_7d,
+        CAST(SUM(CASE WHEN event_type = 'PRODUCT_VIEW' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 14 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_clicks_14d,
+        CAST(SUM(CASE WHEN event_type = 'PRODUCT_VIEW' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_clicks_28d,
+        CAST(SUM(CASE WHEN event_type = 'ADD_TO_CART' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 3 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_atcs_3d,
+        CAST(SUM(CASE WHEN event_type = 'ADD_TO_CART' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 7 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_atcs_7d,
+        CAST(SUM(CASE WHEN event_type = 'ADD_TO_CART' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 14 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_atcs_14d,
+        CAST(SUM(CASE WHEN event_type = 'ADD_TO_CART' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_atcs_28d,
+        CAST(SUM(CASE WHEN event_type = 'ADD_TO_FAVORITES' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 3 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_atfs_3d,
+        CAST(SUM(CASE WHEN event_type = 'ADD_TO_FAVORITES' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 7 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_atfs_7d,
+        CAST(SUM(CASE WHEN event_type = 'ADD_TO_FAVORITES' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 14 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_atfs_14d,
+        CAST(SUM(CASE WHEN event_type = 'ADD_TO_FAVORITES' AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS THEN 1 ELSE 0 END) AS INT) AS l1_n_atfs_28d,
+        MAX(CASE WHEN event_type = 'PRODUCT_VIEW' THEN last_received_at END) AS last_click_at
     FROM mapped_actions
-    GROUP BY account_id, category_id
-)""",
-        ]
-    )
-
-    if settings.has_impressions:
-        ctes.extend(
-            [
-                f"""filtered_impressions AS (
+    GROUP BY account_id, l1_category_id
+),
+impression_features AS (
     SELECT
-        calculated_at AS source_calculated_at,
         CAST(account_id AS INT) AS account_id,
-        CAST({settings.category_column} AS INT) AS category_id,
-        CAST(n_impressions AS INT) AS n_impressions
+        CAST(l1_category_id AS INT) AS l1_category_id,
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 3 DAYS THEN n_impressions ELSE 0 END) AS INT) AS l1_n_imps_3d,
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 7 DAYS THEN n_impressions ELSE 0 END) AS INT) AS l1_n_imps_7d,
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 14 DAYS THEN n_impressions ELSE 0 END) AS INT) AS l1_n_imps_14d,
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS THEN n_impressions ELSE 0 END) AS INT) AS l1_n_imps_28d
     FROM {settings.impression_counts_table}
-    WHERE calculated_at > TIMESTAMP '{calculated_at_local}'
-            - INTERVAL {max_event_window} DAYS
+    WHERE calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
         AND calculated_at <= TIMESTAMP '{calculated_at_local}'
-)""",
-                f"""impression_features AS (
-    SELECT
-        account_id,
-        category_id,
-        {_impression_count_expressions(settings, calculated_at_local)}
-    FROM filtered_impressions
-    GROUP BY account_id, category_id
-)""",
-            ]
-        )
-
-    ctes.extend(
-        [
-            f"""sku_mapping AS (
-    SELECT
-        CAST(id AS INT) AS sku_id,
-        CAST(MIN(product_id) AS INT) AS product_id
+    GROUP BY account_id, l1_category_id
+),
+sku_mapping AS (
+    SELECT CAST(id AS INT) AS sku_id, CAST(MIN(product_id) AS INT) AS product_id
     FROM {settings.sku_table}
     GROUP BY id
-)""",
-            f"""filtered_order_lines AS (
+),
+filtered_order_lines AS (
     SELECT
         CAST(order_item.account_id AS INT) AS account_id,
         sku.product_id,
         CAST(order_item.order_id AS INT) AS order_id,
         CAST(order_item.generated_at AS TIMESTAMP) AS generated_at,
-        CAST(order_item.payment_price AS DOUBLE)
-            * CAST(order_item.item_quantity AS DOUBLE) AS line_gmv
+        CAST(order_item.payment_price AS DOUBLE) * CAST(order_item.item_quantity AS DOUBLE) AS line_gmv
     FROM {settings.order_items_table} order_item
-    INNER JOIN sku_mapping sku
-        ON CAST(order_item.sku_id AS INT) = sku.sku_id
-    WHERE order_item.generated_at >= TIMESTAMP '{calculated_at_utc}'
-            - INTERVAL {max_order_window} DAYS
+    INNER JOIN sku_mapping sku ON CAST(order_item.sku_id AS INT) = sku.sku_id
+    WHERE order_item.generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS
         AND order_item.generated_at < TIMESTAMP '{calculated_at_utc}'
-        AND order_item.order_item_status IN ({statuses_sql})
+        AND order_item.order_item_status IN (
+            'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'
+        )
         AND order_item.b2b_order = FALSE
-)""",
-            """mapped_order_lines AS (
+),
+mapped_order_lines AS (
     SELECT
         order_line.account_id,
-        order_line.product_id,
         order_line.order_id,
         order_line.generated_at,
         order_line.line_gmv,
-        product.category_id
+        product.l1_category_id
     FROM filtered_order_lines order_line
-    INNER JOIN product_categories product
-        ON order_line.product_id = product.product_id
-)""",
-            f"""order_features AS (
+    INNER JOIN product_categories product ON order_line.product_id = product.product_id
+),
+order_features AS (
     SELECT
         account_id,
-        category_id,
-        {_order_feature_expressions(settings, calculated_at_utc)}
+        l1_category_id,
+        CAST(COUNT(DISTINCT CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 3 DAYS THEN order_id END) AS INT) AS l1_n_orders_3d,
+        CAST(COUNT(DISTINCT CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 7 DAYS THEN order_id END) AS INT) AS l1_n_orders_7d,
+        CAST(COUNT(DISTINCT CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 14 DAYS THEN order_id END) AS INT) AS l1_n_orders_14d,
+        CAST(COUNT(DISTINCT CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 28 DAYS THEN order_id END) AS INT) AS l1_n_orders_28d,
+        CAST(COUNT(DISTINCT CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 60 DAYS THEN order_id END) AS INT) AS l1_n_orders_60d,
+        CAST(COUNT(DISTINCT CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS THEN order_id END) AS INT) AS l1_n_orders_90d,
+        CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 3 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS l1_gmv_3d,
+        CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 7 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS l1_gmv_7d,
+        CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 14 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS l1_gmv_14d,
+        CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 28 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS l1_gmv_28d,
+        CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 60 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS l1_gmv_60d,
+        CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS l1_gmv_90d
     FROM mapped_order_lines
-    GROUP BY account_id, category_id
-)""",
-        ]
-    )
-
-    if settings.has_impressions:
-        ctes.append(
-            f"""account_order_features AS (
+    GROUP BY account_id, l1_category_id
+),
+account_order_features AS (
     SELECT
         account_id,
-        {_account_order_count_expressions(settings, calculated_at_utc)}
+        CAST(COUNT(DISTINCT CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 3 DAYS THEN order_id END) AS INT) AS account_n_orders_3d,
+        CAST(COUNT(DISTINCT CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 7 DAYS THEN order_id END) AS INT) AS account_n_orders_7d,
+        CAST(COUNT(DISTINCT CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 14 DAYS THEN order_id END) AS INT) AS account_n_orders_14d,
+        CAST(COUNT(DISTINCT CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 28 DAYS THEN order_id END) AS INT) AS account_n_orders_28d
     FROM filtered_order_lines
     GROUP BY account_id
-)"""
-        )
-
-    key_sources = [
-        "SELECT account_id, category_id FROM action_features",
-        "SELECT account_id, category_id FROM order_features",
-    ]
-    if settings.has_impressions:
-        key_sources.insert(
-            0,
-            "SELECT account_id, category_id FROM impression_features",
-        )
-    ctes.append(
-        "entity_keys AS (\n    "
-        + "\n    UNION\n    ".join(key_sources)
-        + "\n)"
-    )
-
-    joins = [
-        """LEFT JOIN action_features actions
-        ON entity.account_id = actions.account_id
-        AND entity.category_id = actions.category_id""",
-        """LEFT JOIN order_features orders
-        ON entity.account_id = orders.account_id
-        AND entity.category_id = orders.category_id""",
-    ]
-    account_order_columns = ""
-    if settings.has_impressions:
-        joins.insert(
-            0,
-            """LEFT JOIN impression_features impressions
-        ON entity.account_id = impressions.account_id
-        AND entity.category_id = impressions.category_id""",
-        )
-        joins.append(
-            """LEFT JOIN account_order_features account_orders
-        ON entity.account_id = account_orders.account_id"""
-        )
-        account_order_columns = ",\n        " + ",\n        ".join(
-            f"COALESCE(account_orders.account_n_orders_{window}d, 0) "
-            f"AS account_n_orders_{window}d"
-            for window in settings.event_windows_days
-        )
-
-    ctes.append(
-        f"""base_features AS (
+),
+entity_keys AS (
+    SELECT account_id, l1_category_id FROM impression_features
+    UNION
+    SELECT account_id, l1_category_id FROM action_features
+    UNION
+    SELECT account_id, l1_category_id FROM order_features
+),
+recency_features AS (
+    SELECT
+        account_id,
+        l1_category_id,
+        l1_neg_n_days_since_last_click,
+        l1_neg_n_days_since_last_click
+            - MAX(l1_neg_n_days_since_last_click) OVER (PARTITION BY account_id)
+            AS l1_neg_n_days_since_last_click_rel
+    FROM (
+        SELECT
+            account_id,
+            l1_category_id,
+            CASE WHEN last_click_at IS NOT NULL THEN -CAST(CEIL(CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_local}') - UNIX_TIMESTAMP(last_click_at) AS DOUBLE) / 86400.0) AS INT) END AS l1_neg_n_days_since_last_click
+        FROM action_features
+    ) recency
+),
+base_features AS (
     SELECT
         TIMESTAMP '{calculated_at_local}' AS calculated_at,
         entity.account_id,
-        entity.category_id AS {settings.category_column},
-        {_base_feature_expressions(settings)},
-        actions.last_click_at{account_order_columns}
+        entity.l1_category_id,
+        COALESCE(impressions.l1_n_imps_3d, 0) AS l1_n_imps_3d,
+        COALESCE(impressions.l1_n_imps_7d, 0) AS l1_n_imps_7d,
+        COALESCE(impressions.l1_n_imps_14d, 0) AS l1_n_imps_14d,
+        COALESCE(impressions.l1_n_imps_28d, 0) AS l1_n_imps_28d,
+        COALESCE(actions.l1_n_clicks_3d, 0) AS l1_n_clicks_3d,
+        COALESCE(actions.l1_n_clicks_7d, 0) AS l1_n_clicks_7d,
+        COALESCE(actions.l1_n_clicks_14d, 0) AS l1_n_clicks_14d,
+        COALESCE(actions.l1_n_clicks_28d, 0) AS l1_n_clicks_28d,
+        COALESCE(actions.l1_n_atcs_3d, 0) AS l1_n_atcs_3d,
+        COALESCE(actions.l1_n_atcs_7d, 0) AS l1_n_atcs_7d,
+        COALESCE(actions.l1_n_atcs_14d, 0) AS l1_n_atcs_14d,
+        COALESCE(actions.l1_n_atcs_28d, 0) AS l1_n_atcs_28d,
+        COALESCE(actions.l1_n_atfs_3d, 0) AS l1_n_atfs_3d,
+        COALESCE(actions.l1_n_atfs_7d, 0) AS l1_n_atfs_7d,
+        COALESCE(actions.l1_n_atfs_14d, 0) AS l1_n_atfs_14d,
+        COALESCE(actions.l1_n_atfs_28d, 0) AS l1_n_atfs_28d,
+        COALESCE(orders.l1_n_orders_3d, 0) AS l1_n_orders_3d,
+        COALESCE(orders.l1_n_orders_7d, 0) AS l1_n_orders_7d,
+        COALESCE(orders.l1_n_orders_14d, 0) AS l1_n_orders_14d,
+        COALESCE(orders.l1_n_orders_28d, 0) AS l1_n_orders_28d,
+        COALESCE(orders.l1_n_orders_60d, 0) AS l1_n_orders_60d,
+        COALESCE(orders.l1_n_orders_90d, 0) AS l1_n_orders_90d,
+        COALESCE(orders.l1_gmv_3d, 0.0D) AS l1_gmv_3d,
+        COALESCE(orders.l1_gmv_7d, 0.0D) AS l1_gmv_7d,
+        COALESCE(orders.l1_gmv_14d, 0.0D) AS l1_gmv_14d,
+        COALESCE(orders.l1_gmv_28d, 0.0D) AS l1_gmv_28d,
+        COALESCE(orders.l1_gmv_60d, 0.0D) AS l1_gmv_60d,
+        COALESCE(orders.l1_gmv_90d, 0.0D) AS l1_gmv_90d,
+        recency.l1_neg_n_days_since_last_click,
+        recency.l1_neg_n_days_since_last_click_rel
     FROM entity_keys entity
-    {chr(10).join(joins)}
-)"""
-    )
-
-    ratio_and_recency = _ratio_expressions(settings)
-    if settings.has_recency:
-        ratio_and_recency += (
-            ",\n        CASE WHEN last_click_at IS NOT NULL THEN "
-            "-CAST(CEIL(CAST("
-            f"UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_local}') "
-            "- UNIX_TIMESTAMP(last_click_at) AS DOUBLE"
-            ") / 86400.0) AS INT) END "
-            f"AS {prefix}_neg_n_days_since_last_click"
-        )
-
-    ctes.append(
-        f"""features_with_ratios AS (
+    LEFT JOIN impression_features impressions USING (account_id, l1_category_id)
+    LEFT JOIN action_features actions USING (account_id, l1_category_id)
+    LEFT JOIN order_features orders USING (account_id, l1_category_id)
+    LEFT JOIN recency_features recency USING (account_id, l1_category_id)
+),
+features AS (
     SELECT
-        *,
-        {ratio_and_recency}
+        base.*,
+        CASE WHEN SUM(l1_n_imps_3d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_imps_3d AS DOUBLE) / SUM(l1_n_imps_3d) OVER (PARTITION BY account_id) END AS l1_n_imps_3d_ratio,
+        CASE WHEN SUM(l1_n_imps_7d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_imps_7d AS DOUBLE) / SUM(l1_n_imps_7d) OVER (PARTITION BY account_id) END AS l1_n_imps_7d_ratio,
+        CASE WHEN SUM(l1_n_imps_14d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_imps_14d AS DOUBLE) / SUM(l1_n_imps_14d) OVER (PARTITION BY account_id) END AS l1_n_imps_14d_ratio,
+        CASE WHEN SUM(l1_n_imps_28d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_imps_28d AS DOUBLE) / SUM(l1_n_imps_28d) OVER (PARTITION BY account_id) END AS l1_n_imps_28d_ratio,
+        CASE WHEN SUM(l1_n_clicks_3d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_clicks_3d AS DOUBLE) / SUM(l1_n_clicks_3d) OVER (PARTITION BY account_id) END AS l1_n_clicks_3d_ratio,
+        CASE WHEN SUM(l1_n_clicks_7d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_clicks_7d AS DOUBLE) / SUM(l1_n_clicks_7d) OVER (PARTITION BY account_id) END AS l1_n_clicks_7d_ratio,
+        CASE WHEN SUM(l1_n_clicks_14d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_clicks_14d AS DOUBLE) / SUM(l1_n_clicks_14d) OVER (PARTITION BY account_id) END AS l1_n_clicks_14d_ratio,
+        CASE WHEN SUM(l1_n_clicks_28d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_clicks_28d AS DOUBLE) / SUM(l1_n_clicks_28d) OVER (PARTITION BY account_id) END AS l1_n_clicks_28d_ratio,
+        CASE WHEN SUM(l1_n_atcs_3d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_atcs_3d AS DOUBLE) / SUM(l1_n_atcs_3d) OVER (PARTITION BY account_id) END AS l1_n_atcs_3d_ratio,
+        CASE WHEN SUM(l1_n_atcs_7d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_atcs_7d AS DOUBLE) / SUM(l1_n_atcs_7d) OVER (PARTITION BY account_id) END AS l1_n_atcs_7d_ratio,
+        CASE WHEN SUM(l1_n_atcs_14d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_atcs_14d AS DOUBLE) / SUM(l1_n_atcs_14d) OVER (PARTITION BY account_id) END AS l1_n_atcs_14d_ratio,
+        CASE WHEN SUM(l1_n_atcs_28d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_atcs_28d AS DOUBLE) / SUM(l1_n_atcs_28d) OVER (PARTITION BY account_id) END AS l1_n_atcs_28d_ratio,
+        CASE WHEN SUM(l1_n_atfs_3d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_atfs_3d AS DOUBLE) / SUM(l1_n_atfs_3d) OVER (PARTITION BY account_id) END AS l1_n_atfs_3d_ratio,
+        CASE WHEN SUM(l1_n_atfs_7d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_atfs_7d AS DOUBLE) / SUM(l1_n_atfs_7d) OVER (PARTITION BY account_id) END AS l1_n_atfs_7d_ratio,
+        CASE WHEN SUM(l1_n_atfs_14d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_atfs_14d AS DOUBLE) / SUM(l1_n_atfs_14d) OVER (PARTITION BY account_id) END AS l1_n_atfs_14d_ratio,
+        CASE WHEN SUM(l1_n_atfs_28d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_atfs_28d AS DOUBLE) / SUM(l1_n_atfs_28d) OVER (PARTITION BY account_id) END AS l1_n_atfs_28d_ratio,
+        CASE WHEN SUM(l1_n_orders_3d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_orders_3d AS DOUBLE) / SUM(l1_n_orders_3d) OVER (PARTITION BY account_id) END AS l1_n_orders_3d_ratio,
+        CASE WHEN SUM(l1_n_orders_7d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_orders_7d AS DOUBLE) / SUM(l1_n_orders_7d) OVER (PARTITION BY account_id) END AS l1_n_orders_7d_ratio,
+        CASE WHEN SUM(l1_n_orders_14d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_orders_14d AS DOUBLE) / SUM(l1_n_orders_14d) OVER (PARTITION BY account_id) END AS l1_n_orders_14d_ratio,
+        CASE WHEN SUM(l1_n_orders_28d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_orders_28d AS DOUBLE) / SUM(l1_n_orders_28d) OVER (PARTITION BY account_id) END AS l1_n_orders_28d_ratio,
+        CASE WHEN SUM(l1_n_orders_60d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_orders_60d AS DOUBLE) / SUM(l1_n_orders_60d) OVER (PARTITION BY account_id) END AS l1_n_orders_60d_ratio,
+        CASE WHEN SUM(l1_n_orders_90d) OVER (PARTITION BY account_id) > 0 THEN CAST(l1_n_orders_90d AS DOUBLE) / SUM(l1_n_orders_90d) OVER (PARTITION BY account_id) END AS l1_n_orders_90d_ratio,
+        CASE WHEN SUM(l1_gmv_3d) OVER (PARTITION BY account_id) > 0 THEN l1_gmv_3d / SUM(l1_gmv_3d) OVER (PARTITION BY account_id) END AS l1_gmv_3d_ratio,
+        CASE WHEN SUM(l1_gmv_7d) OVER (PARTITION BY account_id) > 0 THEN l1_gmv_7d / SUM(l1_gmv_7d) OVER (PARTITION BY account_id) END AS l1_gmv_7d_ratio,
+        CASE WHEN SUM(l1_gmv_14d) OVER (PARTITION BY account_id) > 0 THEN l1_gmv_14d / SUM(l1_gmv_14d) OVER (PARTITION BY account_id) END AS l1_gmv_14d_ratio,
+        CASE WHEN SUM(l1_gmv_28d) OVER (PARTITION BY account_id) > 0 THEN l1_gmv_28d / SUM(l1_gmv_28d) OVER (PARTITION BY account_id) END AS l1_gmv_28d_ratio,
+        CASE WHEN SUM(l1_gmv_60d) OVER (PARTITION BY account_id) > 0 THEN l1_gmv_60d / SUM(l1_gmv_60d) OVER (PARTITION BY account_id) END AS l1_gmv_60d_ratio,
+        CASE WHEN SUM(l1_gmv_90d) OVER (PARTITION BY account_id) > 0 THEN l1_gmv_90d / SUM(l1_gmv_90d) OVER (PARTITION BY account_id) END AS l1_gmv_90d_ratio,
+        CASE WHEN l1_n_imps_3d > 0 THEN CAST(l1_n_clicks_3d AS DOUBLE) / l1_n_imps_3d END AS l1_account_conv_imp2click_3d,
+        CASE WHEN l1_n_imps_7d > 0 THEN CAST(l1_n_clicks_7d AS DOUBLE) / l1_n_imps_7d END AS l1_account_conv_imp2click_7d,
+        CASE WHEN l1_n_imps_14d > 0 THEN CAST(l1_n_clicks_14d AS DOUBLE) / l1_n_imps_14d END AS l1_account_conv_imp2click_14d,
+        CASE WHEN l1_n_imps_28d > 0 THEN CAST(l1_n_clicks_28d AS DOUBLE) / l1_n_imps_28d END AS l1_account_conv_imp2click_28d,
+        CASE WHEN l1_n_imps_3d > 0 THEN CAST(l1_n_atcs_3d AS DOUBLE) / l1_n_imps_3d END AS l1_account_conv_imp2atc_3d,
+        CASE WHEN l1_n_imps_7d > 0 THEN CAST(l1_n_atcs_7d AS DOUBLE) / l1_n_imps_7d END AS l1_account_conv_imp2atc_7d,
+        CASE WHEN l1_n_imps_14d > 0 THEN CAST(l1_n_atcs_14d AS DOUBLE) / l1_n_imps_14d END AS l1_account_conv_imp2atc_14d,
+        CASE WHEN l1_n_imps_28d > 0 THEN CAST(l1_n_atcs_28d AS DOUBLE) / l1_n_imps_28d END AS l1_account_conv_imp2atc_28d,
+        CASE WHEN l1_n_imps_3d > 0 THEN CAST(l1_n_atfs_3d AS DOUBLE) / l1_n_imps_3d END AS l1_account_conv_imp2atf_3d,
+        CASE WHEN l1_n_imps_7d > 0 THEN CAST(l1_n_atfs_7d AS DOUBLE) / l1_n_imps_7d END AS l1_account_conv_imp2atf_7d,
+        CASE WHEN l1_n_imps_14d > 0 THEN CAST(l1_n_atfs_14d AS DOUBLE) / l1_n_imps_14d END AS l1_account_conv_imp2atf_14d,
+        CASE WHEN l1_n_imps_28d > 0 THEN CAST(l1_n_atfs_28d AS DOUBLE) / l1_n_imps_28d END AS l1_account_conv_imp2atf_28d,
+        CASE WHEN l1_n_imps_3d > 0 THEN CAST(l1_n_orders_3d AS DOUBLE) / l1_n_imps_3d END AS l1_account_conv_imp2order_3d,
+        CASE WHEN l1_n_imps_7d > 0 THEN CAST(l1_n_orders_7d AS DOUBLE) / l1_n_imps_7d END AS l1_account_conv_imp2order_7d,
+        CASE WHEN l1_n_imps_14d > 0 THEN CAST(l1_n_orders_14d AS DOUBLE) / l1_n_imps_14d END AS l1_account_conv_imp2order_14d,
+        CASE WHEN l1_n_imps_28d > 0 THEN CAST(l1_n_orders_28d AS DOUBLE) / l1_n_imps_28d END AS l1_account_conv_imp2order_28d
+    FROM base_features base
+),
+category_baselines AS (
+    SELECT
+        l1_category_id,
+        SUM(l1_n_clicks_3d) / NULLIF(SUM(l1_n_imps_3d), 0) AS click_3d,
+        SUM(l1_n_clicks_7d) / NULLIF(SUM(l1_n_imps_7d), 0) AS click_7d,
+        SUM(l1_n_clicks_14d) / NULLIF(SUM(l1_n_imps_14d), 0) AS click_14d,
+        SUM(l1_n_clicks_28d) / NULLIF(SUM(l1_n_imps_28d), 0) AS click_28d,
+        SUM(l1_n_atcs_3d) / NULLIF(SUM(l1_n_imps_3d), 0) AS atc_3d,
+        SUM(l1_n_atcs_7d) / NULLIF(SUM(l1_n_imps_7d), 0) AS atc_7d,
+        SUM(l1_n_atcs_14d) / NULLIF(SUM(l1_n_imps_14d), 0) AS atc_14d,
+        SUM(l1_n_atcs_28d) / NULLIF(SUM(l1_n_imps_28d), 0) AS atc_28d,
+        SUM(l1_n_atfs_3d) / NULLIF(SUM(l1_n_imps_3d), 0) AS atf_3d,
+        SUM(l1_n_atfs_7d) / NULLIF(SUM(l1_n_imps_7d), 0) AS atf_7d,
+        SUM(l1_n_atfs_14d) / NULLIF(SUM(l1_n_imps_14d), 0) AS atf_14d,
+        SUM(l1_n_atfs_28d) / NULLIF(SUM(l1_n_imps_28d), 0) AS atf_28d,
+        SUM(l1_n_orders_3d) / NULLIF(SUM(l1_n_imps_3d), 0) AS order_3d,
+        SUM(l1_n_orders_7d) / NULLIF(SUM(l1_n_imps_7d), 0) AS order_7d,
+        SUM(l1_n_orders_14d) / NULLIF(SUM(l1_n_imps_14d), 0) AS order_14d,
+        SUM(l1_n_orders_28d) / NULLIF(SUM(l1_n_imps_28d), 0) AS order_28d
     FROM base_features
-)"""
-    )
-
-    ready_cte = "features_with_ratios"
-    if settings.has_recency:
-        ctes.append(
-            f"""features_with_recency AS (
+    GROUP BY l1_category_id
+),
+account_baselines AS (
     SELECT
-        *,
-        {prefix}_neg_n_days_since_last_click
-            - MAX({prefix}_neg_n_days_since_last_click) OVER (
-                PARTITION BY calculated_at, account_id
-            ) AS {prefix}_neg_n_days_since_last_click_rel
-    FROM features_with_ratios
-)"""
-        )
-        ready_cte = "features_with_recency"
-
-    if settings.has_impressions:
-        ctes.extend(
-            [
-                f"""features_with_account_conversions AS (
-    SELECT
-        *,
-        {_account_conversion_expressions(settings)}
-    FROM {ready_cte}
-)""",
-                f"""features_with_conversion_baselines AS (
-    SELECT
-        *,
-        {_conversion_baseline_expressions(settings)}
-    FROM features_with_account_conversions
-)""",
-                f"""features_with_relative_conversions AS (
-    SELECT
-        *,
-        {_relative_conversion_expressions(settings)}
-    FROM features_with_conversion_baselines
-)""",
-            ]
-        )
-        ready_cte = "features_with_relative_conversions"
-
-    selected_features = ",\n    ".join(feature_columns(settings))
-    return (
-        "WITH "
-        + ",\n".join(ctes)
-        + f"""
+        base.account_id,
+        SUM(l1_n_clicks_3d) / NULLIF(SUM(l1_n_imps_3d), 0) AS click_3d,
+        SUM(l1_n_clicks_7d) / NULLIF(SUM(l1_n_imps_7d), 0) AS click_7d,
+        SUM(l1_n_clicks_14d) / NULLIF(SUM(l1_n_imps_14d), 0) AS click_14d,
+        SUM(l1_n_clicks_28d) / NULLIF(SUM(l1_n_imps_28d), 0) AS click_28d,
+        SUM(l1_n_atcs_3d) / NULLIF(SUM(l1_n_imps_3d), 0) AS atc_3d,
+        SUM(l1_n_atcs_7d) / NULLIF(SUM(l1_n_imps_7d), 0) AS atc_7d,
+        SUM(l1_n_atcs_14d) / NULLIF(SUM(l1_n_imps_14d), 0) AS atc_14d,
+        SUM(l1_n_atcs_28d) / NULLIF(SUM(l1_n_imps_28d), 0) AS atc_28d,
+        SUM(l1_n_atfs_3d) / NULLIF(SUM(l1_n_imps_3d), 0) AS atf_3d,
+        SUM(l1_n_atfs_7d) / NULLIF(SUM(l1_n_imps_7d), 0) AS atf_7d,
+        SUM(l1_n_atfs_14d) / NULLIF(SUM(l1_n_imps_14d), 0) AS atf_14d,
+        SUM(l1_n_atfs_28d) / NULLIF(SUM(l1_n_imps_28d), 0) AS atf_28d,
+        MAX(account_orders.account_n_orders_3d) / NULLIF(SUM(l1_n_imps_3d), 0) AS order_3d,
+        MAX(account_orders.account_n_orders_7d) / NULLIF(SUM(l1_n_imps_7d), 0) AS order_7d,
+        MAX(account_orders.account_n_orders_14d) / NULLIF(SUM(l1_n_imps_14d), 0) AS order_14d,
+        MAX(account_orders.account_n_orders_28d) / NULLIF(SUM(l1_n_imps_28d), 0) AS order_28d
+    FROM base_features base
+    LEFT JOIN account_order_features account_orders ON base.account_id = account_orders.account_id
+    GROUP BY base.account_id
+)
 SELECT
-    calculated_at,
-    account_id,
-    {settings.category_column},
-    {selected_features}
-FROM {ready_cte}
+    features.*,
+    CASE WHEN category.click_3d > 0 THEN l1_account_conv_imp2click_3d / category.click_3d END AS l1_conv_imp2click_3d,
+    CASE WHEN category.click_7d > 0 THEN l1_account_conv_imp2click_7d / category.click_7d END AS l1_conv_imp2click_7d,
+    CASE WHEN category.click_14d > 0 THEN l1_account_conv_imp2click_14d / category.click_14d END AS l1_conv_imp2click_14d,
+    CASE WHEN category.click_28d > 0 THEN l1_account_conv_imp2click_28d / category.click_28d END AS l1_conv_imp2click_28d,
+    CASE WHEN category.atc_3d > 0 THEN l1_account_conv_imp2atc_3d / category.atc_3d END AS l1_conv_imp2atc_3d,
+    CASE WHEN category.atc_7d > 0 THEN l1_account_conv_imp2atc_7d / category.atc_7d END AS l1_conv_imp2atc_7d,
+    CASE WHEN category.atc_14d > 0 THEN l1_account_conv_imp2atc_14d / category.atc_14d END AS l1_conv_imp2atc_14d,
+    CASE WHEN category.atc_28d > 0 THEN l1_account_conv_imp2atc_28d / category.atc_28d END AS l1_conv_imp2atc_28d,
+    CASE WHEN category.atf_3d > 0 THEN l1_account_conv_imp2atf_3d / category.atf_3d END AS l1_conv_imp2atf_3d,
+    CASE WHEN category.atf_7d > 0 THEN l1_account_conv_imp2atf_7d / category.atf_7d END AS l1_conv_imp2atf_7d,
+    CASE WHEN category.atf_14d > 0 THEN l1_account_conv_imp2atf_14d / category.atf_14d END AS l1_conv_imp2atf_14d,
+    CASE WHEN category.atf_28d > 0 THEN l1_account_conv_imp2atf_28d / category.atf_28d END AS l1_conv_imp2atf_28d,
+    CASE WHEN category.order_3d > 0 THEN l1_account_conv_imp2order_3d / category.order_3d END AS l1_conv_imp2order_3d,
+    CASE WHEN category.order_7d > 0 THEN l1_account_conv_imp2order_7d / category.order_7d END AS l1_conv_imp2order_7d,
+    CASE WHEN category.order_14d > 0 THEN l1_account_conv_imp2order_14d / category.order_14d END AS l1_conv_imp2order_14d,
+    CASE WHEN category.order_28d > 0 THEN l1_account_conv_imp2order_28d / category.order_28d END AS l1_conv_imp2order_28d,
+    CASE WHEN account.click_3d > 0 THEN l1_account_conv_imp2click_3d / account.click_3d END AS l1_conv_imp2click_vs_account_3d,
+    CASE WHEN account.click_7d > 0 THEN l1_account_conv_imp2click_7d / account.click_7d END AS l1_conv_imp2click_vs_account_7d,
+    CASE WHEN account.click_14d > 0 THEN l1_account_conv_imp2click_14d / account.click_14d END AS l1_conv_imp2click_vs_account_14d,
+    CASE WHEN account.click_28d > 0 THEN l1_account_conv_imp2click_28d / account.click_28d END AS l1_conv_imp2click_vs_account_28d,
+    CASE WHEN account.atc_3d > 0 THEN l1_account_conv_imp2atc_3d / account.atc_3d END AS l1_conv_imp2atc_vs_account_3d,
+    CASE WHEN account.atc_7d > 0 THEN l1_account_conv_imp2atc_7d / account.atc_7d END AS l1_conv_imp2atc_vs_account_7d,
+    CASE WHEN account.atc_14d > 0 THEN l1_account_conv_imp2atc_14d / account.atc_14d END AS l1_conv_imp2atc_vs_account_14d,
+    CASE WHEN account.atc_28d > 0 THEN l1_account_conv_imp2atc_28d / account.atc_28d END AS l1_conv_imp2atc_vs_account_28d,
+    CASE WHEN account.atf_3d > 0 THEN l1_account_conv_imp2atf_3d / account.atf_3d END AS l1_conv_imp2atf_vs_account_3d,
+    CASE WHEN account.atf_7d > 0 THEN l1_account_conv_imp2atf_7d / account.atf_7d END AS l1_conv_imp2atf_vs_account_7d,
+    CASE WHEN account.atf_14d > 0 THEN l1_account_conv_imp2atf_14d / account.atf_14d END AS l1_conv_imp2atf_vs_account_14d,
+    CASE WHEN account.atf_28d > 0 THEN l1_account_conv_imp2atf_28d / account.atf_28d END AS l1_conv_imp2atf_vs_account_28d,
+    CASE WHEN account.order_3d > 0 THEN l1_account_conv_imp2order_3d / account.order_3d END AS l1_conv_imp2order_vs_account_3d,
+    CASE WHEN account.order_7d > 0 THEN l1_account_conv_imp2order_7d / account.order_7d END AS l1_conv_imp2order_vs_account_7d,
+    CASE WHEN account.order_14d > 0 THEN l1_account_conv_imp2order_14d / account.order_14d END AS l1_conv_imp2order_vs_account_14d,
+    CASE WHEN account.order_28d > 0 THEN l1_account_conv_imp2order_28d / account.order_28d END AS l1_conv_imp2order_vs_account_28d
+FROM features
+INNER JOIN category_baselines category USING (l1_category_id)
+INNER JOIN account_baselines account USING (account_id)
 """
-    )
 
 
 def build_account_category_features_merge_query(
-    target_table: str,
-    settings: SourceSettings,
-    calculated_at: datetime,
+    target_table: str, settings: SourceSettings, calculated_at: datetime
 ) -> str:
     calculated_at_local = _local_timestamp_literal(
-        calculated_at,
-        settings.business_timezone,
+        calculated_at, settings.business_timezone
     )
-    columns = feature_columns(settings)
-    key_columns = (
-        "calculated_at",
-        "account_id",
-        settings.category_column,
-    )
-    update_assignments = ",\n    ".join(
-        f"target.{column} = source.{column}" for column in columns
-    )
-    insert_columns = ",\n    ".join((*key_columns, *columns))
-    insert_values = ",\n    ".join(
-        f"source.{column}" for column in (*key_columns, *columns)
-    )
-
     return f"""
 MERGE INTO {target_table} AS target
 USING account_category_features_for_calculated_at AS source
     ON target.calculated_at = source.calculated_at
     AND target.account_id = source.account_id
-    AND target.{settings.category_column} = source.{settings.category_column}
-WHEN MATCHED THEN UPDATE SET
-    {update_assignments}
-WHEN NOT MATCHED THEN INSERT (
-    {insert_columns}
-) VALUES (
-    {insert_values}
-)
+    AND target.l1_category_id = source.l1_category_id
+WHEN MATCHED THEN UPDATE SET *
+WHEN NOT MATCHED THEN INSERT *
 WHEN NOT MATCHED BY SOURCE
     AND target.calculated_at = TIMESTAMP '{calculated_at_local}'
 THEN DELETE

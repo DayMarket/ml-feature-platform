@@ -39,14 +39,11 @@ class AccountProductFeaturesTest(unittest.TestCase):
         )
 
     def test_fixed_windows_and_statuses(self):
-        self.assertEqual(self.settings.event_windows_days, (3, 7, 14, 28))
-        self.assertEqual(
-            self.settings.order_windows_days,
-            (3, 7, 14, 28, 60, 90),
-        )
-        self.assertEqual(
-            self.settings.successful_order_statuses,
-            ("COMPLETED", "PAID", "DELIVERED", "IN_DELIVERY"),
+        for window in (3, 7, 14, 28, 60, 90):
+            self.assertIn(f"INTERVAL {window} DAYS", self.sql)
+        self.assertIn(
+            "'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'",
+            self.sql,
         )
 
     def test_migration_matches_all_physical_features(self):
@@ -62,16 +59,23 @@ class AccountProductFeaturesTest(unittest.TestCase):
             "calculated_at",
             "account_id",
             "product_id",
-            *query.feature_columns(self.settings),
+            *query.FEATURE_COLUMNS,
         }
         self.assertEqual(migration_columns, expected)
         self.assertNotIn("BIGINT", migration)
         self.assertNotIn("BIGINT", self.sql)
 
+    def test_business_sql_is_explicit_and_has_no_feature_fragment_builders(self):
+        query_text = (ENTITY / "job/query.py").read_text(encoding="utf-8")
+        self.assertNotIn("_conditional_action_counts", query_text)
+        self.assertNotIn("_conditional_order_features", query_text)
+        self.assertNotIn("_coalesced_base_features", query_text)
+        self.assertNotIn("_ratio_expressions", query_text)
+        self.assertNotIn("for window in", query_text)
+
     def test_actions_are_deduplicated_by_session_across_the_window(self):
         self.assertIn(
-            "GROUP BY\n        account_id,\n        product_id,\n"
-            "        event_type,\n        session_id",
+            "GROUP BY account_id, product_id, event_type, session_id",
             self.sql,
         )
         self.assertIn("COUNT(DISTINCT CASE", self.sql)
@@ -80,8 +84,9 @@ class AccountProductFeaturesTest(unittest.TestCase):
     def test_orders_use_sku_mapping_success_status_and_transaction_gmv(self):
         self.assertIn("order_item.sku_id AS INT) = sku.sku_id", self.sql)
         self.assertIn(
-            "order_item.order_item_status IN "
-            "('COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY')",
+            "order_item.order_item_status IN (\n"
+            "            'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'\n"
+            "        )",
             self.sql,
         )
         self.assertIn("order_item.payment_price AS DOUBLE", self.sql)
@@ -109,8 +114,8 @@ class AccountProductFeaturesTest(unittest.TestCase):
 
     def test_legacy_click_purchase_flag_compares_timestamps_in_right_direction(self):
         self.assertIn(
-            "TO_UTC_TIMESTAMP(last_click_at, 'Asia/Tashkent')\n"
-            "                    > last_purchase_at THEN 1",
+            "TO_UTC_TIMESTAMP(last_click_at, 'Asia/Tashkent') "
+            "> last_purchase_at THEN 1",
             self.sql,
         )
 
@@ -147,7 +152,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertIn("severity: P3", config_text)
         self.assertIn("oncall_webhook_conn_id: oncall_webhook_recsys", config_text)
         self.assertIn("is_paused_upon_creation=True", dag_text)
-        self.assertIn("# default_args[\"on_failure_callback\"]", dag_text)
+        self.assertIn('# default_args["on_failure_callback"]', dag_text)
         self.assertEqual(dag_text.count("failure_callback_enabled=False"), 2)
 
     def test_dq_covers_relative_recency_group_invariant(self):
