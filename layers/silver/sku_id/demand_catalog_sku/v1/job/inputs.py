@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pyarrow as pa
 import yaml
 
-from .preparation import SELLER_FIELDS, target_ref
+from .preparation import SELLER_FIELDS, same_type, target_ref
 
 
 def migration_schema(entity_path):
@@ -54,7 +54,8 @@ def source_config(config, repo_root):
     if len(schema) != len(names) or set(schema.names) != names:
         raise ValueError("Seller миграция должна содержать 12 согласованных полей")
     for field in schema:
-        if field.type != expected_types.get(field.name, pa.string()) or field.nullable != (field.name not in required):
+        if (not same_type(field.type, expected_types.get(field.name, pa.string()))
+                or field.nullable != (field.name not in required)):
             raise ValueError(f"Изменён контракт поля seller.{field.name}")
     return source, schema
 
@@ -116,7 +117,6 @@ def preflight_source(source, catalog, bound, expected_schema):
         raise ValueError("Схема seller snapshot не соответствует миграции владельца")
     for field in expected_schema:
         found = actual.field(field.name)
-        same = found.type == field.type or pa.types.is_string(field.type) and pa.types.is_large_string(found.type)
-        if not same or found.nullable != field.nullable:
+        if not same_type(found.type, field.type) or found.nullable != field.nullable:
             raise ValueError(f"Неверный тип/nullable seller.{field.name}")
     return table, actual

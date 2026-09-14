@@ -46,9 +46,8 @@ def capture_request(config, source, conf, *, run_id, run_type, logical_date, int
         start, end = instant(interval_start), instant(interval_end)
         if (conf.get("mode", "regular") != "regular" or "reference" in conf
                 or config["dag"]["schedule"] != "0 4 * * *"
-                or end - start != timedelta(days=1) or instant(logical_date) != start
-                or (start.hour, start.minute, start.second, start.microsecond) != (4, 0, 0, 0)
-                or run_id != "scheduled__" + end.isoformat()):
+                or end - start != timedelta(days=1)
+                or (start.hour, start.minute, start.second, start.microsecond) != (4, 0, 0, 0)):
             raise ValueError("Изменился scheduled интервал каталога")
         if source is not None:
             if (source["dag"]["schedule"] != config["dag"]["schedule"]

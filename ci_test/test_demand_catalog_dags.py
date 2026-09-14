@@ -61,6 +61,21 @@ def test_scheduled_capture_uses_same_interval(entity):
     assert result["catalog_version"] == capture(entity, {}, "scheduled", run_id)["catalog_version"]
 
 
+def test_scheduled_capture_keeps_airflow_run_id_opaque(entity):
+    _, config, source, module = entity
+    result = module.capture_request(
+        config,
+        source,
+        {},
+        run_id="scheduled__airflow-generated",
+        run_type="scheduled",
+        logical_date="2026-09-09T04:00:00Z",
+        interval_start="2026-09-08T04:00:00Z",
+        interval_end=NOW,
+    )
+    assert result["source_manifest_id"] == "scheduled__airflow-generated"
+
+
 def test_manual_capture_uses_same_owner_and_exact_reference(entity):
     exact = reference(entity)
     conf = {"mode": "manual"} | ({"reference": exact} if exact else {})

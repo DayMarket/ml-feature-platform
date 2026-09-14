@@ -31,16 +31,20 @@ def source_sql(source, repo_root, bound):
 
 def validate_description(description, schema):
     types = {pa.date32(): "date", pa.int32(): "integer", pa.int64(): "bigint", pa.bool_(): "boolean",
-             pa.timestamp("us"): "timestamp(6)", pa.float64(): "double"}
+             pa.float64(): "double"}
     if not isinstance(description, (list, tuple)) or len(description) != len(schema):
         raise ValueError("Нет полной Trino metadata")
     for item, field in zip(description, schema, strict=True):
         if not isinstance(item, (list, tuple)) or len(item) != 7 or item[0] != field.name or not isinstance(item[1], str):
             raise ValueError("Неверные колонки Trino metadata")
         kind = item[1].lower().replace(" ", "")
-        valid = (re.fullmatch(r"varchar(?:\(\d+\))?", kind) is not None
-                 if pa.types.is_string(field.type) or pa.types.is_large_string(field.type)
-                 else types.get(field.type) == kind)
+        if pa.types.is_string(field.type) or pa.types.is_large_string(field.type):
+            valid = re.fullmatch(r"varchar(?:\(\d+\))?", kind) is not None
+        elif pa.types.is_timestamp(field.type):
+            expected = "timestamp(6)withtimezone" if field.type.tz == "UTC" else "timestamp(6)"
+            valid = field.type.unit == "us" and kind == expected
+        else:
+            valid = types.get(field.type) == kind
         if not valid:
             raise ValueError(f"Неверный Trino тип {field.name}")
 
@@ -62,7 +66,9 @@ def read_batches(connection, source, repo_root, bound, schema, *, max_batch_rows
     expected = receipt["rows_written"]
     if type(expected) is not int or expected <= 0:
         raise ValueError("Нужен положительный source count")
-    captured = bound["captured_at"].replace(tzinfo=None)
+    captured_type = projection.field("ingested_at").type
+    captured = (bound["captured_at"] if captured_type.tz == "UTC"
+                else bound["captured_at"].replace(tzinfo=None))
     previous, seen = 0, 0
     with closing(connection.cursor()) as cursor:
         cursor.execute(source_sql(source, repo_root, bound))
@@ -86,7 +92,9 @@ def read_batches(connection, source, repo_root, bound, schema, *, max_batch_rows
                     elif field.name == "sku_id":
                         valid = type(value) is int and 0 < value <= 2**63 - 1
                     elif field.name == "ingested_at":
-                        valid = isinstance(value, datetime) and value.utcoffset() is None
+                        valid = (isinstance(value, datetime)
+                                 and (value.utcoffset() is None if field.type.tz is None
+                                      else value.utcoffset() is not None))
                     else:
                         valid = isinstance(value, str)
                     if not valid:

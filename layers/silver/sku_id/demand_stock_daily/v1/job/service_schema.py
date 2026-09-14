@@ -28,6 +28,8 @@ def service_schema(entity_path):
 
 
 def same_type(actual, expected):
+    if pa.types.is_timestamp(expected):
+        return pa.types.is_timestamp(actual) and actual.unit == expected.unit and actual.tz in {None, "UTC"}
     return actual == expected or pa.types.is_string(expected) and pa.types.is_large_string(actual)
 
 

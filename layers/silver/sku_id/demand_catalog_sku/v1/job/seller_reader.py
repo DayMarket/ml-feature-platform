@@ -31,16 +31,20 @@ def source_sql(source, repo_root, bound, schema):
 
 def validate_description(description, schema):
     types = {pa.date32(): "date", pa.int32(): "integer", pa.int64(): "bigint", pa.bool_(): "boolean",
-             pa.timestamp("us"): "timestamp(6)", pa.float64(): "double"}
+             pa.float64(): "double"}
     if not isinstance(description, (list, tuple)) or len(description) != len(schema):
         raise ValueError("Нет полной Trino metadata")
     for item, field in zip(description, schema, strict=True):
         if not isinstance(item, (list, tuple)) or len(item) != 7 or item[0] != field.name or not isinstance(item[1], str):
             raise ValueError("Неверные колонки Trino metadata")
         kind = item[1].lower().replace(" ", "")
-        valid = (re.fullmatch(r"varchar(?:\(\d+\))?", kind) is not None
-                 if pa.types.is_string(field.type) or pa.types.is_large_string(field.type)
-                 else types.get(field.type) == kind)
+        if pa.types.is_string(field.type) or pa.types.is_large_string(field.type):
+            valid = re.fullmatch(r"varchar(?:\(\d+\))?", kind) is not None
+        elif pa.types.is_timestamp(field.type):
+            expected = "timestamp(6)withtimezone" if field.type.tz == "UTC" else "timestamp(6)"
+            valid = field.type.unit == "us" and kind == expected
+        else:
+            valid = types.get(field.type) == kind
         if not valid:
             raise ValueError(f"Неверный Trino тип {field.name}")
 
@@ -82,8 +86,10 @@ def read_seller(source, repo_root, connection, bound, schema, *, max_batch_rows,
                         valid = type(value) is int and 0 < value <= 2**63 - 1
                     elif field.type == pa.bool_():
                         valid = type(value) is bool
-                    elif field.type == pa.timestamp("us"):
-                        valid = type(value) is datetime and value.utcoffset() is None
+                    elif pa.types.is_timestamp(field.type):
+                        valid = (type(value) is datetime
+                                 and (value.utcoffset() is None if field.type.tz is None
+                                      else value.utcoffset() is not None))
                     else:
                         valid = type(value) is str
                     if not valid:

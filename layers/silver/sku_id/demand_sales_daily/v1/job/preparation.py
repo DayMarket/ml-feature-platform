@@ -14,6 +14,12 @@ TECH = ("fx_rate_date","fx_rate_uzs_per_usd","fx_rate_source","fx_captured_at","
 RAW_COLUMNS = ("date","sku_id","sales_units","sales_order_items","sales_orders","sales_gmv","sales_payment_value","sales_full_value","sales_seller_promo_value","sales_marketplace_promo_value","sales_gmv_fbo","sales_gmv_fbs","sales_gmv_dbs","sales_gmv_other","sales_gmv_unknown","sales_units_fbo","sales_units_fbs","sales_units_dbs","sales_units_other","sales_units_unknown","sales_gmv_usd","sales_payment_value_usd","sales_full_value_usd","sales_seller_promo_value_usd","sales_marketplace_promo_value_usd","sales_gmv_fbo_usd","sales_gmv_fbs_usd","sales_gmv_dbs_usd","sales_gmv_other_usd","sales_gmv_unknown_usd","source_updated_at",)
 REQUIRED = ("date","sku_id","source_updated_at","fx_rate_source","fx_captured_at","source_manifest_id","source_contract_version","ingested_at",)
 
+
+def same_type(actual, expected):
+    if pa.types.is_timestamp(expected):
+        return pa.types.is_timestamp(actual) and actual.unit == expected.unit and actual.tz in {None, "UTC"}
+    return actual == expected or pa.types.is_string(expected) and pa.types.is_large_string(actual)
+
 def target_ref(config, catalog_name):
     table = config['table']
     for key in ('catalog', 'schema', 'name'):
@@ -69,7 +75,7 @@ def validate_schema(schema):
         raise ValueError("Колонки не совпадают с миграцией")
     for name, kind in expected.items():
         field = schema.field(name)
-        if field.type != kind and not (pa.types.is_string(kind) and pa.types.is_large_string(field.type)):
+        if not same_type(field.type, kind):
             raise ValueError(f"Несовместимый тип {name}: {field.type}")
         if name in REQUIRED and field.nullable:
             raise ValueError(f"{name} должен быть required")

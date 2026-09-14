@@ -20,6 +20,12 @@ from .writer import preflight as target_preflight
 logger = logging.getLogger("airflow.task")
 
 
+def same_type(actual, expected):
+    if pa.types.is_timestamp(expected):
+        return pa.types.is_timestamp(actual) and actual.unit == expected.unit and actual.tz in {None, "UTC"}
+    return actual == expected or pa.types.is_string(expected) and pa.types.is_large_string(actual)
+
+
 def connection_ids(config):
     dq = load_dq_settings(config)
     stats = load_feature_stats_settings(config)
@@ -63,14 +69,13 @@ def validate_service_schema(actual, expected):
         raise ValueError("Service schema не соответствует миграции")
     for field in expected:
         found = actual.field(field.name)
-        same_type = found.type == field.type or pa.types.is_string(field.type) and pa.types.is_large_string(found.type)
-        if not same_type or found.nullable != field.nullable:
+        if not same_type(found.type, field.type) or found.nullable != field.nullable:
             raise ValueError(f"Неверный тип/nullable service.{field.name}")
 
 
 def metadata_query(connection, sql, schema):
     types = {pa.date32(): "date", pa.int32(): "integer", pa.int64(): "bigint",
-             pa.float64(): "double", pa.bool_(): "boolean", pa.timestamp("us"): "timestamp(6)"}
+             pa.float64(): "double", pa.bool_(): "boolean"}
     with closing(connection.cursor()) as cursor:
         cursor.execute(sql)
         columns = cursor.description
@@ -82,6 +87,9 @@ def metadata_query(connection, sql, schema):
             kind = str(description[1]).lower().replace(" ", "")
             if pa.types.is_string(field.type) or pa.types.is_large_string(field.type):
                 valid = re.fullmatch(r"varchar(?:\(\d+\))?", kind) is not None
+            elif pa.types.is_timestamp(field.type):
+                expected = "timestamp(6)withtimezone" if field.type.tz == "UTC" else "timestamp(6)"
+                valid = field.type.unit == "us" and kind == expected
             else:
                 valid = field.type in types and kind == types[field.type]
             if not valid:

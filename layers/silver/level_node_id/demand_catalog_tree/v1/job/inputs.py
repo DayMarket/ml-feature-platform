@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pyarrow as pa
 import yaml
 
-from .preparation import INPUT_COLUMNS, target_ref
+from .preparation import INPUT_COLUMNS, same_type, target_ref
 
 READ_COLUMNS = (*INPUT_COLUMNS, "source_manifest_id", "source_contract_version", "ingested_at")
 
@@ -41,8 +41,7 @@ def validate_schema(actual, expected):
         raise ValueError("Схема таблицы не соответствует миграции владельца")
     for field in expected:
         found = actual.field(field.name)
-        same = found.type == field.type or pa.types.is_string(field.type) and pa.types.is_large_string(found.type)
-        if not same or found.nullable != field.nullable:
+        if not same_type(found.type, field.type) or found.nullable != field.nullable:
             raise ValueError(f"Неверный тип/nullable {field.name}")
 
 
@@ -61,7 +60,7 @@ def source_config(config, repo_root):
     for name in READ_COLUMNS:
         dtype = (pa.date32() if name == "date" else pa.int64() if name == "sku_id"
                  else pa.timestamp("us") if name == "ingested_at" else pa.string())
-        if name not in schema.names or schema.field(name).type != dtype:
+        if name not in schema.names or not same_type(schema.field(name).type, dtype):
             raise ValueError(f"Изменён контракт поля SKU.{name}")
     return source, schema
 

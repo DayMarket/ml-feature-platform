@@ -27,6 +27,12 @@ def utc_naive(value):
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+def same_type(actual, expected):
+    if pa.types.is_timestamp(expected):
+        return pa.types.is_timestamp(actual) and actual.unit == expected.unit and actual.tz in {None, "UTC"}
+    return actual == expected or pa.types.is_string(expected) and pa.types.is_large_string(actual)
+
+
 def validate_schema(schema):
     expected = {
         "date": (pa.date32(), True),
@@ -65,7 +71,7 @@ def validate_schema(schema):
         raise ValueError("Схема E3 не совпадает с миграцией")
     for name, (kind, required) in expected.items():
         field = schema.field(name)
-        if field.type != kind and not (pa.types.is_string(kind) and pa.types.is_large_string(field.type)):
+        if not same_type(field.type, kind):
             raise ValueError(f"Неверный тип E3 {name}")
         if required and field.nullable:
             raise ValueError(f"E3 {name} должен быть required")

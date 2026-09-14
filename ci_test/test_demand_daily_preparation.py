@@ -39,6 +39,31 @@ def schema(kind):
     return pa.schema([pa.field(n, types[t], nullable=not required) for n, t, required in fields])
 
 
+def utc_timestamps(value):
+    return pa.schema([
+        pa.field(
+            field.name,
+            pa.timestamp("us", "UTC") if pa.types.is_timestamp(field.type) else field.type,
+            nullable=field.nullable,
+        )
+        for field in value
+    ])
+
+
+def test_finance_accepts_iceberg_utc_timestamps():
+    target = utc_timestamps(schema("finance"))
+    result = module("finance", "preparation").prepare_batch(
+        raw("finance"),
+        target,
+        day=DAY,
+        fx=fx(),
+        manifest="capture-1",
+        version="v1",
+        ingested_at=CAPTURE,
+    )
+    assert result.schema == target
+
+
 def fx():
     return {"date": DAY, "fx_rate_date": DAY, "fx_rate_uzs_per_usd": 10.0,
             "fx_rate_source": "exact_date", "fx_captured_at": CAPTURE}

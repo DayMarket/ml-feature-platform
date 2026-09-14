@@ -18,7 +18,7 @@ from feature_stats.day_range import validate_range_settings
 
 from .seller_inputs import bind_source, preflight_source, preflight_target, source_config
 from .seller_planning import checked_reference, execute_request as execute_planned, validate_request
-from .preparation import target_ref
+from .preparation import same_type, target_ref
 from .seller_reader import exact_value, source_sql, validate_description
 
 logger = logging.getLogger("airflow.task")
@@ -108,8 +108,7 @@ def validate_service_schema(actual, expected):
         raise ValueError("Service schema не соответствует миграции")
     for field in expected:
         found = actual.field(field.name)
-        same = found.type == field.type or pa.types.is_string(field.type) and pa.types.is_large_string(found.type)
-        if not same or found.nullable != field.nullable:
+        if not same_type(found.type, field.type) or found.nullable != field.nullable:
             raise ValueError(f"Неверный тип/nullable service.{field.name}")
 
 
