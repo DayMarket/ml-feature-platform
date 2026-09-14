@@ -121,6 +121,16 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertNotIn("neg_n_hours_since_last_click", self.sql)
         self.assertNotIn("CEIL(", self.sql)
 
+        migration = (ENTITY / "migrations/create_table.sql").read_text(
+            encoding="utf-8"
+        )
+        for column in (
+            "neg_n_days_since_last_click",
+            "neg_n_days_since_last_click_rel",
+            "neg_n_days_since_last_purchase",
+        ):
+            self.assertRegex(migration, rf"(?m)^\s+{column} DOUBLE\b")
+
     def test_legacy_click_purchase_flag_compares_timestamps_in_right_direction(self):
         self.assertIn(
             "TO_UTC_TIMESTAMP(last_click_at, 'Asia/Tashkent') "
