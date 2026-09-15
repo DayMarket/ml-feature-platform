@@ -52,19 +52,29 @@ WITH product_categories AS (
     WHERE dt = TIMESTAMP '{metadata_dt_local}'
         AND l1_category_id IS NOT NULL
 ),
+deduplicated_actions AS (
+    SELECT
+        CAST(account_id AS INT) AS account_id,
+        session_id,
+        CAST(product_id AS INT) AS product_id,
+        event_type,
+        MAX(last_received_at) AS last_received_at
+    FROM {settings.action_counts_table}
+    WHERE calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
+        AND calculated_at <= TIMESTAMP '{calculated_at_local}'
+        AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
+        AND last_received_at < TIMESTAMP '{calculated_at_local}'
+    GROUP BY account_id, session_id, product_id, event_type
+),
 mapped_actions AS (
     SELECT
-        CAST(action.account_id AS INT) AS account_id,
+        action.account_id,
         action.event_type,
         action.last_received_at,
         product.l1_category_id
-    FROM {settings.action_counts_table} action
+    FROM deduplicated_actions action
     INNER JOIN product_categories product
-        ON CAST(action.product_id AS INT) = product.product_id
-    WHERE action.calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
-        AND action.calculated_at <= TIMESTAMP '{calculated_at_local}'
-        AND action.last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
-        AND action.last_received_at < TIMESTAMP '{calculated_at_local}'
+        ON action.product_id = product.product_id
 ),
 action_features AS (
     SELECT
