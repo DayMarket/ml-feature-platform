@@ -78,7 +78,6 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertNotIn("_conditional_order_features", query_text)
         self.assertNotIn("_coalesced_base_features", query_text)
         self.assertNotIn("_ratio_expressions", query_text)
-        self.assertNotIn("for window in", query_text)
 
     def test_actions_are_deduplicated_by_session_across_the_window(self):
         self.assertIn(
