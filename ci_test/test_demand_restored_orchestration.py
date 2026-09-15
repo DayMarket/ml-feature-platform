@@ -8,10 +8,10 @@ import pyarrow as pa
 import pytest
 import yaml
 
-from ci_test.test_demand_daily_preparation import CAPTURE, ROOT, module
+from ci_test.test_demand_restored_preparation import CAPTURE, ROOT, module
 from ci_test.test_demand_restored_runtime import Client as SourceClient, loader as loader
 from ci_test.test_demand_restored_writer import target as target
-from ci_test.test_demand_sales_finance_runtime import wire
+from ci_test.test_demand_restored_preparation import wire
 
 BRIDGE = module("restored", "orchestration")
 RANGES = module("restored", "ranges")

@@ -20,12 +20,6 @@ runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
   cpu: "2"
   memory: 32Gi
-  run_timeout_seconds:
-    regular: 21600
-    manual: 604800
-  max_batch_rows: 100000
-  max_batch_bytes: 67108864
-  delivery_status: prepared_local
 dag:
   id: feature-platform.layers.silver.sku_id.demand_catalog_sku
   group_tag: demand-forecast
@@ -47,7 +41,7 @@ dq:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ (ti.xcom_pull(task_ids="write_catalog", include_prior_dates=False) or {}).get("ingested_at", "") }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
   tests:
     - name: row_count_growth
       enabled: false
@@ -91,5 +85,5 @@ feature_stats:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ (ti.xcom_pull(task_ids="write_catalog", include_prior_dates=False) or {}).get("ingested_at", "") }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
   exclude_columns: [product_id, category_id, seller_id, shop_id, raw_l1_category_id, raw_l2_category_id, raw_l3_category_id, raw_l4_category_id, raw_l5_category_id, raw_l6_category_id, catalog_seller_snapshot_id]

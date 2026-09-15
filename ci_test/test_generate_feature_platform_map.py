@@ -146,12 +146,12 @@ def test_path_config_references_resolve_sensor_dependencies():
     assert generator.Dependency(
         "feature-platform.layers.silver.sku_id.demand_sales_daily",
         "dq",
-        0,
+        60,
     ) in observed.dependencies
     assert generator.Dependency(
         "feature-platform.layers.silver.sku_id.demand_stock_daily",
         "dq",
-        0,
+        60,
     ) in observed.dependencies
 
 

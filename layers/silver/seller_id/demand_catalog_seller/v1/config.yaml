@@ -15,13 +15,6 @@ runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
   cpu: "2"
   memory: 8Gi
-  run_timeout_seconds:
-    regular: 21600
-    manual: 604800
-  max_batch_rows: 100000
-  max_batch_bytes: 67108864
-  max_catalog_bytes: 536870912
-  delivery_status: prepared_local
 dag:
   id: feature-platform.layers.silver.seller_id.demand_catalog_seller
   group_tag: demand-forecast
@@ -36,7 +29,6 @@ alerts:
   oncall_webhook_conn_id: oncall_webhook_operations
 # Read-only 2026-09-09: 468864 строки/уникальных seller, invalid IDs/collisions=0.
 # Это один срез, не основание фиксировать объём. Штатный growth ±20% сохраняется.
-# Полный захват и строгий DQ без warmup выполняет один owner DAG.
 dq:
   scope: partition
   trino_conn_id: trino_search
@@ -44,7 +36,7 @@ dq:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ (ti.xcom_pull(task_ids="write_catalog", include_prior_dates=False) or {}).get("ingested_at", "") }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
   tests:
     - name: row_count_growth
       enabled: false
@@ -71,5 +63,5 @@ feature_stats:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ (ti.xcom_pull(task_ids="write_catalog", include_prior_dates=False) or {}).get("ingested_at", "") }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
   exclude_columns: []

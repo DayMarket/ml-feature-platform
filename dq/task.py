@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-from functools import wraps
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -17,7 +16,7 @@ from dq.config import (
     trino_catalog_alias,
 )
 from dq.report import format_alert, format_log
-from dq.results_writer import RunMeta, write_results
+from dq.results_writer import RunMeta, write_results_batch
 from dq.runner import run_dq
 
 TASK_ID = "dq"
@@ -27,22 +26,17 @@ class DqTestsFailed(Exception):
     """Хотя бы один DQ-тест с severity error не прошёл."""
 
 
-def guarded_task(guard):
-    """Применить opt-in бюджет владельца ко всему телу задачи."""
-    def decorate(function):
-        if guard is None:
-            return function
+def partition_values(value: Any) -> list[str]:
+    """Отрендеренный шаблон партиции: одно значение или несколько через запятую.
 
-        @wraps(function)
-        def guarded(*args, **kwargs):
-            from airflow.sdk import get_current_context
-
-            with guard(get_current_context()):
-                return function(*args, **kwargs)
-
-        return guarded
-
-    return decorate
+    Список нужен витринам, которые одним запуском перезаписывают несколько дней
+    (штатное окно пересчёта или ручной диапазон): таска проверяет каждую партицию
+    и сохраняет результаты одним commit'ом.
+    """
+    values = [part.strip() for part in str(value).split(",") if part.strip()]
+    if not values:
+        raise DqConfigError(f"dq.partition_date_template отрендерился в пустое значение: {value!r}")
+    return values
 
 
 def parse_partition_value(value: Any, granularity: str) -> tuple[date, datetime | None]:
@@ -92,39 +86,14 @@ def build_render_context(
     )
 
 
-def build_dq_task(
-    config_path: str,
-    repo_root: str,
-    *,
-    range_receipt_task_id: str | None = None,
-    receipt_task_id: str | None = None,
-    range_guard: Callable | None = None,
-    task_guard: Callable | None = None,
-) -> Callable:
-    """Возвращает штатную dq-таску; opt-in range проверяет каждый записанный день."""
+def build_dq_task(config_path: str, repo_root: str) -> Callable:
+    """Возвращает штатную dq-таску энтити из блока `dq:` её config.yaml."""
     from airflow.providers.trino.hooks.trino import TrinoHook
     from airflow.sdk import get_current_context, task
     from airflow_commons.helpers.oncall import send_oncall_notification
 
     config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
     settings = load_dq_settings(config)
-    if receipt_task_id is not None:
-        if range_receipt_task_id is not None:
-            raise DqConfigError("receipt_task_id не совмещается с range receipt")
-        if not isinstance(receipt_task_id, str) or not receipt_task_id.strip():
-            raise DqConfigError("Нужен task_id записи")
-    if task_guard is not None and (not callable(task_guard) or range_guard is not None):
-        raise DqConfigError("task_guard требует callable и не совмещается с range_guard")
-    if range_guard is not None and (
-        range_receipt_task_id is None or not callable(range_guard)
-    ):
-        raise DqConfigError("range_guard требует callable и range_receipt_task_id")
-    if range_receipt_task_id is not None:
-        from dq.day_range import validate_settings
-
-        if not isinstance(range_receipt_task_id, str) or not range_receipt_task_id.strip():
-            raise DqConfigError("Нужен task_id записи диапазона")
-        validate_settings(settings)
     alerts = config["alerts"]
 
     @task(
@@ -136,88 +105,44 @@ def build_dq_task(
             severity=alerts["severity"],
         ),
     )
-    @guarded_task(task_guard if task_guard is not None else range_guard)
-    def dq(partition_date_value: str) -> dict | None:
+    def dq(partition_date_value: str) -> None:
         import logging
 
         logger = logging.getLogger("airflow.task")
-        airflow_context = get_current_context()
-        task_instance = airflow_context["task_instance"]
-        receipt = None
-        if receipt_task_id is not None:
-            receipt = task_instance.xcom_pull(
-                task_ids=receipt_task_id,
-                include_prior_dates=False,
-            )
-            if not isinstance(receipt, dict) or receipt.get("status") != "written":
-                raise DqConfigError("DQ не получил writer receipt текущего запуска")
-            partition_date_value = receipt.get("ingested_at")
-        ctx = build_render_context(config, Path(repo_root), partition_date_value)
-
         hook = TrinoHook(trino_conn_id=settings.trino_conn_id)
 
         def query(sql: str) -> list:
             logger.info("DQ query:\n%s", sql)
             return hook.get_records(sql)
 
-        if range_receipt_task_id is not None:
-            from dq.day_range import run_range_dq, validate_written
+        checked = []
+        for value in partition_values(partition_date_value):
+            ctx = build_render_context(config, Path(repo_root), value)
+            outcome = run_dq(settings, ctx, query)
+            logger.info("\n%s", format_log(outcome, ctx))
+            checked.append((outcome, ctx))
 
-            written = task_instance.xcom_pull(
-                task_ids=range_receipt_task_id,
-                include_prior_dates=False,
-            )
-            days = validate_written(written)
-            if ctx.partition_date != days[-1]:
-                raise DqConfigError("Шаблон DQ не совпал с последним днём диапазона")
-            checks = run_range_dq(
-                config,
-                Path(repo_root),
-                written,
-                query,
-                RunMeta(
-                    dag_id=task_instance.dag_id,
-                    task_id=TASK_ID,
-                    run_id=task_instance.run_id,
-                    try_number=int(task_instance.try_number),
-                    run_ts=datetime.now(timezone.utc),
-                ),
-            )
-            return {
-                "dq_status": "passed",
-                "dag_id": task_instance.dag_id,
-                "run_id": task_instance.run_id,
-                "receipt": written,
-                "day_checks": checks,
-            }
-
-        outcome = run_dq(settings, ctx, query)
-        logger.info("\n%s", format_log(outcome, ctx))
-
-        write_results(
+        airflow_context = get_current_context()
+        task_instance = airflow_context["task_instance"]
+        write_results_batch(
             Path(repo_root),
-            outcome,
-            ctx,
+            checked,
             settings,
             RunMeta(
                 dag_id=task_instance.dag_id,
                 task_id=TASK_ID,
                 run_id=task_instance.run_id,
                 try_number=int(task_instance.try_number),
-                run_ts=airflow_context["logical_date"],
+                # У ручного запуска Airflow 3 logical_date может быть пустым.
+                run_ts=airflow_context.get("logical_date") or airflow_context["dag_run"].run_after,
             ),
         )
 
-        if outcome.has_errors:
+        failed = [(outcome, ctx) for outcome, ctx in checked if outcome.has_errors]
+        if failed:
             log_url = getattr(task_instance, "log_url", "")
-            raise DqTestsFailed(format_alert(outcome, ctx, log_url))
-        if receipt_task_id is not None:
-            return {
-                "dq_status": "passed",
-                "dag_id": task_instance.dag_id,
-                "run_id": task_instance.run_id,
-                "receipt": receipt,
-            }
-        return None
+            raise DqTestsFailed(
+                "\n\n".join(format_alert(outcome, ctx, log_url) for outcome, ctx in failed)[:3500]
+            )
 
     return dq
