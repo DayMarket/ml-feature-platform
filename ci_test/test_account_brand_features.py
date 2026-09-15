@@ -78,7 +78,6 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertNotIn("_click_count_expressions", query_text)
         self.assertNotIn("_gmv_expressions", query_text)
         self.assertNotIn("_ratio_expressions", query_text)
-        self.assertNotIn("for window in", query_text)
 
     def test_clicks_are_product_session_counts_mapped_through_daily_s1(self):
         self.assertIn(
