@@ -290,8 +290,8 @@ UTC 04:00 · P3 · airflow-python`"]
     x5["elasticsearch_collect"]
     x4 -->|"dq"| d0
     d13 -->|"dq Δ3h"| d2
-    d15 -->|"dq"| d3
-    d16 -->|"dq"| d3
+    d15 -->|"dq Δ1h"| d3
+    d16 -->|"dq Δ50m"| d3
     x0 -.->|"dbt DQ (legacy) Δ5h"| d4
     x1 -.->|"dbt DQ (legacy) Δ5h"| d4
     x3 -->|"sensor Δ1h"| d4
@@ -301,9 +301,9 @@ UTC 04:00 · P3 · airflow-python`"]
     x0 -.->|"dbt DQ (legacy) Δ2h"| d6
     x1 -.->|"dbt DQ (legacy) Δ2h"| d6
     x0 -.->|"dbt DQ (legacy) Δ1h"| d7
-    d26 -->|"dq"| d8
-    d27 -->|"dq"| d8
-    d15 -->|"dq"| d16
+    d26 -->|"dq Δ1h"| d8
+    d27 -->|"dq Δ1h"| d8
+    d15 -->|"dq Δ10m"| d16
     d25 -->|"dq"| d17
     x2 -->|"sensor Δ19h"| d20
     x5 -->|"sensor"| d22

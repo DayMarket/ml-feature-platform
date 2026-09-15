@@ -10,7 +10,7 @@ from typing import Any, Callable
 import yaml
 
 from dq.config import DqConfigError, RenderContext, trino_catalog_alias
-from dq.task import guarded_task, parse_partition_value
+from dq.task import parse_partition_value, partition_values
 
 from feature_stats.config import (
     DEFAULT_TEAM,
@@ -18,7 +18,7 @@ from feature_stats.config import (
     StatsContext,
     load_feature_stats_settings,
 )
-from feature_stats.results_writer import RunMeta, write_results
+from feature_stats.results_writer import RunMeta, write_results_batch
 from feature_stats.runner import run_feature_stats
 
 TASK_ID = "feature_stats"
@@ -96,44 +96,19 @@ def build_stats_context(config: dict[str, Any], repo_root: Path, partition_value
     )
 
 
-def build_feature_stats_task(
-    config_path: str,
-    repo_root: str,
-    *,
-    range_receipt_task_id: str | None = None,
-    range_timeout_seconds: int | None = None,
-    range_guard: Callable | None = None,
-    task_guard: Callable | None = None,
-) -> Callable:
-    """Возвращает штатную stats-таску; opt-in range профилирует каждый день."""
+def build_feature_stats_task(config_path: str, repo_root: str) -> Callable:
+    """Возвращает штатную stats-таску энтити из блока `feature_stats:` её config.yaml.
+
+    Шаблон партиции может отдать несколько значений через запятую: тогда профили
+    считаются для каждой партиции и сохраняются одним commit'ом. Лимит
+    `query_timeout_seconds` в этом случае относится ко всей таске.
+    """
     from airflow.providers.trino.hooks.trino import TrinoHook
     from airflow.sdk import get_current_context, task
     from airflow_commons.helpers.oncall import send_oncall_notification
 
     config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
     settings = load_feature_stats_settings(config)
-    if task_guard is not None and (not callable(task_guard) or range_guard is not None):
-        raise FeatureStatsConfigError(
-            "task_guard требует callable и не совмещается с range_guard"
-        )
-    if range_guard is not None and (
-        range_receipt_task_id is None or not callable(range_guard)
-    ):
-        raise FeatureStatsConfigError(
-            "range_guard требует callable и range_receipt_task_id"
-        )
-    if range_receipt_task_id is not None:
-        from feature_stats.day_range import validate_range_settings
-
-        if not isinstance(range_receipt_task_id, str) or not range_receipt_task_id.strip():
-            raise FeatureStatsConfigError("Нужен task_id записи диапазона")
-        if type(range_timeout_seconds) is not int or range_timeout_seconds <= 0:
-            raise FeatureStatsConfigError("Нужен положительный timeout профиля диапазона")
-        validate_range_settings(config)
-    elif range_timeout_seconds is not None:
-        raise FeatureStatsConfigError(
-            "range_timeout_seconds допустим только с range_receipt_task_id"
-        )
     alerts = config["alerts"]
 
     @task(
@@ -142,16 +117,13 @@ def build_feature_stats_task(
         # query_timeout_seconds обязан реально ограничивать таску, а не только
         # значиться в конфиге: иначе зависший запрос держит воркер-слот бессрочно,
         # а понижение таймаута и редеплой ничего не меняют.
-        execution_timeout=timedelta(
-            seconds=range_timeout_seconds or settings.query_timeout_seconds
-        ),
+        execution_timeout=timedelta(seconds=settings.query_timeout_seconds),
         on_failure_callback=send_oncall_notification(
             team=alerts["team"],
             oncall_webhook_conn_id=alerts["oncall_webhook_conn_id"],
             severity=alerts["severity"],
         ),
     )
-    @guarded_task(task_guard if task_guard is not None else range_guard)
     def feature_stats(partition_date_value: str) -> None:
         import logging
 
@@ -159,7 +131,6 @@ def build_feature_stats_task(
         if not settings.enabled:
             logger.info("Feature stats отключены в config.yaml")
             return
-        ctx = build_stats_context(config, Path(repo_root), partition_date_value)
 
         hook = TrinoHook(trino_conn_id=settings.trino_conn_id)
 
@@ -167,54 +138,34 @@ def build_feature_stats_task(
             logger.info("Feature stats query:\n%s", sql)
             return fetch_rows(hook, sql)
 
-        if range_receipt_task_id is not None:
-            from feature_stats.day_range import run_range_feature_stats
-
-            airflow_context = get_current_context()
-            task_instance = airflow_context["task_instance"]
-            written = task_instance.xcom_pull(
-                task_ids=range_receipt_task_id,
-                include_prior_dates=False,
+        profiled = []
+        for value in partition_values(partition_date_value):
+            ctx = build_stats_context(config, Path(repo_root), value)
+            stats = run_feature_stats(settings, ctx, query)
+            logger.info(
+                "Профилей посчитано: %s для %s.%s.%s за %s",
+                len(stats),
+                ctx.render.catalog_alias,
+                ctx.render.schema,
+                ctx.render.table,
+                ctx.partition_ts.isoformat(),
             )
-            run_range_feature_stats(
-                config,
-                Path(repo_root),
-                written,
-                query,
-                RunMeta(
-                    dag_id=task_instance.dag_id,
-                    task_id=TASK_ID,
-                    run_id=task_instance.run_id,
-                    try_number=int(task_instance.try_number),
-                    run_ts=datetime.now(timezone.utc),
-                ),
-            )
-            return
-
-        stats = run_feature_stats(settings, ctx, query)
-        logger.info(
-            "Профилей посчитано: %s для %s.%s.%s за %s",
-            len(stats),
-            ctx.render.catalog_alias,
-            ctx.render.schema,
-            ctx.render.table,
-            ctx.partition_ts.isoformat(),
-        )
-        if not stats:
+            if stats:
+                profiled.append((stats, ctx))
+        if not profiled:
             return
 
         airflow_context = get_current_context()
         task_instance = airflow_context["task_instance"]
-        write_results(
+        write_results_batch(
             Path(repo_root),
-            stats,
-            ctx,
+            profiled,
             RunMeta(
                 dag_id=task_instance.dag_id,
                 task_id=TASK_ID,
                 run_id=task_instance.run_id,
                 try_number=int(task_instance.try_number),
-                run_ts=airflow_context["logical_date"],
+                run_ts=airflow_context.get("logical_date") or airflow_context["dag_run"].run_after,
             ),
         )
 

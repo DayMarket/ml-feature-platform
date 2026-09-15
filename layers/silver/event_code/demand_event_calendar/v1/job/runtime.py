@@ -1,93 +1,145 @@
-"""Связать полный захват событий с успешным DQ конкретного календарного запуска."""
+"""Полностью заменить справочник событий: праздники календаря и акции реестра."""
 
-from datetime import datetime, timedelta, timezone
+from __future__ import annotations
+
+from datetime import datetime, timezone
 import logging
-from pathlib import Path
 
-import yaml
-
-from .extraction import _calendar_config, target_ref
-from .writer import load_events
+import pyarrow as pa
+import pyarrow.compute as pc
 
 logger = logging.getLogger("airflow.task")
 
+CALENDAR_ID = "uz_official"
+TIMES = ("started_at", "finished_at", "announced_at", "created_at", "updated_at")
 
-def utc_timestamp(value):
-    """Прочитать Airflow ISO/space timestamp; наивные границы DAG имеют зону UTC."""
-    try:
-        if isinstance(value, str):
-            if len(value.strip()) <= 10:
-                raise ValueError("Нет времени")
-            value = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-        if not isinstance(value, datetime):
-            raise ValueError("Нужен timestamp")
-        # Не сохранять subclass Pendulum: арифметика должна оставаться в aware datetime.
-        value = datetime.fromisoformat(value.isoformat())
-        return value.replace(tzinfo=timezone.utc) if value.utcoffset() is None else value.astimezone(timezone.utc)
-    except ValueError as exc:
-        raise ValueError(f"Неверный Airflow timestamp: {value!r}") from exc
+# Акция разворачивается в дни Asia/Tashkent, пересекающие [started_at, finished_at).
+PROMO_SQL = """SELECT
+    day AS date,
+    concat('marketing_sale:', toString(id)) AS event_code,
+    'marketing_sale' AS source_kind,
+    toString(id) AS source_event_id,
+    title AS event_name,
+    status AS source_status,
+    type AS source_type,
+    {times}
+FROM silver.b2b_marketing_sale
+ARRAY JOIN arrayMap(
+    i -> addDays(toDate(assumeNotNull(started_at), 'Asia/Tashkent'), i),
+    range(toUInt32(dateDiff(
+        'day',
+        toDate(assumeNotNull(started_at), 'Asia/Tashkent'),
+        toDate(toDateTime64(assumeNotNull(finished_at), 6) - toIntervalMicrosecond(1), 'Asia/Tashkent')
+    ) + 1))
+) AS day
+WHERE started_at IS NOT NULL AND finished_at > started_at
+ORDER BY date, event_code""".format(times=",\n    ".join(
+    f"toDateTime64(toTimeZone({name}, 'UTC'), 6, 'UTC') AS source_{name}" for name in TIMES
+))
 
-
-def scheduled_calendar_reference(config, calendar_config, interval_start, interval_end):
-    """Связать cron 03:10 с календарём 03:00, оба с явным DataIntervalTimetable."""
-    if (config["dag"]["schedule"], calendar_config["dag"]["schedule"]) != ("10 3 * * *", "0 3 * * *"):
-        raise ValueError("Расписания изменились: пересмотреть привязку к календарному DQ")
-    start, end = utc_timestamp(interval_start), utc_timestamp(interval_end)
-    if end - start != timedelta(days=1) or (start.hour, start.minute, start.second, start.microsecond) != (3, 10, 0, 0):
-        raise ValueError("Нужен полный scheduled data interval 03:10 UTC")
-    cal_start, cal_end = start - timedelta(minutes=10), end - timedelta(minutes=10)
-    # Airflow 3 формирует scheduled run_id из run_after — конца data interval.
-    return {"dag_id": calendar_config["dag"]["id"],
-            "run_id": "scheduled__" + cal_end.isoformat(), "logical_date": cal_start.isoformat()}
-
-
-def validate_reference(reference, calendar_config):
-    if not isinstance(reference, dict) or set(reference) != {"dag_id", "run_id", "logical_date"}:
-        raise ValueError("Нужны точные dag_id/run_id/logical_date календаря")
-    if reference["dag_id"] != calendar_config["dag"]["id"]:
-        raise ValueError("Ссылка указывает не на DAG владельца календаря")
-    if not isinstance(reference["run_id"], str) or not reference["run_id"].strip():
-        raise ValueError("Нет upstream run_id")
-    return {**reference, "logical_date": utc_timestamp(reference["logical_date"]).isoformat()}
+# Пустой реестр, повтор id или некорректный интервал блокируют запись.
+CHECK_SQL = """SELECT
+    count() AS promos,
+    count() - uniqExact(id) AS duplicate_ids,
+    countIf(id <= 0) AS invalid_ids,
+    countIf(started_at IS NULL OR finished_at IS NULL OR finished_at <= started_at) AS invalid_intervals
+FROM silver.b2b_marketing_sale"""
 
 
-def checked_calendar_receipt(checked, reference):
-    """Written XCom не заменяет успешный DQ того же запуска."""
-    if not isinstance(checked, dict) or checked.get("dq_status") != "passed":
-        raise ValueError("Нет успешного DQ receipt календаря; latest не используется")
-    if (checked.get("dag_id"), checked.get("run_id")) != (reference["dag_id"], reference["run_id"]):
-        raise ValueError("DQ receipt относится к другому запуску календаря")
-    receipt = checked.get("receipt")
-    if not isinstance(receipt, dict) or receipt.get("status") != "written":
-        raise ValueError("DQ не содержит receipt записи календаря")
-    if receipt.get("source_manifest_id") != reference["run_id"]:
-        raise ValueError("Calendar manifest не совпадает с upstream run_id")
-    return receipt
+def capture_time() -> datetime:
+    return datetime.now(timezone.utc).replace(microsecond=0)
 
 
-def execute_load(config, repo_root, run_id, mode, reference, checked, *,
-                 catalog=None, query_records=None, now=None):
-    """Проверить upstream DQ и служебные таблицы для regular/manual."""
-    if mode not in ("regular", "manual"):
-        raise ValueError("Неверный режим полной загрузки событий")
-    if not isinstance(run_id, str) or not run_id.strip():
-        raise ValueError("Нужен run_id событий")
-    reference = validate_reference(reference, _calendar_config(config, repo_root))
-    receipt = checked_calendar_receipt(checked, reference)
-    if catalog is None:
-        from dq.results_writer import load_results_catalog
-        catalog = load_results_catalog(config["table"]["catalog"])
-    for relative in ("dq/results/config.yaml", "feature_stats/results/config.yaml"):
-        service = yaml.safe_load((Path(repo_root) / relative).read_text(encoding="utf-8"))
-        identifier = target_ref(service, catalog.name)
-        if not catalog.table_exists(identifier):
-            raise ValueError(f"Нет служебной таблицы {identifier}: сначала применить миграции")
-        catalog.load_table(identifier)
-    captured = (now or datetime.now(timezone.utc)).replace(microsecond=0)
-    result = load_events(config, catalog, repo_root, calendar_receipt=receipt,
-                         source_manifest_id=run_id, ingested_at=captured,
-                         query_records=query_records)
-    result["upstream_dq"] = {"dag_id": reference["dag_id"], "run_id": reference["run_id"]}
-    logger.info("События записаны: mode=%s, rows=%s, snapshot=%s",
-                mode, result["rows_written"], result["snapshot_id"])
-    return result
+def records_to_arrow(rows, columns, schema: pa.Schema, constants: dict) -> pa.Table:
+    names = [name for name, _ in columns]
+    values = dict(zip(names, zip(*rows))) if rows else {name: () for name in names}
+    arrays = []
+    for field in schema:
+        column = values.get(field.name)
+        if column is None:
+            column = [constants.get(field.name)] * len(rows)
+        if pa.types.is_timestamp(field.type):
+            arrays.append(pa.array(column, type=pa.timestamp(field.type.unit, "UTC")).cast(field.type))
+        else:
+            arrays.append(pa.array(column, type=field.type))
+    return pa.Table.from_arrays(arrays, schema=schema)
+
+
+def load_table(table_config: dict, catalog):
+    return catalog.load_table((table_config["schema"], table_config["name"]))
+
+
+def holiday_events(calendar: pa.Table, schema: pa.Schema, constants: dict) -> pa.Table:
+    """Строка на каждую дату календаря с is_public_holiday = TRUE."""
+    holidays = calendar.filter(pc.fill_null(calendar["is_public_holiday"], False))
+    ids = pc.cast(holidays["date"], pa.string())
+    columns = {
+        "date": holidays["date"],
+        "event_code": pc.binary_join_element_wise(f"calendar:{CALENDAR_ID}:", ids, ""),
+        "source_kind": pa.repeat("calendar", holidays.num_rows),
+        "calendar_id": pa.repeat(CALENDAR_ID, holidays.num_rows),
+        "source_event_id": ids,
+        "event_name": holidays["holiday_name"],
+    }
+    arrays = []
+    for field in schema:
+        if field.name in columns:
+            arrays.append(pc.cast(columns[field.name], field.type))
+        else:
+            arrays.append(pa.array([constants.get(field.name)] * holidays.num_rows, type=field.type))
+    return pa.Table.from_arrays(arrays, schema=schema)
+
+
+def replace_table(table, data: pa.Table) -> None:
+    """Атомарно заменить всё содержимое; пустой захват не удаляет прежние данные."""
+    from dq.results_writer import run_iceberg_commit_with_retry
+
+    if data.num_rows == 0:
+        raise ValueError(f"{table.name()}: пустой захват, таблица не перезаписана")
+
+    def commit() -> None:
+        table.refresh()
+        table.overwrite(data)
+
+    run_iceberg_commit_with_retry(commit, f"replace {table.name()}")
+    logger.info("%s: записано %d строк", table.name(), data.num_rows)
+
+
+def load(config: dict, calendar_config: dict, *, run_id: str, client=None, catalog=None) -> dict:
+    from dq.results_writer import load_results_catalog
+
+    catalog = catalog or load_results_catalog(config["table"]["catalog"])
+    table = load_table(config["table"], catalog)
+    schema = table.schema().as_arrow()
+    captured = capture_time()
+    constants = {"source_manifest_id": run_id, "ingested_at": captured}
+
+    calendar = load_table(calendar_config["table"], catalog).scan(
+        selected_fields=("date", "is_public_holiday", "holiday_name")
+    ).to_arrow()
+    if calendar.num_rows == 0:
+        raise ValueError("Календарь пуст: события не перезаписаны")
+
+    def fetch(connection):
+        (promos, duplicates, invalid_ids, invalid_intervals), = connection.execute(CHECK_SQL)
+        if not promos or duplicates or invalid_ids or invalid_intervals:
+            raise ValueError(
+                f"Реестр акций некорректен: rows={promos}, duplicate_ids={duplicates}, "
+                f"invalid_ids={invalid_ids}, invalid_intervals={invalid_intervals}"
+            )
+        return connection.execute(PROMO_SQL, with_column_types=True)
+
+    if client is None:
+        from airflow_commons.hooks.clickhouse_hook import ClickHouseHook
+
+        hook = ClickHouseHook(clickhouse_conn_id=config["source"]["clickhouse_conn_id"], use_numpy=False)
+        with hook.get_conn() as connection:
+            rows, columns = fetch(connection)
+    else:
+        rows, columns = fetch(client)
+    promos = records_to_arrow(rows, columns, schema, constants)
+    # Дни акций ограничены покрытием календаря.
+    promos = promos.filter(pc.is_in(promos["date"], value_set=calendar["date"]))
+    events = pa.concat_tables([holiday_events(calendar, schema, constants), promos])
+    replace_table(table, events)
+    return {"ingested_at": captured.strftime("%Y-%m-%d %H:%M:%S"), "rows": events.num_rows}

@@ -1,7 +1,7 @@
-"""Типы raw/USD, seller grain и точная копия E3 без внешних подключений."""
+"""Точная копия E3 без внешних подключений и общие helpers restored-тестов."""
 
 from datetime import date, datetime, timezone
-from decimal import Decimal, localcontext
+from decimal import Decimal
 from importlib import import_module
 from pathlib import Path
 import re
@@ -13,8 +13,6 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PATHS = {
-    "sales": "layers/silver/sku_id/demand_sales_daily/v1",
-    "finance": "layers/silver/sku_id_seller_key/demand_finance_daily/v1",
     "restored": "layers/silver/sku_id_estimate_kind/demand_restored_daily/v1",
 }
 DAY = date(2026, 9, 6)
@@ -35,7 +33,7 @@ def schema(kind):
              "DECIMAL(38,0)": pa.decimal128(38, 0)}
     ddl = (ROOT / PATHS[kind] / "migrations/create_table.sql").read_text()
     fields = re.findall(r"^    (\w+) (DATE|BIGINT|TINYINT|INT|DOUBLE|STRING|TIMESTAMP|DECIMAL\(38,0\))( NOT NULL)? COMMENT", ddl, re.M)
-    assert len(fields) == {"sales": 38, "finance": 60, "restored": 31}[kind]
+    assert len(fields) == {"restored": 31}[kind]
     return pa.schema([pa.field(n, types[t], nullable=not required) for n, t, required in fields])
 
 
@@ -50,13 +48,13 @@ def utc_timestamps(value):
     ])
 
 
-def test_finance_accepts_iceberg_utc_timestamps():
-    target = utc_timestamps(schema("finance"))
-    result = module("finance", "preparation").prepare_batch(
-        raw("finance"),
+def test_restored_accepts_iceberg_utc_timestamps():
+    target = utc_timestamps(schema("restored"))
+    result = module("restored", "preparation").prepare_batch(
+        raw("restored"),
         target,
-        day=DAY,
-        fx=fx(),
+        selected=selected(),
+        run=run(),
         manifest="capture-1",
         version="v1",
         ingested_at=CAPTURE,
@@ -64,14 +62,9 @@ def test_finance_accepts_iceberg_utc_timestamps():
     assert result.schema == target
 
 
-def fx():
-    return {"date": DAY, "fx_rate_date": DAY, "fx_rate_uzs_per_usd": 10.0,
-            "fx_rate_source": "exact_date", "fx_captured_at": CAPTURE}
-
-
 def raw(kind, changes=None):
     prep, target = module(kind, "preparation"), schema(kind)
-    columns = prep.RAW_COLUMNS if kind != "restored" else [
+    columns = [
         n for n in target.names if n not in {*prep.LINEAGE, "source_manifest_id", "source_contract_version", "ingested_at"}
     ]
     values = {}
@@ -102,17 +95,13 @@ def raw(kind, changes=None):
         elif pa.types.is_string(dtype):
             value = "UZS" if name == "currency_code" else "v1"
         elif pa.types.is_decimal(dtype):
-            value = Decimal("-20") if kind == "finance" else Decimal("10")
+            value = Decimal("10")
         elif name.endswith("_usd"):
-            value = -2.0 if kind == "finance" else 1.0
+            value = 1.0
         elif pa.types.is_floating(dtype):
             value = 1.0
         else:
-            value = -2 if kind == "finance" and name.startswith("finance_") else 1
-        if kind == "sales" and name.rsplit("_", 1)[-1] in ("fbs", "dbs", "other", "unknown"):
-            value = Decimal(0) if pa.types.is_decimal(dtype) else 0
-        if kind == "sales" and name.endswith(("_fbs_usd", "_dbs_usd", "_other_usd", "_unknown_usd")):
-            value = 0.0
+            value = 1
         values[name] = value
     values.update(changes or {})
     return pa.Table.from_arrays([
@@ -135,7 +124,7 @@ def run():
 
 def prepare(kind, source=None, **overrides):
     args = {"manifest": "capture-1", "version": "v1", "ingested_at": CAPTURE}
-    args.update({"selected": selected(), "run": run()} if kind == "restored" else {"day": DAY, "fx": fx()})
+    args.update({"selected": selected(), "run": run()})
     args.update(overrides)
     return module(kind, "preparation").prepare_batch(
         raw(kind) if source is None else source, schema(kind), **args)
@@ -148,60 +137,6 @@ def test_parquet_round_trip_and_required_schema(kind, tmp_path):
     pq.write_table(result, target)
     assert pq.read_table(target).equals(result)
     module(kind, "preparation").validate_schema(schema(kind))
-
-
-def test_finance_signed_raw_and_usd_survive_without_clipping():
-    result = prepare("finance").to_pylist()[0]
-    assert result["finance_units_net"] == -2
-    assert result["finance_gmv_net"] == Decimal("-20")
-    assert result["finance_gmv_net_usd"] == -2.0
-
-
-@pytest.mark.parametrize("seller,key", [(None, "unknown"), (12, "seller:12")])
-def test_finance_unknown_seller_is_preserved(seller, key):
-    row = prepare("finance", raw("finance", {"seller_id": seller, "seller_key": key})).to_pylist()[0]
-    assert row["seller_id"] == seller and row["seller_key"] == key
-
-
-@pytest.mark.parametrize("seller,key", [(0, "unknown"), (-7, "seller:-7"), (7, "unknown"), (None, "seller:7")])
-def test_finance_invalid_attribution_blocks(seller, key):
-    with pytest.raises(ValueError):
-        prepare("finance", raw("finance", {"seller_id": seller, "seller_key": key}))
-
-
-@pytest.mark.parametrize("kind,field", [("sales", "sales_gmv"), ("finance", "finance_gmv_net")])
-def test_no_float_to_raw_decimal_coercion(kind, field):
-    source = raw(kind)
-    source = source.set_column(source.column_names.index(field), field, pa.array([0.1]))
-    with pytest.raises(ValueError, match="округлять"):
-        prepare(kind, source)
-
-
-def test_sales_exact_channel_sum_above_decimal_context_precision():
-    huge = Decimal("12345678901234567890123456789012345678")
-    source = raw("sales", {"sales_gmv": huge, "sales_gmv_fbo": huge,
-                           "sales_gmv_usd": float(huge)/10, "sales_gmv_fbo_usd": float(huge)/10})
-    with localcontext() as context:
-        context.prec = 6
-        result = prepare("sales", source)
-    assert result["sales_gmv"][0].as_py() == huge
-
-
-def test_sales_channel_mismatch_and_unknown_day_are_not_zero():
-    with pytest.raises(ValueError, match="Каналы"):
-        prepare("sales", raw("sales", {"sales_gmv_dbs": Decimal(2), "sales_gmv_dbs_usd": 0.2}))
-    with pytest.raises(ValueError, match="разложения"):
-        prepare("sales", raw("sales", {"sales_gmv_dbs": None, "sales_gmv_dbs_usd": None}))
-
-
-@pytest.mark.parametrize("kind", ["sales", "finance"])
-def test_unavailable_rate_keeps_raw_and_requires_null_usd(kind):
-    changes = {n + "_usd": None for n in module(kind, "preparation").MONEY}
-    receipt = fx() | {"fx_rate_date": None, "fx_rate_uzs_per_usd": None, "fx_rate_source": "unavailable"}
-    result = prepare(kind, raw(kind, changes), fx=receipt)
-    assert result[module(kind, "preparation").MONEY[0]][0].as_py() is not None
-    with pytest.raises(ValueError, match="USD"):
-        prepare(kind, fx=receipt)
 
 
 @pytest.mark.parametrize("status", ["running", "written", "failed", "success"])
@@ -231,16 +166,6 @@ def test_duplicate_source_rows_block(kind):
         prepare(kind, pa.concat_tables([source, source]))
 
 
-def test_finance_sql_uses_event_date_without_cohort_filters_or_final():
-    sql = module("finance", "query").source_query(config("finance"), DAY, fx_available=True)
-    assert "WHERE dt = toDate('2026-09-06')" in sql
-    assert "date_created" not in sql and "FINAL" not in sql and "JOIN" not in sql
-    assert "GROUP BY sku_id, seller_key, seller_id" in sql
-    assert "sum(toDecimal128(net_gmv, 0))" in sql
-    assert "seller_id > 0" in sql and "nullIf(seller_id, 0)" in sql
-    assert sql.count("daily_uzs_to_usd(date, ") == 20
-
-
 def test_e3_query_uses_native_params_and_never_latest_or_quality_filter():
     sql = module("restored", "query").source_query(config("restored"))
     assert "FINAL" in sql and "PREWHERE prediction_date = %(prediction_date)s AND run_id = %(run_id)s" in sql
@@ -254,3 +179,25 @@ def test_e3_selector_requires_exact_run(run_id):
     with pytest.raises(ValueError):
         module("restored", "query").selection(
             run_id=run_id, prediction_date=date(2026, 9, 8), start=DAY, end=date(2026, 9, 7))
+
+
+def wire(source, kind):
+    columns = []
+    rows = source.to_pylist()
+    for field in source.schema:
+        if pa.types.is_date(field.type):
+            dtype = "Date"
+        elif pa.types.is_integer(field.type):
+            dtype = "Int64"
+        elif pa.types.is_decimal(field.type):
+            dtype = "Decimal(38, 0)"
+        elif pa.types.is_floating(field.type):
+            dtype = "Float64"
+        elif pa.types.is_timestamp(field.type):
+            dtype = "DateTime64(6, 'UTC')"
+        else:
+            dtype = "String"
+        if source[field.name].null_count:
+            dtype = f"Nullable({dtype})"
+        columns.append((field.name, dtype))
+    return [[row[name] for name, _ in columns] for row in rows], columns

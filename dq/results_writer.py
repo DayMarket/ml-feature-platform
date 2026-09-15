@@ -32,9 +32,9 @@ S3_CONNECTION_ID = "spark_ycs_connection"
 ICEBERG_LOCK_CHECK_MIN_WAIT_SECONDS = 2
 ICEBERG_LOCK_CHECK_MAX_WAIT_SECONDS = 60
 ICEBERG_LOCK_CHECK_RETRIES = 10
-ICEBERG_COMMIT_RETRY_ATTEMPTS = 8
+ICEBERG_COMMIT_RETRY_ATTEMPTS = 15
 ICEBERG_COMMIT_RETRY_INITIAL_SECONDS = 1.0
-ICEBERG_COMMIT_RETRY_MAX_SECONDS = 30.0
+ICEBERG_COMMIT_RETRY_MAX_SECONDS = 60.0
 
 logger = logging.getLogger("airflow.task")
 T = TypeVar("T")
@@ -191,13 +191,28 @@ def write_results(
     settings: DqSettings,
     meta: RunMeta,
 ) -> None:
-    rows = build_rows(outcome, ctx, settings, meta)
+    write_results_batch(repo_root, [(outcome, ctx)], settings, meta)
+
+
+def write_results_batch(
+    repo_root: Path,
+    checked: list[tuple[DqRunOutcome, RenderContext]],
+    settings: DqSettings,
+    meta: RunMeta,
+) -> None:
+    """Записать результаты нескольких партиций одним optimistic commit.
+
+    Перезаписываются строки этого DAG'а за проверенные даты. Один commit на таску,
+    а не на партицию, снижает конкуренцию за общую таблицу результатов.
+    """
+    rows = [row for outcome, ctx in checked for row in build_rows(outcome, ctx, settings, meta)]
     if not rows:
         return
 
     import pyarrow as pa
-    from pyiceberg.expressions import And, EqualTo
+    from pyiceberg.expressions import And, EqualTo, In
 
+    dates = sorted({ctx.partition_date for _, ctx in checked})
     schema, name = results_table_ref(repo_root)
     catalog = load_results_catalog(results_catalog_name(repo_root))
     identifier = (schema, name)
@@ -207,13 +222,10 @@ def write_results(
         arrow_table = pa.Table.from_pylist(rows, schema=table.schema().as_arrow())
         table.overwrite(
             arrow_table,
-            overwrite_filter=And(
-                EqualTo("date", ctx.partition_date),
-                EqualTo("dag_id", meta.dag_id),
-            ),
+            overwrite_filter=And(In("date", dates), EqualTo("dag_id", meta.dag_id)),
         )
 
     run_iceberg_commit_with_retry(
         overwrite_current_results,
-        f"write DQ results for dag_id={meta.dag_id} date={ctx.partition_date}",
+        f"write DQ results for dag_id={meta.dag_id} dates={dates[0]}..{dates[-1]}",
     )

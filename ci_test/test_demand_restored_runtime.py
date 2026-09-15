@@ -4,9 +4,9 @@ from datetime import timedelta
 
 import pytest
 
-from ci_test.test_demand_daily_preparation import CAPTURE, DAY, module
+from ci_test.test_demand_restored_preparation import CAPTURE, DAY, module
 from ci_test.test_demand_restored_writer import bundle, target, write  # noqa: F401
-from ci_test.test_demand_sales_finance_runtime import wire
+from ci_test.test_demand_restored_preparation import wire
 
 
 class Client:

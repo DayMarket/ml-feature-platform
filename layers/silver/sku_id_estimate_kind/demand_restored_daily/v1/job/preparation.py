@@ -148,7 +148,9 @@ def prepare_batch(raw, schema, *, selected, run, manifest, version, ingested_at)
 def validate_batch(result, schema, *, selected, run, manifest, version, ingested_at):
     validate_schema(schema)
     lineage = validate_run(run, selected)
-    captured = utc_naive(ingested_at)
+    captured = pa.scalar(
+        utc_naive(ingested_at), type=schema.field("ingested_at").type
+    ).as_py()
     if not isinstance(result, pa.Table) or not result.schema.equals(schema, check_metadata=False):
         raise ValueError("Неверная схема готовой порции E3")
     if any(not isinstance(v, str) or not v.strip() for v in (manifest, version)):

@@ -1,4 +1,4 @@
-"""Загрузить полный календарь штатным или ручным запуском одного DAG."""
+"""Календарь demand forecast: полная замена копией ClickHouse silver.calendar."""
 
 from datetime import timedelta
 from pathlib import Path
@@ -20,31 +20,16 @@ from dq.task import build_dq_task  # noqa: E402
 from feature_stats.task import build_feature_stats_task  # noqa: E402
 
 CONFIG = yaml.safe_load(Path(CONFIG_PATH).read_text(encoding="utf-8"))
-CAPTURE_TIMESTAMP = '{{ (ti.xcom_pull(task_ids="write_calendar", include_prior_dates=False) or {}).get("ingested_at", "") }}'
+RUNTIME = CONFIG["runtime"]
+CAPTURE_TIMESTAMP = '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
 
 
 def executor_config():
-    runtime = CONFIG["runtime"]
-    resources = {"cpu": str(runtime["cpu"]), "memory": str(runtime["memory"])}
+    resources = {"cpu": str(RUNTIME["cpu"]), "memory": str(RUNTIME["memory"])}
     return {"pod_override": k8s.V1Pod(spec=k8s.V1PodSpec(containers=[
-        k8s.V1Container(name="base", image=runtime["image"],
+        k8s.V1Container(name="base", image=RUNTIME["image"],
                         resources=k8s.V1ResourceRequirements(requests=resources, limits=resources))
     ]))}
-
-
-def default_args():
-    return {
-        "owner": CONFIG["dag"]["owner"],
-        "retries": 1,
-        "retry_delay": timedelta(minutes=5),
-        "execution_timeout": timedelta(minutes=20),
-        "executor_config": executor_config(),
-        "on_failure_callback": send_oncall_notification(
-            team=CONFIG["alerts"]["team"],
-            oncall_webhook_conn_id=CONFIG["alerts"]["oncall_webhook_conn_id"],
-            severity=CONFIG["alerts"]["severity"],
-        ),
-    }
 
 
 @dag(
@@ -54,29 +39,29 @@ def default_args():
     catchup=CONFIG["dag"]["catchup"],
     max_active_runs=1,
     is_paused_upon_creation=True,
-    default_args=default_args(),
+    default_args={
+        "owner": CONFIG["dag"]["owner"],
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+        "execution_timeout": timedelta(minutes=30),
+        "executor_config": executor_config(),
+        "on_failure_callback": send_oncall_notification(
+            team=CONFIG["alerts"]["team"],
+            oncall_webhook_conn_id=CONFIG["alerts"]["oncall_webhook_conn_id"],
+            severity=CONFIG["alerts"]["severity"],
+        ),
+    },
     tags=["feature-platform", CONFIG["dag"]["group_tag"], CONFIG["dag"]["team"], "silver"],
 )
 def calendar_dag():
-    @task(task_id="write_calendar", multiple_outputs=False)
-    def write_calendar():
-        from layers.silver.date.demand_calendar.v1.job.runtime import execute_load
-        context = get_current_context()
-        conf = context["dag_run"].conf or {}
-        if set(conf) - {"mode", "openlineage"}:
-            raise ValueError("Календарь загружается целиком; неизвестные параметры запуска")
-        raw_type = context["dag_run"].run_type
-        run_type = getattr(raw_type, "value", raw_type)
-        mode = conf.get("mode", "regular")
-        if ((run_type, mode) != ("scheduled", "regular")
-                and (run_type, mode) != ("manual", "manual")):
-            raise ValueError("Scheduled требует regular, ручной запуск — mode=manual")
-        return execute_load(CONFIG, REPO_ROOT, context["run_id"], mode)
+    @task(task_id="write")
+    def write() -> dict:
+        from layers.silver.date.demand_calendar.v1.job.runtime import load
 
-    loaded = write_calendar()
-    dq_task = build_dq_task(
-        CONFIG_PATH, REPO_ROOT, receipt_task_id="write_calendar"
-    )(CAPTURE_TIMESTAMP)
+        return load(CONFIG, run_id=get_current_context()["run_id"])
+
+    loaded = write()
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(CAPTURE_TIMESTAMP)
     stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(CAPTURE_TIMESTAMP)
     loaded >> [dq_task, stats_task]
 

@@ -8,9 +8,7 @@ table:
     team: team:operations
 
 source:
-  engine: clickhouse
-  schema: silver
-  name: calendar
+  # ClickHouse silver.calendar, полный справочник.
   calendar_id: uz_official
   clickhouse_conn_id: clickhouse_dwh_team_logistics
 
@@ -19,7 +17,6 @@ runtime:
   cpu: "1"
   memory: 2Gi
 
-# Один исполнитель записи для штатных и ручных полных загрузок.
 dag:
   id: feature-platform.layers.silver.date.demand_calendar
   group_tag: demand-forecast
@@ -45,7 +42,7 @@ dq:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ (ti.xcom_pull(task_ids="write_calendar", include_prior_dates=False) or {}).get("ingested_at", "") }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
   tests:
     - name: row_count_growth
       enabled: false
@@ -77,5 +74,5 @@ feature_stats:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ (ti.xcom_pull(task_ids="write_calendar", include_prior_dates=False) or {}).get("ingested_at", "") }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
   exclude_columns: []
