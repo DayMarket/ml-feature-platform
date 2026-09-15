@@ -100,6 +100,7 @@ def build_dq_task(
     receipt_task_id: str | None = None,
     range_guard: Callable | None = None,
     task_guard: Callable | None = None,
+    failure_callback_enabled: bool = True,
 ) -> Callable:
     """Возвращает штатную dq-таску; opt-in range проверяет каждый записанный день."""
     from airflow.providers.trino.hooks.trino import TrinoHook
@@ -108,6 +109,8 @@ def build_dq_task(
 
     config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
     settings = load_dq_settings(config)
+    if not isinstance(failure_callback_enabled, bool):
+        raise DqConfigError("failure_callback_enabled должен быть bool")
     if receipt_task_id is not None:
         if range_receipt_task_id is not None:
             raise DqConfigError("receipt_task_id не совмещается с range receipt")
@@ -126,15 +129,18 @@ def build_dq_task(
             raise DqConfigError("Нужен task_id записи диапазона")
         validate_settings(settings)
     alerts = config["alerts"]
+    failure_callback = None
+    if failure_callback_enabled:
+        failure_callback = send_oncall_notification(
+            team=alerts["team"],
+            oncall_webhook_conn_id=alerts["oncall_webhook_conn_id"],
+            severity=alerts["severity"],
+        )
 
     @task(
         task_id=TASK_ID,
         retries=1,
-        on_failure_callback=send_oncall_notification(
-            team=alerts["team"],
-            oncall_webhook_conn_id=alerts["oncall_webhook_conn_id"],
-            severity=alerts["severity"],
-        ),
+        on_failure_callback=failure_callback,
     )
     @guarded_task(task_guard if task_guard is not None else range_guard)
     def dq(partition_date_value: str) -> dict | None:

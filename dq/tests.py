@@ -400,6 +400,25 @@ def _render_non_negative(spec: TestSpec, ctx: RenderContext) -> RenderedTest:
     )
 
 
+def _render_finite(spec: TestSpec, ctx: RenderContext) -> RenderedTest:
+    columns = tuple(str(column) for column in spec.params["columns"])
+    clauses = []
+    for column in columns:
+        quoted = quote_identifier(column)
+        if spec.params.get("ignore_nulls", True):
+            clauses.append(f"({quoted} IS NOT NULL AND NOT is_finite({quoted}))")
+        else:
+            clauses.append(f"({quoted} IS NULL OR NOT is_finite({quoted}))")
+    violation = " OR ".join(clauses)
+    return RenderedTest(
+        spec=spec,
+        test_key=_columns_key("finite", columns),
+        sql=_count_query(ctx, spec, violation),
+        sample_sql=_sample_query(ctx, spec, violation, columns),
+        threshold="all non-NULL values are finite",
+    )
+
+
 def _render_string_not_blank(spec: TestSpec, ctx: RenderContext) -> RenderedTest:
     columns = tuple(str(column) for column in spec.params["columns"])
     clauses = []
@@ -529,6 +548,57 @@ def _render_row_count_matches_reference(spec: TestSpec, ctx: RenderContext) -> R
     )
 
 
+def _render_group_max_equals(spec: TestSpec, ctx: RenderContext) -> RenderedTest:
+    column_name = str(spec.params["column"])
+    column = quote_identifier(column_name)
+    group_by = tuple(str(value) for value in spec.params["group_by"])
+    projection = ", ".join(quote_identifier(value) for value in group_by)
+    expected = quote_literal(spec.params["value"])
+    tolerance = float(spec.params.get("tolerance", 0.0))
+    filters = [scope_predicate(ctx)]
+    if spec.where:
+        filters.append(f"({spec.where})")
+
+    violations = [
+        f"max({column}) IS NULL",
+        f"abs(CAST(max({column}) AS DOUBLE) - CAST({expected} AS DOUBLE)) > {tolerance}",
+    ]
+    if spec.params.get("ignore_all_null_groups", True):
+        violations[0] = f"count({column}) > 0 AND ({' OR '.join(violations)})"
+        having = violations[0]
+    else:
+        having = " OR ".join(violations)
+
+    grouped = (
+        f"  SELECT {projection}, max({column}) AS observed_max\n"
+        f"  FROM {table_ref(ctx)}\n"
+        f"  WHERE {' AND '.join(filters)}\n"
+        f"  GROUP BY {projection}\n"
+        f"  HAVING {having}\n"
+    )
+    sql = (
+        "SELECT count(*) AS failed_rows, CAST(count(*) AS DOUBLE) AS observed\n"
+        "FROM (\n"
+        f"{grouped}"
+        ") AS violating_groups"
+    )
+    sample_sql = (
+        f"SELECT {projection}, max({column}) AS observed_max\n"
+        f"FROM {table_ref(ctx)}\n"
+        f"WHERE {' AND '.join(filters)}\n"
+        f"GROUP BY {projection}\n"
+        f"HAVING {having}\n"
+        f"LIMIT {int(ctx.sample_rows)}"
+    )
+    return RenderedTest(
+        spec=spec,
+        test_key=f"group_max_equals[{column_name}|{','.join(group_by)}]",
+        sql=sql,
+        sample_sql=sample_sql,
+        threshold=f"max({column_name}) per group = {spec.params['value']} ± {tolerance}",
+    )
+
+
 RENDERERS = {
     "primary_key_not_null": _render_primary_key_not_null,
     "primary_key_unique": _render_primary_key_unique,
@@ -542,10 +612,12 @@ RENDERERS = {
     "not_accepted_values": _render_not_accepted_values,
     "accepted_range": _render_accepted_range,
     "non_negative": _render_non_negative,
+    "finite": _render_finite,
     "string_not_blank": _render_string_not_blank,
     "distinct_count_between": _render_distinct_count_between,
     "columns_sum_equals": _render_columns_sum_equals,
     "row_count_matches_reference": _render_row_count_matches_reference,
+    "group_max_equals": _render_group_max_equals,
     "expression_is_true": _render_expression_is_true,
     "relationships": _render_relationships,
 }
