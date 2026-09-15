@@ -1,10 +1,17 @@
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
+from types import ModuleType
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from feature_stats.task import TASK_ID, build_stats_context, fetch_rows, partition_instant
+from feature_stats.task import (
+    TASK_ID,
+    build_feature_stats_task,
+    build_stats_context,
+    fetch_rows,
+    partition_instant,
+)
 
 DAILY_CONFIG = {
     "table": {
@@ -152,6 +159,35 @@ def test_fetch_rows_closes_everything_even_when_trino_fails() -> None:
         raise AssertionError("ошибка Trino обязана долетать до таски")
     assert hook.connection.cursor_object.closed
     assert hook.connection.closed
+
+
+def test_failure_callback_can_be_temporarily_disabled(monkeypatch) -> None:
+    options = []
+
+    def fake_module(name: str, **attributes) -> None:
+        module = ModuleType(name)
+        module.__dict__.update(attributes)
+        monkeypatch.setitem(sys.modules, name, module)
+
+    def decorator(**kwargs):
+        options.append(kwargs)
+        return lambda function: function
+
+    def unexpected_notification(**kwargs):
+        raise AssertionError("send_oncall_notification не должен вызываться")
+
+    fake_module("airflow.providers.trino.hooks.trino", TrinoHook=object)
+    fake_module("airflow.sdk", get_current_context=dict, task=decorator)
+    fake_module(
+        "airflow_commons.helpers.oncall",
+        send_oncall_notification=unexpected_notification,
+    )
+    build_feature_stats_task(
+        "layers/gold/account_id_brand_id/account_brand_features/v1/config.yaml",
+        ".",
+        failure_callback_enabled=False,
+    )
+    assert options[-1]["on_failure_callback"] is None
 
 
 def main() -> int:
