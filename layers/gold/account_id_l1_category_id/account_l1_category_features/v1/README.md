@@ -38,9 +38,9 @@ l1_category_id в G2 не попадают.
 
 Источник: iceberg.silver.feature_platform_account_product_session_action_counts_12h.
 
-Одна строка S2c считается один раз в каждом 12-часовом срезе. Одинаковый
-session_id,product_id,event_type, попавший в разные срезы, учитывается в каждом
-срезе; n_events не суммируется.
+Перед агрегацией строки S2c дедуплицируются на полном 28-дневном окне по
+account_id,session_id,product_id,event_type. Одна товаро-сессия учитывается один
+раз, даже если пересекает границу двух 12-часовых срезов; n_events не суммируется.
 
 PRODUCT_VIEW, ADD_TO_CART и ADD_TO_FAVORITES формируют counts и account-level
 ratios за 3, 7, 14 и 28 дней.

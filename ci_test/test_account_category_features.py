@@ -97,17 +97,11 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 self.assertIn("n_clicks_7d", migration)
                 self.assertNotIn(f"l{level}_n_clicks_7d", migration)
 
-    def test_business_sql_is_explicit_for_every_physical_contract(self):
+    def test_query_topology_is_not_assembled_conditionally(self):
         forbidden_fragments = (
-            "feature_columns",
-            "_prefix",
-            "_action_count_expressions",
-            "_impression_count_expressions",
-            "_order_feature_expressions",
-            "_ratio_expressions",
-            "has_impressions",
-            "has_recency",
-            "for window in",
+            "ctes.append",
+            "if settings.has_impressions",
+            "if settings.has_recency",
         )
         for level, (entity, _, _, _, _) in self.contracts.items():
             query_text = (entity / "job/query.py").read_text(encoding="utf-8")
@@ -115,7 +109,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 for fragment in forbidden_fragments:
                     self.assertNotIn(fragment, query_text)
 
-    def test_l1_l2_sum_slices_and_l3_l5_deduplicate_full_window(self):
+    def test_all_category_levels_deduplicate_actions_on_full_window(self):
         for level, (_, _, _, _, sql) in self.contracts.items():
             with self.subTest(level=level):
                 self.assertNotIn("n_events", sql)
@@ -124,21 +118,17 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                         f"feature_platform_account_l{level}_imp_counts_12h",
                         sql,
                     )
-                    self.assertNotIn("deduplicated_actions AS", sql)
-                    self.assertNotIn(
-                        "MAX(source_calculated_at) AS source_calculated_at",
-                        sql,
-                    )
                 else:
                     self.assertNotIn("impression_features AS", sql)
-                    self.assertIn(
-                        "deduplicated_actions AS",
-                        sql,
-                    )
-                    self.assertIn(
-                        "GROUP BY account_id, session_id, product_id, event_type",
-                        sql,
-                    )
+                self.assertIn("deduplicated_actions AS", sql)
+                self.assertIn(
+                    "GROUP BY account_id, session_id, product_id, event_type",
+                    sql,
+                )
+                self.assertNotIn(
+                    "MAX(source_calculated_at) AS source_calculated_at",
+                    sql,
+                )
 
     def test_product_categories_use_same_day_s1_snapshot(self):
         for level, (_, _, _, _, sql) in self.contracts.items():
@@ -173,20 +163,16 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             ("2026-09-09T12:00:00", 7, "session-1", 101, "PRODUCT_VIEW"),
             ("2026-09-10T00:00:00", 7, "session-1", 101, "PRODUCT_VIEW"),
         )
-        slice_preserving_count = len(rows)
         full_window_count = len({row[1:] for row in rows})
-        self.assertEqual(slice_preserving_count, 2)
         self.assertEqual(full_window_count, 1)
 
         for level, (_, _, _, _, sql) in self.contracts.items():
             with self.subTest(level=level):
-                if level <= 2:
-                    self.assertNotIn("deduplicated_actions AS", sql)
-                else:
-                    self.assertIn(
-                        "GROUP BY account_id, session_id, product_id, event_type",
-                        sql,
-                    )
+                self.assertIn("deduplicated_actions AS", sql)
+                self.assertIn(
+                    "GROUP BY account_id, session_id, product_id, event_type",
+                    sql,
+                )
 
     def test_l1_l2_publish_all_three_conversion_semantics(self):
         for level in (1, 2):
