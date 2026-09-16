@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
+GMV_WINDOWS = (3, 7, 14, 28, 60, 90)
+
 
 FEATURE_COLUMNS = (
     "n_clicks_3d",
@@ -52,6 +54,15 @@ def _local_day_start_literal(value: datetime, timezone_name: str) -> str:
     )
 
 
+def _gmv_ratio_expressions() -> str:
+    return ",\n    ".join(
+        f"CASE WHEN account_gmv.account_gmv_{window}d > 0 "
+        f"THEN COALESCE(brand_gmv.gmv_{window}d, 0.0D) / "
+        f"account_gmv.account_gmv_{window}d END AS gmv_{window}d_ratio"
+        for window in GMV_WINDOWS
+    )
+
+
 def build_account_brand_features_query(
     settings: SourceSettings,
     calculated_at: datetime,
@@ -65,6 +76,7 @@ def build_account_brand_features_query(
         calculated_at,
         settings.business_timezone,
     )
+    gmv_ratio_expressions = _gmv_ratio_expressions()
 
     return f"""
 WITH product_brands AS (
@@ -184,12 +196,7 @@ SELECT
     COALESCE(brand_gmv.gmv_28d, 0.0D) AS gmv_28d,
     COALESCE(brand_gmv.gmv_60d, 0.0D) AS gmv_60d,
     COALESCE(brand_gmv.gmv_90d, 0.0D) AS gmv_90d,
-    CASE WHEN account_gmv.account_gmv_3d > 0 THEN COALESCE(brand_gmv.gmv_3d, 0.0D) / account_gmv.account_gmv_3d END AS gmv_3d_ratio,
-    CASE WHEN account_gmv.account_gmv_7d > 0 THEN COALESCE(brand_gmv.gmv_7d, 0.0D) / account_gmv.account_gmv_7d END AS gmv_7d_ratio,
-    CASE WHEN account_gmv.account_gmv_14d > 0 THEN COALESCE(brand_gmv.gmv_14d, 0.0D) / account_gmv.account_gmv_14d END AS gmv_14d_ratio,
-    CASE WHEN account_gmv.account_gmv_28d > 0 THEN COALESCE(brand_gmv.gmv_28d, 0.0D) / account_gmv.account_gmv_28d END AS gmv_28d_ratio,
-    CASE WHEN account_gmv.account_gmv_60d > 0 THEN COALESCE(brand_gmv.gmv_60d, 0.0D) / account_gmv.account_gmv_60d END AS gmv_60d_ratio,
-    CASE WHEN account_gmv.account_gmv_90d > 0 THEN COALESCE(brand_gmv.gmv_90d, 0.0D) / account_gmv.account_gmv_90d END AS gmv_90d_ratio
+    {gmv_ratio_expressions}
 FROM entity_keys entity
 LEFT JOIN click_features clicks
     ON entity.account_id = clicks.account_id

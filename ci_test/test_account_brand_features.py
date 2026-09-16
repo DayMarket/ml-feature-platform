@@ -65,7 +65,9 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertNotIn("BIGINT", migration)
         self.assertNotIn("BIGINT", self.sql)
         self.assertNotIn("n_clicks_3d_ratio", migration_columns)
-        self.assertTrue(all(not column.startswith("bid_") for column in query.FEATURE_COLUMNS))
+        self.assertTrue(
+            all(not column.startswith("bid_") for column in query.FEATURE_COLUMNS)
+        )
 
     def test_feature_namespace_is_not_duplicated_in_physical_columns(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
@@ -73,11 +75,11 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertIn("n_clicks_7d", query.FEATURE_COLUMNS)
         self.assertNotIn("bid_n_clicks_7d", query.FEATURE_COLUMNS)
 
-    def test_business_sql_is_explicit_and_has_no_feature_fragment_builders(self):
+    def test_business_sql_uses_only_targeted_feature_expression_builders(self):
         query_text = (ENTITY / "job/query.py").read_text(encoding="utf-8")
         self.assertNotIn("_click_count_expressions", query_text)
         self.assertNotIn("_gmv_expressions", query_text)
-        self.assertNotIn("_ratio_expressions", query_text)
+        self.assertIn("def _gmv_ratio_expressions()", query_text)
 
     def test_clicks_are_product_session_counts_mapped_through_daily_s1(self):
         self.assertIn(
