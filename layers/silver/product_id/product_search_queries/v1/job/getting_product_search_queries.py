@@ -9,7 +9,7 @@ from job.partition import parse_airflow_timestamp
 
 
 LOOKBACK_DAYS = 14
-MODEL_NAME = "search_unified_model_v9"
+MODEL_NAME = "search_unified_model_v9_cold_start"
 TOP_QUERIES_LIMIT = 200
 
 
