@@ -48,8 +48,61 @@ def _local_day_start_utc_literal(value: datetime, timezone_name: str) -> str:
         value = value.replace(tzinfo=timezone.utc)
     local_value = value.astimezone(ZoneInfo(timezone_name))
     local_day_start = local_value.replace(hour=0, minute=0, second=0, microsecond=0)
-    return local_day_start.astimezone(timezone.utc).strftime(
-        "%Y-%m-%d %H:%M:%S"
+    return local_day_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _action_feature_expressions(calculated_at_local: str) -> str:
+    return ",\n        ".join(
+        "CAST(SUM(CASE "
+        f"WHEN event_type = '{event_type}' "
+        f"AND last_received_at >= TIMESTAMP '{calculated_at_local}' "
+        f"- INTERVAL {window} DAYS "
+        "THEN 1 ELSE 0 END) AS INT) "
+        f"AS n_{signal}_{window}d"
+        for signal, event_type in ACTION_EVENT_TYPES.items()
+        for window in ACTION_WINDOWS
+    )
+
+
+def _order_count_expressions(calculated_at_utc: str) -> str:
+    return ",\n        ".join(
+        "CAST(COUNT(DISTINCT CASE "
+        f"WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' "
+        f"- INTERVAL {window} DAYS "
+        "THEN order_id END) AS INT) "
+        f"AS n_orders_{window}d"
+        for window in ORDER_WINDOWS
+    )
+
+
+def _gmv_expressions(calculated_at_utc: str) -> str:
+    return ",\n        ".join(
+        "CAST(SUM(CASE "
+        f"WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' "
+        f"- INTERVAL {window} DAYS "
+        "THEN line_gmv ELSE 0.0 END) AS DOUBLE) "
+        f"AS gmv_{window}d"
+        for window in ORDER_WINDOWS
+    )
+
+
+def _base_feature_expressions() -> str:
+    expressions = [
+        *(f"COALESCE(actions.{column}, 0) AS {column}" for column in ACTION_COLUMNS),
+        *(f"COALESCE(orders.{column}, 0) AS {column}" for column in ORDER_COLUMNS),
+        *(f"COALESCE(orders.{column}, 0.0D) AS {column}" for column in GMV_COLUMNS),
+    ]
+    return ",\n        ".join(expressions)
+
+
+def _account_ratio_expressions() -> str:
+    return ",\n    ".join(
+        "CASE WHEN "
+        f"SUM({column}) OVER (PARTITION BY calculated_at, account_id) > 0 "
+        f"THEN CAST({column} AS DOUBLE) / "
+        f"SUM({column}) OVER (PARTITION BY calculated_at, account_id) "
+        f"END AS {column}_ratio"
+        for column in BASE_FEATURE_COLUMNS
     )
 
 
@@ -67,51 +120,11 @@ def build_account_shop_features_query(
         settings.business_timezone,
     )
 
-    action_feature_expressions = ",\n        ".join(
-        "CAST(SUM(CASE "
-        f"WHEN event_type = '{event_type}' "
-        f"AND last_received_at >= TIMESTAMP '{calculated_at_local}' "
-        f"- INTERVAL {window} DAYS "
-        "THEN 1 ELSE 0 END) AS INT) "
-        f"AS n_{signal}_{window}d"
-        for signal, event_type in ACTION_EVENT_TYPES.items()
-        for window in ACTION_WINDOWS
-    )
-    order_count_expressions = ",\n        ".join(
-        "CAST(COUNT(DISTINCT CASE "
-        f"WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' "
-        f"- INTERVAL {window} DAYS "
-        "THEN order_id END) AS INT) "
-        f"AS n_orders_{window}d"
-        for window in ORDER_WINDOWS
-    )
-    gmv_expressions = ",\n        ".join(
-        "CAST(SUM(CASE "
-        f"WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' "
-        f"- INTERVAL {window} DAYS "
-        "THEN line_gmv ELSE 0.0 END) AS DOUBLE) "
-        f"AS gmv_{window}d"
-        for window in ORDER_WINDOWS
-    )
-    base_feature_expressions = ",\n        ".join(
-        f"COALESCE(actions.{column}, 0) AS {column}"
-        for column in ACTION_COLUMNS
-    )
-    base_feature_expressions += ",\n        " + ",\n        ".join(
-        f"COALESCE(orders.{column}, 0) AS {column}"
-        for column in ORDER_COLUMNS
-    )
-    base_feature_expressions += ",\n        " + ",\n        ".join(
-        f"COALESCE(orders.{column}, 0.0D) AS {column}" for column in GMV_COLUMNS
-    )
-    ratio_expressions = ",\n    ".join(
-        "CASE WHEN "
-        f"SUM({column}) OVER (PARTITION BY calculated_at, account_id) > 0 "
-        f"THEN CAST({column} AS DOUBLE) / "
-        f"SUM({column}) OVER (PARTITION BY calculated_at, account_id) "
-        f"END AS {column}_ratio"
-        for column in BASE_FEATURE_COLUMNS
-    )
+    action_feature_expressions = _action_feature_expressions(calculated_at_local)
+    order_count_expressions = _order_count_expressions(calculated_at_utc)
+    gmv_expressions = _gmv_expressions(calculated_at_utc)
+    base_feature_expressions = _base_feature_expressions()
+    account_ratio_expressions = _account_ratio_expressions()
 
     return f"""
 WITH product_shops AS (
@@ -223,7 +236,7 @@ base_features AS (
 )
 SELECT
     base.*,
-    {ratio_expressions}
+    {account_ratio_expressions}
 FROM base_features base
 """
 
