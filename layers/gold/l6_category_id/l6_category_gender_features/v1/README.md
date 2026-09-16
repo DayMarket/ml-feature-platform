@@ -6,8 +6,8 @@ DAG id: `feature-platform.layers.gold.l6_category_id.l6_category_gender_features
 
 Grain и primary key: `calculated_at,l6_category_id`.
 
-Логический namespace — `L6_CATEGORY_GENDER`. Физические feature-колонки
-хранятся без namespace в lower snake case.
+Namespace — `L6_CATEGORY_GENDER`. Все физические feature-колонки уже содержат
+его; `calculated_at` и `l6_category_id` остаются без namespace.
 
 ## Назначение
 
@@ -51,14 +51,14 @@ denominator.
 
 ## Колонки и формулы
 
-- `category_female_product_session_share_28d` — доля female product-session
+- `L6_CATEGORY_GENDER__category_female_product_session_share_28d` — доля female product-session
   наблюдений среди product-session наблюдений с известным gender;
-- `category_male_product_session_share_28d` — аналогичная male-доля;
-- `n_unique_known_gender_clickers_28d` — уникальные account с gender `MALE` или
+- `L6_CATEGORY_GENDER__category_male_product_session_share_28d` — аналогичная male-доля;
+- `L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d` — уникальные account с gender `MALE` или
   `FEMALE`;
-- `n_unique_female_clickers_28d` — уникальные female account;
-- `n_unique_male_clickers_28d` — уникальные male account;
-- `category_gender` — `M`, `F`, `U` или `NULL` для L6.
+- `L6_CATEGORY_GENDER__n_unique_female_clickers_28d` — уникальные female account;
+- `L6_CATEGORY_GENDER__n_unique_male_clickers_28d` — уникальные male account;
+- `L6_CATEGORY_GENDER__category_gender` — `M`, `F`, `U` или `NULL` для L6.
 
 ```text
 female_share = female product-session rows / known-gender product-session rows
@@ -69,8 +69,8 @@ male_share   = male product-session rows / known-gender product-session rows
 равны `NULL`, а unique counts равны нулю. Для опубликованной категории:
 
 ```text
-n_unique_known_gender_clickers_28d
-    = n_unique_female_clickers_28d + n_unique_male_clickers_28d
+L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d
+    = L6_CATEGORY_GENDER__n_unique_female_clickers_28d + L6_CATEGORY_GENDER__n_unique_male_clickers_28d
 ```
 
 ## On-the-fly candidate enrichment
@@ -117,7 +117,7 @@ unique count сумме female/male unique counts. Дедупликация prod
 зафиксирована SQL unit-тестами.
 
 `feature_stats` выполняет отдельный Trino-скан каждого 12-часового snapshot;
-строковый `category_gender` исключён из профилирования. Ranking upload не
+строковый `L6_CATEGORY_GENDER__category_gender` исключён из профилирования. Ranking upload не
 настраивается. Потребители: G7 и candidate enrichment для Main, push и train.
 
 После merge в `master` dbt PR не создаётся (`create_dbt_pr: false`), а CI может

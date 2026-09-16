@@ -6,10 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ENTITY = (
-    ROOT
-    / "layers/gold/l6_category_id/l6_category_gender_features/v1"
-)
+ENTITY = ROOT / "layers/gold/l6_category_id/l6_category_gender_features/v1"
 
 
 def _load_module(name: str, path: Path):
@@ -45,22 +42,20 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
         self.assertEqual(
             query.FEATURE_COLUMNS,
             (
-                "category_female_product_session_share_28d",
-                "category_male_product_session_share_28d",
-                "n_unique_known_gender_clickers_28d",
-                "n_unique_female_clickers_28d",
-                "n_unique_male_clickers_28d",
-                "category_gender",
+                "L6_CATEGORY_GENDER__category_female_product_session_share_28d",
+                "L6_CATEGORY_GENDER__category_male_product_session_share_28d",
+                "L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d",
+                "L6_CATEGORY_GENDER__n_unique_female_clickers_28d",
+                "L6_CATEGORY_GENDER__n_unique_male_clickers_28d",
+                "L6_CATEGORY_GENDER__category_gender",
             ),
         )
 
     def test_migration_matches_feature_contract_and_uses_int(self):
-        migration = (ENTITY / "migrations/create_table.sql").read_text(
-            encoding="utf-8"
-        )
+        migration = (ENTITY / "migrations/create_table.sql").read_text(encoding="utf-8")
         migration_columns = set(
             re.findall(
-                r"^\s{4}([a-z][a-z0-9_]*)\s+(?:INT|DOUBLE|STRING|TIMESTAMP)\b",
+                r"^\s{4}([A-Za-z][A-Za-z0-9_]*)\s+(?:INT|DOUBLE|STRING|TIMESTAMP)\b",
                 migration,
                 flags=re.MULTILINE,
             )
@@ -73,6 +68,16 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
     def test_namespace_schedule_resources_and_start_date(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("feature_namespace: L6_CATEGORY_GENDER", config_text)
+        self.assertTrue(
+            all(
+                column.startswith("L6_CATEGORY_GENDER__")
+                for column in query.FEATURE_COLUMNS
+            )
+        )
+        self.assertIn(
+            "AS L6_CATEGORY_GENDER__category_gender",
+            self.sql,
+        )
         self.assertIn("primary_key: calculated_at,l6_category_id", config_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('schedule: "0 7,19 * * *"', config_text)
@@ -149,7 +154,7 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
         self.assertIn("CAST(category_id AS INT) AS l6_category_id", self.sql)
         self.assertIn(
             "LEFT JOIN category_genders genders\n"
-            "    ON statistics.l6_category_id = genders.l6_category_id",
+            "        ON statistics.l6_category_id = genders.l6_category_id",
             self.sql,
         )
         self.assertGreater(
@@ -229,13 +234,14 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("values: [M, F, U]", config_text)
         self.assertIn(
-            "n_unique_known_gender_clickers_28d = "
-            "n_unique_female_clickers_28d + n_unique_male_clickers_28d",
+            "L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d = "
+            "L6_CATEGORY_GENDER__n_unique_female_clickers_28d + "
+            "L6_CATEGORY_GENDER__n_unique_male_clickers_28d",
             config_text,
         )
         self.assertIn(
-            "category_female_product_session_share_28d + "
-            "category_male_product_session_share_28d - 1.0",
+            "L6_CATEGORY_GENDER__category_female_product_session_share_28d + "
+            "L6_CATEGORY_GENDER__category_male_product_session_share_28d - 1.0",
             config_text,
         )
 

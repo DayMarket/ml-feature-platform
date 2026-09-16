@@ -4,13 +4,17 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-FEATURE_COLUMNS = (
+FEATURE_NAMESPACE = "L6_CATEGORY_GENDER"
+BASE_FEATURE_COLUMNS = (
     "category_female_product_session_share_28d",
     "category_male_product_session_share_28d",
     "n_unique_known_gender_clickers_28d",
     "n_unique_female_clickers_28d",
     "n_unique_male_clickers_28d",
     "category_gender",
+)
+FEATURE_COLUMNS = tuple(
+    f"{FEATURE_NAMESPACE}__{column}" for column in BASE_FEATURE_COLUMNS
 )
 
 
@@ -46,6 +50,13 @@ def _local_day_start_utc_literal(value: datetime, timezone_name: str) -> str:
     return local_day_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _namespaced_feature_select(source_alias: str) -> str:
+    return ",\n    ".join(
+        f"{source_alias}.{column} AS {FEATURE_NAMESPACE}__{column}"
+        for column in BASE_FEATURE_COLUMNS
+    )
+
+
 def build_l6_category_gender_features_query(
     settings: SourceSettings,
     calculated_at: datetime,
@@ -62,6 +73,7 @@ def build_l6_category_gender_features_query(
         calculated_at,
         settings.business_timezone,
     )
+    namespaced_feature_select = _namespaced_feature_select("unprefixed_features")
 
     return f"""
 WITH product_metadata AS (
@@ -167,19 +179,26 @@ category_statistics AS (
         ) AS n_unique_male_clickers_28d
     FROM enriched_product_views
     GROUP BY l6_category_id
+),
+unprefixed_features AS (
+    SELECT
+        TIMESTAMP '{calculated_at_local}' AS calculated_at,
+        statistics.l6_category_id,
+        statistics.category_female_product_session_share_28d,
+        statistics.category_male_product_session_share_28d,
+        statistics.n_unique_known_gender_clickers_28d,
+        statistics.n_unique_female_clickers_28d,
+        statistics.n_unique_male_clickers_28d,
+        genders.category_gender
+    FROM category_statistics statistics
+    LEFT JOIN category_genders genders
+        ON statistics.l6_category_id = genders.l6_category_id
 )
 SELECT
-    TIMESTAMP '{calculated_at_local}' AS calculated_at,
-    statistics.l6_category_id,
-    statistics.category_female_product_session_share_28d,
-    statistics.category_male_product_session_share_28d,
-    statistics.n_unique_known_gender_clickers_28d,
-    statistics.n_unique_female_clickers_28d,
-    statistics.n_unique_male_clickers_28d,
-    genders.category_gender
-FROM category_statistics statistics
-LEFT JOIN category_genders genders
-    ON statistics.l6_category_id = genders.l6_category_id
+    calculated_at,
+    l6_category_id,
+    {namespaced_feature_select}
+FROM unprefixed_features
 """
 
 

@@ -60,28 +60,28 @@ dq:
       expression: "l6_category_id > 0"
     - name: non_negative
       columns:
-        - n_unique_known_gender_clickers_28d
-        - n_unique_female_clickers_28d
-        - n_unique_male_clickers_28d
+        - L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d
+        - L6_CATEGORY_GENDER__n_unique_female_clickers_28d
+        - L6_CATEGORY_GENDER__n_unique_male_clickers_28d
     - name: accepted_values
-      column: category_gender
+      column: L6_CATEGORY_GENDER__category_gender
       values: [M, F, U]
     - name: accepted_range
-      column: category_female_product_session_share_28d
+      column: L6_CATEGORY_GENDER__category_female_product_session_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: category_male_product_session_share_28d
+      column: L6_CATEGORY_GENDER__category_male_product_session_share_28d
       min: 0
       max: 1
     - name: expression_is_true
-      expression: "n_unique_known_gender_clickers_28d = n_unique_female_clickers_28d + n_unique_male_clickers_28d"
+      expression: "L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d = L6_CATEGORY_GENDER__n_unique_female_clickers_28d + L6_CATEGORY_GENDER__n_unique_male_clickers_28d"
     - name: expression_is_true
-      expression: "n_unique_female_clickers_28d <= n_unique_known_gender_clickers_28d"
+      expression: "L6_CATEGORY_GENDER__n_unique_female_clickers_28d <= L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d"
     - name: expression_is_true
-      expression: "n_unique_male_clickers_28d <= n_unique_known_gender_clickers_28d"
+      expression: "L6_CATEGORY_GENDER__n_unique_male_clickers_28d <= L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d"
     - name: expression_is_true
-      expression: "(category_female_product_session_share_28d IS NULL AND category_male_product_session_share_28d IS NULL) OR ABS(category_female_product_session_share_28d + category_male_product_session_share_28d - 1.0) < 0.000001"
+      expression: "(L6_CATEGORY_GENDER__category_female_product_session_share_28d IS NULL AND L6_CATEGORY_GENDER__category_male_product_session_share_28d IS NULL) OR ABS(L6_CATEGORY_GENDER__category_female_product_session_share_28d + L6_CATEGORY_GENDER__category_male_product_session_share_28d - 1.0) < 0.000001"
 
 feature_stats:
   trino_conn_id: trino_recsys
@@ -90,4 +90,4 @@ feature_stats:
   snapshot_interval_hours: 12
   partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
   exclude_columns:
-    - category_gender
+    - L6_CATEGORY_GENDER__category_gender
