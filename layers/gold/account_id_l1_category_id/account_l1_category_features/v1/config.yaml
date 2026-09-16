@@ -103,6 +103,22 @@ dq:
         - ACCOUNT_L1__conv_imp2order_raw_7d
         - ACCOUNT_L1__conv_imp2order_raw_14d
         - ACCOUNT_L1__conv_imp2order_raw_28d
+        - ACCOUNT_L1__total_account_conv_imp2click_raw_3d
+        - ACCOUNT_L1__total_account_conv_imp2click_raw_7d
+        - ACCOUNT_L1__total_account_conv_imp2click_raw_14d
+        - ACCOUNT_L1__total_account_conv_imp2click_raw_28d
+        - ACCOUNT_L1__total_account_conv_imp2atc_raw_3d
+        - ACCOUNT_L1__total_account_conv_imp2atc_raw_7d
+        - ACCOUNT_L1__total_account_conv_imp2atc_raw_14d
+        - ACCOUNT_L1__total_account_conv_imp2atc_raw_28d
+        - ACCOUNT_L1__total_account_conv_imp2atf_raw_3d
+        - ACCOUNT_L1__total_account_conv_imp2atf_raw_7d
+        - ACCOUNT_L1__total_account_conv_imp2atf_raw_14d
+        - ACCOUNT_L1__total_account_conv_imp2atf_raw_28d
+        - ACCOUNT_L1__total_account_conv_imp2order_raw_3d
+        - ACCOUNT_L1__total_account_conv_imp2order_raw_7d
+        - ACCOUNT_L1__total_account_conv_imp2order_raw_14d
+        - ACCOUNT_L1__total_account_conv_imp2order_raw_28d
         - ACCOUNT_L1__conv_imp2click_div_total_category_conv_3d
         - ACCOUNT_L1__conv_imp2click_div_total_category_conv_7d
         - ACCOUNT_L1__conv_imp2click_div_total_category_conv_14d
@@ -153,6 +169,22 @@ dq:
         - ACCOUNT_L1__conv_imp2order_raw_7d
         - ACCOUNT_L1__conv_imp2order_raw_14d
         - ACCOUNT_L1__conv_imp2order_raw_28d
+        - ACCOUNT_L1__total_account_conv_imp2click_raw_3d
+        - ACCOUNT_L1__total_account_conv_imp2click_raw_7d
+        - ACCOUNT_L1__total_account_conv_imp2click_raw_14d
+        - ACCOUNT_L1__total_account_conv_imp2click_raw_28d
+        - ACCOUNT_L1__total_account_conv_imp2atc_raw_3d
+        - ACCOUNT_L1__total_account_conv_imp2atc_raw_7d
+        - ACCOUNT_L1__total_account_conv_imp2atc_raw_14d
+        - ACCOUNT_L1__total_account_conv_imp2atc_raw_28d
+        - ACCOUNT_L1__total_account_conv_imp2atf_raw_3d
+        - ACCOUNT_L1__total_account_conv_imp2atf_raw_7d
+        - ACCOUNT_L1__total_account_conv_imp2atf_raw_14d
+        - ACCOUNT_L1__total_account_conv_imp2atf_raw_28d
+        - ACCOUNT_L1__total_account_conv_imp2order_raw_3d
+        - ACCOUNT_L1__total_account_conv_imp2order_raw_7d
+        - ACCOUNT_L1__total_account_conv_imp2order_raw_14d
+        - ACCOUNT_L1__total_account_conv_imp2order_raw_28d
         - ACCOUNT_L1__conv_imp2click_div_total_category_conv_3d
         - ACCOUNT_L1__conv_imp2click_div_total_category_conv_7d
         - ACCOUNT_L1__conv_imp2click_div_total_category_conv_14d

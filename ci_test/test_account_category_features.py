@@ -183,7 +183,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     sql,
                 )
 
-    def test_l1_l2_publish_all_three_conversion_semantics(self):
+    def test_l1_l2_publish_raw_and_relative_conversion_semantics(self):
         for level in (1, 2):
             _, _, _, _, sql = self.contracts[level]
             for signal in ("click", "atc", "atf", "order"):
@@ -195,6 +195,11 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     ):
                         self.assertIn(
                             f"AS conv_imp2{signal}_raw_{window}d",
+                            sql,
+                        )
+                        self.assertIn(
+                            f"account.{signal}_{window}d AS "
+                            f"total_account_conv_imp2{signal}_raw_{window}d",
                             sql,
                         )
                         self.assertIn(
@@ -218,7 +223,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
     def test_recency_is_only_published_for_l1_l3_l5(self):
         for level, (entity, _, _, _, sql) in self.contracts.items():
             column = "neg_n_days_since_last_click"
-            interval_column = "n_days_between_last_click_and_last_purchase"
+            interval_column = "n_days_between_last_purchase_and_last_click"
             migration = (entity / "migrations/create_table.sql").read_text(
                 encoding="utf-8"
             )
@@ -326,6 +331,10 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 self.assertIn("- name: finite", config_text)
                 self.assertIn(
                     f"- ACCOUNT_L{level}__conv_imp2click_raw_3d",
+                    config_text,
+                )
+                self.assertIn(
+                    f"- ACCOUNT_L{level}__total_account_conv_imp2click_raw_3d",
                     config_text,
                 )
                 self.assertIn(

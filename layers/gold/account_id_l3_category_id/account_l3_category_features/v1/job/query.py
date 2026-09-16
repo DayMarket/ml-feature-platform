@@ -28,7 +28,7 @@ BASE_FEATURE_COLUMNS = (
     + (
         "neg_n_days_since_last_click",
         "neg_n_days_since_last_click_rel",
-        "n_days_between_last_click_and_last_purchase",
+        "n_days_between_last_purchase_and_last_click",
     )
 )
 FEATURE_COLUMNS = tuple(
@@ -237,7 +237,7 @@ base_features AS (
             UNIX_TIMESTAMP(orders.last_purchase_at)
             - UNIX_TIMESTAMP(TO_UTC_TIMESTAMP(actions.last_click_at, '{settings.business_timezone}'))
             AS DOUBLE
-        ) / 86400.0 AS n_days_between_last_click_and_last_purchase
+        ) / 86400.0 AS n_days_between_last_purchase_and_last_click
     FROM entity_keys entity
     LEFT JOIN action_features actions USING (account_id, l3_category_id)
     LEFT JOIN order_features orders USING (account_id, l3_category_id)

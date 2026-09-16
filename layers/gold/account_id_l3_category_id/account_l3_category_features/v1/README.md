@@ -81,7 +81,7 @@ Relative recency равна recency категории минус наиболе
 Для той же пары `account_id × l3_category_id` публикуется знаковый интервал:
 
 ```text
-ACCOUNT_L3__n_days_between_last_click_and_last_purchase =
+ACCOUNT_L3__n_days_between_last_purchase_and_last_click =
     n_days_since_last_click - n_days_since_last_purchase
 ```
 
