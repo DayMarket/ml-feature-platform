@@ -291,6 +291,10 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     dag_text,
                 )
                 self.assertIn("resource_profile: small", config_text)
+                self.assertIn(
+                    'start_date: "2026-09-05T07:00:00Z"',
+                    config_text,
+                )
                 self.assertIn("severity: P3", config_text)
                 self.assertIn(
                     "oncall_webhook_conn_id: oncall_webhook_recsys",

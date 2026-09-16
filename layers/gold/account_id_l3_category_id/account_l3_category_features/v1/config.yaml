@@ -31,7 +31,7 @@ dag:
   id: feature-platform.layers.gold.account_id_l3_category_id.account_l3_category_features
   group_tag: recsys-features
   schedule: "0 7,19 * * *"
-  start_date: "2026-08-08T07:00:00Z"
+  start_date: "2026-09-05T07:00:00Z"
   catchup: true
   team: recsys
   owner: team:recsys
