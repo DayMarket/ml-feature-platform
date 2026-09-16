@@ -4,12 +4,35 @@ from zoneinfo import ZoneInfo
 
 ACTION_WINDOWS = (3, 7, 14, 28)
 ORDER_WINDOWS = (3, 7, 14, 28, 60, 90)
+FEATURE_NAMESPACE = "ACCOUNT_L3"
 RATIO_COLUMNS = tuple(
     f"n_{signal}_{window}d"
     for signal in ("clicks", "atcs", "atfs")
     for window in ACTION_WINDOWS
 ) + tuple(
     f"{metric}_{window}d" for metric in ("n_orders", "gmv") for window in ORDER_WINDOWS
+)
+BASE_FEATURE_COLUMNS = (
+    tuple(
+        f"n_{signal}_{window}d{suffix}"
+        for signal in ("clicks", "atcs", "atfs")
+        for suffix in ("", "_ratio")
+        for window in ACTION_WINDOWS
+    )
+    + tuple(
+        f"{metric}_{window}d{suffix}"
+        for metric in ("n_orders", "gmv")
+        for suffix in ("", "_ratio")
+        for window in ORDER_WINDOWS
+    )
+    + (
+        "neg_n_days_since_last_click",
+        "neg_n_days_since_last_click_rel",
+        "n_days_between_last_click_and_last_purchase",
+    )
+)
+FEATURE_COLUMNS = tuple(
+    f"{FEATURE_NAMESPACE}__{column}" for column in BASE_FEATURE_COLUMNS
 )
 
 
@@ -53,6 +76,13 @@ def _account_ratio_expressions() -> str:
     )
 
 
+def _namespaced_feature_select(source_alias: str) -> str:
+    return ",\n    ".join(
+        f"{source_alias}.{column} AS {FEATURE_NAMESPACE}__{column}"
+        for column in BASE_FEATURE_COLUMNS
+    )
+
+
 def build_account_category_features_query(
     settings: SourceSettings, calculated_at: datetime
 ) -> str:
@@ -64,6 +94,7 @@ def build_account_category_features_query(
         calculated_at, settings.business_timezone
     )
     account_ratio_expressions = _account_ratio_expressions()
+    namespaced_feature_select = _namespaced_feature_select("features_with_recency")
     return f"""
 WITH product_categories AS (
     SELECT
@@ -228,19 +259,7 @@ SELECT
     calculated_at,
     account_id,
     l3_category_id,
-    n_clicks_3d, n_clicks_7d, n_clicks_14d, n_clicks_28d,
-    n_clicks_3d_ratio, n_clicks_7d_ratio, n_clicks_14d_ratio, n_clicks_28d_ratio,
-    n_atcs_3d, n_atcs_7d, n_atcs_14d, n_atcs_28d,
-    n_atcs_3d_ratio, n_atcs_7d_ratio, n_atcs_14d_ratio, n_atcs_28d_ratio,
-    n_atfs_3d, n_atfs_7d, n_atfs_14d, n_atfs_28d,
-    n_atfs_3d_ratio, n_atfs_7d_ratio, n_atfs_14d_ratio, n_atfs_28d_ratio,
-    n_orders_3d, n_orders_7d, n_orders_14d, n_orders_28d, n_orders_60d, n_orders_90d,
-    n_orders_3d_ratio, n_orders_7d_ratio, n_orders_14d_ratio, n_orders_28d_ratio, n_orders_60d_ratio, n_orders_90d_ratio,
-    gmv_3d, gmv_7d, gmv_14d, gmv_28d, gmv_60d, gmv_90d,
-    gmv_3d_ratio, gmv_7d_ratio, gmv_14d_ratio, gmv_28d_ratio, gmv_60d_ratio, gmv_90d_ratio,
-    neg_n_days_since_last_click,
-    neg_n_days_since_last_click_rel,
-    n_days_between_last_click_and_last_purchase
+    {namespaced_feature_select}
 FROM features_with_recency
 """
 

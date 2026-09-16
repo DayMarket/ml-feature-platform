@@ -18,10 +18,10 @@ Grain и primary key: `calculated_at,account_id,product_id`.
 
 Идентификаторы и счётчики в физическом контракте имеют тип `INT`.
 
-Физические feature-колонки хранятся без entity-префикса, например
-`n_clicks_7d`. Логический namespace контракта — `ACCOUNT_PRODUCT`; при
-публикации или сборке model input полное имя становится
-`ACCOUNT_PRODUCT__n_clicks_7d`.
+Namespace контракта — `ACCOUNT_PRODUCT`. Все физические feature-колонки уже
+содержат его, например `ACCOUNT_PRODUCT__n_clicks_7d`; устаревший префикс
+`pid_` не используется. Ключи `calculated_at`, `account_id` и `product_id`
+остаются без namespace.
 
 `calculated_at` — граница Gold snapshot: `00:00` или `12:00 Asia/Tashkent`.
 Таблица содержит account-product пары, у которых есть хотя бы одно action-событие
@@ -32,14 +32,14 @@ Grain и primary key: `calculated_at,account_id,product_id`.
 - `n_clicks_{3,7,14,28}d` и `*_ratio`;
 - `n_atcs_{3,7,14,28}d` и `*_ratio`;
 - `n_atfs_{3,7,14,28}d` и `*_ratio`;
-- `neg_n_days_since_last_click` и
-  `neg_n_days_since_last_click_rel`;
+- `ACCOUNT_PRODUCT__neg_n_days_since_last_click` и
+  `ACCOUNT_PRODUCT__neg_n_days_since_last_click_rel`;
 - `n_orders_{3,7,14,28,60,90}d` и `*_ratio`;
-- `n_orders_28d_over_90d`;
+- `ACCOUNT_PRODUCT__n_orders_28d_over_90d`;
 - `gmv_{3,7,14,28,60,90}d` и `*_ratio`;
-- `neg_n_days_since_last_purchase`;
-- `n_days_between_last_click_and_last_purchase`;
-- `last_click_before_last_purchase`.
+- `ACCOUNT_PRODUCT__neg_n_days_since_last_purchase`;
+- `ACCOUNT_PRODUCT__n_days_between_last_click_and_last_purchase`;
+- `ACCOUNT_PRODUCT__last_click_before_last_purchase`.
 
 ## Action-события
 
@@ -58,7 +58,7 @@ Grain и primary key: `calculated_at,account_id,product_id`.
 28 дней:
 
 ```text
-neg_n_days_since_last_click =
+ACCOUNT_PRODUCT__neg_n_days_since_last_click =
     -(calculated_at - last_click_at) / 24 hours
 ```
 
@@ -87,13 +87,13 @@ n_orders_Nd = COUNT(DISTINCT order_id)
 gmv_Nd = SUM(payment_price * item_quantity)
 ```
 
-`n_orders_28d_over_90d` равна `n_orders_28d / n_orders_90d` и
+`ACCOUNT_PRODUCT__n_orders_28d_over_90d` равна `ACCOUNT_PRODUCT__n_orders_28d / ACCOUNT_PRODUCT__n_orders_90d` и
 остаётся `NULL` при нулевом denominator.
 
 Purchase recency использует последний `generated_at` успешной позиции за 90 дней:
 
 ```text
-neg_n_days_since_last_purchase =
+ACCOUNT_PRODUCT__neg_n_days_since_last_purchase =
     -(calculated_at - last_purchase_at) / 24 hours
 ```
 
@@ -102,17 +102,17 @@ neg_n_days_since_last_purchase =
 Знаковый интервал между последними click и purchase:
 
 ```text
-n_days_between_last_click_and_last_purchase =
+ACCOUNT_PRODUCT__n_days_between_last_click_and_last_purchase =
     n_days_since_last_click - n_days_since_last_purchase
 ```
 
 В терминах публикуемых отрицательных recency это
-`neg_n_days_since_last_purchase - neg_n_days_since_last_click`. Отрицательное
+`ACCOUNT_PRODUCT__neg_n_days_since_last_purchase - ACCOUNT_PRODUCT__neg_n_days_since_last_click`. Отрицательное
 значение означает, что click произошёл позднее purchase; положительное — что
 purchase произошла позднее click. `COALESCE` не применяется: если одного из
 timestamps нет, результат равен `NULL`.
 
-`last_click_before_last_purchase = 1`, если последний click за 28 дней произошёл
+`ACCOUNT_PRODUCT__last_click_before_last_purchase = 1`, если последний click за 28 дней произошёл
 позднее последней purchase за 90 дней. Несмотря на legacy-название, сравнение
 выполняется именно так и напрямую по UTC timestamps. Если одного из timestamps
 нет, результат равен `NULL`.
@@ -150,7 +150,7 @@ Asia/Tashkent`. `start_date = 2026-09-05T07:00:00Z` — первый snapshot п
 
 DQ проверяет primary key, положительные ID, неотрицательные counts/GMV, диапазон
 ratios `[0,1]`, монотонность `orders_28d <= orders_90d`, неположительную recency,
-максимум `neg_n_days_since_last_click_rel = 0` для каждого account с
+максимум `ACCOUNT_PRODUCT__neg_n_days_since_last_click_rel = 0` для каждого account с
 кликами и домен legacy-флага. Freshness и проверки объёма при первой раскатке
 имеют severity `warn`. Alert callbacks DQ и feature_stats остаются отключёнными
 до окончания отладки.

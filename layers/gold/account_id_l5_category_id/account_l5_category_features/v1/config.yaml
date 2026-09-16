@@ -58,134 +58,134 @@ dq:
       expression: "account_id > 0 AND l5_category_id > 0"
     - name: non_negative
       columns:
-        - n_clicks_3d
-        - n_clicks_7d
-        - n_clicks_14d
-        - n_clicks_28d
-        - n_atcs_3d
-        - n_atcs_7d
-        - n_atcs_14d
-        - n_atcs_28d
-        - n_atfs_3d
-        - n_atfs_7d
-        - n_atfs_14d
-        - n_atfs_28d
-        - n_orders_3d
-        - n_orders_7d
-        - n_orders_14d
-        - n_orders_28d
-        - n_orders_60d
-        - n_orders_90d
-        - gmv_3d
-        - gmv_7d
-        - gmv_14d
-        - gmv_28d
-        - gmv_60d
-        - gmv_90d
+        - ACCOUNT_L5__n_clicks_3d
+        - ACCOUNT_L5__n_clicks_7d
+        - ACCOUNT_L5__n_clicks_14d
+        - ACCOUNT_L5__n_clicks_28d
+        - ACCOUNT_L5__n_atcs_3d
+        - ACCOUNT_L5__n_atcs_7d
+        - ACCOUNT_L5__n_atcs_14d
+        - ACCOUNT_L5__n_atcs_28d
+        - ACCOUNT_L5__n_atfs_3d
+        - ACCOUNT_L5__n_atfs_7d
+        - ACCOUNT_L5__n_atfs_14d
+        - ACCOUNT_L5__n_atfs_28d
+        - ACCOUNT_L5__n_orders_3d
+        - ACCOUNT_L5__n_orders_7d
+        - ACCOUNT_L5__n_orders_14d
+        - ACCOUNT_L5__n_orders_28d
+        - ACCOUNT_L5__n_orders_60d
+        - ACCOUNT_L5__n_orders_90d
+        - ACCOUNT_L5__gmv_3d
+        - ACCOUNT_L5__gmv_7d
+        - ACCOUNT_L5__gmv_14d
+        - ACCOUNT_L5__gmv_28d
+        - ACCOUNT_L5__gmv_60d
+        - ACCOUNT_L5__gmv_90d
     - name: expression_is_true
-      expression: "neg_n_days_since_last_click IS NULL OR neg_n_days_since_last_click <= 0"
+      expression: "ACCOUNT_L5__neg_n_days_since_last_click IS NULL OR ACCOUNT_L5__neg_n_days_since_last_click <= 0"
     - name: expression_is_true
-      expression: "neg_n_days_since_last_click_rel IS NULL OR neg_n_days_since_last_click_rel <= 0"
+      expression: "ACCOUNT_L5__neg_n_days_since_last_click_rel IS NULL OR ACCOUNT_L5__neg_n_days_since_last_click_rel <= 0"
     - name: group_max_equals
-      column: neg_n_days_since_last_click_rel
+      column: ACCOUNT_L5__neg_n_days_since_last_click_rel
       group_by: [account_id]
       value: 0
       tolerance: 0
       ignore_all_null_groups: true
     - name: accepted_range
-      column: n_clicks_3d_ratio
+      column: ACCOUNT_L5__n_clicks_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_clicks_7d_ratio
+      column: ACCOUNT_L5__n_clicks_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_clicks_14d_ratio
+      column: ACCOUNT_L5__n_clicks_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_clicks_28d_ratio
+      column: ACCOUNT_L5__n_clicks_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_atcs_3d_ratio
+      column: ACCOUNT_L5__n_atcs_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_atcs_7d_ratio
+      column: ACCOUNT_L5__n_atcs_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_atcs_14d_ratio
+      column: ACCOUNT_L5__n_atcs_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_atcs_28d_ratio
+      column: ACCOUNT_L5__n_atcs_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_atfs_3d_ratio
+      column: ACCOUNT_L5__n_atfs_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_atfs_7d_ratio
+      column: ACCOUNT_L5__n_atfs_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_atfs_14d_ratio
+      column: ACCOUNT_L5__n_atfs_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_atfs_28d_ratio
+      column: ACCOUNT_L5__n_atfs_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_orders_3d_ratio
+      column: ACCOUNT_L5__n_orders_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_orders_7d_ratio
+      column: ACCOUNT_L5__n_orders_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_orders_14d_ratio
+      column: ACCOUNT_L5__n_orders_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_orders_28d_ratio
+      column: ACCOUNT_L5__n_orders_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_orders_60d_ratio
+      column: ACCOUNT_L5__n_orders_60d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: n_orders_90d_ratio
+      column: ACCOUNT_L5__n_orders_90d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_3d_ratio
+      column: ACCOUNT_L5__gmv_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_7d_ratio
+      column: ACCOUNT_L5__gmv_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_14d_ratio
+      column: ACCOUNT_L5__gmv_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_28d_ratio
+      column: ACCOUNT_L5__gmv_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_60d_ratio
+      column: ACCOUNT_L5__gmv_60d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_90d_ratio
+      column: ACCOUNT_L5__gmv_90d_ratio
       min: 0
       max: 1
 

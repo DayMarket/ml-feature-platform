@@ -18,9 +18,10 @@ Grain и primary key: calculated_at,account_id,l5_category_id.
 
 Идентификаторы и счётчики в физическом контракте имеют тип INT.
 
-Физические feature-колонки хранятся без level-префикса, например
-`n_clicks_7d`. Логический namespace контракта — `ACCOUNT_L5`; при публикации
-или сборке model input полное имя становится `ACCOUNT_L5__n_clicks_7d`.
+Namespace контракта — `ACCOUNT_L5`. Все физические feature-колонки уже содержат
+его, например `ACCOUNT_L5__n_clicks_7d`; устаревший префикс `l5_` не
+используется. Ключи `calculated_at`, `account_id` и `l5_category_id` остаются
+без namespace.
 
 calculated_at — граница Gold snapshot: 00:00 или 12:00 Asia/Tashkent. Строка
 публикуется, если у account-category есть action за 28 дней, успешная покупка за
@@ -69,7 +70,7 @@ category-level показателя пользователя.
 
 По PRODUCT_VIEW за 28 дней публикуется отрицательная дробная давность в днях:
 
-    neg_n_days_since_last_click =
+    ACCOUNT_L5__neg_n_days_since_last_click =
         -(calculated_at - MAX(last_received_at)) / 24 hours
 
 Округление не применяется.
@@ -80,7 +81,7 @@ Relative recency равна recency категории минус наиболе
 Для той же пары `account_id × l5_category_id` публикуется знаковый интервал:
 
 ```text
-n_days_between_last_click_and_last_purchase =
+ACCOUNT_L5__n_days_between_last_click_and_last_purchase =
     n_days_since_last_click - n_days_since_last_purchase
 ```
 

@@ -67,7 +67,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             )
             migration_columns = set(
                 re.findall(
-                    r"^\s{4}([a-z][a-z0-9_]*)\s+"
+                    r"^\s{4}([A-Za-z][A-Za-z0-9_]*)\s+"
                     r"(?:INT|DOUBLE|TIMESTAMP)\b",
                     migration,
                     flags=re.MULTILINE,
@@ -77,24 +77,33 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 self.assertIn("calculated_at", migration_columns)
                 self.assertIn("account_id", migration_columns)
                 self.assertIn(f"l{level}_category_id", migration_columns)
-                for column in migration_columns - {
+                expected = {
                     "calculated_at",
                     "account_id",
                     f"l{level}_category_id",
-                }:
-                    self.assertIn(column, sql)
+                    *self.contracts[level][2].FEATURE_COLUMNS,
+                }
+                self.assertEqual(migration_columns, expected)
+                for column in self.contracts[level][2].FEATURE_COLUMNS:
+                    self.assertIn(f"AS {column}", sql)
                 self.assertNotIn("BIGINT", migration)
                 self.assertNotIn("BIGINT", self.contracts[level][4])
 
-    def test_feature_namespace_is_not_duplicated_in_physical_columns(self):
-        for level, (entity, _, _, _, _) in self.contracts.items():
+    def test_feature_namespace_prefixes_every_physical_feature_column(self):
+        for level, (entity, _, query, _, _) in self.contracts.items():
             config_text = (entity / "config.yaml").read_text(encoding="utf-8")
             migration = (entity / "migrations/create_table.sql").read_text(
                 encoding="utf-8"
             )
             with self.subTest(level=level):
                 self.assertIn(f"feature_namespace: ACCOUNT_L{level}", config_text)
-                self.assertIn("n_clicks_7d", migration)
+                self.assertIn(f"ACCOUNT_L{level}__n_clicks_7d", migration)
+                self.assertTrue(
+                    all(
+                        column.startswith(f"ACCOUNT_L{level}__")
+                        for column in query.FEATURE_COLUMNS
+                    )
+                )
                 self.assertNotIn(f"l{level}_n_clicks_7d", migration)
 
     def test_query_topology_is_not_assembled_conditionally(self):
@@ -221,14 +230,14 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     self.assertIn(column, migration)
                     self.assertRegex(
                         migration,
-                        rf"(?m)^\s+{column} DOUBLE\b",
+                        rf"(?m)^\s+ACCOUNT_L{level}__{column} DOUBLE\b",
                     )
                     self.assertIn("MAX(generated_at) AS last_purchase_at", sql)
                     self.assertIn(f"AS {interval_column}", sql)
                     self.assertIn(interval_column, migration)
                     self.assertRegex(
                         migration,
-                        rf"(?m)^\s+{interval_column} DOUBLE\b",
+                        rf"(?m)^\s+ACCOUNT_L{level}__{interval_column} DOUBLE\b",
                     )
                     interval_line = next(
                         line
@@ -315,12 +324,18 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             config_text = (entity / "config.yaml").read_text(encoding="utf-8")
             with self.subTest(level=level):
                 self.assertIn("- name: finite", config_text)
-                self.assertIn("- conv_imp2click_raw_3d", config_text)
                 self.assertIn(
-                    "- conv_imp2click_div_total_category_conv_3d",
+                    f"- ACCOUNT_L{level}__conv_imp2click_raw_3d",
                     config_text,
                 )
-                self.assertIn("- conv_imp2order_div_total_account_conv_28d", config_text)
+                self.assertIn(
+                    f"- ACCOUNT_L{level}__conv_imp2click_div_total_category_conv_3d",
+                    config_text,
+                )
+                self.assertIn(
+                    f"- ACCOUNT_L{level}__conv_imp2order_div_total_account_conv_28d",
+                    config_text,
+                )
 
     def test_recency_contracts_check_relative_max_per_account(self):
         for level in (1, 3, 5):
@@ -329,7 +344,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             with self.subTest(level=level):
                 self.assertIn("- name: group_max_equals", config_text)
                 self.assertIn(
-                    "column: neg_n_days_since_last_click_rel",
+                    f"column: ACCOUNT_L{level}__neg_n_days_since_last_click_rel",
                     config_text,
                 )
                 self.assertIn("group_by: [account_id]", config_text)
