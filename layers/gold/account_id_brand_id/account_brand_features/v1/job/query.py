@@ -125,7 +125,6 @@ click_features AS (
     FROM deduplicated_clicks click
     INNER JOIN product_brands product
         ON click.product_id = product.product_id
-    WHERE product.brand_id IS NOT NULL
     GROUP BY click.account_id, product.brand_id
 ),
 sku_mapping AS (
@@ -173,7 +172,6 @@ brand_gmv_features AS (
         CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 60 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS gmv_60d,
         CAST(SUM(CASE WHEN generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS THEN line_gmv ELSE 0.0 END) AS DOUBLE) AS gmv_90d
     FROM mapped_order_lines
-    WHERE brand_id IS NOT NULL
     GROUP BY account_id, brand_id
 ),
 account_gmv_features AS (
@@ -225,6 +223,7 @@ SELECT
     brand_id,
     {namespaced_feature_select}
 FROM unprefixed_features
+WHERE brand_id IS NOT NULL
 """
 
 

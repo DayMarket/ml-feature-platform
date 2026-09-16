@@ -74,7 +74,8 @@ gmv_Nd_ratio = gmv_Nd / total_account_gmv_Nd
 `total_account_gmv_Nd` считается до фильтра `brand_id IS NOT NULL`: в
 denominator остаются безбрендовые товары и товары без строки S1. Поэтому сумма
 опубликованных brand ratios пользователя может быть меньше `1`. При нулевом
-denominator ratio равна `NULL`.
+denominator ratio равна `NULL`. Фильтр `brand_id IS NOT NULL` применяется
+только в финальном `SELECT`, после расчёта всех feature-значений.
 
 ## Запись и оркестрация
 
