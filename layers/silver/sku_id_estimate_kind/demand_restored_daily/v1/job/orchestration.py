@@ -10,10 +10,9 @@ import pyarrow as pa
 import yaml
 
 from dq.config import load_dq_settings, trino_catalog_alias
-from dq.day_range import validate_settings
 from dq.results_writer import load_results_catalog
 from dq.tests import quote_identifier
-from feature_stats.day_range import validate_range_settings
+from feature_stats.config import load_feature_stats_settings
 
 from .preparation import prepare_batch, target_ref
 from .query import source_schema_query
@@ -26,8 +25,7 @@ logger = logging.getLogger("airflow.task")
 def connection_ids(config):
     source = config["source"].get("conn_id")
     dq = load_dq_settings(config)
-    validate_settings(dq)
-    stats = validate_range_settings(config)
+    stats = load_feature_stats_settings(config)
     names = (source, dq.trino_conn_id, stats.trino_conn_id)
     if any(not isinstance(name, str) or not name.strip() for name in names):
         raise ValueError("Нужны подтверждённые CH/DQ/stats connection IDs")

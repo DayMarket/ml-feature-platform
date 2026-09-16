@@ -1,4 +1,4 @@
-"""Перезаписать дневные партиции observed-панели FULL JOIN-ом в Trino."""
+"""Перезаписать дневные партиции SKU-продаж свёрткой seller-silver в Trino."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pyarrow as pa
 
-from .query import counts_query, source_query, versioned
+from .query import quote, source_query
 
 logger = logging.getLogger("airflow.task")
 BATCH_ROWS = 100_000
@@ -60,10 +60,6 @@ def trino_arrow(connection, sql: str, schema: pa.Schema, constants: dict) -> pa.
     return pa.concat_tables(parts) if parts else schema.empty_table()
 
 
-def quote(*parts: str) -> str:
-    return ".".join('"' + part.replace('"', '""') + '"' for part in parts)
-
-
 def table_ref(repo_root: str, table_config: dict) -> str:
     from dq.config import trino_catalog_alias
 
@@ -96,33 +92,13 @@ def write_day(table, data: pa.Table, day: date) -> None:
     logger.info("%s: записано %d строк", day, data.num_rows)
 
 
-def pinned_input(config: dict, repo_root: str, catalog) -> tuple[str, dict]:
-    """Текущий snapshot входа: все дни одного запуска читают одну версию."""
-    table = load_table(config, catalog)
-    snapshot = table.current_snapshot()
-    if snapshot is None:
-        raise ValueError(f"Входная таблица {table.name()} пуста")
-    return versioned(table_ref(repo_root, config["table"]), snapshot.snapshot_id), {
-        "snapshot_id": snapshot.snapshot_id,
-        "table_uuid": str(table.metadata.table_uuid),
-    }
-
-
-def load_range(config: dict, sources: dict, repo_root: str, start: str, end: str, *,
+def load_range(config: dict, seller_config: dict, repo_root: str, start: str, end: str, *,
                run_id: str, connection=None, catalog=None) -> list[str]:
-    from dq.results_writer import load_results_catalog
-
     days = day_range(start, end)
-    catalog = catalog or load_results_catalog(config["table"]["catalog"])
     table = load_table(config, catalog)
     schema = table.schema().as_arrow()
-    sales, sales_meta = pinned_input(sources["sales"], repo_root, catalog)
-    stock, stock_meta = pinned_input(sources["stock"], repo_root, catalog)
+    source = table_ref(repo_root, seller_config["table"])
     constants = {
-        "sales_snapshot_id": sales_meta["snapshot_id"],
-        "sales_table_uuid": sales_meta["table_uuid"],
-        "stock_snapshot_id": stock_meta["snapshot_id"],
-        "stock_table_uuid": stock_meta["table_uuid"],
         "source_manifest_id": run_id,
         "source_contract_version": config["source"]["contract_version"],
         "ingested_at": datetime.now(timezone.utc).replace(microsecond=0),
@@ -130,14 +106,8 @@ def load_range(config: dict, sources: dict, repo_root: str, start: str, end: str
     if connection is None:
         from airflow.providers.trino.hooks.trino import TrinoHook
 
-        connection = TrinoHook(trino_conn_id=config["source"]["conn_id"]).get_conn()
+        connection = TrinoHook(trino_conn_id=config["inputs"]["trino_conn_id"]).get_conn()
     with closing(connection):
         for day in days:
-            with closing(connection.cursor()) as cursor:
-                cursor.execute(counts_query(sales, stock, day))
-                sales_rows, stock_rows = cursor.fetchall()[0]
-            # Пустая stock-партиция означала бы «всё не в наличии» — такой день не пишем.
-            if not sales_rows or not stock_rows:
-                raise ValueError(f"{day}: нет входных строк (sales={sales_rows}, stock={stock_rows})")
-            write_day(table, trino_arrow(connection, source_query(sales, stock, day), schema, constants), day)
+            write_day(table, trino_arrow(connection, source_query(source, day), schema, constants), day)
     return [day.isoformat() for day in days]

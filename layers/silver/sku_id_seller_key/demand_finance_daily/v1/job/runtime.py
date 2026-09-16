@@ -1,223 +1,111 @@
-"""Порционно загрузить день финансовых событий после сверки source/FX."""
+"""Перезаписать дневные партиции финансовых событий из ClickHouse в Iceberg."""
 
-from datetime import date, datetime, timezone
-from decimal import Decimal
-from hashlib import sha256
-from itertools import chain
-import json
-import re
+from __future__ import annotations
+
+from contextlib import ExitStack
+from datetime import date, datetime, timedelta, timezone
+import logging
 
 import pyarrow as pa
 
-from .preparation import RAW_COLUMNS, prepare_batch, target_ref, validate_fx, validate_schema
-from .query import TOTAL_COLUMNS, coverage_totals_query, fx_query, source_query, source_ref, source_audit_query
-from .writer import write_day
+from .query import source_query
+
+logger = logging.getLogger("airflow.task")
+BATCH_ROWS = 100_000
 
 
-def source_arrow(rows, columns):
-    names = [name for name, _ in columns]
-    if len(names) != len(RAW_COLUMNS) or set(names) != set(RAW_COLUMNS):
-        raise ValueError("Неверная схема ClickHouse source")
-    if any(len(row) != len(names) for row in rows):
-        raise ValueError("Строка не совпадает с метаданными CH")
-    arrays = []
-    for index, (name, kind) in enumerate(columns):
-        nullable = False
-        while kind.startswith(("Nullable(", "LowCardinality(")) and kind.endswith(")"):
-            wrapper, kind = kind.split("(", 1)
-            nullable |= wrapper == "Nullable"
-            kind = kind[:-1]
-        values = [row[index] for row in rows]
-        if not nullable and any(v is None for v in values):
-            raise ValueError(f"NULL противоречит типу источника {name}")
-        if kind in ("Date", "Date32"):
-            dtype, valid = pa.date32(), lambda v: type(v) is date
-        elif re.fullmatch(r"U?Int(8|16|32|64)", kind):
-            dtype = pa.uint64() if kind.startswith("U") else pa.int64()
-            def valid(v):
-                return type(v) is int
-        elif kind in ("Float32", "Float64"):
-            dtype, valid = pa.float64(), lambda v: type(v) in (int, float)
-        elif re.fullmatch(r"Decimal\(38,\s*0\)", kind):
-            dtype = pa.decimal128(38, 0)
-            def valid(v):
-                return isinstance(v, Decimal) and v.is_finite() and v == int(v)
-        elif kind == "String":
-            dtype, valid = pa.string(), lambda v: isinstance(v, str)
-        elif kind == "DateTime64(6, 'UTC')":
-            dtype = pa.timestamp("us", "UTC")
-            def valid(v):
-                return isinstance(v, datetime) and v.utcoffset() is not None
-        else:
-            raise ValueError(f"Не поддержан source type {name}: {kind}")
-        if any(v is not None and not valid(v) for v in values):
-            raise ValueError(f"Неверные значения source {name}")
-        arrays.append(pa.array(values, type=dtype))
-    return pa.Table.from_arrays(arrays, names=names)
-
-
-def exact_total(value):
-    if type(value) is int:
-        return value
-    if isinstance(value, Decimal) and value.is_finite() and value == int(value):
-        return int(value)
-    raise ValueError("Source total должен быть точным целым, не float или NULL")
-
-
-def read_fx(client, day):
-    rows = client.execute(fx_query(day))
-    if len(rows) != 1 or len(rows[0]) != 5:
-        raise ValueError("Нужна одна строка FX receipt")
-    result = dict(zip(("date", "fx_rate_date", "fx_rate_uzs_per_usd", "fx_rate_source", "fx_captured_at"), rows[0]))
-    validate_fx(result, day)
-    return result
-
-
-def read_coverage(config, client, day):
-    rows = client.execute(coverage_totals_query(config, day))
-    if len(rows) != 1 or len(rows[0]) != len(TOTAL_COLUMNS) + 1:
-        raise ValueError("Неверная схема source coverage")
-    total, *values = rows[0]
-    if type(total) is not int or total <= 0:
-        raise ValueError("Пустой source day не доказывает известный ноль")
-    return (total, *(exact_total(value) for value in values))
-
-
-def audit_source(config, client, day, coverage):
-    rows = client.execute(source_audit_query(config, day))
-    if len(rows) != 1 or len(rows[0]) != 3:
-        raise ValueError("Неверный source audit")
-    source_rows, invalid_sku, invalid_seller = rows[0]
-    if any(type(v) is not int for v in rows[0]):
-        raise ValueError("Неверные типы source audit")
-    if source_rows != coverage[1] or invalid_sku != 0 or invalid_seller != 0:
-        raise ValueError("Неверные ключи либо изменившийся source day")
-
-
-def utc_now():
-    return datetime.now(timezone.utc)
-
-
-def capture_after_fx(fx):
-    """Не ставить ingestion раньше времени FX при небольшом рассогласовании часов."""
-    captured = utc_now()
-    fx_captured = fx.get("fx_captured_at") if isinstance(fx, dict) else None
-    if (not isinstance(captured, datetime) or captured.utcoffset() is None
-            or not isinstance(fx_captured, datetime) or fx_captured.utcoffset() is None):
-        raise ValueError("Нужны timezone-aware времена ingestion и FX")
-    return max(captured.astimezone(timezone.utc), fx_captured.astimezone(timezone.utc))
-
-
-def source_signature(coverage, fx):
-    """Связать контрольные суммы и применённый курс, исключая время повторного захвата."""
-    values = [v.astimezone(timezone.utc).isoformat() if isinstance(v, datetime) else str(v)
-              for v in coverage]
-    rate = fx['fx_rate_uzs_per_usd']
-    payload = {'version': 1, 'coverage': values, 'fx_source': fx['fx_rate_source'],
-               'fx_date': fx['fx_rate_date'].isoformat() if fx['fx_rate_date'] else None,
-               'fx_rate': float(rate).hex() if rate is not None else None}
-    return sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-
-
-def bounded_batches(batch, *, max_rows, max_bytes):
-    """Разделить готовую Arrow-таблицу по обоим лимитам без изменения порядка."""
-    if not isinstance(batch, pa.Table) or any(
-            type(value) is not int or value <= 0 for value in (max_rows, max_bytes)):
-        raise ValueError("Неверная Arrow-порция или лимиты")
-    offset = 0
-    while offset < batch.num_rows:
-        high = min(max_rows, batch.num_rows - offset)
-        candidate = batch.slice(offset, high)
-        if candidate.nbytes > max_bytes:
-            low = 1
-            while low < high:
-                middle = (low + high + 1) // 2
-                if batch.slice(offset, middle).nbytes <= max_bytes:
-                    low = middle
-                else:
-                    high = middle - 1
-            candidate = batch.slice(offset, low)
-            if candidate.nbytes > max_bytes:
-                raise ValueError("Одна строка превышает max_batch_bytes")
-        yield candidate
-        offset += candidate.num_rows
-
-
-def load_day(config, catalog, client, *, day, manifest, require_source_ready=None,
-             expected_source_signature=None):
-    """Проверить source данные; необязательный hook только координирует запуск."""
-    from pyiceberg.transforms import IdentityTransform
-
-    if type(day) is not date or (require_source_ready is not None and not callable(require_source_ready)):
-        raise ValueError("Нужны DATE и корректный coordination hook")
-    version = config["source"]["contract_version"]
-    if any(not isinstance(v, str) or not v.strip() for v in (manifest, version)):
-        raise ValueError("Нужны manifest/version")
-    limit = config["runtime"]["max_batch_rows"]
-    max_bytes = config["runtime"]["max_batch_bytes"]
-    if any(type(v) is not int or v <= 0 for v in (limit, max_bytes)):
-        raise ValueError("Неверные лимиты порций")
-    identifier = target_ref(config, catalog.name)
-    source_ref(config)
-    if not catalog.table_exists(identifier):
-        raise ValueError(f"Нет таблицы {identifier}: сначала миграции")
-    table = catalog.load_table(identifier)
-    schema = table.schema().as_arrow()
-    validate_schema(schema)
-    fields = table.spec().fields
-    if (len(fields) != 1 or fields[0].source_id != table.schema().find_field("date").field_id
-            or not isinstance(fields[0].transform, IdentityTransform)):
-        raise ValueError("Нужен identity partition по date")
-    if require_source_ready is not None and require_source_ready(day) is not True:
-        raise ValueError("Upstream не готов")
-    coverage = read_coverage(config, client, day)
-    audit_source(config, client, day, coverage)
-    receipt = read_fx(client, day)
-    signature = source_signature(coverage, receipt)
-    if expected_source_signature is not None and signature != expected_source_signature:
-        raise ValueError("Source/FX изменился после проверки диапазона")
-    captured = capture_after_fx(receipt)
-    sql = source_query(config, day, fx_available=receipt["fx_rate_source"] != "unavailable")
-    seen = [0] * (len(TOTAL_COLUMNS) + 1)
-
-    def batches():
-        stream = iter(client.execute_iter(sql, with_column_types=True, chunk_size=limit,
-                                          settings={"max_block_size": limit}))
-        try:
-            first = next(stream, None)
-            if not isinstance(first, list) or not first:
-                raise ValueError("Нет метаданных streaming query")
-            columns, records = first[0], first[1:]
-            for records in chain((records,), stream):
-                if not records:
-                    continue
-                batch = prepare_batch(source_arrow(records, columns), schema, day=day, fx=receipt,
-                                      manifest=manifest, version=version, ingested_at=captured)
-                seen[0] += batch.num_rows
-                for index, name in enumerate(TOTAL_COLUMNS, 1):
-                    # Python int не округляет Decimal(38,0) при суммировании порций.
-                    seen[index] += sum(exact_total(v) for v in batch[name].to_pylist())
-                yield from bounded_batches(batch, max_rows=limit, max_bytes=max_bytes)
-        finally:
-            close = getattr(stream, "close", None)
-            if callable(close):
-                close()
-
-    def verify():
-        if tuple(seen) != coverage:
-            raise ValueError("Выгруженные суммы не совпали с source coverage")
-        if require_source_ready is not None and require_source_ready(day) is not True:
-            return False
-        if read_coverage(config, client, day) != coverage:
-            return False
-        audit_source(config, client, day, coverage)
-        current = read_fx(client, day)
-        return all(current[k] == receipt[k] for k in receipt if k != "fx_captured_at")
-
-    stream = batches()
+def day_range(start: str, end: str, *, today: date | None = None) -> list[date]:
+    """Включительный диапазон завершённых UTC-дней `[start, end]`."""
     try:
-        return write_day(config, catalog, stream, day=day, expected_rows=coverage[0],
-                         manifest=manifest, version=version, ingested_at=captured, verify_source=verify,
-                         source_signature=signature)
-    finally:
-        stream.close()
+        first, last = date.fromisoformat(str(start)), date.fromisoformat(str(end))
+    except ValueError as error:
+        raise ValueError(f"start/end должны быть датами YYYY-MM-DD: {start!r}, {end!r}") from error
+    today = today or datetime.now(timezone.utc).date()
+    if first > last:
+        raise ValueError(f"start {first} позже end {last}")
+    if last >= today:
+        raise ValueError(f"end {last} должен быть раньше текущего UTC-дня {today}")
+    return [first + timedelta(days=offset) for offset in range((last - first).days + 1)]
+
+
+def to_arrow(values, dtype: pa.DataType) -> pa.Array:
+    if pa.types.is_timestamp(dtype):
+        # ClickHouse отдаёт aware datetime; в Iceberg хранится UTC без зоны.
+        return pa.array(values, type=pa.timestamp(dtype.unit, "UTC")).cast(dtype)
+    return pa.array(values, type=dtype)
+
+
+def rows_to_arrow(names: list[str], rows: list, schema: pa.Schema, constants: dict) -> pa.Table:
+    """Порция строк → Arrow по схеме Iceberg; недостающие колонки берутся из constants."""
+    columns = dict(zip(names, zip(*rows))) if rows else {name: () for name in names}
+    arrays = []
+    for field in schema:
+        if field.name in columns:
+            arrays.append(to_arrow(columns[field.name], field.type))
+        elif field.name in constants:
+            arrays.append(to_arrow([constants[field.name]] * len(rows), field.type))
+        else:
+            raise ValueError(f"Запрос не вернул колонку {field.name}")
+    return pa.Table.from_arrays(arrays, schema=schema)
+
+
+def clickhouse_arrow(client, sql: str, schema: pa.Schema, constants: dict) -> pa.Table:
+    """Прочитать результат порциями BATCH_ROWS, чтобы не держать все строки Python-объектами."""
+    logger.info("ClickHouse query:\n%s", sql)
+    stream = client.execute_iter(
+        sql, with_column_types=True, chunk_size=BATCH_ROWS, settings={"max_block_size": BATCH_ROWS}
+    )
+    names, parts = None, []
+    for chunk in stream:
+        if names is None:
+            names, chunk = [name for name, _ in chunk[0]], chunk[1:]
+        if chunk:
+            parts.append(rows_to_arrow(names, chunk, schema, constants))
+    if names is None:
+        raise ValueError("ClickHouse не вернул метаданные колонок")
+    return pa.concat_tables(parts) if parts else schema.empty_table()
+
+
+def load_table(config: dict, catalog=None):
+    from dq.results_writer import load_results_catalog
+
+    table = config["table"]
+    catalog = catalog or load_results_catalog(table["catalog"])
+    return catalog.load_table((table["schema"], table["name"]))
+
+
+def write_day(table, data: pa.Table, day: date) -> None:
+    """Атомарно заменить одну партицию `date`; пустой день не перезаписывается."""
+    from pyiceberg.expressions import EqualTo
+
+    from dq.results_writer import run_iceberg_commit_with_retry
+
+    if data.num_rows == 0:
+        raise ValueError(f"{day}: источник вернул 0 строк, партиция не перезаписана")
+
+    def commit() -> None:
+        table.refresh()
+        table.overwrite(data, overwrite_filter=EqualTo("date", day.isoformat()))
+
+    run_iceberg_commit_with_retry(commit, f"overwrite {table.name()} date={day}")
+    logger.info("%s: записано %d строк", day, data.num_rows)
+
+
+def load_range(config: dict, start: str, end: str, *, run_id: str, client=None, catalog=None) -> list[str]:
+    days = day_range(start, end)
+    table = load_table(config, catalog)
+    schema = table.schema().as_arrow()
+    constants = {
+        "source_manifest_id": run_id,
+        "source_contract_version": config["source"]["contract_version"],
+        "ingested_at": datetime.now(timezone.utc).replace(microsecond=0),
+    }
+    with ExitStack() as stack:
+        if client is None:
+            from airflow_commons.hooks.clickhouse_hook import ClickHouseHook
+
+            hook = ClickHouseHook(clickhouse_conn_id=config["source"]["conn_id"], use_numpy=False)
+            client = stack.enter_context(hook.get_conn())
+        for day in days:
+            write_day(table, clickhouse_arrow(client, source_query(config, day), schema, constants), day)
+    return [day.isoformat() for day in days]

@@ -1,6 +1,5 @@
 """Перенести явные диапазоны одного проверенного E3-run."""
 
-from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
 import sys
@@ -25,18 +24,11 @@ from layers.silver.sku_id_estimate_kind.demand_restored_daily.v1.job.budget impo
 
 CONFIG = yaml.safe_load(Path(CONFIG_PATH).read_text(encoding="utf-8"))
 MAX_RUN_SECONDS = configured_limit(CONFIG)
-PARTITION_DATE = '{{ ti.xcom_pull(task_ids="write_range")["dates"][-1] }}'
+PARTITION_DATES = '{{ ti.xcom_pull(task_ids="write_range")["dates"] | join(",") }}'
 
 
 def owner_guard(context):
     return run_guard(CONFIG, context)
-
-
-@contextmanager
-def output_guard(context):
-    from layers.silver.sku_id_estimate_kind.demand_restored_daily.v1.job.source_guard import checked_output
-    with owner_guard(context), checked_output(CONFIG, context):
-        yield
 
 
 def executor_config():
@@ -98,13 +90,8 @@ def restored_dag():
 
     request = prepare_request()
     loaded = write_range(request)
-    dq_task = build_dq_task(
-        CONFIG_PATH, REPO_ROOT, range_receipt_task_id="write_range", range_guard=output_guard,
-    )(PARTITION_DATE)
-    stats_task = build_feature_stats_task(
-        CONFIG_PATH, REPO_ROOT, range_receipt_task_id="write_range",
-        range_timeout_seconds=MAX_RUN_SECONDS, range_guard=output_guard,
-    )(PARTITION_DATE)
+    dq_task = build_dq_task(CONFIG_PATH, REPO_ROOT)(PARTITION_DATES)
+    stats_task = build_feature_stats_task(CONFIG_PATH, REPO_ROOT)(PARTITION_DATES)
     loaded >> [dq_task, stats_task]
 
 
