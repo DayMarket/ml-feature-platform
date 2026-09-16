@@ -100,9 +100,17 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertIn("SUM(CASE", self.sql)
         self.assertNotIn("n_events", self.sql)
 
-    def test_brand_filter_excludes_null_and_s1_owns_placeholder_normalization(self):
-        self.assertIn("WHERE product.brand_id IS NOT NULL", self.sql)
-        self.assertIn("WHERE brand_id IS NOT NULL", self.sql)
+    def test_brand_filter_is_applied_only_after_feature_calculation(self):
+        click_cte = self.sql.split("click_features AS (", 1)[1].split(
+            "),\nsku_mapping AS (", 1
+        )[0]
+        brand_gmv_cte = self.sql.split("brand_gmv_features AS (", 1)[1].split(
+            "),\naccount_gmv_features AS (", 1
+        )[0]
+        self.assertNotIn("brand_id IS NOT NULL", click_cte)
+        self.assertNotIn("brand_id IS NOT NULL", brand_gmv_cte)
+        self.assertTrue(self.sql.rstrip().endswith("WHERE brand_id IS NOT NULL"))
+        self.assertEqual(self.sql.count("brand_id IS NOT NULL"), 1)
         self.assertNotIn("160078", self.sql)
 
     def test_orders_use_sku_mapping_statuses_b2b_filter_and_transaction_gmv(self):
