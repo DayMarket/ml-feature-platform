@@ -150,6 +150,24 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             "L6_CATEGORY_GENDER__category_gender AS category_gender",
             self.sql,
         )
+        self.assertIn(
+            "PRODUCT_BASE__product_discount AS product_discount",
+            self.sql,
+        )
+        self.assertIn(
+            "PRODUCT_BASE__product_rating AS product_rating",
+            self.sql,
+        )
+        self.assertIn(
+            "PRODUCT_RANKING__product_popularity_by_orders_neg_rank\n"
+            "            AS product_popularity_by_orders_neg_rank",
+            self.sql,
+        )
+        self.assertIn(
+            "PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat\n"
+            "            AS product_popularity_by_orders_neg_rank_in_cat",
+            self.sql,
+        )
 
     def test_popularity_percentile_direction_is_explicit(self):
         self.assertIn(

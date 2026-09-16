@@ -414,16 +414,18 @@ l6_category_genders AS (
 product_base_features AS (
     SELECT
         CAST(product_id AS INT) AS product_id,
-        product_discount,
-        product_rating
+        PRODUCT_BASE__product_discount AS product_discount,
+        PRODUCT_BASE__product_rating AS product_rating
     FROM {settings.product_base_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
 product_ranking_features AS (
     SELECT
         CAST(product_id AS INT) AS product_id,
-        product_popularity_by_orders_neg_rank,
-        product_popularity_by_orders_neg_rank_in_cat
+        PRODUCT_RANKING__product_popularity_by_orders_neg_rank
+            AS product_popularity_by_orders_neg_rank,
+        PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat
+            AS product_popularity_by_orders_neg_rank_in_cat
     FROM {settings.product_ranking_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),

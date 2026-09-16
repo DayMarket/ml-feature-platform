@@ -56,8 +56,13 @@ Discount, rating, popularity и ACCOUNT_PROFILE__gender категории вз�
 
 Product attributes присоединяются point-in-time на snapshot `T`:
 
-- discount и rating — из G7 с `calculated_at = T`;
-- global и L6 popularity rank — из G8 с `calculated_at = T`;
+- discount и rating — из физических колонок G7
+  `PRODUCT_BASE__product_discount` и `PRODUCT_BASE__product_rating` с
+  `calculated_at = T`;
+- global и L6 popularity rank — из физических колонок G8
+  `PRODUCT_RANKING__product_popularity_by_orders_neg_rank` и
+  `PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat` с
+  `calculated_at = T`;
 - L6 — из S1 snapshot текущей локальной даты;
 - gender L6 — из G6 с `calculated_at = T`.
 
