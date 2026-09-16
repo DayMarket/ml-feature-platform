@@ -50,7 +50,7 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         migration = (ENTITY / "migrations/create_table.sql").read_text(encoding="utf-8")
         migration_columns = set(
             re.findall(
-                r"^\s{4}([a-z][a-z0-9_]*)\s+(?:INT|DOUBLE|TIMESTAMP)\b",
+                r"^\s{4}([A-Za-z][A-Za-z0-9_]*)\s+(?:INT|DOUBLE|TIMESTAMP)\b",
                 migration,
                 flags=re.MULTILINE,
             )
@@ -69,10 +69,16 @@ class AccountBrandFeaturesTest(unittest.TestCase):
             all(not column.startswith("bid_") for column in query.FEATURE_COLUMNS)
         )
 
-    def test_feature_namespace_is_not_duplicated_in_physical_columns(self):
+    def test_feature_namespace_prefixes_every_physical_feature_column(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("feature_namespace: ACCOUNT_BRAND", config_text)
-        self.assertIn("n_clicks_7d", query.FEATURE_COLUMNS)
+        self.assertIn("ACCOUNT_BRAND__n_clicks_7d", query.FEATURE_COLUMNS)
+        self.assertTrue(
+            all(
+                column.startswith("ACCOUNT_BRAND__") for column in query.FEATURE_COLUMNS
+            )
+        )
+        self.assertIn("AS ACCOUNT_BRAND__n_clicks_7d", self.sql)
         self.assertNotIn("bid_n_clicks_7d", query.FEATURE_COLUMNS)
 
     def test_business_sql_uses_only_targeted_feature_expression_builders(self):
