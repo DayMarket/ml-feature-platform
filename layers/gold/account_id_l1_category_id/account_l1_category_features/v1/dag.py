@@ -84,6 +84,7 @@ default_args = {
         "account",
         "category",
         "l1",
+        "recsys",
     ],
     dagrun_timeout=timedelta(hours=12),
     is_paused_upon_creation=True,

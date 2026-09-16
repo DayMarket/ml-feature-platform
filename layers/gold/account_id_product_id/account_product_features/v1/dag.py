@@ -64,6 +64,7 @@ default_args = {
         "gold",
         "account",
         "product",
+        "recsys",
     ],
     dagrun_timeout=timedelta(hours=12),
     is_paused_upon_creation=True,
