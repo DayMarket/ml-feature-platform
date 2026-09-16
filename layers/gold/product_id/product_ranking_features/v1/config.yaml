@@ -1,0 +1,88 @@
+resources:
+  path: ../../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-gold-product-ranking-features
+  main_application_file: local:///git/repo/layers/gold/product_id/product_ranking_features/v1/entrypoints/get_product_ranking_features.py
+  resource_profile: small
+
+table:
+  key: product_ranking_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_product_ranking_features
+  primary_key: calculated_at,product_id
+  feature_namespace: PRODUCT_RANKING
+  meta:
+    team: team::recsys
+    create_dbt_pr: false
+    create_maintenance_pr: true
+
+source:
+  engine: spark_iceberg
+  product_metadata_table: iceberg.silver.feature_platform_product_metadata
+  product_base_features_table: iceberg.gold.feature_platform_product_base_features
+  business_timezone: Asia/Tashkent
+
+dag:
+  id: feature-platform.layers.gold.product_id.product_ranking_features
+  group_tag: recsys-features
+  schedule: "0 7,19 * * *"
+  start_date: "2026-09-05T07:00:00Z"
+  catchup: true
+  team: recsys
+  owner: team:recsys
+
+# Alert routing is ready, but callbacks stay disabled in dag.py during debugging.
+alerts:
+  team: recsys
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_recsys
+
+dq:
+  trino_conn_id: trino_recsys
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 12
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
+  tests:
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+    - name: expression_is_true
+      expression: "product_id > 0"
+    - name: expression_is_true
+      expression: "(PRODUCT_RANKING__price_percentile IS NULL OR PRODUCT_RANKING__price_percentile BETWEEN 0 AND 1) AND (PRODUCT_RANKING__price_percentile_in_cat IS NULL OR PRODUCT_RANKING__price_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT_RANKING__rating_percentile_in_cat IS NULL OR PRODUCT_RANKING__rating_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT_RANKING__discount_percentile_in_cat IS NULL OR PRODUCT_RANKING__discount_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT_RANKING__feedback_quantity_percentile_in_cat IS NULL OR PRODUCT_RANKING__feedback_quantity_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT_RANKING__feedback_lte_3_to_orders_rate_percentile_in_cat IS NULL OR PRODUCT_RANKING__feedback_lte_3_to_orders_rate_percentile_in_cat BETWEEN 0 AND 1)"
+    - name: expression_is_true
+      expression: "(PRODUCT_RANKING__product_popularity_by_orders_neg_rank IS NULL OR (is_finite(PRODUCT_RANKING__product_popularity_by_orders_neg_rank) AND PRODUCT_RANKING__product_popularity_by_orders_neg_rank <= 0)) AND (PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat IS NULL OR (is_finite(PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat) AND PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat <= 0)) AND (PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_3d IS NULL OR (is_finite(PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_3d) AND PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_3d <= 0)) AND (PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_28d IS NULL OR (is_finite(PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_28d) AND PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_28d <= 0)) AND (PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_in_cat_3d IS NULL OR (is_finite(PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_in_cat_3d) AND PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_in_cat_3d <= 0)) AND (PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_in_cat_28d IS NULL OR (is_finite(PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_in_cat_28d) AND PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_in_cat_28d <= 0))"
+    - name: non_negative
+      columns:
+        - PRODUCT_RANKING__feedback_lte_3_to_orders_rate_smoothed
+        - PRODUCT_RANKING__return_rate_to_l6_category_return_rate_7d
+        - PRODUCT_RANKING__return_rate_to_l6_category_return_rate_14d
+        - PRODUCT_RANKING__return_rate_to_l6_category_return_rate_28d
+        - PRODUCT_RANKING__return_rate_to_l6_category_return_rate_60d
+        - PRODUCT_RANKING__return_rate_to_l6_category_return_rate_90d
+        - PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_7d
+        - PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_14d
+        - PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_28d
+        - PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_60d
+        - PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_90d
+    - name: expression_is_true
+      expression: "(PRODUCT_RANKING__feedback_lte_3_to_orders_rate_smoothed IS NULL OR is_finite(PRODUCT_RANKING__feedback_lte_3_to_orders_rate_smoothed)) AND (PRODUCT_RANKING__return_rate_to_l6_category_return_rate_7d IS NULL OR is_finite(PRODUCT_RANKING__return_rate_to_l6_category_return_rate_7d)) AND (PRODUCT_RANKING__return_rate_to_l6_category_return_rate_14d IS NULL OR is_finite(PRODUCT_RANKING__return_rate_to_l6_category_return_rate_14d)) AND (PRODUCT_RANKING__return_rate_to_l6_category_return_rate_28d IS NULL OR is_finite(PRODUCT_RANKING__return_rate_to_l6_category_return_rate_28d)) AND (PRODUCT_RANKING__return_rate_to_l6_category_return_rate_60d IS NULL OR is_finite(PRODUCT_RANKING__return_rate_to_l6_category_return_rate_60d)) AND (PRODUCT_RANKING__return_rate_to_l6_category_return_rate_90d IS NULL OR is_finite(PRODUCT_RANKING__return_rate_to_l6_category_return_rate_90d)) AND (PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_7d IS NULL OR is_finite(PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_7d)) AND (PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_14d IS NULL OR is_finite(PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_14d)) AND (PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_28d IS NULL OR is_finite(PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_28d)) AND (PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_60d IS NULL OR is_finite(PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_60d)) AND (PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_90d IS NULL OR is_finite(PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_90d))"
+    - name: expression_is_true
+      expression: "(PRODUCT_RANKING__l6_category_return_rate_7d IS NULL OR PRODUCT_RANKING__l6_category_return_rate_7d BETWEEN 0 AND 1) AND (PRODUCT_RANKING__l6_category_return_rate_14d IS NULL OR PRODUCT_RANKING__l6_category_return_rate_14d BETWEEN 0 AND 1) AND (PRODUCT_RANKING__l6_category_return_rate_28d IS NULL OR PRODUCT_RANKING__l6_category_return_rate_28d BETWEEN 0 AND 1) AND (PRODUCT_RANKING__l6_category_return_rate_60d IS NULL OR PRODUCT_RANKING__l6_category_return_rate_60d BETWEEN 0 AND 1) AND (PRODUCT_RANKING__l6_category_return_rate_90d IS NULL OR PRODUCT_RANKING__l6_category_return_rate_90d BETWEEN 0 AND 1)"
+    - name: expression_is_true
+      expression: "(PRODUCT_RANKING__return_rate_smoothed_7d IS NULL OR PRODUCT_RANKING__return_rate_smoothed_7d BETWEEN 0 AND 1) AND (PRODUCT_RANKING__return_rate_smoothed_14d IS NULL OR PRODUCT_RANKING__return_rate_smoothed_14d BETWEEN 0 AND 1) AND (PRODUCT_RANKING__return_rate_smoothed_28d IS NULL OR PRODUCT_RANKING__return_rate_smoothed_28d BETWEEN 0 AND 1) AND (PRODUCT_RANKING__return_rate_smoothed_60d IS NULL OR PRODUCT_RANKING__return_rate_smoothed_60d BETWEEN 0 AND 1) AND (PRODUCT_RANKING__return_rate_smoothed_90d IS NULL OR PRODUCT_RANKING__return_rate_smoothed_90d BETWEEN 0 AND 1)"
+
+feature_stats:
+  trino_conn_id: trino_recsys
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 12
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
+  exclude_columns: []

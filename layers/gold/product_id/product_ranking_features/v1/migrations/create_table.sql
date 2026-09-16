@@ -1,0 +1,41 @@
+CREATE TABLE IF NOT EXISTS {target_table} (
+    calculated_at TIMESTAMP COMMENT 'Правая граница Gold snapshot в Asia/Tashkent; часть уникального ключа calculated_at, product_id',
+    product_id INT COMMENT 'Положительный идентификатор товара из G7; часть уникального ключа calculated_at, product_id',
+    PRODUCT_RANKING__price_percentile DOUBLE COMMENT 'Global average-rank percentile min_sell_price_eod',
+    PRODUCT_RANKING__price_percentile_in_cat DOUBLE COMMENT 'Average-rank percentile min_sell_price_eod внутри L6',
+    PRODUCT_RANKING__product_popularity_by_orders_neg_rank DOUBLE COMMENT 'Отрицательный global average rank product_orders_28d по убыванию',
+    PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat DOUBLE COMMENT 'Отрицательный average rank product_orders_28d внутри L6',
+    PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_3d DOUBLE COMMENT 'Отрицательный global average rank product_clicks_3d по убыванию',
+    PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_28d DOUBLE COMMENT 'Отрицательный global average rank product_clicks_28d по убыванию',
+    PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_in_cat_3d DOUBLE COMMENT 'Отрицательный average rank product_clicks_3d внутри L6',
+    PRODUCT_RANKING__product_popularity_by_clicks_neg_rank_in_cat_28d DOUBLE COMMENT 'Отрицательный average rank product_clicks_28d внутри L6',
+    PRODUCT_RANKING__rating_percentile_in_cat DOUBLE COMMENT 'Average-rank percentile product_rating внутри L6',
+    PRODUCT_RANKING__discount_percentile_in_cat DOUBLE COMMENT 'Average-rank percentile product_discount внутри L6',
+    PRODUCT_RANKING__feedback_quantity_percentile_in_cat DOUBLE COMMENT 'Average-rank percentile product_feedback_quantity внутри L6',
+    PRODUCT_RANKING__feedback_lte_3_to_orders_rate_smoothed DOUBLE COMMENT 'All-time feedback rating 1..3 к product_orders_28d, сглаженное global prior с alpha 10',
+    PRODUCT_RANKING__feedback_lte_3_to_orders_rate_percentile_in_cat DOUBLE COMMENT 'Average-rank percentile smoothed feedback rating 1..3 to orders rate внутри L6',
+    PRODUCT_RANKING__l6_category_return_rate_7d DOUBLE COMMENT 'Взвешенная доля возвращённых единиц L6 за 7 дней',
+    PRODUCT_RANKING__return_rate_smoothed_7d DOUBLE COMMENT 'Product return rate за 7 дней, сглаженный к L6 baseline с alpha 10',
+    PRODUCT_RANKING__return_rate_to_l6_category_return_rate_7d DOUBLE COMMENT 'Product return rate к L6 return rate за 7 дней',
+    PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_7d DOUBLE COMMENT 'Smoothed product return rate к L6 return rate за 7 дней',
+    PRODUCT_RANKING__l6_category_return_rate_14d DOUBLE COMMENT 'Взвешенная доля возвращённых единиц L6 за 14 дней',
+    PRODUCT_RANKING__return_rate_smoothed_14d DOUBLE COMMENT 'Product return rate за 14 дней, сглаженный к L6 baseline с alpha 10',
+    PRODUCT_RANKING__return_rate_to_l6_category_return_rate_14d DOUBLE COMMENT 'Product return rate к L6 return rate за 14 дней',
+    PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_14d DOUBLE COMMENT 'Smoothed product return rate к L6 return rate за 14 дней',
+    PRODUCT_RANKING__l6_category_return_rate_28d DOUBLE COMMENT 'Взвешенная доля возвращённых единиц L6 за 28 дней',
+    PRODUCT_RANKING__return_rate_smoothed_28d DOUBLE COMMENT 'Product return rate за 28 дней, сглаженный к L6 baseline с alpha 10',
+    PRODUCT_RANKING__return_rate_to_l6_category_return_rate_28d DOUBLE COMMENT 'Product return rate к L6 return rate за 28 дней',
+    PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_28d DOUBLE COMMENT 'Smoothed product return rate к L6 return rate за 28 дней',
+    PRODUCT_RANKING__l6_category_return_rate_60d DOUBLE COMMENT 'Взвешенная доля возвращённых единиц L6 за 60 дней',
+    PRODUCT_RANKING__return_rate_smoothed_60d DOUBLE COMMENT 'Product return rate за 60 дней, сглаженный к L6 baseline с alpha 10',
+    PRODUCT_RANKING__return_rate_to_l6_category_return_rate_60d DOUBLE COMMENT 'Product return rate к L6 return rate за 60 дней',
+    PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_60d DOUBLE COMMENT 'Smoothed product return rate к L6 return rate за 60 дней',
+    PRODUCT_RANKING__l6_category_return_rate_90d DOUBLE COMMENT 'Взвешенная доля возвращённых единиц L6 за 90 дней',
+    PRODUCT_RANKING__return_rate_smoothed_90d DOUBLE COMMENT 'Product return rate за 90 дней, сглаженный к L6 baseline с alpha 10',
+    PRODUCT_RANKING__return_rate_to_l6_category_return_rate_90d DOUBLE COMMENT 'Product return rate к L6 return rate за 90 дней',
+    PRODUCT_RANKING__return_rate_smoothed_to_l6_category_return_rate_90d DOUBLE COMMENT 'Smoothed product return rate к L6 return rate за 90 дней'
+)
+USING iceberg
+COMMENT 'Gold: population-dependent product ranks, percentiles and smoothed rates over G7'
+PARTITIONED BY (days(calculated_at))
+TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')
