@@ -12,9 +12,9 @@ Airflow group tag: `recsys-features`.
 
 Grain и primary key: `calculated_at,account_id,shop_id`.
 
-Логический namespace — `ACCOUNT_SHOP`. Физические feature-колонки не содержат
-префикс `sid_`: например, полное имя `ACCOUNT_SHOP__n_clicks_7d` собирается из
-namespace и физической колонки `n_clicks_7d`.
+Namespace — `ACCOUNT_SHOP`. Все физические feature-колонки уже содержат его,
+например `ACCOUNT_SHOP__n_clicks_7d`; устаревший префикс `sid_` не используется.
+Ключи `calculated_at`, `account_id` и `shop_id` остаются без namespace.
 
 `calculated_at` — граница Gold snapshot: `00:00` или `12:00 Asia/Tashkent`.
 Строки без `shop_id` не публикуются.

@@ -51,10 +51,11 @@ class AccountShopFeaturesTest(unittest.TestCase):
             *(f"gmv_{window}d" for window in ORDER_WINDOWS),
         }
         expected |= {f"{column}_ratio" for column in expected}
+        expected = {f"ACCOUNT_SHOP__{column}" for column in expected}
         self.assertEqual(set(query.FEATURE_COLUMNS), expected)
         self.assertEqual(len(query.FEATURE_COLUMNS), 48)
         self.assertTrue(
-            all(not column.startswith("sid_") for column in query.FEATURE_COLUMNS)
+            all(column.startswith("ACCOUNT_SHOP__") for column in query.FEATURE_COLUMNS)
         )
 
         for window in ORDER_WINDOWS:
@@ -62,12 +63,10 @@ class AccountShopFeaturesTest(unittest.TestCase):
         self.assertNotRegex(self.sql, r"INTERVAL (?:30|63|91) DAYS")
 
     def test_migration_matches_generated_feature_contract(self):
-        migration = (ENTITY / "migrations/create_table.sql").read_text(
-            encoding="utf-8"
-        )
+        migration = (ENTITY / "migrations/create_table.sql").read_text(encoding="utf-8")
         migration_columns = set(
             re.findall(
-                r"^\s{4}([a-z][a-z0-9_]*)\s+(?:INT|DOUBLE|TIMESTAMP)\b",
+                r"^\s{4}([A-Za-z][A-Za-z0-9_]*)\s+(?:INT|DOUBLE|TIMESTAMP)\b",
                 migration,
                 flags=re.MULTILINE,
             )
@@ -85,6 +84,7 @@ class AccountShopFeaturesTest(unittest.TestCase):
     def test_namespace_and_table_contract(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("feature_namespace: ACCOUNT_SHOP", config_text)
+        self.assertIn("AS ACCOUNT_SHOP__n_clicks_7d", self.sql)
         self.assertIn("primary_key: calculated_at,account_id,shop_id", config_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
@@ -201,10 +201,19 @@ class AccountShopFeaturesTest(unittest.TestCase):
             "n_orders_90d_ratio",
             "gmv_60d_ratio",
         ):
-            self.assertIn(f"column: {column}", config_text)
-        self.assertIn("n_clicks_3d <= n_clicks_7d", config_text)
-        self.assertIn("n_orders_60d <= n_orders_90d", config_text)
-        self.assertIn("gmv_60d <= gmv_90d", config_text)
+            self.assertIn(f"column: ACCOUNT_SHOP__{column}", config_text)
+        self.assertIn(
+            "ACCOUNT_SHOP__n_clicks_3d <= ACCOUNT_SHOP__n_clicks_7d",
+            config_text,
+        )
+        self.assertIn(
+            "ACCOUNT_SHOP__n_orders_60d <= ACCOUNT_SHOP__n_orders_90d",
+            config_text,
+        )
+        self.assertIn(
+            "ACCOUNT_SHOP__gmv_60d <= ACCOUNT_SHOP__gmv_90d",
+            config_text,
+        )
 
 
 if __name__ == "__main__":

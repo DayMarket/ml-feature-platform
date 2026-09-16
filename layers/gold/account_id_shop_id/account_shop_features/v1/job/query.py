@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 ACTION_WINDOWS = (3, 7, 14, 28)
 ORDER_WINDOWS = (3, 7, 14, 28, 60, 90)
+FEATURE_NAMESPACE = "ACCOUNT_SHOP"
 ACTION_EVENT_TYPES = {
     "clicks": "PRODUCT_VIEW",
     "atcs": "ADD_TO_CART",
@@ -18,8 +19,11 @@ ACTION_COLUMNS = tuple(
 ORDER_COLUMNS = tuple(f"n_orders_{window}d" for window in ORDER_WINDOWS)
 GMV_COLUMNS = tuple(f"gmv_{window}d" for window in ORDER_WINDOWS)
 BASE_FEATURE_COLUMNS = ACTION_COLUMNS + ORDER_COLUMNS + GMV_COLUMNS
-FEATURE_COLUMNS = BASE_FEATURE_COLUMNS + tuple(
+UNPREFIXED_FEATURE_COLUMNS = BASE_FEATURE_COLUMNS + tuple(
     f"{column}_ratio" for column in BASE_FEATURE_COLUMNS
+)
+FEATURE_COLUMNS = tuple(
+    f"{FEATURE_NAMESPACE}__{column}" for column in UNPREFIXED_FEATURE_COLUMNS
 )
 
 
@@ -106,6 +110,13 @@ def _account_ratio_expressions() -> str:
     )
 
 
+def _namespaced_feature_select(source_alias: str) -> str:
+    return ",\n    ".join(
+        f"{source_alias}.{column} AS {FEATURE_NAMESPACE}__{column}"
+        for column in UNPREFIXED_FEATURE_COLUMNS
+    )
+
+
 def build_account_shop_features_query(
     settings: SourceSettings,
     calculated_at: datetime,
@@ -125,6 +136,7 @@ def build_account_shop_features_query(
     gmv_expressions = _gmv_expressions(calculated_at_utc)
     base_feature_expressions = _base_feature_expressions()
     account_ratio_expressions = _account_ratio_expressions()
+    namespaced_feature_select = _namespaced_feature_select("unprefixed_features")
 
     return f"""
 WITH product_shops AS (
@@ -233,11 +245,19 @@ base_features AS (
     LEFT JOIN order_features orders
         ON entity.account_id = orders.account_id
         AND entity.shop_id = orders.shop_id
+),
+unprefixed_features AS (
+    SELECT
+        base.*,
+        {account_ratio_expressions}
+    FROM base_features base
 )
 SELECT
-    base.*,
-    {account_ratio_expressions}
-FROM base_features base
+    calculated_at,
+    account_id,
+    shop_id,
+    {namespaced_feature_select}
+FROM unprefixed_features
 """
 
 
