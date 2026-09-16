@@ -60,38 +60,38 @@ dq:
       expression: "account_id > 0 AND brand_id > 0 AND brand_id != 160078"
     - name: non_negative
       columns:
-        - n_clicks_3d
-        - n_clicks_7d
-        - n_clicks_14d
-        - n_clicks_28d
-        - gmv_3d
-        - gmv_7d
-        - gmv_14d
-        - gmv_28d
-        - gmv_60d
-        - gmv_90d
+        - ACCOUNT_BRAND__n_clicks_3d
+        - ACCOUNT_BRAND__n_clicks_7d
+        - ACCOUNT_BRAND__n_clicks_14d
+        - ACCOUNT_BRAND__n_clicks_28d
+        - ACCOUNT_BRAND__gmv_3d
+        - ACCOUNT_BRAND__gmv_7d
+        - ACCOUNT_BRAND__gmv_14d
+        - ACCOUNT_BRAND__gmv_28d
+        - ACCOUNT_BRAND__gmv_60d
+        - ACCOUNT_BRAND__gmv_90d
     - name: accepted_range
-      column: gmv_3d_ratio
+      column: ACCOUNT_BRAND__gmv_3d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_7d_ratio
+      column: ACCOUNT_BRAND__gmv_7d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_14d_ratio
+      column: ACCOUNT_BRAND__gmv_14d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_28d_ratio
+      column: ACCOUNT_BRAND__gmv_28d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_60d_ratio
+      column: ACCOUNT_BRAND__gmv_60d_ratio
       min: 0
       max: 1
     - name: accepted_range
-      column: gmv_90d_ratio
+      column: ACCOUNT_BRAND__gmv_90d_ratio
       min: 0
       max: 1
 

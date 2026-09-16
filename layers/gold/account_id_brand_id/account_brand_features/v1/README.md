@@ -13,9 +13,10 @@ Airflow group tag: `recsys-features`.
 Grain и primary key: `calculated_at,account_id,brand_id`.
 
 Идентификаторы и счётчики в физическом контракте имеют тип `INT`.
-Физические feature-колонки хранятся без entity-префикса, например
-`n_clicks_7d`. Логический namespace контракта — `ACCOUNT_BRAND`; при публикации
-или сборке model input полное имя становится `ACCOUNT_BRAND__n_clicks_7d`.
+Namespace контракта — `ACCOUNT_BRAND`. Все физические feature-колонки уже
+содержат его, например `ACCOUNT_BRAND__n_clicks_7d`; устаревший префикс `bid_`
+не используется. Ключи `calculated_at`, `account_id` и `brand_id` остаются без
+namespace.
 
 `calculated_at` — граница Gold snapshot: `00:00` или `12:00 Asia/Tashkent`.
 Публикуются только содержательные `brand_id`: `NULL` и business placeholder

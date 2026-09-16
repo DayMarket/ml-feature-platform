@@ -3,9 +3,9 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 GMV_WINDOWS = (3, 7, 14, 28, 60, 90)
+FEATURE_NAMESPACE = "ACCOUNT_BRAND"
 
-
-FEATURE_COLUMNS = (
+BASE_FEATURE_COLUMNS = (
     "n_clicks_3d",
     "n_clicks_7d",
     "n_clicks_14d",
@@ -22,6 +22,9 @@ FEATURE_COLUMNS = (
     "gmv_28d_ratio",
     "gmv_60d_ratio",
     "gmv_90d_ratio",
+)
+FEATURE_COLUMNS = tuple(
+    f"{FEATURE_NAMESPACE}__{column}" for column in BASE_FEATURE_COLUMNS
 )
 
 
@@ -63,6 +66,13 @@ def _gmv_ratio_expressions() -> str:
     )
 
 
+def _namespaced_feature_select(source_alias: str) -> str:
+    return ",\n    ".join(
+        f"{source_alias}.{column} AS {FEATURE_NAMESPACE}__{column}"
+        for column in BASE_FEATURE_COLUMNS
+    )
+
+
 def build_account_brand_features_query(
     settings: SourceSettings,
     calculated_at: datetime,
@@ -77,6 +87,7 @@ def build_account_brand_features_query(
         settings.business_timezone,
     )
     gmv_ratio_expressions = _gmv_ratio_expressions()
+    namespaced_feature_select = _namespaced_feature_select("unprefixed_features")
 
     return f"""
 WITH product_brands AS (
@@ -181,8 +192,9 @@ entity_keys AS (
     SELECT account_id, brand_id FROM click_features
     UNION
     SELECT account_id, brand_id FROM brand_gmv_features
-)
-SELECT
+),
+unprefixed_features AS (
+    SELECT
     TIMESTAMP '{calculated_at_local}' AS calculated_at,
     entity.account_id,
     entity.brand_id,
@@ -196,16 +208,23 @@ SELECT
     COALESCE(brand_gmv.gmv_28d, 0.0D) AS gmv_28d,
     COALESCE(brand_gmv.gmv_60d, 0.0D) AS gmv_60d,
     COALESCE(brand_gmv.gmv_90d, 0.0D) AS gmv_90d,
-    {gmv_ratio_expressions}
-FROM entity_keys entity
-LEFT JOIN click_features clicks
-    ON entity.account_id = clicks.account_id
-    AND entity.brand_id = clicks.brand_id
-LEFT JOIN brand_gmv_features brand_gmv
-    ON entity.account_id = brand_gmv.account_id
-    AND entity.brand_id = brand_gmv.brand_id
-LEFT JOIN account_gmv_features account_gmv
-    ON entity.account_id = account_gmv.account_id
+        {gmv_ratio_expressions}
+    FROM entity_keys entity
+    LEFT JOIN click_features clicks
+        ON entity.account_id = clicks.account_id
+        AND entity.brand_id = clicks.brand_id
+    LEFT JOIN brand_gmv_features brand_gmv
+        ON entity.account_id = brand_gmv.account_id
+        AND entity.brand_id = brand_gmv.brand_id
+    LEFT JOIN account_gmv_features account_gmv
+        ON entity.account_id = account_gmv.account_id
+)
+SELECT
+    calculated_at,
+    account_id,
+    brand_id,
+    {namespaced_feature_select}
+FROM unprefixed_features
 """
 
 
@@ -224,64 +243,8 @@ USING account_brand_features_for_calculated_at AS source
     ON target.calculated_at = source.calculated_at
     AND target.account_id = source.account_id
     AND target.brand_id = source.brand_id
-WHEN MATCHED THEN UPDATE SET
-    target.n_clicks_3d = source.n_clicks_3d,
-    target.n_clicks_7d = source.n_clicks_7d,
-    target.n_clicks_14d = source.n_clicks_14d,
-    target.n_clicks_28d = source.n_clicks_28d,
-    target.gmv_3d = source.gmv_3d,
-    target.gmv_7d = source.gmv_7d,
-    target.gmv_14d = source.gmv_14d,
-    target.gmv_28d = source.gmv_28d,
-    target.gmv_60d = source.gmv_60d,
-    target.gmv_90d = source.gmv_90d,
-    target.gmv_3d_ratio = source.gmv_3d_ratio,
-    target.gmv_7d_ratio = source.gmv_7d_ratio,
-    target.gmv_14d_ratio = source.gmv_14d_ratio,
-    target.gmv_28d_ratio = source.gmv_28d_ratio,
-    target.gmv_60d_ratio = source.gmv_60d_ratio,
-    target.gmv_90d_ratio = source.gmv_90d_ratio
-WHEN NOT MATCHED THEN INSERT (
-    calculated_at,
-    account_id,
-    brand_id,
-    n_clicks_3d,
-    n_clicks_7d,
-    n_clicks_14d,
-    n_clicks_28d,
-    gmv_3d,
-    gmv_7d,
-    gmv_14d,
-    gmv_28d,
-    gmv_60d,
-    gmv_90d,
-    gmv_3d_ratio,
-    gmv_7d_ratio,
-    gmv_14d_ratio,
-    gmv_28d_ratio,
-    gmv_60d_ratio,
-    gmv_90d_ratio
-) VALUES (
-    source.calculated_at,
-    source.account_id,
-    source.brand_id,
-    source.n_clicks_3d,
-    source.n_clicks_7d,
-    source.n_clicks_14d,
-    source.n_clicks_28d,
-    source.gmv_3d,
-    source.gmv_7d,
-    source.gmv_14d,
-    source.gmv_28d,
-    source.gmv_60d,
-    source.gmv_90d,
-    source.gmv_3d_ratio,
-    source.gmv_7d_ratio,
-    source.gmv_14d_ratio,
-    source.gmv_28d_ratio,
-    source.gmv_60d_ratio,
-    source.gmv_90d_ratio
-)
+WHEN MATCHED THEN UPDATE SET *
+WHEN NOT MATCHED THEN INSERT *
 WHEN NOT MATCHED BY SOURCE
     AND target.calculated_at = TIMESTAMP '{calculated_at_local}'
 THEN DELETE
