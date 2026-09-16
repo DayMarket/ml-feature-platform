@@ -38,6 +38,7 @@ Namespace контракта — `ACCOUNT_PRODUCT`. Все физические 
 - `ACCOUNT_PRODUCT__n_orders_28d_over_90d`;
 - `gmv_{3,7,14,28,60,90}d` и `*_ratio`;
 - `ACCOUNT_PRODUCT__neg_n_days_since_last_purchase`;
+- `ACCOUNT_PRODUCT__neg_n_days_since_last_purchase_rel`;
 - `ACCOUNT_PRODUCT__n_days_between_last_click_and_last_purchase`;
 - `ACCOUNT_PRODUCT__last_click_before_last_purchase`.
 
@@ -98,6 +99,19 @@ ACCOUNT_PRODUCT__neg_n_days_since_last_purchase =
 ```
 
 Результат остаётся дробным числом дней; округление не применяется.
+
+Relative purchase-recency показывает, насколько покупка конкретного товара
+старее самой свежей покупки пользователя:
+
+```text
+ACCOUNT_PRODUCT__neg_n_days_since_last_purchase_rel =
+    ACCOUNT_PRODUCT__neg_n_days_since_last_purchase
+    - MAX(ACCOUNT_PRODUCT__neg_n_days_since_last_purchase) OVER (account_id)
+```
+
+Самый недавно купленный товар получает `0`, более старые — отрицательные
+значения. Для товаров без покупки результат остаётся `NULL`; `COALESCE` не
+применяется.
 
 Знаковый интервал между последними click и purchase:
 

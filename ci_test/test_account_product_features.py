@@ -131,6 +131,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
             "neg_n_days_since_last_click",
             "neg_n_days_since_last_click_rel",
             "neg_n_days_since_last_purchase",
+            "neg_n_days_since_last_purchase_rel",
             "n_days_between_last_click_and_last_purchase",
         ):
             self.assertRegex(
@@ -202,11 +203,22 @@ class AccountProductFeaturesTest(unittest.TestCase):
 
     def test_dq_covers_relative_recency_group_invariant(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
-        self.assertIn("- name: group_max_equals", config_text)
-        self.assertIn(
-            "column: ACCOUNT_PRODUCT__neg_n_days_since_last_click_rel", config_text
-        )
+        self.assertEqual(config_text.count("- name: group_max_equals"), 2)
+        for column in (
+            "ACCOUNT_PRODUCT__neg_n_days_since_last_click_rel",
+            "ACCOUNT_PRODUCT__neg_n_days_since_last_purchase_rel",
+        ):
+            self.assertIn(f"column: {column}", config_text)
         self.assertIn("group_by: [account_id]", config_text)
+
+    def test_purchase_relative_recency_uses_freshest_product_per_account(self):
+        self.assertIn(
+            "neg_n_days_since_last_purchase - "
+            "MAX(neg_n_days_since_last_purchase) OVER "
+            "(PARTITION BY calculated_at, account_id) "
+            "AS neg_n_days_since_last_purchase_rel",
+            self.sql,
+        )
 
 
 if __name__ == "__main__":
