@@ -47,25 +47,26 @@ class AccountProfileFeaturesTest(unittest.TestCase):
         self.assertEqual(len(query.FEATURE_COLUMNS), len(set(query.FEATURE_COLUMNS)))
 
         for window in ORDER_WINDOWS:
-            self.assertIn(f"median_order_total_{window}d", query.FEATURE_COLUMNS)
             self.assertIn(
-                f"last_purchased_neg_p90_popularity_rank_{window}d",
+                f"ACCOUNT_PROFILE__median_order_total_{window}d",
                 query.FEATURE_COLUMNS,
             )
             self.assertIn(
-                f"last_purchased_neg_p10_popularity_rank_{window}d",
+                f"ACCOUNT_PROFILE__last_purchased_neg_p90_popularity_rank_{window}d",
+                query.FEATURE_COLUMNS,
+            )
+            self.assertIn(
+                f"ACCOUNT_PROFILE__last_purchased_neg_p10_popularity_rank_{window}d",
                 query.FEATURE_COLUMNS,
             )
             self.assertIn(f"INTERVAL {window} DAYS", self.sql)
         self.assertNotRegex(self.sql, r"INTERVAL (?:30|63|91) DAYS")
 
     def test_migration_matches_generated_feature_contract(self):
-        migration = (ENTITY / "migrations/create_table.sql").read_text(
-            encoding="utf-8"
-        )
+        migration = (ENTITY / "migrations/create_table.sql").read_text(encoding="utf-8")
         migration_columns = set(
             re.findall(
-                r"^\s{4}([a-z][a-z0-9_]*)\s+(?:INT|DOUBLE|STRING|TIMESTAMP)\b",
+                r"^\s{4}([A-Za-z][A-Za-z0-9_]*)\s+(?:INT|DOUBLE|STRING|TIMESTAMP)\b",
                 migration,
                 flags=re.MULTILINE,
             )
@@ -78,6 +79,13 @@ class AccountProfileFeaturesTest(unittest.TestCase):
     def test_namespace_schedule_and_resources(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("feature_namespace: ACCOUNT_PROFILE", config_text)
+        self.assertTrue(
+            all(
+                column.startswith("ACCOUNT_PROFILE__")
+                for column in query.FEATURE_COLUMNS
+            )
+        )
+        self.assertIn("AS ACCOUNT_PROFILE__gender", self.sql)
         self.assertIn("primary_key: calculated_at,account_id", config_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('schedule: "0 7,19 * * *"', config_text)
@@ -138,6 +146,10 @@ class AccountProfileFeaturesTest(unittest.TestCase):
         self.assertIn("base.product_discount", self.sql)
         self.assertIn("base.product_rating", self.sql)
         self.assertIn("category.category_gender", self.sql)
+        self.assertIn(
+            "L6_CATEGORY_GENDER__category_gender AS category_gender",
+            self.sql,
+        )
 
     def test_popularity_percentile_direction_is_explicit(self):
         self.assertIn(
@@ -257,9 +269,10 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             "last_purchased_null_rating_share_90d",
             "last_purchased_unisex_ratio_28d",
         ):
-            self.assertIn(f"column: {column}", config_text)
+            self.assertIn(f"column: ACCOUNT_PROFILE__{column}", config_text)
         self.assertIn(
-            "min_order_total_28d <= median_order_total_28d",
+            "ACCOUNT_PROFILE__min_order_total_28d <= "
+            "ACCOUNT_PROFILE__median_order_total_28d",
             config_text,
         )
 

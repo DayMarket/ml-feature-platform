@@ -5,6 +5,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 ORDER_WINDOWS = (7, 28, 90)
+FEATURE_NAMESPACE = "ACCOUNT_PROFILE"
 
 DEMOGRAPHIC_COLUMNS = (
     "gender",
@@ -70,7 +71,10 @@ LAST_CLICKED_COLUMNS = LAST_CLICKED_RAW_COLUMNS + LAST_CLICKED_PERCENTILE_COLUMN
 BASE_PROFILE_COLUMNS = (
     DEMOGRAPHIC_COLUMNS + ORDER_FEATURE_COLUMNS + LAST_CLICKED_RAW_COLUMNS
 )
-FEATURE_COLUMNS = BASE_PROFILE_COLUMNS + LAST_CLICKED_PERCENTILE_COLUMNS
+UNPREFIXED_FEATURE_COLUMNS = BASE_PROFILE_COLUMNS + LAST_CLICKED_PERCENTILE_COLUMNS
+FEATURE_COLUMNS = tuple(
+    f"{FEATURE_NAMESPACE}__{column}" for column in UNPREFIXED_FEATURE_COLUMNS
+)
 
 
 class SourceSettings(Protocol):
@@ -119,8 +123,7 @@ def _order_total_expressions(calculated_at_utc: str) -> str:
     expressions: list[str] = []
     for window in ORDER_WINDOWS:
         condition = (
-            f"generated_at >= TIMESTAMP '{calculated_at_utc}' "
-            f"- INTERVAL {window} DAYS"
+            f"generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL {window} DAYS"
         )
         expressions.extend(
             (
@@ -150,8 +153,7 @@ def _order_line_expressions(calculated_at_utc: str) -> str:
     expressions: list[str] = []
     for window in ORDER_WINDOWS:
         condition = (
-            f"generated_at >= TIMESTAMP '{calculated_at_utc}' "
-            f"- INTERVAL {window} DAYS"
+            f"generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL {window} DAYS"
         )
         line_count = f"SUM(CASE WHEN {condition} THEN 1 ELSE 0 END)"
         gender_denominator = (
@@ -316,6 +318,13 @@ def _price_percentile_expressions() -> str:
     return ",\n    ".join(expressions)
 
 
+def _namespaced_feature_select(source_alias: str) -> str:
+    return ",\n    ".join(
+        f"{source_alias}.{column} AS {FEATURE_NAMESPACE}__{column}"
+        for column in UNPREFIXED_FEATURE_COLUMNS
+    )
+
+
 def build_account_profile_features_query(
     settings: SourceSettings,
     calculated_at: datetime,
@@ -338,18 +347,12 @@ def build_account_profile_features_query(
     order_line_expressions = _order_line_expressions(calculated_at_utc)
     order_columns_from_totals = _select_columns(
         "totals",
-        tuple(
-            column
-            for column in ORDER_FEATURE_COLUMNS
-            if "order_total" in column
-        ),
+        tuple(column for column in ORDER_FEATURE_COLUMNS if "order_total" in column),
     )
     order_columns_from_lines = _select_columns(
         "lines",
         tuple(
-            column
-            for column in ORDER_FEATURE_COLUMNS
-            if "order_total" not in column
+            column for column in ORDER_FEATURE_COLUMNS if "order_total" not in column
         ),
     )
     demographic_select = _nullable_select_columns("demographics", DEMOGRAPHIC_COLUMNS)
@@ -361,6 +364,7 @@ def build_account_profile_features_query(
     final_base_select = ",\n    ".join(BASE_PROFILE_COLUMNS)
     price_rank_inputs = _price_rank_inputs()
     price_percentile_expressions = _price_percentile_expressions()
+    namespaced_feature_select = _namespaced_feature_select("unprefixed_features")
 
     return f"""
 WITH demographics AS (
@@ -403,7 +407,7 @@ product_prices AS (
 l6_category_genders AS (
     SELECT
         CAST(l6_category_id AS INT) AS l6_category_id,
-        category_gender
+        L6_CATEGORY_GENDER__category_gender AS category_gender
     FROM {settings.l6_category_gender_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
@@ -629,13 +633,20 @@ price_rank_inputs AS (
         profile_base.*,
         {price_rank_inputs}
     FROM profile_base
+),
+unprefixed_features AS (
+    SELECT
+        calculated_at,
+        account_id,
+        {final_base_select},
+        {price_percentile_expressions}
+    FROM price_rank_inputs
 )
 SELECT
     calculated_at,
     account_id,
-    {final_base_select},
-    {price_percentile_expressions}
-FROM price_rank_inputs
+    {namespaced_feature_select}
+FROM unprefixed_features
 """
 
 
