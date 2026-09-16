@@ -128,10 +128,14 @@ def collect_gold_account_brand_features():
         failure_callback_enabled=False,
     )(DQ_PARTITION_TIMESTAMP)
 
-    [
-        wait_for_product_metadata_dq,
-        wait_for_action_counts_dq,
-    ] >> materialize_task >> [dq_task, stats_task]
+    (
+        [
+            wait_for_product_metadata_dq,
+            wait_for_action_counts_dq,
+        ]
+        >> materialize_task
+        >> [dq_task, stats_task]
+    )
 
 
 dag = collect_gold_account_brand_features()
