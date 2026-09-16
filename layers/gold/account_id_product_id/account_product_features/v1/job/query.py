@@ -58,6 +58,11 @@ FEATURE_COLUMNS = (
     "n_days_between_last_click_and_last_purchase",
     "last_click_before_last_purchase",
 )
+RATIO_SOURCE_COLUMNS = tuple(
+    column.removesuffix("_ratio")
+    for column in FEATURE_COLUMNS
+    if column.endswith("_ratio")
+)
 
 
 class SourceSettings(Protocol):
@@ -79,6 +84,17 @@ def _local_timestamp_literal(value: datetime, timezone_name: str) -> str:
     return value.astimezone(ZoneInfo(timezone_name)).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _account_ratio_expressions() -> str:
+    return ",\n        ".join(
+        "CASE WHEN "
+        f"SUM({column}) OVER (PARTITION BY calculated_at, account_id) > 0 "
+        f"THEN CAST({column} AS DOUBLE) / "
+        f"SUM({column}) OVER (PARTITION BY calculated_at, account_id) "
+        f"END AS {column}_ratio"
+        for column in RATIO_SOURCE_COLUMNS
+    )
+
+
 def build_account_product_features_query(
     settings: SourceSettings, calculated_at: datetime
 ) -> str:
@@ -86,6 +102,7 @@ def build_account_product_features_query(
     calculated_at_local = _local_timestamp_literal(
         calculated_at, settings.business_timezone
     )
+    account_ratio_expressions = _account_ratio_expressions()
     return f"""
 WITH deduplicated_actions AS (
     SELECT
@@ -201,30 +218,7 @@ base_features AS (
 features_with_ratios AS (
     SELECT
         *,
-        CASE WHEN SUM(n_clicks_3d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_clicks_3d AS DOUBLE) / SUM(n_clicks_3d) OVER (PARTITION BY calculated_at, account_id) END AS n_clicks_3d_ratio,
-        CASE WHEN SUM(n_clicks_7d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_clicks_7d AS DOUBLE) / SUM(n_clicks_7d) OVER (PARTITION BY calculated_at, account_id) END AS n_clicks_7d_ratio,
-        CASE WHEN SUM(n_clicks_14d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_clicks_14d AS DOUBLE) / SUM(n_clicks_14d) OVER (PARTITION BY calculated_at, account_id) END AS n_clicks_14d_ratio,
-        CASE WHEN SUM(n_clicks_28d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_clicks_28d AS DOUBLE) / SUM(n_clicks_28d) OVER (PARTITION BY calculated_at, account_id) END AS n_clicks_28d_ratio,
-        CASE WHEN SUM(n_atcs_3d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_atcs_3d AS DOUBLE) / SUM(n_atcs_3d) OVER (PARTITION BY calculated_at, account_id) END AS n_atcs_3d_ratio,
-        CASE WHEN SUM(n_atcs_7d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_atcs_7d AS DOUBLE) / SUM(n_atcs_7d) OVER (PARTITION BY calculated_at, account_id) END AS n_atcs_7d_ratio,
-        CASE WHEN SUM(n_atcs_14d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_atcs_14d AS DOUBLE) / SUM(n_atcs_14d) OVER (PARTITION BY calculated_at, account_id) END AS n_atcs_14d_ratio,
-        CASE WHEN SUM(n_atcs_28d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_atcs_28d AS DOUBLE) / SUM(n_atcs_28d) OVER (PARTITION BY calculated_at, account_id) END AS n_atcs_28d_ratio,
-        CASE WHEN SUM(n_atfs_3d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_atfs_3d AS DOUBLE) / SUM(n_atfs_3d) OVER (PARTITION BY calculated_at, account_id) END AS n_atfs_3d_ratio,
-        CASE WHEN SUM(n_atfs_7d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_atfs_7d AS DOUBLE) / SUM(n_atfs_7d) OVER (PARTITION BY calculated_at, account_id) END AS n_atfs_7d_ratio,
-        CASE WHEN SUM(n_atfs_14d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_atfs_14d AS DOUBLE) / SUM(n_atfs_14d) OVER (PARTITION BY calculated_at, account_id) END AS n_atfs_14d_ratio,
-        CASE WHEN SUM(n_atfs_28d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_atfs_28d AS DOUBLE) / SUM(n_atfs_28d) OVER (PARTITION BY calculated_at, account_id) END AS n_atfs_28d_ratio,
-        CASE WHEN SUM(n_orders_3d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_orders_3d AS DOUBLE) / SUM(n_orders_3d) OVER (PARTITION BY calculated_at, account_id) END AS n_orders_3d_ratio,
-        CASE WHEN SUM(n_orders_7d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_orders_7d AS DOUBLE) / SUM(n_orders_7d) OVER (PARTITION BY calculated_at, account_id) END AS n_orders_7d_ratio,
-        CASE WHEN SUM(n_orders_14d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_orders_14d AS DOUBLE) / SUM(n_orders_14d) OVER (PARTITION BY calculated_at, account_id) END AS n_orders_14d_ratio,
-        CASE WHEN SUM(n_orders_28d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_orders_28d AS DOUBLE) / SUM(n_orders_28d) OVER (PARTITION BY calculated_at, account_id) END AS n_orders_28d_ratio,
-        CASE WHEN SUM(n_orders_60d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_orders_60d AS DOUBLE) / SUM(n_orders_60d) OVER (PARTITION BY calculated_at, account_id) END AS n_orders_60d_ratio,
-        CASE WHEN SUM(n_orders_90d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN CAST(n_orders_90d AS DOUBLE) / SUM(n_orders_90d) OVER (PARTITION BY calculated_at, account_id) END AS n_orders_90d_ratio,
-        CASE WHEN SUM(gmv_3d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_3d / SUM(gmv_3d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_3d_ratio,
-        CASE WHEN SUM(gmv_7d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_7d / SUM(gmv_7d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_7d_ratio,
-        CASE WHEN SUM(gmv_14d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_14d / SUM(gmv_14d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_14d_ratio,
-        CASE WHEN SUM(gmv_28d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_28d / SUM(gmv_28d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_28d_ratio,
-        CASE WHEN SUM(gmv_60d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_60d / SUM(gmv_60d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_60d_ratio,
-        CASE WHEN SUM(gmv_90d) OVER (PARTITION BY calculated_at, account_id) > 0 THEN gmv_90d / SUM(gmv_90d) OVER (PARTITION BY calculated_at, account_id) END AS gmv_90d_ratio,
+        {account_ratio_expressions},
         CASE WHEN last_click_at IS NOT NULL THEN -CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_local}') - UNIX_TIMESTAMP(last_click_at) AS DOUBLE) / 86400.0 END AS neg_n_days_since_last_click,
         CASE WHEN n_orders_90d > 0 THEN CAST(n_orders_28d AS DOUBLE) / n_orders_90d END AS n_orders_28d_over_90d,
         CASE WHEN last_purchase_at IS NOT NULL THEN -CAST(UNIX_TIMESTAMP(TIMESTAMP '{calculated_at_utc}') - UNIX_TIMESTAMP(last_purchase_at) AS DOUBLE) / 86400.0 END AS neg_n_days_since_last_purchase,
