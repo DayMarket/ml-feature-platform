@@ -50,7 +50,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
         migration = (ENTITY / "migrations/create_table.sql").read_text(encoding="utf-8")
         migration_columns = set(
             re.findall(
-                r"^\s{4}([a-z][a-z0-9_]*)\s+(?:INT|DOUBLE|TIMESTAMP)\b",
+                r"^\s{4}([A-Za-z][A-Za-z0-9_]*)\s+(?:INT|DOUBLE|TIMESTAMP)\b",
                 migration,
                 flags=re.MULTILINE,
             )
@@ -65,13 +65,17 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertNotIn("BIGINT", migration)
         self.assertNotIn("BIGINT", self.sql)
         self.assertTrue(
-            all(not column.startswith("pid_") for column in query.FEATURE_COLUMNS)
+            all(
+                column.startswith("ACCOUNT_PRODUCT__")
+                for column in query.FEATURE_COLUMNS
+            )
         )
 
-    def test_feature_namespace_is_not_duplicated_in_physical_columns(self):
+    def test_feature_namespace_prefixes_every_physical_feature_column(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("feature_namespace: ACCOUNT_PRODUCT", config_text)
-        self.assertIn("n_clicks_7d", query.FEATURE_COLUMNS)
+        self.assertIn("ACCOUNT_PRODUCT__n_clicks_7d", query.FEATURE_COLUMNS)
+        self.assertIn("AS ACCOUNT_PRODUCT__n_clicks_7d", self.sql)
         self.assertNotIn("pid_n_clicks_7d", query.FEATURE_COLUMNS)
 
     def test_business_sql_uses_only_targeted_feature_expression_builders(self):
@@ -129,7 +133,10 @@ class AccountProductFeaturesTest(unittest.TestCase):
             "neg_n_days_since_last_purchase",
             "n_days_between_last_click_and_last_purchase",
         ):
-            self.assertRegex(migration, rf"(?m)^\s+{column} DOUBLE\b")
+            self.assertRegex(
+                migration,
+                rf"(?m)^\s+ACCOUNT_PRODUCT__{column} DOUBLE\b",
+            )
 
     def test_legacy_click_purchase_flag_compares_timestamps_in_right_direction(self):
         self.assertIn(
@@ -196,7 +203,9 @@ class AccountProductFeaturesTest(unittest.TestCase):
     def test_dq_covers_relative_recency_group_invariant(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("- name: group_max_equals", config_text)
-        self.assertIn("column: neg_n_days_since_last_click_rel", config_text)
+        self.assertIn(
+            "column: ACCOUNT_PRODUCT__neg_n_days_since_last_click_rel", config_text
+        )
         self.assertIn("group_by: [account_id]", config_text)
 
 

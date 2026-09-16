@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 ACTION_WINDOWS = (3, 7, 14, 28)
 ORDER_WINDOWS = (3, 7, 14, 28, 60, 90)
+FEATURE_NAMESPACE = "ACCOUNT_L2"
 RATIO_COLUMNS = tuple(
     f"n_{signal}_{window}d"
     for signal in ("imps", "clicks", "atcs", "atfs")
@@ -16,6 +17,34 @@ CONVERSION_SIGNALS = (
     ("atc", "n_atcs"),
     ("atf", "n_atfs"),
     ("order", "n_orders"),
+)
+BASE_FEATURE_COLUMNS = (
+    tuple(
+        f"n_{signal}_{window}d{suffix}"
+        for signal in ("imps", "clicks", "atcs", "atfs")
+        for suffix in ("", "_ratio")
+        for window in ACTION_WINDOWS
+    )
+    + tuple(
+        f"conv_imp2{signal}_raw_{window}d"
+        for signal, _ in CONVERSION_SIGNALS
+        for window in ACTION_WINDOWS
+    )
+    + tuple(
+        f"conv_imp2{signal}_div_total_{baseline}_conv_{window}d"
+        for baseline in ("category", "account")
+        for signal, _ in CONVERSION_SIGNALS
+        for window in ACTION_WINDOWS
+    )
+    + tuple(
+        f"{metric}_{window}d{suffix}"
+        for metric in ("n_orders", "gmv")
+        for suffix in ("", "_ratio")
+        for window in ORDER_WINDOWS
+    )
+)
+FEATURE_COLUMNS = tuple(
+    f"{FEATURE_NAMESPACE}__{column}" for column in BASE_FEATURE_COLUMNS
 )
 
 
@@ -83,6 +112,13 @@ def _relative_conversion_expressions() -> str:
     )
 
 
+def _namespaced_feature_select(source_alias: str) -> str:
+    return ",\n    ".join(
+        f"{source_alias}.{column} AS {FEATURE_NAMESPACE}__{column}"
+        for column in BASE_FEATURE_COLUMNS
+    )
+
+
 def build_account_category_features_query(
     settings: SourceSettings, calculated_at: datetime
 ) -> str:
@@ -96,6 +132,7 @@ def build_account_category_features_query(
     account_ratio_expressions = _account_ratio_expressions()
     raw_conversion_expressions = _raw_conversion_expressions()
     relative_conversion_expressions = _relative_conversion_expressions()
+    namespaced_feature_select = _namespaced_feature_select("unprefixed_features")
     return f"""
 WITH product_categories AS (
     SELECT
@@ -317,13 +354,21 @@ account_baselines AS (
     FROM base_features base
     LEFT JOIN account_order_features account_orders ON base.account_id = account_orders.account_id
     GROUP BY base.account_id
-)
-SELECT
+),
+unprefixed_features AS (
+    SELECT
     features.*,
     {relative_conversion_expressions}
-FROM features
-INNER JOIN category_baselines category USING (l2_category_id)
-INNER JOIN account_baselines account USING (account_id)
+    FROM features
+    INNER JOIN category_baselines category USING (l2_category_id)
+    INNER JOIN account_baselines account USING (account_id)
+)
+SELECT
+    calculated_at,
+    account_id,
+    l2_category_id,
+    {namespaced_feature_select}
+FROM unprefixed_features
 """
 
 

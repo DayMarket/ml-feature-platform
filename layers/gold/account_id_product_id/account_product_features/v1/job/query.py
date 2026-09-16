@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-FEATURE_COLUMNS = (
+FEATURE_NAMESPACE = "ACCOUNT_PRODUCT"
+BASE_FEATURE_COLUMNS = (
     "n_clicks_3d",
     "n_clicks_7d",
     "n_clicks_14d",
@@ -58,9 +59,12 @@ FEATURE_COLUMNS = (
     "n_days_between_last_click_and_last_purchase",
     "last_click_before_last_purchase",
 )
+FEATURE_COLUMNS = tuple(
+    f"{FEATURE_NAMESPACE}__{column}" for column in BASE_FEATURE_COLUMNS
+)
 RATIO_SOURCE_COLUMNS = tuple(
     column.removesuffix("_ratio")
-    for column in FEATURE_COLUMNS
+    for column in BASE_FEATURE_COLUMNS
     if column.endswith("_ratio")
 )
 
@@ -95,6 +99,12 @@ def _account_ratio_expressions() -> str:
     )
 
 
+def _namespaced_feature_select() -> str:
+    return ",\n    ".join(
+        f"{column} AS {FEATURE_NAMESPACE}__{column}" for column in BASE_FEATURE_COLUMNS
+    )
+
+
 def build_account_product_features_query(
     settings: SourceSettings, calculated_at: datetime
 ) -> str:
@@ -103,6 +113,7 @@ def build_account_product_features_query(
         calculated_at, settings.business_timezone
     )
     account_ratio_expressions = _account_ratio_expressions()
+    namespaced_feature_select = _namespaced_feature_select()
     return f"""
 WITH deduplicated_actions AS (
     SELECT
@@ -244,21 +255,7 @@ SELECT
     calculated_at,
     account_id,
     product_id,
-    n_clicks_3d, n_clicks_7d, n_clicks_14d, n_clicks_28d,
-    n_clicks_3d_ratio, n_clicks_7d_ratio, n_clicks_14d_ratio, n_clicks_28d_ratio,
-    n_atcs_3d, n_atcs_7d, n_atcs_14d, n_atcs_28d,
-    n_atcs_3d_ratio, n_atcs_7d_ratio, n_atcs_14d_ratio, n_atcs_28d_ratio,
-    n_atfs_3d, n_atfs_7d, n_atfs_14d, n_atfs_28d,
-    n_atfs_3d_ratio, n_atfs_7d_ratio, n_atfs_14d_ratio, n_atfs_28d_ratio,
-    neg_n_days_since_last_click, neg_n_days_since_last_click_rel,
-    n_orders_3d, n_orders_7d, n_orders_14d, n_orders_28d, n_orders_60d, n_orders_90d,
-    n_orders_3d_ratio, n_orders_7d_ratio, n_orders_14d_ratio, n_orders_28d_ratio, n_orders_60d_ratio, n_orders_90d_ratio,
-    n_orders_28d_over_90d,
-    gmv_3d, gmv_7d, gmv_14d, gmv_28d, gmv_60d, gmv_90d,
-    gmv_3d_ratio, gmv_7d_ratio, gmv_14d_ratio, gmv_28d_ratio, gmv_60d_ratio, gmv_90d_ratio,
-    neg_n_days_since_last_purchase,
-    n_days_between_last_click_and_last_purchase,
-    last_click_before_last_purchase
+    {namespaced_feature_select}
 FROM features_with_relative_recency
 """
 

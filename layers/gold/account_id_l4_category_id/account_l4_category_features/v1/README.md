@@ -18,9 +18,10 @@ Grain и primary key: calculated_at,account_id,l4_category_id.
 
 Идентификаторы и счётчики в физическом контракте имеют тип INT.
 
-Физические feature-колонки хранятся без level-префикса, например
-`n_clicks_7d`. Логический namespace контракта — `ACCOUNT_L4`; при публикации
-или сборке model input полное имя становится `ACCOUNT_L4__n_clicks_7d`.
+Namespace контракта — `ACCOUNT_L4`. Все физические feature-колонки уже содержат
+его, например `ACCOUNT_L4__n_clicks_7d`; устаревший префикс `l4_` не
+используется. Ключи `calculated_at`, `account_id` и `l4_category_id` остаются
+без namespace.
 
 calculated_at — граница Gold snapshot: 00:00 или 12:00 Asia/Tashkent. Строка
 публикуется, если у account-category есть action за 28 дней, успешная покупка за
