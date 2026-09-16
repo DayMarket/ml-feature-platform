@@ -12,6 +12,7 @@ from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import (
 from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.sdk import dag
 from airflow.timetables.interval import CronDataIntervalTimetable
+
 # from airflow_commons.helpers.oncall import send_oncall_notification
 
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))

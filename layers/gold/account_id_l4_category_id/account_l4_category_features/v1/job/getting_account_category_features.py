@@ -44,12 +44,8 @@ def save_account_category_features(
     _require_tables(spark, (target_table,))
 
     calculated_at = parse_airflow_timestamp(partition_end)
-    features = spark.sql(
-        build_account_category_features_query(settings, calculated_at)
-    )
-    features.createOrReplaceTempView(
-        "account_category_features_for_calculated_at"
-    )
+    features = spark.sql(build_account_category_features_query(settings, calculated_at))
+    features.createOrReplaceTempView("account_category_features_for_calculated_at")
     spark.sql(
         build_account_category_features_merge_query(
             target_table,

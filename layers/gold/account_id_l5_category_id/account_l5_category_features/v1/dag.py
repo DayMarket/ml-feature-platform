@@ -12,6 +12,7 @@ from airflow.providers.cncf.kubernetes.operators.spark_kubernetes import (
 from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.sdk import dag
 from airflow.timetables.interval import CronDataIntervalTimetable
+
 # from airflow_commons.helpers.oncall import send_oncall_notification
 
 ENTITY_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -28,9 +29,7 @@ from feature_stats.task import build_feature_stats_task
 DQ_PARTITION_TIMESTAMP = (
     '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
 )
-PRODUCT_METADATA_DAG_ID = (
-    "feature-platform.layers.silver.product_id.product_metadata"
-)
+PRODUCT_METADATA_DAG_ID = "feature-platform.layers.silver.product_id.product_metadata"
 ACTION_COUNTS_DAG_ID = (
     "feature-platform.layers.silver.account_id_product_id."
     "account_product_session_action_counts_12h"
@@ -132,7 +131,11 @@ def collect_gold_account_l5_category_features():
         failure_callback_enabled=False,
     )(DQ_PARTITION_TIMESTAMP)
 
-    [wait_for_product_metadata_dq, wait_for_action_counts_dq] >> materialize_task >> [dq_task, stats_task]
+    (
+        [wait_for_product_metadata_dq, wait_for_action_counts_dq]
+        >> materialize_task
+        >> [dq_task, stats_task]
+    )
 
 
 dag = collect_gold_account_l5_category_features()

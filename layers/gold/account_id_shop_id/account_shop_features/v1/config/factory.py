@@ -152,9 +152,7 @@ def get_deployment() -> str:
         "<executor_memory_overhead>": str(resource_profile["executor_memory_overhead"]),
         "<s3_secret_key>": s3_connection["aws_secret_access_key"],
         "<s3_access_key>": s3_connection["aws_access_key_id"],
-        "<s3_search_research_secret_key>": research_connection[
-            "aws_secret_access_key"
-        ],
+        "<s3_search_research_secret_key>": research_connection["aws_secret_access_key"],
         "<s3_search_research_access_key>": research_connection["aws_access_key_id"],
     }
 
