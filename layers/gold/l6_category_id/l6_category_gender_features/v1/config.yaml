@@ -1,0 +1,93 @@
+resources:
+  path: ../../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-gold-l6-category-gender-features
+  main_application_file: local:///git/repo/layers/gold/l6_category_id/l6_category_gender_features/v1/entrypoints/get_l6_category_gender_features.py
+  resource_profile: small
+
+table:
+  key: l6_category_gender_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_l6_category_gender_features
+  primary_key: calculated_at,l6_category_id
+  feature_namespace: L6_CATEGORY_GENDER
+  meta:
+    team: team::recsys
+    create_dbt_pr: false
+    create_maintenance_pr: true
+
+source:
+  engine: spark_iceberg
+  product_metadata_table: iceberg.silver.feature_platform_product_metadata
+  action_counts_table: iceberg.silver.feature_platform_account_product_session_action_counts_12h
+  demographics_table: iceberg.silver.feature_platform_account_demographics
+  category_genders_table: iceberg.silver.recsys_category_genders
+  business_timezone: Asia/Tashkent
+  lookback_days: 28
+
+dag:
+  id: feature-platform.layers.gold.l6_category_id.l6_category_gender_features
+  group_tag: recsys-features
+  schedule: "0 7,19 * * *"
+  start_date: "2026-09-05T07:00:00Z"
+  catchup: true
+  team: recsys
+  owner: team:recsys
+
+# Alert routing is ready, but callbacks stay disabled in dag.py during debugging.
+alerts:
+  team: recsys
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_recsys
+
+dq:
+  trino_conn_id: trino_recsys
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 12
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
+  tests:
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+    - name: expression_is_true
+      expression: "l6_category_id > 0"
+    - name: non_negative
+      columns:
+        - n_unique_known_gender_clickers_28d
+        - n_unique_female_clickers_28d
+        - n_unique_male_clickers_28d
+    - name: accepted_values
+      column: category_gender
+      values: [M, F, U]
+    - name: accepted_range
+      column: category_female_product_session_share_28d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: category_male_product_session_share_28d
+      min: 0
+      max: 1
+    - name: expression_is_true
+      expression: "n_unique_known_gender_clickers_28d = n_unique_female_clickers_28d + n_unique_male_clickers_28d"
+    - name: expression_is_true
+      expression: "n_unique_female_clickers_28d <= n_unique_known_gender_clickers_28d"
+    - name: expression_is_true
+      expression: "n_unique_male_clickers_28d <= n_unique_known_gender_clickers_28d"
+    - name: expression_is_true
+      expression: "(category_female_product_session_share_28d IS NULL AND category_male_product_session_share_28d IS NULL) OR ABS(category_female_product_session_share_28d + category_male_product_session_share_28d - 1.0) < 0.000001"
+
+feature_stats:
+  trino_conn_id: trino_recsys
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 12
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
+  exclude_columns:
+    - category_gender
