@@ -56,6 +56,7 @@ BASE_FEATURE_COLUMNS = (
     "gmv_60d_ratio",
     "gmv_90d_ratio",
     "neg_n_days_since_last_purchase",
+    "neg_n_days_since_last_purchase_rel",
     "n_days_between_last_click_and_last_purchase",
     "last_click_before_last_purchase",
 )
@@ -248,7 +249,8 @@ features_with_ratios AS (
 features_with_relative_recency AS (
     SELECT
         *,
-        neg_n_days_since_last_click - MAX(neg_n_days_since_last_click) OVER (PARTITION BY calculated_at, account_id) AS neg_n_days_since_last_click_rel
+        neg_n_days_since_last_click - MAX(neg_n_days_since_last_click) OVER (PARTITION BY calculated_at, account_id) AS neg_n_days_since_last_click_rel,
+        neg_n_days_since_last_purchase - MAX(neg_n_days_since_last_purchase) OVER (PARTITION BY calculated_at, account_id) AS neg_n_days_since_last_purchase_rel
     FROM features_with_ratios
 )
 SELECT

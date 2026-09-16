@@ -97,6 +97,14 @@ dq:
       ignore_all_null_groups: true
     - name: expression_is_true
       expression: "ACCOUNT_PRODUCT__neg_n_days_since_last_purchase IS NULL OR ACCOUNT_PRODUCT__neg_n_days_since_last_purchase <= 0"
+    - name: expression_is_true
+      expression: "ACCOUNT_PRODUCT__neg_n_days_since_last_purchase_rel IS NULL OR ACCOUNT_PRODUCT__neg_n_days_since_last_purchase_rel <= 0"
+    - name: group_max_equals
+      column: ACCOUNT_PRODUCT__neg_n_days_since_last_purchase_rel
+      group_by: [account_id]
+      value: 0
+      tolerance: 0
+      ignore_all_null_groups: true
     - name: accepted_values
       column: ACCOUNT_PRODUCT__last_click_before_last_purchase
       values: [0, 1]
