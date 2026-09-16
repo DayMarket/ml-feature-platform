@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     ACCOUNT_L3__gmv_90d_ratio DOUBLE COMMENT 'Доля GMV категории L3 в GMV пользователя за 90 дней',
     ACCOUNT_L3__neg_n_days_since_last_click DOUBLE COMMENT 'Отрицательная точная давность последнего PRODUCT_VIEW категории L3 в днях за 28 дней, без округления',
     ACCOUNT_L3__neg_n_days_since_last_click_rel DOUBLE COMMENT 'Дробная click-recency категории L3 в днях минус самая свежая category-recency пользователя; максимум внутри account равен 0',
-    ACCOUNT_L3__n_days_between_last_click_and_last_purchase DOUBLE COMMENT 'Знаковая разница между положительной click-recency за 28 дней и purchase-recency за 90 дней для account и L3; NULL без одного из timestamps'
+    ACCOUNT_L3__n_days_between_last_purchase_and_last_click DOUBLE COMMENT 'Знаковая разница между положительной click-recency за 28 дней и purchase-recency за 90 дней для account и L3; NULL без одного из timestamps'
 )
 USING iceberg
 COMMENT 'Account-category L3 actions, orders, GMV, ratios, recency для рекомендательных моделей'

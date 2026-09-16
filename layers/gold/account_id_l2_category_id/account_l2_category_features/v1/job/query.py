@@ -31,6 +31,11 @@ BASE_FEATURE_COLUMNS = (
         for window in ACTION_WINDOWS
     )
     + tuple(
+        f"total_account_conv_imp2{signal}_raw_{window}d"
+        for signal, _ in CONVERSION_SIGNALS
+        for window in ACTION_WINDOWS
+    )
+    + tuple(
         f"conv_imp2{signal}_div_total_{baseline}_conv_{window}d"
         for baseline in ("category", "account")
         for signal, _ in CONVERSION_SIGNALS
@@ -112,6 +117,14 @@ def _relative_conversion_expressions() -> str:
     )
 
 
+def _total_account_raw_conversion_expressions() -> str:
+    return ",\n        ".join(
+        f"account.{signal}_{window}d AS total_account_conv_imp2{signal}_raw_{window}d"
+        for signal, _ in CONVERSION_SIGNALS
+        for window in ACTION_WINDOWS
+    )
+
+
 def _namespaced_feature_select(source_alias: str) -> str:
     return ",\n    ".join(
         f"{source_alias}.{column} AS {FEATURE_NAMESPACE}__{column}"
@@ -132,6 +145,9 @@ def build_account_category_features_query(
     account_ratio_expressions = _account_ratio_expressions()
     raw_conversion_expressions = _raw_conversion_expressions()
     relative_conversion_expressions = _relative_conversion_expressions()
+    total_account_raw_conversion_expressions = (
+        _total_account_raw_conversion_expressions()
+    )
     namespaced_feature_select = _namespaced_feature_select("unprefixed_features")
     return f"""
 WITH product_categories AS (
@@ -357,8 +373,9 @@ account_baselines AS (
 ),
 unprefixed_features AS (
     SELECT
-    features.*,
-    {relative_conversion_expressions}
+        features.*,
+        {total_account_raw_conversion_expressions},
+        {relative_conversion_expressions}
     FROM features
     INNER JOIN category_baselines category USING (l2_category_id)
     INNER JOIN account_baselines account USING (account_id)

@@ -52,18 +52,21 @@ ratios за 3, 7, 14 и 28 дней.
 Impressions суммируются из iceberg.silver.feature_platform_account_l2_imp_counts_12h.
 Публикуются counts и доли за 3, 7, 14 и 28 дней.
 
-Для click, ATC, ATF и order публикуются три conversion:
+Для click, ATC, ATF и order публикуются четыре семейства conversion:
 
 - `conv_imp2{signal}_raw_{window}d`: исходная account-category conversion,
   `signal_count / impression_count`;
+- `total_account_conv_imp2{signal}_raw_{window}d`: исходная conversion
+  пользователя по всем категориям L2;
 - `conv_imp2{signal}_div_total_category_conv_{window}d`: исходная
   account-category conversion, делённая на общий baseline этой категории;
 - `conv_imp2{signal}_div_total_account_conv_{window}d`: account-category
   conversion, делённая на общую conversion пользователя по всем категориям.
 
-Для account-level order baseline используется marketplace COUNT(DISTINCT order_id), а
-не сумма category counts: один заказ может включать несколько категорий. Нулевой
-denominator всегда даёт NULL. Conversion может быть больше 1.
+`total_account_conv_imp2order_raw_{window}d` и соответствующий относительный
+признак используют marketplace `COUNT(DISTINCT order_id)`, а не сумму category
+counts: один заказ может включать несколько категорий. Нулевой denominator
+всегда даёт NULL. Conversion может быть больше 1.
 
 ## Заказы и GMV
 

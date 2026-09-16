@@ -50,6 +50,22 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     ACCOUNT_L1__conv_imp2order_raw_7d DOUBLE COMMENT 'Account-category imp2order conversion за 7 дней',
     ACCOUNT_L1__conv_imp2order_raw_14d DOUBLE COMMENT 'Account-category imp2order conversion за 14 дней',
     ACCOUNT_L1__conv_imp2order_raw_28d DOUBLE COMMENT 'Account-category imp2order conversion за 28 дней',
+    ACCOUNT_L1__total_account_conv_imp2click_raw_3d DOUBLE COMMENT 'Общая imp2click conversion пользователя по всем категориям L1 за 3 дня',
+    ACCOUNT_L1__total_account_conv_imp2click_raw_7d DOUBLE COMMENT 'Общая imp2click conversion пользователя по всем категориям L1 за 7 дней',
+    ACCOUNT_L1__total_account_conv_imp2click_raw_14d DOUBLE COMMENT 'Общая imp2click conversion пользователя по всем категориям L1 за 14 дней',
+    ACCOUNT_L1__total_account_conv_imp2click_raw_28d DOUBLE COMMENT 'Общая imp2click conversion пользователя по всем категориям L1 за 28 дней',
+    ACCOUNT_L1__total_account_conv_imp2atc_raw_3d DOUBLE COMMENT 'Общая imp2ATC conversion пользователя по всем категориям L1 за 3 дня',
+    ACCOUNT_L1__total_account_conv_imp2atc_raw_7d DOUBLE COMMENT 'Общая imp2ATC conversion пользователя по всем категориям L1 за 7 дней',
+    ACCOUNT_L1__total_account_conv_imp2atc_raw_14d DOUBLE COMMENT 'Общая imp2ATC conversion пользователя по всем категориям L1 за 14 дней',
+    ACCOUNT_L1__total_account_conv_imp2atc_raw_28d DOUBLE COMMENT 'Общая imp2ATC conversion пользователя по всем категориям L1 за 28 дней',
+    ACCOUNT_L1__total_account_conv_imp2atf_raw_3d DOUBLE COMMENT 'Общая imp2ATF conversion пользователя по всем категориям L1 за 3 дня',
+    ACCOUNT_L1__total_account_conv_imp2atf_raw_7d DOUBLE COMMENT 'Общая imp2ATF conversion пользователя по всем категориям L1 за 7 дней',
+    ACCOUNT_L1__total_account_conv_imp2atf_raw_14d DOUBLE COMMENT 'Общая imp2ATF conversion пользователя по всем категориям L1 за 14 дней',
+    ACCOUNT_L1__total_account_conv_imp2atf_raw_28d DOUBLE COMMENT 'Общая imp2ATF conversion пользователя по всем категориям L1 за 28 дней',
+    ACCOUNT_L1__total_account_conv_imp2order_raw_3d DOUBLE COMMENT 'Общая imp2order conversion пользователя по marketplace distinct orders за 3 дня',
+    ACCOUNT_L1__total_account_conv_imp2order_raw_7d DOUBLE COMMENT 'Общая imp2order conversion пользователя по marketplace distinct orders за 7 дней',
+    ACCOUNT_L1__total_account_conv_imp2order_raw_14d DOUBLE COMMENT 'Общая imp2order conversion пользователя по marketplace distinct orders за 14 дней',
+    ACCOUNT_L1__total_account_conv_imp2order_raw_28d DOUBLE COMMENT 'Общая imp2order conversion пользователя по marketplace distinct orders за 28 дней',
     ACCOUNT_L1__conv_imp2click_div_total_category_conv_3d DOUBLE COMMENT 'Account-category imp2click conversion относительно общего baseline категории L1 за 3 дней',
     ACCOUNT_L1__conv_imp2click_div_total_category_conv_7d DOUBLE COMMENT 'Account-category imp2click conversion относительно общего baseline категории L1 за 7 дней',
     ACCOUNT_L1__conv_imp2click_div_total_category_conv_14d DOUBLE COMMENT 'Account-category imp2click conversion относительно общего baseline категории L1 за 14 дней',
@@ -108,7 +124,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     ACCOUNT_L1__gmv_90d_ratio DOUBLE COMMENT 'Доля GMV категории L1 в GMV пользователя за 90 дней',
     ACCOUNT_L1__neg_n_days_since_last_click DOUBLE COMMENT 'Отрицательная точная давность последнего PRODUCT_VIEW категории L1 в днях за 28 дней, без округления',
     ACCOUNT_L1__neg_n_days_since_last_click_rel DOUBLE COMMENT 'Дробная click-recency категории L1 в днях минус самая свежая category-recency пользователя; максимум внутри account равен 0',
-    ACCOUNT_L1__n_days_between_last_click_and_last_purchase DOUBLE COMMENT 'Знаковая разница между положительной click-recency за 28 дней и purchase-recency за 90 дней для account и L1; NULL без одного из timestamps'
+    ACCOUNT_L1__n_days_between_last_purchase_and_last_click DOUBLE COMMENT 'Знаковая разница между положительной click-recency за 28 дней и purchase-recency за 90 дней для account и L1; NULL без одного из timestamps'
 )
 USING iceberg
 COMMENT 'Account-category L1 actions, orders, GMV, ratios, conversions и impressions, recency для рекомендательных моделей'
