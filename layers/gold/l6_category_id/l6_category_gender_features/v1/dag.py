@@ -80,6 +80,7 @@ default_args = {
         "gold",
         "l6-category",
         "gender",
+        "recsys",
     ],
     dagrun_timeout=timedelta(hours=12),
     is_paused_upon_creation=True,
