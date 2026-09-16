@@ -2,6 +2,22 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
+ACTION_WINDOWS = (3, 7, 14, 28)
+ORDER_WINDOWS = (3, 7, 14, 28, 60, 90)
+RATIO_COLUMNS = tuple(
+    f"n_{signal}_{window}d"
+    for signal in ("imps", "clicks", "atcs", "atfs")
+    for window in ACTION_WINDOWS
+) + tuple(
+    f"{metric}_{window}d" for metric in ("n_orders", "gmv") for window in ORDER_WINDOWS
+)
+CONVERSION_SIGNALS = (
+    ("click", "n_clicks"),
+    ("atc", "n_atcs"),
+    ("atf", "n_atfs"),
+    ("order", "n_orders"),
+)
+
 
 class SourceSettings(Protocol):
     product_metadata_table: str
@@ -33,6 +49,40 @@ def _local_day_start_literal(value: datetime, timezone_name: str) -> str:
     )
 
 
+def _account_ratio_expressions() -> str:
+    expressions = []
+    for column in RATIO_COLUMNS:
+        numerator = f"CAST({column} AS DOUBLE)" if column.startswith("n_") else column
+        denominator = f"SUM({column}) OVER (PARTITION BY account_id)"
+        expressions.append(
+            f"CASE WHEN {denominator} > 0 THEN {numerator} / {denominator} "
+            f"END AS {column}_ratio"
+        )
+    return ",\n        ".join(expressions)
+
+
+def _raw_conversion_expressions() -> str:
+    return ",\n        ".join(
+        f"CASE WHEN n_imps_{window}d > 0 "
+        f"THEN CAST({source}_{window}d AS DOUBLE) / n_imps_{window}d "
+        f"END AS conv_imp2{signal}_raw_{window}d"
+        for signal, source in CONVERSION_SIGNALS
+        for window in ACTION_WINDOWS
+    )
+
+
+def _relative_conversion_expressions() -> str:
+    return ",\n    ".join(
+        f"CASE WHEN {baseline}.{signal}_{window}d > 0 "
+        f"THEN conv_imp2{signal}_raw_{window}d / "
+        f"{baseline}.{signal}_{window}d END AS "
+        f"conv_imp2{signal}_div_total_{baseline}_conv_{window}d"
+        for baseline in ("category", "account")
+        for signal, _ in CONVERSION_SIGNALS
+        for window in ACTION_WINDOWS
+    )
+
+
 def build_account_category_features_query(
     settings: SourceSettings, calculated_at: datetime
 ) -> str:
@@ -43,6 +93,9 @@ def build_account_category_features_query(
     metadata_dt_local = _local_day_start_literal(
         calculated_at, settings.business_timezone
     )
+    account_ratio_expressions = _account_ratio_expressions()
+    raw_conversion_expressions = _raw_conversion_expressions()
+    relative_conversion_expressions = _relative_conversion_expressions()
     return f"""
 WITH product_categories AS (
     SELECT
@@ -216,50 +269,8 @@ base_features AS (
 features AS (
     SELECT
         base.*,
-        CASE WHEN SUM(n_imps_3d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_imps_3d AS DOUBLE) / SUM(n_imps_3d) OVER (PARTITION BY account_id) END AS n_imps_3d_ratio,
-        CASE WHEN SUM(n_imps_7d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_imps_7d AS DOUBLE) / SUM(n_imps_7d) OVER (PARTITION BY account_id) END AS n_imps_7d_ratio,
-        CASE WHEN SUM(n_imps_14d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_imps_14d AS DOUBLE) / SUM(n_imps_14d) OVER (PARTITION BY account_id) END AS n_imps_14d_ratio,
-        CASE WHEN SUM(n_imps_28d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_imps_28d AS DOUBLE) / SUM(n_imps_28d) OVER (PARTITION BY account_id) END AS n_imps_28d_ratio,
-        CASE WHEN SUM(n_clicks_3d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_clicks_3d AS DOUBLE) / SUM(n_clicks_3d) OVER (PARTITION BY account_id) END AS n_clicks_3d_ratio,
-        CASE WHEN SUM(n_clicks_7d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_clicks_7d AS DOUBLE) / SUM(n_clicks_7d) OVER (PARTITION BY account_id) END AS n_clicks_7d_ratio,
-        CASE WHEN SUM(n_clicks_14d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_clicks_14d AS DOUBLE) / SUM(n_clicks_14d) OVER (PARTITION BY account_id) END AS n_clicks_14d_ratio,
-        CASE WHEN SUM(n_clicks_28d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_clicks_28d AS DOUBLE) / SUM(n_clicks_28d) OVER (PARTITION BY account_id) END AS n_clicks_28d_ratio,
-        CASE WHEN SUM(n_atcs_3d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_atcs_3d AS DOUBLE) / SUM(n_atcs_3d) OVER (PARTITION BY account_id) END AS n_atcs_3d_ratio,
-        CASE WHEN SUM(n_atcs_7d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_atcs_7d AS DOUBLE) / SUM(n_atcs_7d) OVER (PARTITION BY account_id) END AS n_atcs_7d_ratio,
-        CASE WHEN SUM(n_atcs_14d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_atcs_14d AS DOUBLE) / SUM(n_atcs_14d) OVER (PARTITION BY account_id) END AS n_atcs_14d_ratio,
-        CASE WHEN SUM(n_atcs_28d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_atcs_28d AS DOUBLE) / SUM(n_atcs_28d) OVER (PARTITION BY account_id) END AS n_atcs_28d_ratio,
-        CASE WHEN SUM(n_atfs_3d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_atfs_3d AS DOUBLE) / SUM(n_atfs_3d) OVER (PARTITION BY account_id) END AS n_atfs_3d_ratio,
-        CASE WHEN SUM(n_atfs_7d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_atfs_7d AS DOUBLE) / SUM(n_atfs_7d) OVER (PARTITION BY account_id) END AS n_atfs_7d_ratio,
-        CASE WHEN SUM(n_atfs_14d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_atfs_14d AS DOUBLE) / SUM(n_atfs_14d) OVER (PARTITION BY account_id) END AS n_atfs_14d_ratio,
-        CASE WHEN SUM(n_atfs_28d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_atfs_28d AS DOUBLE) / SUM(n_atfs_28d) OVER (PARTITION BY account_id) END AS n_atfs_28d_ratio,
-        CASE WHEN SUM(n_orders_3d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_orders_3d AS DOUBLE) / SUM(n_orders_3d) OVER (PARTITION BY account_id) END AS n_orders_3d_ratio,
-        CASE WHEN SUM(n_orders_7d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_orders_7d AS DOUBLE) / SUM(n_orders_7d) OVER (PARTITION BY account_id) END AS n_orders_7d_ratio,
-        CASE WHEN SUM(n_orders_14d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_orders_14d AS DOUBLE) / SUM(n_orders_14d) OVER (PARTITION BY account_id) END AS n_orders_14d_ratio,
-        CASE WHEN SUM(n_orders_28d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_orders_28d AS DOUBLE) / SUM(n_orders_28d) OVER (PARTITION BY account_id) END AS n_orders_28d_ratio,
-        CASE WHEN SUM(n_orders_60d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_orders_60d AS DOUBLE) / SUM(n_orders_60d) OVER (PARTITION BY account_id) END AS n_orders_60d_ratio,
-        CASE WHEN SUM(n_orders_90d) OVER (PARTITION BY account_id) > 0 THEN CAST(n_orders_90d AS DOUBLE) / SUM(n_orders_90d) OVER (PARTITION BY account_id) END AS n_orders_90d_ratio,
-        CASE WHEN SUM(gmv_3d) OVER (PARTITION BY account_id) > 0 THEN gmv_3d / SUM(gmv_3d) OVER (PARTITION BY account_id) END AS gmv_3d_ratio,
-        CASE WHEN SUM(gmv_7d) OVER (PARTITION BY account_id) > 0 THEN gmv_7d / SUM(gmv_7d) OVER (PARTITION BY account_id) END AS gmv_7d_ratio,
-        CASE WHEN SUM(gmv_14d) OVER (PARTITION BY account_id) > 0 THEN gmv_14d / SUM(gmv_14d) OVER (PARTITION BY account_id) END AS gmv_14d_ratio,
-        CASE WHEN SUM(gmv_28d) OVER (PARTITION BY account_id) > 0 THEN gmv_28d / SUM(gmv_28d) OVER (PARTITION BY account_id) END AS gmv_28d_ratio,
-        CASE WHEN SUM(gmv_60d) OVER (PARTITION BY account_id) > 0 THEN gmv_60d / SUM(gmv_60d) OVER (PARTITION BY account_id) END AS gmv_60d_ratio,
-        CASE WHEN SUM(gmv_90d) OVER (PARTITION BY account_id) > 0 THEN gmv_90d / SUM(gmv_90d) OVER (PARTITION BY account_id) END AS gmv_90d_ratio,
-        CASE WHEN n_imps_3d > 0 THEN CAST(n_clicks_3d AS DOUBLE) / n_imps_3d END AS conv_imp2click_raw_3d,
-        CASE WHEN n_imps_7d > 0 THEN CAST(n_clicks_7d AS DOUBLE) / n_imps_7d END AS conv_imp2click_raw_7d,
-        CASE WHEN n_imps_14d > 0 THEN CAST(n_clicks_14d AS DOUBLE) / n_imps_14d END AS conv_imp2click_raw_14d,
-        CASE WHEN n_imps_28d > 0 THEN CAST(n_clicks_28d AS DOUBLE) / n_imps_28d END AS conv_imp2click_raw_28d,
-        CASE WHEN n_imps_3d > 0 THEN CAST(n_atcs_3d AS DOUBLE) / n_imps_3d END AS conv_imp2atc_raw_3d,
-        CASE WHEN n_imps_7d > 0 THEN CAST(n_atcs_7d AS DOUBLE) / n_imps_7d END AS conv_imp2atc_raw_7d,
-        CASE WHEN n_imps_14d > 0 THEN CAST(n_atcs_14d AS DOUBLE) / n_imps_14d END AS conv_imp2atc_raw_14d,
-        CASE WHEN n_imps_28d > 0 THEN CAST(n_atcs_28d AS DOUBLE) / n_imps_28d END AS conv_imp2atc_raw_28d,
-        CASE WHEN n_imps_3d > 0 THEN CAST(n_atfs_3d AS DOUBLE) / n_imps_3d END AS conv_imp2atf_raw_3d,
-        CASE WHEN n_imps_7d > 0 THEN CAST(n_atfs_7d AS DOUBLE) / n_imps_7d END AS conv_imp2atf_raw_7d,
-        CASE WHEN n_imps_14d > 0 THEN CAST(n_atfs_14d AS DOUBLE) / n_imps_14d END AS conv_imp2atf_raw_14d,
-        CASE WHEN n_imps_28d > 0 THEN CAST(n_atfs_28d AS DOUBLE) / n_imps_28d END AS conv_imp2atf_raw_28d,
-        CASE WHEN n_imps_3d > 0 THEN CAST(n_orders_3d AS DOUBLE) / n_imps_3d END AS conv_imp2order_raw_3d,
-        CASE WHEN n_imps_7d > 0 THEN CAST(n_orders_7d AS DOUBLE) / n_imps_7d END AS conv_imp2order_raw_7d,
-        CASE WHEN n_imps_14d > 0 THEN CAST(n_orders_14d AS DOUBLE) / n_imps_14d END AS conv_imp2order_raw_14d,
-        CASE WHEN n_imps_28d > 0 THEN CAST(n_orders_28d AS DOUBLE) / n_imps_28d END AS conv_imp2order_raw_28d
+        {account_ratio_expressions},
+        {raw_conversion_expressions}
     FROM base_features base
 ),
 category_baselines AS (
@@ -309,38 +320,7 @@ account_baselines AS (
 )
 SELECT
     features.*,
-    CASE WHEN category.click_3d > 0 THEN conv_imp2click_raw_3d / category.click_3d END AS conv_imp2click_div_total_category_conv_3d,
-    CASE WHEN category.click_7d > 0 THEN conv_imp2click_raw_7d / category.click_7d END AS conv_imp2click_div_total_category_conv_7d,
-    CASE WHEN category.click_14d > 0 THEN conv_imp2click_raw_14d / category.click_14d END AS conv_imp2click_div_total_category_conv_14d,
-    CASE WHEN category.click_28d > 0 THEN conv_imp2click_raw_28d / category.click_28d END AS conv_imp2click_div_total_category_conv_28d,
-    CASE WHEN category.atc_3d > 0 THEN conv_imp2atc_raw_3d / category.atc_3d END AS conv_imp2atc_div_total_category_conv_3d,
-    CASE WHEN category.atc_7d > 0 THEN conv_imp2atc_raw_7d / category.atc_7d END AS conv_imp2atc_div_total_category_conv_7d,
-    CASE WHEN category.atc_14d > 0 THEN conv_imp2atc_raw_14d / category.atc_14d END AS conv_imp2atc_div_total_category_conv_14d,
-    CASE WHEN category.atc_28d > 0 THEN conv_imp2atc_raw_28d / category.atc_28d END AS conv_imp2atc_div_total_category_conv_28d,
-    CASE WHEN category.atf_3d > 0 THEN conv_imp2atf_raw_3d / category.atf_3d END AS conv_imp2atf_div_total_category_conv_3d,
-    CASE WHEN category.atf_7d > 0 THEN conv_imp2atf_raw_7d / category.atf_7d END AS conv_imp2atf_div_total_category_conv_7d,
-    CASE WHEN category.atf_14d > 0 THEN conv_imp2atf_raw_14d / category.atf_14d END AS conv_imp2atf_div_total_category_conv_14d,
-    CASE WHEN category.atf_28d > 0 THEN conv_imp2atf_raw_28d / category.atf_28d END AS conv_imp2atf_div_total_category_conv_28d,
-    CASE WHEN category.order_3d > 0 THEN conv_imp2order_raw_3d / category.order_3d END AS conv_imp2order_div_total_category_conv_3d,
-    CASE WHEN category.order_7d > 0 THEN conv_imp2order_raw_7d / category.order_7d END AS conv_imp2order_div_total_category_conv_7d,
-    CASE WHEN category.order_14d > 0 THEN conv_imp2order_raw_14d / category.order_14d END AS conv_imp2order_div_total_category_conv_14d,
-    CASE WHEN category.order_28d > 0 THEN conv_imp2order_raw_28d / category.order_28d END AS conv_imp2order_div_total_category_conv_28d,
-    CASE WHEN account.click_3d > 0 THEN conv_imp2click_raw_3d / account.click_3d END AS conv_imp2click_div_total_account_conv_3d,
-    CASE WHEN account.click_7d > 0 THEN conv_imp2click_raw_7d / account.click_7d END AS conv_imp2click_div_total_account_conv_7d,
-    CASE WHEN account.click_14d > 0 THEN conv_imp2click_raw_14d / account.click_14d END AS conv_imp2click_div_total_account_conv_14d,
-    CASE WHEN account.click_28d > 0 THEN conv_imp2click_raw_28d / account.click_28d END AS conv_imp2click_div_total_account_conv_28d,
-    CASE WHEN account.atc_3d > 0 THEN conv_imp2atc_raw_3d / account.atc_3d END AS conv_imp2atc_div_total_account_conv_3d,
-    CASE WHEN account.atc_7d > 0 THEN conv_imp2atc_raw_7d / account.atc_7d END AS conv_imp2atc_div_total_account_conv_7d,
-    CASE WHEN account.atc_14d > 0 THEN conv_imp2atc_raw_14d / account.atc_14d END AS conv_imp2atc_div_total_account_conv_14d,
-    CASE WHEN account.atc_28d > 0 THEN conv_imp2atc_raw_28d / account.atc_28d END AS conv_imp2atc_div_total_account_conv_28d,
-    CASE WHEN account.atf_3d > 0 THEN conv_imp2atf_raw_3d / account.atf_3d END AS conv_imp2atf_div_total_account_conv_3d,
-    CASE WHEN account.atf_7d > 0 THEN conv_imp2atf_raw_7d / account.atf_7d END AS conv_imp2atf_div_total_account_conv_7d,
-    CASE WHEN account.atf_14d > 0 THEN conv_imp2atf_raw_14d / account.atf_14d END AS conv_imp2atf_div_total_account_conv_14d,
-    CASE WHEN account.atf_28d > 0 THEN conv_imp2atf_raw_28d / account.atf_28d END AS conv_imp2atf_div_total_account_conv_28d,
-    CASE WHEN account.order_3d > 0 THEN conv_imp2order_raw_3d / account.order_3d END AS conv_imp2order_div_total_account_conv_3d,
-    CASE WHEN account.order_7d > 0 THEN conv_imp2order_raw_7d / account.order_7d END AS conv_imp2order_div_total_account_conv_7d,
-    CASE WHEN account.order_14d > 0 THEN conv_imp2order_raw_14d / account.order_14d END AS conv_imp2order_div_total_account_conv_14d,
-    CASE WHEN account.order_28d > 0 THEN conv_imp2order_raw_28d / account.order_28d END AS conv_imp2order_div_total_account_conv_28d
+    {relative_conversion_expressions}
 FROM features
 INNER JOIN category_baselines category USING (l2_category_id)
 INNER JOIN account_baselines account USING (account_id)

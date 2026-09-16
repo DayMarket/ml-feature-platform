@@ -64,7 +64,9 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertEqual(migration_columns, expected)
         self.assertNotIn("BIGINT", migration)
         self.assertNotIn("BIGINT", self.sql)
-        self.assertTrue(all(not column.startswith("pid_") for column in query.FEATURE_COLUMNS))
+        self.assertTrue(
+            all(not column.startswith("pid_") for column in query.FEATURE_COLUMNS)
+        )
 
     def test_feature_namespace_is_not_duplicated_in_physical_columns(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
@@ -72,12 +74,12 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertIn("n_clicks_7d", query.FEATURE_COLUMNS)
         self.assertNotIn("pid_n_clicks_7d", query.FEATURE_COLUMNS)
 
-    def test_business_sql_is_explicit_and_has_no_feature_fragment_builders(self):
+    def test_business_sql_uses_only_targeted_feature_expression_builders(self):
         query_text = (ENTITY / "job/query.py").read_text(encoding="utf-8")
         self.assertNotIn("_conditional_action_counts", query_text)
         self.assertNotIn("_conditional_order_features", query_text)
         self.assertNotIn("_coalesced_base_features", query_text)
-        self.assertNotIn("_ratio_expressions", query_text)
+        self.assertIn("def _account_ratio_expressions()", query_text)
 
     def test_actions_are_deduplicated_by_session_across_the_window(self):
         self.assertIn(
@@ -120,9 +122,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertNotIn("neg_n_hours_since_last_click", self.sql)
         self.assertNotIn("CEIL(", self.sql)
 
-        migration = (ENTITY / "migrations/create_table.sql").read_text(
-            encoding="utf-8"
-        )
+        migration = (ENTITY / "migrations/create_table.sql").read_text(encoding="utf-8")
         for column in (
             "neg_n_days_since_last_click",
             "neg_n_days_since_last_click_rel",
