@@ -62,23 +62,23 @@ feedback_lte_3_to_orders_rate_smoothed =
 G8 использует product-level counts из G7. В их population входят позиции
 со статусами `COMPLETED`, `PAID`, `DELIVERED`, `IN_DELIVERY`, `RETURNED`;
 `NOT_CREATED`, `CREATED` и остальные незавершённые статусы исключаются.
-Количество возвратов определяется по `returned_quantity`, а не по одному
-статусу строки, поэтому частично возвращённая позиция одновременно вносит
-`item_quantity - returned_quantity` в `n_completed_Nd` и
-`returned_quantity` в `n_returned_Nd`.
+Каждая строка `order_items` имеет вес 1: статусы
+`COMPLETED`, `PAID`, `DELIVERED`, `IN_DELIVERY` увеличивают `n_completed_Nd`,
+а `RETURNED` увеличивает `n_returned_Nd`. Поля `item_quantity` и
+`returned_quantity` для return-rate не используются.
 
-Для окон `14,28,60,90` дней category baseline считается как взвешенная
-доля единиц, а не среднее product rates:
+Для окон `3,28` дней category baseline считается как взвешенная
+доля строк, а не среднее product rates:
 
 ```text
-category_return_rate_Nd =
-    sum(n_returned_Nd)
+category_return_rate_neg_Nd =
+    -sum(n_returned_Nd)
     / sum(n_completed_Nd + n_returned_Nd)
 ```
 
 ```text
-return_rate_smoothed_Nd =
-    (n_returned_Nd + 10 * category_return_rate_Nd)
+return_rate_neg_smoothed_Nd =
+    -(n_returned_Nd - 10 * category_return_rate_neg_Nd)
     / (n_completed_Nd + n_returned_Nd + 10)
 ```
 
@@ -96,6 +96,6 @@ DAG работает в `07:00` и `19:00 UTC` (`12:00` и `00:00 Asia/Tashkent`
 Alert routing P3 настроен, но callbacks DAG, DQ и feature stats отключены на
 время отладки. DQ проверяет ключи, percentile/rate ranges, неположительные
 ranks и отсутствие NaN/infinity. `feature_stats` делает один Trino-скан
-каждого snapshot по 29 числовым feature-колонкам.
+каждого snapshot по 21 числовой feature-колонке.
 
 Потребители: Main, push, train и G5. Group tag: `recsys-features`.

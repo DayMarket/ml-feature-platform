@@ -49,7 +49,7 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 29)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 21)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(
@@ -88,9 +88,9 @@ class ProductRankingFeaturesTest(unittest.TestCase):
             "discount",
             "feedback_quantity",
             "feedback_lte_3",
-            "n_completed_90d",
-            "n_returned_90d",
-            "return_rate_90d",
+            "n_completed_28d",
+            "n_returned_28d",
+            "return_rate_neg_28d",
         ):
             self.assertIn(f"PRODUCT__{column}", self.sql)
 
@@ -146,13 +146,13 @@ class ProductRankingFeaturesTest(unittest.TestCase):
                 "OVER (PARTITION BY category_id)",
                 self.sql,
             )
-            self.assertIn(f"AS return_rate_smoothed_{window}d", self.sql)
+            self.assertIn(f"AS return_rate_neg_smoothed_{window}d", self.sql)
             self.assertIn(
-                f"AS return_rate_to_category_return_rate_{window}d",
+                f"AS return_rate_neg_to_category_return_rate_neg_{window}d",
                 self.sql,
             )
             self.assertIn(
-                f"AS return_rate_smoothed_to_category_return_rate_{window}d",
+                f"AS return_rate_neg_smoothed_to_category_return_rate_neg_{window}d",
                 self.sql,
             )
         self.assertNotIn("AVG(return_rate", self.sql)

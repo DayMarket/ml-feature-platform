@@ -62,20 +62,16 @@ dq:
     - name: non_negative
       columns:
         - PRODUCT_STATS__feedback_lte_3_to_orders_rate_smoothed
-        - PRODUCT_STATS__return_rate_to_category_return_rate_14d
-        - PRODUCT_STATS__return_rate_to_category_return_rate_28d
-        - PRODUCT_STATS__return_rate_to_category_return_rate_60d
-        - PRODUCT_STATS__return_rate_to_category_return_rate_90d
-        - PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_14d
-        - PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_28d
-        - PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_60d
-        - PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_90d
+        - PRODUCT_STATS__return_rate_neg_to_category_return_rate_neg_3d
+        - PRODUCT_STATS__return_rate_neg_to_category_return_rate_neg_28d
+        - PRODUCT_STATS__return_rate_neg_smoothed_to_category_return_rate_neg_3d
+        - PRODUCT_STATS__return_rate_neg_smoothed_to_category_return_rate_neg_28d
     - name: expression_is_true
-      expression: "(PRODUCT_STATS__feedback_lte_3_to_orders_rate_smoothed IS NULL OR is_finite(PRODUCT_STATS__feedback_lte_3_to_orders_rate_smoothed)) AND (PRODUCT_STATS__return_rate_to_category_return_rate_14d IS NULL OR is_finite(PRODUCT_STATS__return_rate_to_category_return_rate_14d)) AND (PRODUCT_STATS__return_rate_to_category_return_rate_28d IS NULL OR is_finite(PRODUCT_STATS__return_rate_to_category_return_rate_28d)) AND (PRODUCT_STATS__return_rate_to_category_return_rate_60d IS NULL OR is_finite(PRODUCT_STATS__return_rate_to_category_return_rate_60d)) AND (PRODUCT_STATS__return_rate_to_category_return_rate_90d IS NULL OR is_finite(PRODUCT_STATS__return_rate_to_category_return_rate_90d)) AND (PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_14d IS NULL OR is_finite(PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_14d)) AND (PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_28d IS NULL OR is_finite(PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_28d)) AND (PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_60d IS NULL OR is_finite(PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_60d)) AND (PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_90d IS NULL OR is_finite(PRODUCT_STATS__return_rate_smoothed_to_category_return_rate_90d))"
+      expression: "(PRODUCT_STATS__feedback_lte_3_to_orders_rate_smoothed IS NULL OR is_finite(PRODUCT_STATS__feedback_lte_3_to_orders_rate_smoothed)) AND (PRODUCT_STATS__return_rate_neg_to_category_return_rate_neg_3d IS NULL OR is_finite(PRODUCT_STATS__return_rate_neg_to_category_return_rate_neg_3d)) AND (PRODUCT_STATS__return_rate_neg_to_category_return_rate_neg_28d IS NULL OR is_finite(PRODUCT_STATS__return_rate_neg_to_category_return_rate_neg_28d)) AND (PRODUCT_STATS__return_rate_neg_smoothed_to_category_return_rate_neg_3d IS NULL OR is_finite(PRODUCT_STATS__return_rate_neg_smoothed_to_category_return_rate_neg_3d)) AND (PRODUCT_STATS__return_rate_neg_smoothed_to_category_return_rate_neg_28d IS NULL OR is_finite(PRODUCT_STATS__return_rate_neg_smoothed_to_category_return_rate_neg_28d))"
     - name: expression_is_true
-      expression: "(PRODUCT_STATS__category_return_rate_14d IS NULL OR PRODUCT_STATS__category_return_rate_14d BETWEEN 0 AND 1) AND (PRODUCT_STATS__category_return_rate_28d IS NULL OR PRODUCT_STATS__category_return_rate_28d BETWEEN 0 AND 1) AND (PRODUCT_STATS__category_return_rate_60d IS NULL OR PRODUCT_STATS__category_return_rate_60d BETWEEN 0 AND 1) AND (PRODUCT_STATS__category_return_rate_90d IS NULL OR PRODUCT_STATS__category_return_rate_90d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT_STATS__category_return_rate_neg_3d IS NULL OR PRODUCT_STATS__category_return_rate_neg_3d BETWEEN -1 AND 0) AND (PRODUCT_STATS__category_return_rate_neg_28d IS NULL OR PRODUCT_STATS__category_return_rate_neg_28d BETWEEN -1 AND 0)"
     - name: expression_is_true
-      expression: "(PRODUCT_STATS__return_rate_smoothed_14d IS NULL OR PRODUCT_STATS__return_rate_smoothed_14d BETWEEN 0 AND 1) AND (PRODUCT_STATS__return_rate_smoothed_28d IS NULL OR PRODUCT_STATS__return_rate_smoothed_28d BETWEEN 0 AND 1) AND (PRODUCT_STATS__return_rate_smoothed_60d IS NULL OR PRODUCT_STATS__return_rate_smoothed_60d BETWEEN 0 AND 1) AND (PRODUCT_STATS__return_rate_smoothed_90d IS NULL OR PRODUCT_STATS__return_rate_smoothed_90d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT_STATS__return_rate_neg_smoothed_3d IS NULL OR PRODUCT_STATS__return_rate_neg_smoothed_3d BETWEEN -1 AND 0) AND (PRODUCT_STATS__return_rate_neg_smoothed_28d IS NULL OR PRODUCT_STATS__return_rate_neg_smoothed_28d BETWEEN -1 AND 0)"
 
 feature_stats:
   trino_conn_id: trino_recsys

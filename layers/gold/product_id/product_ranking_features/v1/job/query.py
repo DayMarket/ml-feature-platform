@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 FEATURE_NAMESPACE = "PRODUCT_STATS"
 SMOOTHING_ALPHA = 10.0
-RETURN_WINDOWS = (14, 28, 60, 90)
+RETURN_WINDOWS = (3, 28)
 
 RANK_AND_PERCENTILE_COLUMNS = (
     "price_percentile",
@@ -27,10 +27,10 @@ RETURN_FEATURE_COLUMNS = tuple(
     f"{family}_{window}d"
     for window in RETURN_WINDOWS
     for family in (
-        "category_return_rate",
-        "return_rate_smoothed",
-        "return_rate_to_category_return_rate",
-        "return_rate_smoothed_to_category_return_rate",
+        "category_return_rate_neg",
+        "return_rate_neg_smoothed",
+        "return_rate_neg_to_category_return_rate_neg",
+        "return_rate_neg_smoothed_to_category_return_rate_neg",
     )
 )
 BASE_FEATURE_COLUMNS = (
@@ -182,7 +182,7 @@ def _g7_return_input_select() -> str:
         for expression in (
             f"base.PRODUCT__n_completed_{window}d AS n_completed_{window}d",
             f"base.PRODUCT__n_returned_{window}d AS n_returned_{window}d",
-            f"base.PRODUCT__return_rate_{window}d AS return_rate_{window}d",
+            f"base.PRODUCT__return_rate_neg_{window}d AS return_rate_neg_{window}d",
         )
     )
 
@@ -190,11 +190,11 @@ def _g7_return_input_select() -> str:
 def _category_return_rate_expressions() -> str:
     return ",\n        ".join(
         (
-            f"CASE WHEN category_id IS NOT NULL THEN "
+            f"CASE WHEN category_id IS NOT NULL THEN -"
             f"CAST(SUM(n_returned_{window}d) OVER (PARTITION BY category_id) "
             f"AS DOUBLE) / NULLIF(CAST(SUM(n_completed_{window}d + "
             f"n_returned_{window}d) OVER (PARTITION BY category_id) "
-            f"AS DOUBLE), 0.0D) END AS category_return_rate_{window}d"
+            f"AS DOUBLE), 0.0D) END AS category_return_rate_neg_{window}d"
         )
         for window in RETURN_WINDOWS
     )
@@ -207,7 +207,7 @@ def _return_input_passthrough() -> str:
         for column in (
             f"n_completed_{window}d",
             f"n_returned_{window}d",
-            f"return_rate_{window}d",
+            f"return_rate_neg_{window}d",
         )
     )
 
@@ -215,11 +215,11 @@ def _return_input_passthrough() -> str:
 def _smoothed_return_rate_expressions() -> str:
     return ",\n        ".join(
         (
-            f"(CAST(n_returned_{window}d AS DOUBLE) "
-            f"+ {SMOOTHING_ALPHA}D * category_return_rate_{window}d) "
+            f"-(CAST(n_returned_{window}d AS DOUBLE) "
+            f"- {SMOOTHING_ALPHA}D * category_return_rate_neg_{window}d) "
             f"/ NULLIF(CAST(n_completed_{window}d + n_returned_{window}d "
             f"AS DOUBLE) + {SMOOTHING_ALPHA}D, 0.0D) "
-            f"AS return_rate_smoothed_{window}d"
+            f"AS return_rate_neg_smoothed_{window}d"
         )
         for window in RETURN_WINDOWS
     )
@@ -228,19 +228,19 @@ def _smoothed_return_rate_expressions() -> str:
 def _return_feature_expressions() -> str:
     expressions: list[str] = []
     for window in RETURN_WINDOWS:
-        category_rate = f"category_return_rate_{window}d"
-        smoothed_rate = f"return_rate_smoothed_{window}d"
+        category_rate = f"category_return_rate_neg_{window}d"
+        smoothed_rate = f"return_rate_neg_smoothed_{window}d"
         expressions.extend(
             (
                 category_rate,
                 smoothed_rate,
                 (
-                    f"return_rate_{window}d / NULLIF({category_rate}, 0.0D) "
-                    f"AS return_rate_to_category_return_rate_{window}d"
+                    f"return_rate_neg_{window}d / NULLIF({category_rate}, 0.0D) "
+                    f"AS return_rate_neg_to_category_return_rate_neg_{window}d"
                 ),
                 (
                     f"{smoothed_rate} / NULLIF({category_rate}, 0.0D) AS "
-                    f"return_rate_smoothed_to_category_return_rate_{window}d"
+                    f"return_rate_neg_smoothed_to_category_return_rate_neg_{window}d"
                 ),
             )
         )
@@ -336,7 +336,7 @@ smoothed_inputs AS (
                 + {SMOOTHING_ALPHA}D, 0.0D)
             AS feedback_lte_3_to_orders_rate_smoothed,
         {return_passthrough},
-        {", ".join(f"category_return_rate_{window}d" for window in RETURN_WINDOWS)},
+        {", ".join(f"category_return_rate_neg_{window}d" for window in RETURN_WINDOWS)},
         {smoothed_return_rates}
     FROM category_baselines category
     CROSS JOIN global_feedback_prior prior
