@@ -222,12 +222,12 @@ UTC cron 0 7,19 * * * · P3 · small`"]
 UTC cron 0 7,19 * * * · P3 · small`"]
     d9["`account_shop_features
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d10["`buyout_online_city_features
-UTC 06:00 · P2 · airflow-python`"]
-    d11["`demand_calendar_daily
-UTC 04:00 · P3 · airflow-python`"]
-    d12["`l6_category_gender_features
+    d10["`category_gender_features
 UTC cron 0 7,19 * * * · P3 · small`"]
+    d11["`buyout_online_city_features
+UTC 06:00 · P2 · airflow-python`"]
+    d12["`demand_calendar_daily
+UTC 04:00 · P3 · airflow-python`"]
     d13["`search_query_atc_features_qid
 UTC 06:00 · P4 · small`"]
     d14["`sku_group_query_atc_order_features_qid
@@ -311,12 +311,12 @@ UTC 04:00 · P3 · airflow-python`"]
     d22 -->|"dq"| d8
     d22 -->|"dq"| d9
     d29 -->|"dq"| d9
-    d23 -->|"dq Δ3h"| d10
-    d25 -->|"dq"| d11
-    d26 -->|"dq"| d11
-    d19 -->|"dq"| d12
-    d22 -->|"dq"| d12
-    d29 -->|"dq"| d12
+    d19 -->|"dq"| d10
+    d22 -->|"dq"| d10
+    d29 -->|"dq"| d10
+    d23 -->|"dq Δ3h"| d11
+    d25 -->|"dq"| d12
+    d26 -->|"dq"| d12
     x0 -.->|"dbt DQ (legacy) Δ5h"| d13
     x1 -.->|"dbt DQ (legacy) Δ5h"| d13
     d15 -->|"sensor Δ1h"| d13

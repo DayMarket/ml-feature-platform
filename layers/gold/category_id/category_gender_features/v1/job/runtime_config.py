@@ -9,7 +9,6 @@ class SourceSettings:
     product_metadata_table: str
     action_counts_table: str
     demographics_table: str
-    category_genders_table: str
     business_timezone: str
     lookback_days: int
 
@@ -19,7 +18,6 @@ class SourceSettings:
             self.product_metadata_table,
             self.action_counts_table,
             self.demographics_table,
-            self.category_genders_table,
         )
 
 
@@ -94,7 +92,6 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
         product_metadata_table=_required_string(source, "product_metadata_table"),
         action_counts_table=_required_string(source, "action_counts_table"),
         demographics_table=_required_string(source, "demographics_table"),
-        category_genders_table=_required_string(source, "category_genders_table"),
         business_timezone=business_timezone,
         lookback_days=_required_positive_int(source, "lookback_days"),
     )

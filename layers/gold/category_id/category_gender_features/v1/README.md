@@ -1,34 +1,29 @@
-# L6 category gender features
+# Leaf-category gender features
 
-DAG id: `feature-platform.layers.gold.l6_category_id.l6_category_gender_features`.
+DAG id: `feature-platform.layers.gold.category_id.category_gender_features`.
 
-Таблица: `iceberg.gold.feature_platform_l6_category_gender_features`.
+Таблица: `iceberg.gold.feature_platform_category_gender_features`.
 
-Grain и primary key: `calculated_at,l6_category_id`.
+Grain и primary key: `calculated_at,category_id`.
 
-Namespace — `L6_CATEGORY_GENDER`. Все физические feature-колонки уже содержат
-его; `calculated_at` и `l6_category_id` остаются без namespace.
+Namespace — `CATEGORY_GENDER`. Все физические feature-колонки уже содержат
+его; `calculated_at` и `category_id` остаются без namespace.
 
 ## Назначение
 
-G6 хранит gender-статистики просмотров на уровне L6. Account-category строки и
-candidate enrichment в таблицу не материализуются.
+G6 хранит gender-статистики просмотров на уровне листовой категории.
+Account-category строки и candidate enrichment в таблицу не материализуются.
 
 ## Источники
 
 - S2c `iceberg.silver.feature_platform_account_product_session_action_counts_12h`;
 - S1 `iceberg.silver.feature_platform_product_metadata`;
-- S5 `iceberg.silver.feature_platform_account_demographics`;
-- `iceberg.silver.recsys_category_genders`.
+- S5 `iceberg.silver.feature_platform_account_demographics`.
 
-S1 присоединяется по `product_id`, S5 — по `account_id`, справочник gender
-категории — по `S1.l6_category_id = recsys_category_genders.category_id`.
-Используется `dominant_gender`, нормализованный до `M`, `F`, `U` или `NULL`.
-
-`S1.category_gender` намеренно не используется: он относится к листовой
-`category_id`, которая может отличаться от `l6_category_id`. Справочник
-`recsys_category_genders` не партиционирован, поэтому исторические пересчёты
-используют его актуальное состояние.
+S1 присоединяется по `product_id`, S5 — по `account_id`. Листовая категория
+берётся из `S1.category_id`, а её нормализованный gender `M`, `F`, `U` или
+`NULL` — из `S1.category_gender`. Поэтому исторический расчёт использует
+согласованный snapshot S1 и не обращается к актуальному справочнику напрямую.
 
 ## Product-session семантика
 
@@ -44,21 +39,22 @@ account_id, session_id, product_id
 товар в разных сессиях и разные товары в одной сессии дают разные наблюдения.
 `n_events` не используется.
 
-После дедупликации присоединяется S1 текущей локальной даты. Строки без L6
-исключаются. S5 присоединяется через `LEFT JOIN`: просмотры пользователей без
-известного gender сохраняют категорию в population, но не входят в gender
-denominator.
+После дедупликации присоединяется S1 текущей локальной даты. Строки без
+листовой `category_id` исключаются. S5 присоединяется через `LEFT JOIN`:
+просмотры пользователей без известного gender сохраняют категорию в
+population, но не входят в gender denominator.
 
 ## Колонки и формулы
 
-- `L6_CATEGORY_GENDER__category_female_product_session_share_28d` — доля female product-session
+- `CATEGORY_GENDER__category_female_product_session_share_28d` — доля female product-session
   наблюдений среди product-session наблюдений с известным gender;
-- `L6_CATEGORY_GENDER__category_male_product_session_share_28d` — аналогичная male-доля;
-- `L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d` — уникальные account с gender `MALE` или
+- `CATEGORY_GENDER__category_male_product_session_share_28d` — аналогичная male-доля;
+- `CATEGORY_GENDER__n_unique_known_gender_clickers_28d` — уникальные account с gender `MALE` или
   `FEMALE`;
-- `L6_CATEGORY_GENDER__n_unique_female_clickers_28d` — уникальные female account;
-- `L6_CATEGORY_GENDER__n_unique_male_clickers_28d` — уникальные male account;
-- `L6_CATEGORY_GENDER__category_gender` — `M`, `F`, `U` или `NULL` для L6.
+- `CATEGORY_GENDER__n_unique_female_clickers_28d` — уникальные female account;
+- `CATEGORY_GENDER__n_unique_male_clickers_28d` — уникальные male account;
+- `CATEGORY_GENDER__category_gender` — `M`, `F`, `U` или `NULL` для листовой
+  категории.
 
 ```text
 female_share = female product-session rows / known-gender product-session rows
@@ -69,8 +65,8 @@ male_share   = male product-session rows / known-gender product-session rows
 равны `NULL`, а unique counts равны нулю. Для опубликованной категории:
 
 ```text
-L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d
-    = L6_CATEGORY_GENDER__n_unique_female_clickers_28d + L6_CATEGORY_GENDER__n_unique_male_clickers_28d
+CATEGORY_GENDER__n_unique_known_gender_clickers_28d
+    = CATEGORY_GENDER__n_unique_female_clickers_28d + CATEGORY_GENDER__n_unique_male_clickers_28d
 ```
 
 ## On-the-fly candidate enrichment
@@ -99,8 +95,7 @@ Asia/Tashkent. S5 читается по `00:00` локальной даты. S1 
 ## Orchestration and dependencies
 
 DAG работает в `07:00` и `19:00 UTC`, то есть `12:00` и `00:00`
-Asia/Tashkent. Он ждёт DQ-таски S1, S2c и S5. Для внешнего текущего справочника
-`recsys_category_genders` отдельный feature-platform DQ sensor отсутствует.
+Asia/Tashkent. Он ждёт DQ-таски S1, S2c и S5.
 
 `start_date = 2026-09-05T07:00:00Z` — первый запуск после накопления полного
 28-дневного окна S2c; `catchup=true`. DAG создаётся на паузе. Group tag:
@@ -111,13 +106,13 @@ callbacks DAG, DQ и feature stats отключены на время отлад
 
 ## DQ and feature stats
 
-DQ проверяет уникальность ключа, положительный L6, неотрицательные counts,
+DQ проверяет уникальность ключа, положительный `category_id`, неотрицательные counts,
 домены gender, диапазоны shares, сумму female/male shares и равенство known
 unique count сумме female/male unique counts. Дедупликация product-session
 зафиксирована SQL unit-тестами.
 
 `feature_stats` выполняет отдельный Trino-скан каждого 12-часового snapshot;
-строковый `L6_CATEGORY_GENDER__category_gender` исключён из профилирования. Ranking upload не
+строковый `CATEGORY_GENDER__category_gender` исключён из профилирования. Ranking upload не
 настраивается. Потребители: G7 и candidate enrichment для Main, push и train.
 
 После merge в `master` dbt PR не создаётся (`create_dbt_pr: false`), а CI может

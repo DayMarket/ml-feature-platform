@@ -1,4 +1,4 @@
-"""Materialize L6 category gender Gold features twice a day."""
+"""Materialize leaf-category gender Gold features twice a day."""
 
 import logging
 import os
@@ -50,7 +50,7 @@ def _daily_snapshot_logical_date(logical_date):
     if logical_date.hour == 19:
         return logical_date - timedelta(hours=24)
     raise ValueError(
-        "l6-category-gender schedule expects a 07:00 or 19:00 UTC logical date"
+        "category-gender schedule expects a 07:00 or 19:00 UTC logical date"
     )
 
 
@@ -78,7 +78,7 @@ default_args = {
         dag_settings["team_tag"],
         dag_settings["group_tag"],
         "gold",
-        "l6-category",
+        "category",
         "gender",
         "recsys",
     ],
@@ -89,7 +89,7 @@ default_args = {
     start_date=pendulum.parse(dag_settings["start_date"]).in_timezone("UTC"),
     dag_id=dag_settings["dag_id"],
 )
-def collect_gold_l6_category_gender_features():
+def collect_gold_category_gender_features():
     wait_for_product_metadata_dq = ExternalTaskSensor(
         task_id="wait_for_silver_product_metadata_dq",
         external_dag_id=PRODUCT_METADATA_DAG_ID,
@@ -128,7 +128,7 @@ def collect_gold_l6_category_gender_features():
 
     materialize_task = SparkKubernetesOperator(
         execution_timeout=timedelta(hours=10),
-        task_id="getting_l6_category_gender_features",
+        task_id="getting_category_gender_features",
         namespace="svc-data-spark-jobs",
         application_file=get_deployment(),
         kubernetes_conn_id="spark_k8s",
@@ -152,4 +152,4 @@ def collect_gold_l6_category_gender_features():
     ] >> materialize_task >> [dq_task, stats_task]
 
 
-dag = collect_gold_l6_category_gender_features()
+dag = collect_gold_category_gender_features()

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ENTITY = ROOT / "layers/gold/l6_category_id/l6_category_gender_features/v1"
+ENTITY = ROOT / "layers/gold/category_id/category_gender_features/v1"
 
 
 def _load_module(name: str, path: Path):
@@ -17,23 +17,23 @@ def _load_module(name: str, path: Path):
     return module
 
 
-query = _load_module("l6_category_gender_features_query", ENTITY / "job/query.py")
+query = _load_module("category_gender_features_query", ENTITY / "job/query.py")
 runtime_config = _load_module(
-    "l6_category_gender_features_runtime_config",
+    "category_gender_features_runtime_config",
     ENTITY / "job/runtime_config.py",
 )
 partition = _load_module(
-    "l6_category_gender_features_partition",
+    "category_gender_features_partition",
     ENTITY / "job/partition.py",
 )
 
 
-class L6CategoryGenderFeaturesTest(unittest.TestCase):
+class CategoryGenderFeaturesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.settings = runtime_config.load_source_settings(ENTITY / "config.yaml")
         cls.calculated_at = datetime(2026, 9, 10, 7, tzinfo=timezone.utc)
-        cls.sql = query.build_l6_category_gender_features_query(
+        cls.sql = query.build_category_gender_features_query(
             cls.settings,
             cls.calculated_at,
         )
@@ -42,12 +42,12 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
         self.assertEqual(
             query.FEATURE_COLUMNS,
             (
-                "L6_CATEGORY_GENDER__category_female_product_session_share_28d",
-                "L6_CATEGORY_GENDER__category_male_product_session_share_28d",
-                "L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d",
-                "L6_CATEGORY_GENDER__n_unique_female_clickers_28d",
-                "L6_CATEGORY_GENDER__n_unique_male_clickers_28d",
-                "L6_CATEGORY_GENDER__category_gender",
+                "CATEGORY_GENDER__category_female_product_session_share_28d",
+                "CATEGORY_GENDER__category_male_product_session_share_28d",
+                "CATEGORY_GENDER__n_unique_known_gender_clickers_28d",
+                "CATEGORY_GENDER__n_unique_female_clickers_28d",
+                "CATEGORY_GENDER__n_unique_male_clickers_28d",
+                "CATEGORY_GENDER__category_gender",
             ),
         )
 
@@ -60,25 +60,25 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
                 flags=re.MULTILINE,
             )
         )
-        expected = {"calculated_at", "l6_category_id", *query.FEATURE_COLUMNS}
+        expected = {"calculated_at", "category_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
         self.assertNotIn("BIGINT", migration)
         self.assertIn("TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')", migration)
 
     def test_namespace_schedule_resources_and_start_date(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
-        self.assertIn("feature_namespace: L6_CATEGORY_GENDER", config_text)
+        self.assertIn("feature_namespace: CATEGORY_GENDER", config_text)
         self.assertTrue(
             all(
-                column.startswith("L6_CATEGORY_GENDER__")
+                column.startswith("CATEGORY_GENDER__")
                 for column in query.FEATURE_COLUMNS
             )
         )
         self.assertIn(
-            "AS L6_CATEGORY_GENDER__category_gender",
+            "AS CATEGORY_GENDER__category_gender",
             self.sql,
         )
-        self.assertIn("primary_key: calculated_at,l6_category_id", config_text)
+        self.assertIn("primary_key: calculated_at,category_id", config_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('schedule: "0 7,19 * * *"', config_text)
         self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
@@ -90,7 +90,6 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
         for cte in (
             "product_metadata",
             "demographics",
-            "category_genders",
             "deduplicated_product_views",
             "enriched_product_views",
             "category_statistics",
@@ -142,25 +141,18 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
             self.sql,
         )
 
-    def test_l6_and_account_gender_joins_keep_unknown_gender_views(self):
+    def test_leaf_category_and_account_gender_joins_keep_unknown_gender_views(self):
         self.assertIn("INNER JOIN product_metadata metadata", self.sql)
-        self.assertIn("WHERE metadata.l6_category_id IS NOT NULL", self.sql)
+        self.assertIn("WHERE metadata.category_id IS NOT NULL", self.sql)
         self.assertIn("LEFT JOIN demographics", self.sql)
         self.assertNotIn("account_id BETWEEN", self.sql)
         self.assertNotIn("MAX_INT_ID", self.sql)
 
-    def test_l6_gender_comes_from_direct_category_mapping_after_aggregation(self):
-        self.assertIn("dominant_gender IN ('M', 'F', 'U')", self.sql)
-        self.assertIn("CAST(category_id AS INT) AS l6_category_id", self.sql)
-        self.assertIn(
-            "LEFT JOIN category_genders genders\n"
-            "        ON statistics.l6_category_id = genders.l6_category_id",
-            self.sql,
-        )
-        self.assertGreater(
-            self.sql.index("FROM category_statistics statistics"),
-            self.sql.index("category_statistics AS ("),
-        )
+    def test_category_gender_comes_from_s1_leaf_mapping(self):
+        self.assertIn("CAST(category_id AS INT) AS category_id", self.sql)
+        self.assertIn("category_gender", self.sql)
+        self.assertIn("MAX(category_gender) AS category_gender", self.sql)
+        self.assertNotIn("recsys_category_genders", self.sql)
 
     def test_shares_and_unique_counts_use_documented_gender_semantics(self):
         self.assertIn(
@@ -202,7 +194,7 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
             partition.parse_airflow_timestamp("bad-timestamp")
 
     def test_merge_replaces_only_current_snapshot(self):
-        merge_sql = query.build_l6_category_gender_features_merge_query(
+        merge_sql = query.build_category_gender_features_merge_query(
             "iceberg.gold.target",
             self.settings,
             self.calculated_at,
@@ -212,7 +204,7 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
             merge_sql,
         )
         self.assertIn(
-            "target.l6_category_id = source.l6_category_id",
+            "target.category_id = source.category_id",
             merge_sql,
         )
         self.assertIn("WHEN NOT MATCHED BY SOURCE", merge_sql)
@@ -234,14 +226,14 @@ class L6CategoryGenderFeaturesTest(unittest.TestCase):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("values: [M, F, U]", config_text)
         self.assertIn(
-            "L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d = "
-            "L6_CATEGORY_GENDER__n_unique_female_clickers_28d + "
-            "L6_CATEGORY_GENDER__n_unique_male_clickers_28d",
+            "CATEGORY_GENDER__n_unique_known_gender_clickers_28d = "
+            "CATEGORY_GENDER__n_unique_female_clickers_28d + "
+            "CATEGORY_GENDER__n_unique_male_clickers_28d",
             config_text,
         )
         self.assertIn(
-            "L6_CATEGORY_GENDER__category_female_product_session_share_28d + "
-            "L6_CATEGORY_GENDER__category_male_product_session_share_28d - 1.0",
+            "CATEGORY_GENDER__category_female_product_session_share_28d + "
+            "CATEGORY_GENDER__category_male_product_session_share_28d - 1.0",
             config_text,
         )
 

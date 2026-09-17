@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-FEATURE_NAMESPACE = "L6_CATEGORY_GENDER"
+FEATURE_NAMESPACE = "CATEGORY_GENDER"
 BASE_FEATURE_COLUMNS = (
     "category_female_product_session_share_28d",
     "category_male_product_session_share_28d",
@@ -22,7 +22,6 @@ class SourceSettings(Protocol):
     product_metadata_table: str
     action_counts_table: str
     demographics_table: str
-    category_genders_table: str
     business_timezone: str
     lookback_days: int
 
@@ -57,7 +56,7 @@ def _namespaced_feature_select(source_alias: str) -> str:
     )
 
 
-def build_l6_category_gender_features_query(
+def build_category_gender_features_query(
     settings: SourceSettings,
     calculated_at: datetime,
 ) -> str:
@@ -79,7 +78,8 @@ def build_l6_category_gender_features_query(
 WITH product_metadata AS (
     SELECT
         CAST(product_id AS INT) AS product_id,
-        CAST(l6_category_id AS INT) AS l6_category_id
+        CAST(category_id AS INT) AS category_id,
+        category_gender
     FROM {settings.product_metadata_table}
     WHERE dt = TIMESTAMP '{metadata_snapshot_utc}'
 ),
@@ -89,14 +89,6 @@ demographics AS (
         gender AS account_gender
     FROM {settings.demographics_table}
     WHERE dt = TIMESTAMP '{demographics_snapshot_local}'
-),
-category_genders AS (
-    SELECT
-        CAST(category_id AS INT) AS l6_category_id,
-        CASE
-            WHEN dominant_gender IN ('M', 'F', 'U') THEN dominant_gender
-        END AS category_gender
-    FROM {settings.category_genders_table}
 ),
 deduplicated_product_views AS (
     SELECT
@@ -122,18 +114,19 @@ enriched_product_views AS (
         views.account_id,
         views.session_id,
         views.product_id,
-        metadata.l6_category_id,
+        metadata.category_id,
+        metadata.category_gender,
         demographics.account_gender
     FROM deduplicated_product_views views
     INNER JOIN product_metadata metadata
         ON views.product_id = metadata.product_id
     LEFT JOIN demographics
         ON views.account_id = demographics.account_id
-    WHERE metadata.l6_category_id IS NOT NULL
+    WHERE metadata.category_id IS NOT NULL
 ),
 category_statistics AS (
     SELECT
-        l6_category_id,
+        category_id,
         CAST(
             SUM(CASE WHEN account_gender = 'FEMALE' THEN 1 ELSE 0 END)
             AS DOUBLE
@@ -176,33 +169,32 @@ category_statistics AS (
         CAST(
             COUNT(DISTINCT CASE WHEN account_gender = 'MALE' THEN account_id END)
             AS INT
-        ) AS n_unique_male_clickers_28d
+        ) AS n_unique_male_clickers_28d,
+        MAX(category_gender) AS category_gender
     FROM enriched_product_views
-    GROUP BY l6_category_id
+    GROUP BY category_id
 ),
 unprefixed_features AS (
     SELECT
         TIMESTAMP '{calculated_at_local}' AS calculated_at,
-        statistics.l6_category_id,
+        statistics.category_id,
         statistics.category_female_product_session_share_28d,
         statistics.category_male_product_session_share_28d,
         statistics.n_unique_known_gender_clickers_28d,
         statistics.n_unique_female_clickers_28d,
         statistics.n_unique_male_clickers_28d,
-        genders.category_gender
+        statistics.category_gender
     FROM category_statistics statistics
-    LEFT JOIN category_genders genders
-        ON statistics.l6_category_id = genders.l6_category_id
 )
 SELECT
     calculated_at,
-    l6_category_id,
+    category_id,
     {namespaced_feature_select}
 FROM unprefixed_features
 """
 
 
-def build_l6_category_gender_features_merge_query(
+def build_category_gender_features_merge_query(
     target_table: str,
     settings: SourceSettings,
     calculated_at: datetime,
@@ -215,18 +207,18 @@ def build_l6_category_gender_features_merge_query(
         f"target.{column} = source.{column}" for column in FEATURE_COLUMNS
     )
     insert_columns = ",\n    ".join(
-        ("calculated_at", "l6_category_id", *FEATURE_COLUMNS)
+        ("calculated_at", "category_id", *FEATURE_COLUMNS)
     )
     source_columns = ",\n    ".join(
         f"source.{column}"
-        for column in ("calculated_at", "l6_category_id", *FEATURE_COLUMNS)
+        for column in ("calculated_at", "category_id", *FEATURE_COLUMNS)
     )
 
     return f"""
 MERGE INTO {target_table} AS target
-USING l6_category_gender_features_for_calculated_at AS source
+USING category_gender_features_for_calculated_at AS source
     ON target.calculated_at = source.calculated_at
-    AND target.l6_category_id = source.l6_category_id
+    AND target.category_id = source.category_id
 WHEN MATCHED THEN UPDATE SET
     {update_columns}
 WHEN NOT MATCHED THEN INSERT (
