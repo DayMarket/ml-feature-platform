@@ -40,7 +40,7 @@ SKU ограничивается этим значением до commission fal
 На SKU сначала считаются `net_inflow_usd` и `cm2_sku_usd`. Если суммарное
 `n_orders_28d >= 5`, score товара является order-weighted средним SKU score; иначе берётся
 простое среднее. Физическая feature-колонка:
-`PRODUCT_CM2_MAIN__cm2_main_uzs = score_usd × usd_rate`.
+`PRODUCT_CM2_MAIN__score_uzs = score_usd × usd_rate`.
 
 ## Качество и публикация
 

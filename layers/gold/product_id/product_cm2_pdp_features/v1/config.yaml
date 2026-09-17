@@ -57,13 +57,13 @@ dq:
       expression: "product_id > 0"
     - name: not_null
       columns:
-        - PRODUCT_CM2_PDP__cm2
+        - PRODUCT_CM2_PDP__score
         - PRODUCT_CM2_PDP__net_inflow
         - PRODUCT_CM2_PDP__weighted_price
         - PRODUCT_CM2_PDP__today_rate
     - name: finite
       columns:
-        - PRODUCT_CM2_PDP__cm2
+        - PRODUCT_CM2_PDP__score
         - PRODUCT_CM2_PDP__net_inflow
         - PRODUCT_CM2_PDP__weighted_price
         - PRODUCT_CM2_PDP__today_rate
@@ -78,7 +78,7 @@ dq:
       min: 1
       max: 1
     - name: expression_is_true
-      expression: "ABS(PRODUCT_CM2_PDP__cm2 - PRODUCT_CM2_PDP__net_inflow) <= 0.000000001"
+      expression: "ABS(PRODUCT_CM2_PDP__score - PRODUCT_CM2_PDP__net_inflow) <= 0.000000001"
 
 feature_stats:
   trino_conn_id: trino_recsys

@@ -83,7 +83,7 @@ class ProductCm2PdpFeaturesTest(unittest.TestCase):
         self.assertIn("mean_price", self.sql)
 
     def test_cm2_equals_net_inflow_and_rate_is_published(self):
-        self.assertIn("net_inflow AS PRODUCT_CM2_PDP__cm2", self.sql)
+        self.assertIn("net_inflow AS PRODUCT_CM2_PDP__score", self.sql)
         self.assertIn("net_inflow AS PRODUCT_CM2_PDP__net_inflow", self.sql)
         self.assertIn("weighted_price AS PRODUCT_CM2_PDP__weighted_price", self.sql)
         self.assertIn("usd_rate AS PRODUCT_CM2_PDP__today_rate", self.sql)

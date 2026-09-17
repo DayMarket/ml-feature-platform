@@ -5,7 +5,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 FEATURE_NAMESPACE = "PRODUCT_CM2_MAIN"
-FEATURE_COLUMNS = (f"{FEATURE_NAMESPACE}__cm2_main_uzs",)
+FEATURE_COLUMNS = (f"{FEATURE_NAMESPACE}__score_uzs",)
 
 DEFAULT_COMMISSION_PCT = 20.0
 VAT_DIVISOR = 1.12
@@ -146,7 +146,7 @@ SELECT
                 THEN weighted_sum / NULLIF(CAST(total_orders AS DOUBLE), 0.0D)
             ELSE mean_score
         END
-    ) * usd_rate AS {FEATURE_NAMESPACE}__cm2_main_uzs
+    ) * usd_rate AS {FEATURE_NAMESPACE}__score_uzs
 FROM product_aggregates
 """
 

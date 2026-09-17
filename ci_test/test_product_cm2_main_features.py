@@ -46,7 +46,7 @@ class ProductCm2MainFeaturesTest(unittest.TestCase):
         )
         self.assertEqual(
             columns,
-            {"calculated_at", "product_id", "PRODUCT_CM2_MAIN__cm2_main_uzs"},
+            {"calculated_at", "product_id", "PRODUCT_CM2_MAIN__score_uzs"},
         )
         self.assertNotIn("sku_id", migration)
         self.assertNotIn("BIGINT", migration)
@@ -83,7 +83,7 @@ class ProductCm2MainFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn("ELSE mean_score", self.sql)
-        self.assertIn("* usd_rate AS PRODUCT_CM2_MAIN__cm2_main_uzs", self.sql)
+        self.assertIn("* usd_rate AS PRODUCT_CM2_MAIN__score_uzs", self.sql)
 
     def test_merge_replaces_only_requested_snapshot(self):
         merge_sql = query.build_product_cm2_main_features_merge_query(

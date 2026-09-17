@@ -5,7 +5,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 FEATURE_NAMESPACE = "PRODUCT_CM2_PDP"
-BASE_FEATURE_COLUMNS = ("cm2", "net_inflow", "weighted_price", "today_rate")
+BASE_FEATURE_COLUMNS = ("score", "net_inflow", "weighted_price", "today_rate")
 FEATURE_COLUMNS = tuple(
     f"{FEATURE_NAMESPACE}__{column}" for column in BASE_FEATURE_COLUMNS
 )
@@ -141,7 +141,7 @@ product_features AS (
 SELECT
     TIMESTAMP '{calculated_at_local}' AS calculated_at,
     product_id,
-    net_inflow AS {FEATURE_NAMESPACE}__cm2,
+    net_inflow AS {FEATURE_NAMESPACE}__score,
     net_inflow AS {FEATURE_NAMESPACE}__net_inflow,
     weighted_price AS {FEATURE_NAMESPACE}__weighted_price,
     usd_rate AS {FEATURE_NAMESPACE}__today_rate
