@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-FEATURE_NAMESPACE = "PRODUCT_BASE"
+FEATURE_NAMESPACE = "PRODUCT"
 
 PRICE_COLUMNS = (
     "min_sell_price_eod",
@@ -18,12 +18,12 @@ PRICE_COLUMNS = (
     "max_active_sku_sell_price_eod",
     "minimal_sell_price",
     "minimal_full_price",
-    "product_discount",
+    "discount",
     "age_in_days",
 )
 ACTION_COLUMNS = (
-    "product_clicks_3d",
-    "product_clicks_28d",
+    "clicks_3d",
+    "clicks_28d",
     "favorites_daily",
     "favorites_last_3d",
     "favorites_last_7d",
@@ -34,17 +34,17 @@ ACTION_COLUMNS = (
 ORDER_COLUMNS = (
     "orders_quantity_daily",
     "items_purchased_quantity_daily",
-    "product_orders_total",
-    "has_product_orders_total",
-    "product_orders_7d",
-    "product_orders_28d",
-    "product_orders_90d",
+    "orders_total",
+    "has_orders_total",
+    "orders_7d",
+    "orders_28d",
+    "orders_90d",
     "category_orders_7d",
     "category_orders_28d",
     "category_orders_90d",
-    "product_orders_share_in_category_7d",
-    "product_orders_share_in_category_28d",
-    "product_orders_share_in_category_90d",
+    "orders_share_in_category_7d",
+    "orders_share_in_category_28d",
+    "orders_share_in_category_90d",
 )
 ORDER_INPUT_COLUMNS = ORDER_COLUMNS[:-3]
 FEEDBACK_WINDOWS = (3, 7, 14, 21, 28)
@@ -66,8 +66,8 @@ ROLLING_FEEDBACK_COLUMNS = (
     ),
 )
 ALL_TIME_FEEDBACK_COLUMNS = (
-    "product_rating",
-    "product_feedback_quantity",
+    "rating",
+    "feedback_quantity",
     "feedback_gte_4",
     "feedback_lte_3",
     "feedback_gte_4_ratio",
@@ -153,7 +153,7 @@ def _action_aggregate_expressions(calculated_at_local: str) -> str:
             "CAST(SUM(CASE WHEN event_type = 'PRODUCT_VIEW' "
             f"AND calculated_at > TIMESTAMP '{calculated_at_local}' "
             f"- INTERVAL {window} DAYS THEN n_events ELSE 0 END) AS INT) "
-            f"AS product_clicks_{window}d"
+            f"AS clicks_{window}d"
         )
     expressions.append(
         "CAST(SUM(CASE WHEN event_type = 'ADD_TO_FAVORITES' "
@@ -190,7 +190,7 @@ def _order_aggregate_expressions(calculated_at_utc: str) -> str:
         (
             "CAST(COUNT(DISTINCT CASE WHEN "
             f"{successful_status} THEN order_id END) AS INT) "
-            "AS product_orders_total"
+            "AS orders_total"
         ),
     ]
     for window in (7, 28, 90):
@@ -198,7 +198,7 @@ def _order_aggregate_expressions(calculated_at_utc: str) -> str:
             "CAST(COUNT(DISTINCT CASE WHEN "
             f"{successful_status} AND generated_at >= TIMESTAMP "
             f"'{calculated_at_utc}' - INTERVAL {window} DAYS THEN order_id END) "
-            f"AS INT) AS product_orders_{window}d"
+            f"AS INT) AS orders_{window}d"
         )
     return ",\n        ".join(expressions)
 
@@ -469,10 +469,10 @@ orders_for_population AS (
         COALESCE(orders.orders_quantity_daily, 0) AS orders_quantity_daily,
         COALESCE(orders.items_purchased_quantity_daily, 0)
             AS items_purchased_quantity_daily,
-        COALESCE(orders.product_orders_total, 0) AS product_orders_total,
-        COALESCE(orders.product_orders_7d, 0) AS product_orders_7d,
-        COALESCE(orders.product_orders_28d, 0) AS product_orders_28d,
-        COALESCE(orders.product_orders_90d, 0) AS product_orders_90d,
+        COALESCE(orders.orders_total, 0) AS orders_total,
+        COALESCE(orders.orders_7d, 0) AS orders_7d,
+        COALESCE(orders.orders_28d, 0) AS orders_28d,
+        COALESCE(orders.orders_90d, 0) AS orders_90d,
         {return_population_select}
     FROM product_population population
     LEFT JOIN product_order_and_return_counts orders
@@ -483,19 +483,19 @@ order_and_return_features AS (
         product_id,
         orders_quantity_daily,
         items_purchased_quantity_daily,
-        product_orders_total,
-        CAST(product_orders_total > 0 AS INT) AS has_product_orders_total,
-        product_orders_7d,
-        product_orders_28d,
-        product_orders_90d,
+        orders_total,
+        CAST(orders_total > 0 AS INT) AS has_orders_total,
+        orders_7d,
+        orders_28d,
+        orders_90d,
         CASE WHEN category_id IS NOT NULL THEN CAST(
-            SUM(product_orders_7d) OVER (PARTITION BY category_id) AS INT
+            SUM(orders_7d) OVER (PARTITION BY category_id) AS INT
         ) END AS category_orders_7d,
         CASE WHEN category_id IS NOT NULL THEN CAST(
-            SUM(product_orders_28d) OVER (PARTITION BY category_id) AS INT
+            SUM(orders_28d) OVER (PARTITION BY category_id) AS INT
         ) END AS category_orders_28d,
         CASE WHEN category_id IS NOT NULL THEN CAST(
-            SUM(product_orders_90d) OVER (PARTITION BY category_id) AS INT
+            SUM(orders_90d) OVER (PARTITION BY category_id) AS INT
         ) END AS category_orders_90d,
         {return_feature_select}
     FROM orders_for_population
@@ -530,7 +530,7 @@ all_time_feedback_counts AS (
             + COALESCE(feedback.reviews_mark_four_count, 0)
             + COALESCE(feedback.reviews_mark_five_count, 0)
             AS INT
-        ) AS product_feedback_quantity,
+        ) AS feedback_quantity,
         CAST(
             COALESCE(feedback.reviews_mark_four_count, 0)
             + COALESCE(feedback.reviews_mark_five_count, 0)
@@ -558,38 +558,38 @@ all_time_feedback_features AS (
     SELECT
         product_id,
         sum_rating / NULLIF(
-            CAST(product_feedback_quantity AS DOUBLE),
+            CAST(feedback_quantity AS DOUBLE),
             0.0D
-        ) AS product_rating,
-        product_feedback_quantity,
+        ) AS rating,
+        feedback_quantity,
         feedback_gte_4,
         feedback_lte_3,
         CAST(feedback_gte_4 AS DOUBLE) / NULLIF(
-            CAST(product_feedback_quantity AS DOUBLE),
+            CAST(feedback_quantity AS DOUBLE),
             0.0D
         ) AS feedback_gte_4_ratio,
         CAST(feedback_lte_3 AS DOUBLE) / NULLIF(
-            CAST(product_feedback_quantity AS DOUBLE),
+            CAST(feedback_quantity AS DOUBLE),
             0.0D
         ) AS feedback_lte_3_ratio,
-        LN(1.0D + CAST(product_feedback_quantity AS DOUBLE))
+        LN(1.0D + CAST(feedback_quantity AS DOUBLE))
             AS log_feedback_quantity
     FROM all_time_feedback_counts
 ),
 category_gender_features AS (
     SELECT
         CAST(category_id AS INT) AS category_id,
-        CATEGORY_GENDER__n_unique_known_gender_clickers_28d
+        CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d
             AS n_unique_known_gender_clickers_category_28d,
-        CATEGORY_GENDER__n_unique_female_clickers_28d
+        CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d
             AS n_unique_female_clickers_category_28d,
-        CATEGORY_GENDER__n_unique_male_clickers_28d
+        CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d
             AS n_unique_male_clickers_category_28d,
-        CATEGORY_GENDER__category_female_product_session_share_28d
+        CATEGORY_DEMOGRAPHICS__female_product_session_share_28d
             AS category_female_product_session_share_28d,
-        CATEGORY_GENDER__category_male_product_session_share_28d
+        CATEGORY_DEMOGRAPHICS__male_product_session_share_28d
             AS category_male_product_session_share_28d,
-        CATEGORY_GENDER__category_gender AS category_gender
+        CATEGORY_DEMOGRAPHICS__gender AS category_gender
     FROM {settings.category_gender_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
@@ -606,8 +606,8 @@ feature_inputs AS (
         prices.min_active_sku_sell_price_eod,
         prices.avg_active_sku_sell_price_eod,
         prices.max_active_sku_sell_price_eod,
-        COALESCE(actions.product_clicks_3d, 0) AS product_clicks_3d,
-        COALESCE(actions.product_clicks_28d, 0) AS product_clicks_28d,
+        COALESCE(actions.clicks_3d, 0) AS clicks_3d,
+        COALESCE(actions.clicks_28d, 0) AS clicks_28d,
         COALESCE(actions.favorites_daily, 0) AS favorites_daily,
         COALESCE(actions.favorites_last_3d, 0) AS favorites_last_3d,
         COALESCE(actions.favorites_last_7d, 0) AS favorites_last_7d,
@@ -616,11 +616,11 @@ feature_inputs AS (
         COALESCE(actions.favorites_last_28d, 0) AS favorites_last_28d,
         {order_input_select},
         {rolling_feedback_select},
-        COALESCE(all_time.product_feedback_quantity, 0)
-            AS product_feedback_quantity,
+        COALESCE(all_time.feedback_quantity, 0)
+            AS feedback_quantity,
         COALESCE(all_time.feedback_gte_4, 0) AS feedback_gte_4,
         COALESCE(all_time.feedback_lte_3, 0) AS feedback_lte_3,
-        all_time.product_rating,
+        all_time.rating,
         all_time.feedback_gte_4_ratio,
         all_time.feedback_lte_3_ratio,
         COALESCE(all_time.log_feedback_quantity, 0.0D)
@@ -675,7 +675,7 @@ unprefixed_features AS (
                     100.0D * (1.0D - min_sell_price_eod / min_full_price_eod)
                 )
             )
-        END AS product_discount,
+        END AS discount,
         CASE
             WHEN created_at IS NULL
               OR created_at > TIMESTAMP '{calculated_at_utc}'
@@ -687,8 +687,8 @@ unprefixed_features AS (
                 ) AS INT
             )
         END AS age_in_days,
-        product_clicks_3d,
-        product_clicks_28d,
+        clicks_3d,
+        clicks_28d,
         favorites_daily,
         favorites_last_3d,
         favorites_last_7d,
@@ -697,44 +697,44 @@ unprefixed_features AS (
         favorites_last_28d,
         orders_quantity_daily,
         items_purchased_quantity_daily,
-        product_orders_total,
-        has_product_orders_total,
-        product_orders_7d,
-        product_orders_28d,
-        product_orders_90d,
+        orders_total,
+        has_orders_total,
+        orders_7d,
+        orders_28d,
+        orders_90d,
         category_orders_7d,
         category_orders_28d,
         category_orders_90d,
-        CAST(product_orders_7d AS DOUBLE)
+        CAST(orders_7d AS DOUBLE)
             / NULLIF(CAST(category_orders_7d AS DOUBLE), 0.0D)
-            AS product_orders_share_in_category_7d,
-        CAST(product_orders_28d AS DOUBLE)
+            AS orders_share_in_category_7d,
+        CAST(orders_28d AS DOUBLE)
             / NULLIF(CAST(category_orders_28d AS DOUBLE), 0.0D)
-            AS product_orders_share_in_category_28d,
-        CAST(product_orders_90d AS DOUBLE)
+            AS orders_share_in_category_28d,
+        CAST(orders_90d AS DOUBLE)
             / NULLIF(CAST(category_orders_90d AS DOUBLE), 0.0D)
-            AS product_orders_share_in_category_90d,
+            AS orders_share_in_category_90d,
         COALESCE(feedback_quantity_daily, 0) AS feedback_quantity_daily,
         COALESCE(sum_rating_daily, 0) AS sum_rating_daily,
         {rolling_feedback_output_select},
-        product_rating,
-        product_feedback_quantity,
+        rating,
+        feedback_quantity,
         feedback_gte_4,
         feedback_lte_3,
         feedback_gte_4_ratio,
         feedback_lte_3_ratio,
         log_feedback_quantity,
-        CAST(product_feedback_quantity AS DOUBLE)
-            / NULLIF(CAST(product_orders_total AS DOUBLE), 0.0D)
+        CAST(feedback_quantity AS DOUBLE)
+            / NULLIF(CAST(orders_total AS DOUBLE), 0.0D)
             AS feedback_to_orders_rate_raw,
         CAST(feedback_gte_4 AS DOUBLE)
-            / NULLIF(CAST(product_orders_total AS DOUBLE), 0.0D)
+            / NULLIF(CAST(orders_total AS DOUBLE), 0.0D)
             AS feedback_gte_4_to_orders_rate_raw,
         CAST(feedback_lte_3 AS DOUBLE)
-            / NULLIF(CAST(product_orders_total AS DOUBLE), 0.0D)
+            / NULLIF(CAST(orders_total AS DOUBLE), 0.0D)
             AS feedback_lte_3_to_orders_rate_raw,
         CAST(feedback_lte_3 AS DOUBLE)
-            / NULLIF(CAST(product_orders_28d AS DOUBLE), 0.0D)
+            / NULLIF(CAST(orders_28d AS DOUBLE), 0.0D)
             AS feedback_lte_3_to_orders_rate,
         {return_output_select},
         n_unique_known_gender_clickers_category_28d,

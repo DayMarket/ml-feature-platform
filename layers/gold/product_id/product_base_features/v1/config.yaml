@@ -13,7 +13,7 @@ table:
   schema: gold
   name: feature_platform_product_base_features
   primary_key: calculated_at,product_id
-  feature_namespace: PRODUCT_BASE
+  feature_namespace: PRODUCT
   meta:
     team: team::recsys
     create_dbt_pr: false
@@ -64,123 +64,123 @@ dq:
       expression: "product_id > 0"
     - name: non_negative
       columns:
-        - PRODUCT_BASE__min_sell_price_eod
-        - PRODUCT_BASE__avg_sell_price_eod
-        - PRODUCT_BASE__max_sell_price_eod
-        - PRODUCT_BASE__weighted_price
-        - PRODUCT_BASE__min_full_price_eod
-        - PRODUCT_BASE__max_full_price_eod
-        - PRODUCT_BASE__min_active_sku_sell_price_eod
-        - PRODUCT_BASE__avg_active_sku_sell_price_eod
-        - PRODUCT_BASE__max_active_sku_sell_price_eod
-        - PRODUCT_BASE__age_in_days
-        - PRODUCT_BASE__product_clicks_3d
-        - PRODUCT_BASE__product_clicks_28d
-        - PRODUCT_BASE__favorites_daily
-        - PRODUCT_BASE__favorites_last_3d
-        - PRODUCT_BASE__favorites_last_7d
-        - PRODUCT_BASE__favorites_last_14d
-        - PRODUCT_BASE__favorites_last_21d
-        - PRODUCT_BASE__favorites_last_28d
-        - PRODUCT_BASE__orders_quantity_daily
-        - PRODUCT_BASE__items_purchased_quantity_daily
-        - PRODUCT_BASE__product_orders_total
-        - PRODUCT_BASE__product_orders_7d
-        - PRODUCT_BASE__product_orders_28d
-        - PRODUCT_BASE__product_orders_90d
-        - PRODUCT_BASE__category_orders_7d
-        - PRODUCT_BASE__category_orders_28d
-        - PRODUCT_BASE__category_orders_90d
-        - PRODUCT_BASE__feedback_quantity_daily
-        - PRODUCT_BASE__sum_rating_daily
-        - PRODUCT_BASE__feedback_last_3d
-        - PRODUCT_BASE__sum_rating_last_3d
-        - PRODUCT_BASE__feedback_gte_4_3d
-        - PRODUCT_BASE__feedback_lte_3_3d
-        - PRODUCT_BASE__feedback_last_7d
-        - PRODUCT_BASE__sum_rating_last_7d
-        - PRODUCT_BASE__feedback_gte_4_7d
-        - PRODUCT_BASE__feedback_lte_3_7d
-        - PRODUCT_BASE__feedback_last_14d
-        - PRODUCT_BASE__sum_rating_last_14d
-        - PRODUCT_BASE__feedback_gte_4_14d
-        - PRODUCT_BASE__feedback_lte_3_14d
-        - PRODUCT_BASE__feedback_last_21d
-        - PRODUCT_BASE__sum_rating_last_21d
-        - PRODUCT_BASE__feedback_gte_4_21d
-        - PRODUCT_BASE__feedback_lte_3_21d
-        - PRODUCT_BASE__feedback_last_28d
-        - PRODUCT_BASE__sum_rating_last_28d
-        - PRODUCT_BASE__feedback_gte_4_28d
-        - PRODUCT_BASE__feedback_lte_3_28d
-        - PRODUCT_BASE__product_feedback_quantity
-        - PRODUCT_BASE__feedback_gte_4
-        - PRODUCT_BASE__feedback_lte_3
-        - PRODUCT_BASE__log_feedback_quantity
-        - PRODUCT_BASE__feedback_to_orders_rate_raw
-        - PRODUCT_BASE__feedback_gte_4_to_orders_rate_raw
-        - PRODUCT_BASE__feedback_lte_3_to_orders_rate_raw
-        - PRODUCT_BASE__feedback_lte_3_to_orders_rate
-        - PRODUCT_BASE__n_completed_7d
-        - PRODUCT_BASE__n_completed_14d
-        - PRODUCT_BASE__n_completed_28d
-        - PRODUCT_BASE__n_completed_60d
-        - PRODUCT_BASE__n_completed_90d
-        - PRODUCT_BASE__n_returned_7d
-        - PRODUCT_BASE__n_returned_14d
-        - PRODUCT_BASE__n_returned_28d
-        - PRODUCT_BASE__n_returned_60d
-        - PRODUCT_BASE__n_returned_90d
-        - PRODUCT_BASE__n_unique_known_gender_clickers_category_28d
-        - PRODUCT_BASE__n_unique_female_clickers_category_28d
-        - PRODUCT_BASE__n_unique_male_clickers_category_28d
+        - PRODUCT__min_sell_price_eod
+        - PRODUCT__avg_sell_price_eod
+        - PRODUCT__max_sell_price_eod
+        - PRODUCT__weighted_price
+        - PRODUCT__min_full_price_eod
+        - PRODUCT__max_full_price_eod
+        - PRODUCT__min_active_sku_sell_price_eod
+        - PRODUCT__avg_active_sku_sell_price_eod
+        - PRODUCT__max_active_sku_sell_price_eod
+        - PRODUCT__age_in_days
+        - PRODUCT__clicks_3d
+        - PRODUCT__clicks_28d
+        - PRODUCT__favorites_daily
+        - PRODUCT__favorites_last_3d
+        - PRODUCT__favorites_last_7d
+        - PRODUCT__favorites_last_14d
+        - PRODUCT__favorites_last_21d
+        - PRODUCT__favorites_last_28d
+        - PRODUCT__orders_quantity_daily
+        - PRODUCT__items_purchased_quantity_daily
+        - PRODUCT__orders_total
+        - PRODUCT__orders_7d
+        - PRODUCT__orders_28d
+        - PRODUCT__orders_90d
+        - PRODUCT__category_orders_7d
+        - PRODUCT__category_orders_28d
+        - PRODUCT__category_orders_90d
+        - PRODUCT__feedback_quantity_daily
+        - PRODUCT__sum_rating_daily
+        - PRODUCT__feedback_last_3d
+        - PRODUCT__sum_rating_last_3d
+        - PRODUCT__feedback_gte_4_3d
+        - PRODUCT__feedback_lte_3_3d
+        - PRODUCT__feedback_last_7d
+        - PRODUCT__sum_rating_last_7d
+        - PRODUCT__feedback_gte_4_7d
+        - PRODUCT__feedback_lte_3_7d
+        - PRODUCT__feedback_last_14d
+        - PRODUCT__sum_rating_last_14d
+        - PRODUCT__feedback_gte_4_14d
+        - PRODUCT__feedback_lte_3_14d
+        - PRODUCT__feedback_last_21d
+        - PRODUCT__sum_rating_last_21d
+        - PRODUCT__feedback_gte_4_21d
+        - PRODUCT__feedback_lte_3_21d
+        - PRODUCT__feedback_last_28d
+        - PRODUCT__sum_rating_last_28d
+        - PRODUCT__feedback_gte_4_28d
+        - PRODUCT__feedback_lte_3_28d
+        - PRODUCT__feedback_quantity
+        - PRODUCT__feedback_gte_4
+        - PRODUCT__feedback_lte_3
+        - PRODUCT__log_feedback_quantity
+        - PRODUCT__feedback_to_orders_rate_raw
+        - PRODUCT__feedback_gte_4_to_orders_rate_raw
+        - PRODUCT__feedback_lte_3_to_orders_rate_raw
+        - PRODUCT__feedback_lte_3_to_orders_rate
+        - PRODUCT__n_completed_7d
+        - PRODUCT__n_completed_14d
+        - PRODUCT__n_completed_28d
+        - PRODUCT__n_completed_60d
+        - PRODUCT__n_completed_90d
+        - PRODUCT__n_returned_7d
+        - PRODUCT__n_returned_14d
+        - PRODUCT__n_returned_28d
+        - PRODUCT__n_returned_60d
+        - PRODUCT__n_returned_90d
+        - PRODUCT__n_unique_known_gender_clickers_category_28d
+        - PRODUCT__n_unique_female_clickers_category_28d
+        - PRODUCT__n_unique_male_clickers_category_28d
     - name: accepted_values
-      column: PRODUCT_BASE__has_product_orders_total
+      column: PRODUCT__has_orders_total
       values: [0, 1]
     - name: accepted_values
-      column: PRODUCT_BASE__is_female_category
+      column: PRODUCT__is_female_category
       values: [0, 1]
     - name: accepted_values
-      column: PRODUCT_BASE__is_male_category
+      column: PRODUCT__is_male_category
       values: [0, 1]
     - name: accepted_range
-      column: PRODUCT_BASE__product_discount
+      column: PRODUCT__discount
       min: 0
       max: 100
     - name: accepted_range
-      column: PRODUCT_BASE__product_rating
+      column: PRODUCT__rating
       min: 1
       max: 5
     - name: expression_is_true
-      expression: "PRODUCT_BASE__min_sell_price_eod IS NULL OR (PRODUCT_BASE__min_sell_price_eod <= PRODUCT_BASE__avg_sell_price_eod AND PRODUCT_BASE__avg_sell_price_eod <= PRODUCT_BASE__max_sell_price_eod)"
+      expression: "PRODUCT__min_sell_price_eod IS NULL OR (PRODUCT__min_sell_price_eod <= PRODUCT__avg_sell_price_eod AND PRODUCT__avg_sell_price_eod <= PRODUCT__max_sell_price_eod)"
     - name: expression_is_true
-      expression: "PRODUCT_BASE__min_full_price_eod IS NULL OR PRODUCT_BASE__min_full_price_eod <= PRODUCT_BASE__max_full_price_eod"
+      expression: "PRODUCT__min_full_price_eod IS NULL OR PRODUCT__min_full_price_eod <= PRODUCT__max_full_price_eod"
     - name: expression_is_true
-      expression: "PRODUCT_BASE__min_active_sku_sell_price_eod IS NULL OR (PRODUCT_BASE__min_active_sku_sell_price_eod <= PRODUCT_BASE__avg_active_sku_sell_price_eod AND PRODUCT_BASE__avg_active_sku_sell_price_eod <= PRODUCT_BASE__max_active_sku_sell_price_eod)"
+      expression: "PRODUCT__min_active_sku_sell_price_eod IS NULL OR (PRODUCT__min_active_sku_sell_price_eod <= PRODUCT__avg_active_sku_sell_price_eod AND PRODUCT__avg_active_sku_sell_price_eod <= PRODUCT__max_active_sku_sell_price_eod)"
     - name: expression_is_true
-      expression: "PRODUCT_BASE__product_orders_7d <= PRODUCT_BASE__product_orders_28d AND PRODUCT_BASE__product_orders_28d <= PRODUCT_BASE__product_orders_90d AND PRODUCT_BASE__product_orders_90d <= PRODUCT_BASE__product_orders_total"
+      expression: "PRODUCT__orders_7d <= PRODUCT__orders_28d AND PRODUCT__orders_28d <= PRODUCT__orders_90d AND PRODUCT__orders_90d <= PRODUCT__orders_total"
     - name: expression_is_true
-      expression: "PRODUCT_BASE__feedback_gte_4 + PRODUCT_BASE__feedback_lte_3 = PRODUCT_BASE__product_feedback_quantity"
+      expression: "PRODUCT__feedback_gte_4 + PRODUCT__feedback_lte_3 = PRODUCT__feedback_quantity"
     - name: expression_is_true
-      expression: "(PRODUCT_BASE__product_feedback_quantity = 0 AND PRODUCT_BASE__feedback_gte_4_ratio IS NULL AND PRODUCT_BASE__feedback_lte_3_ratio IS NULL) OR (PRODUCT_BASE__feedback_gte_4_ratio BETWEEN 0 AND 1 AND PRODUCT_BASE__feedback_lte_3_ratio BETWEEN 0 AND 1 AND ABS(PRODUCT_BASE__feedback_gte_4_ratio + PRODUCT_BASE__feedback_lte_3_ratio - 1.0) < 0.000001)"
+      expression: "(PRODUCT__feedback_quantity = 0 AND PRODUCT__feedback_gte_4_ratio IS NULL AND PRODUCT__feedback_lte_3_ratio IS NULL) OR (PRODUCT__feedback_gte_4_ratio BETWEEN 0 AND 1 AND PRODUCT__feedback_lte_3_ratio BETWEEN 0 AND 1 AND ABS(PRODUCT__feedback_gte_4_ratio + PRODUCT__feedback_lte_3_ratio - 1.0) < 0.000001)"
     - name: expression_is_true
-      expression: "PRODUCT_BASE__feedback_gte_4_3d + PRODUCT_BASE__feedback_lte_3_3d = PRODUCT_BASE__feedback_last_3d AND PRODUCT_BASE__feedback_gte_4_7d + PRODUCT_BASE__feedback_lte_3_7d = PRODUCT_BASE__feedback_last_7d AND PRODUCT_BASE__feedback_gte_4_14d + PRODUCT_BASE__feedback_lte_3_14d = PRODUCT_BASE__feedback_last_14d AND PRODUCT_BASE__feedback_gte_4_21d + PRODUCT_BASE__feedback_lte_3_21d = PRODUCT_BASE__feedback_last_21d AND PRODUCT_BASE__feedback_gte_4_28d + PRODUCT_BASE__feedback_lte_3_28d = PRODUCT_BASE__feedback_last_28d"
+      expression: "PRODUCT__feedback_gte_4_3d + PRODUCT__feedback_lte_3_3d = PRODUCT__feedback_last_3d AND PRODUCT__feedback_gte_4_7d + PRODUCT__feedback_lte_3_7d = PRODUCT__feedback_last_7d AND PRODUCT__feedback_gte_4_14d + PRODUCT__feedback_lte_3_14d = PRODUCT__feedback_last_14d AND PRODUCT__feedback_gte_4_21d + PRODUCT__feedback_lte_3_21d = PRODUCT__feedback_last_21d AND PRODUCT__feedback_gte_4_28d + PRODUCT__feedback_lte_3_28d = PRODUCT__feedback_last_28d"
     - name: expression_is_true
-      expression: "(PRODUCT_BASE__feedback_gte_4_ratio_3d IS NULL OR PRODUCT_BASE__feedback_gte_4_ratio_3d BETWEEN 0 AND 1) AND (PRODUCT_BASE__feedback_lte_3_ratio_3d IS NULL OR PRODUCT_BASE__feedback_lte_3_ratio_3d BETWEEN 0 AND 1) AND (PRODUCT_BASE__feedback_gte_4_ratio_7d IS NULL OR PRODUCT_BASE__feedback_gte_4_ratio_7d BETWEEN 0 AND 1) AND (PRODUCT_BASE__feedback_lte_3_ratio_7d IS NULL OR PRODUCT_BASE__feedback_lte_3_ratio_7d BETWEEN 0 AND 1) AND (PRODUCT_BASE__feedback_gte_4_ratio_14d IS NULL OR PRODUCT_BASE__feedback_gte_4_ratio_14d BETWEEN 0 AND 1) AND (PRODUCT_BASE__feedback_lte_3_ratio_14d IS NULL OR PRODUCT_BASE__feedback_lte_3_ratio_14d BETWEEN 0 AND 1) AND (PRODUCT_BASE__feedback_gte_4_ratio_21d IS NULL OR PRODUCT_BASE__feedback_gte_4_ratio_21d BETWEEN 0 AND 1) AND (PRODUCT_BASE__feedback_lte_3_ratio_21d IS NULL OR PRODUCT_BASE__feedback_lte_3_ratio_21d BETWEEN 0 AND 1) AND (PRODUCT_BASE__feedback_gte_4_ratio_28d IS NULL OR PRODUCT_BASE__feedback_gte_4_ratio_28d BETWEEN 0 AND 1) AND (PRODUCT_BASE__feedback_lte_3_ratio_28d IS NULL OR PRODUCT_BASE__feedback_lte_3_ratio_28d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT__feedback_gte_4_ratio_3d IS NULL OR PRODUCT__feedback_gte_4_ratio_3d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_3d IS NULL OR PRODUCT__feedback_lte_3_ratio_3d BETWEEN 0 AND 1) AND (PRODUCT__feedback_gte_4_ratio_7d IS NULL OR PRODUCT__feedback_gte_4_ratio_7d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_7d IS NULL OR PRODUCT__feedback_lte_3_ratio_7d BETWEEN 0 AND 1) AND (PRODUCT__feedback_gte_4_ratio_14d IS NULL OR PRODUCT__feedback_gte_4_ratio_14d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_14d IS NULL OR PRODUCT__feedback_lte_3_ratio_14d BETWEEN 0 AND 1) AND (PRODUCT__feedback_gte_4_ratio_21d IS NULL OR PRODUCT__feedback_gte_4_ratio_21d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_21d IS NULL OR PRODUCT__feedback_lte_3_ratio_21d BETWEEN 0 AND 1) AND (PRODUCT__feedback_gte_4_ratio_28d IS NULL OR PRODUCT__feedback_gte_4_ratio_28d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_28d IS NULL OR PRODUCT__feedback_lte_3_ratio_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
-      expression: "(PRODUCT_BASE__feedback_avg_rating_3d IS NULL OR PRODUCT_BASE__feedback_avg_rating_3d BETWEEN 1 AND 5) AND (PRODUCT_BASE__feedback_avg_rating_7d IS NULL OR PRODUCT_BASE__feedback_avg_rating_7d BETWEEN 1 AND 5) AND (PRODUCT_BASE__feedback_avg_rating_14d IS NULL OR PRODUCT_BASE__feedback_avg_rating_14d BETWEEN 1 AND 5) AND (PRODUCT_BASE__feedback_avg_rating_21d IS NULL OR PRODUCT_BASE__feedback_avg_rating_21d BETWEEN 1 AND 5) AND (PRODUCT_BASE__feedback_avg_rating_28d IS NULL OR PRODUCT_BASE__feedback_avg_rating_28d BETWEEN 1 AND 5)"
+      expression: "(PRODUCT__feedback_avg_rating_3d IS NULL OR PRODUCT__feedback_avg_rating_3d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_7d IS NULL OR PRODUCT__feedback_avg_rating_7d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_14d IS NULL OR PRODUCT__feedback_avg_rating_14d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_21d IS NULL OR PRODUCT__feedback_avg_rating_21d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_28d IS NULL OR PRODUCT__feedback_avg_rating_28d BETWEEN 1 AND 5)"
     - name: expression_is_true
-      expression: "(PRODUCT_BASE__product_orders_share_in_category_7d IS NULL OR PRODUCT_BASE__product_orders_share_in_category_7d BETWEEN 0 AND 1) AND (PRODUCT_BASE__product_orders_share_in_category_28d IS NULL OR PRODUCT_BASE__product_orders_share_in_category_28d BETWEEN 0 AND 1) AND (PRODUCT_BASE__product_orders_share_in_category_90d IS NULL OR PRODUCT_BASE__product_orders_share_in_category_90d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT__orders_share_in_category_7d IS NULL OR PRODUCT__orders_share_in_category_7d BETWEEN 0 AND 1) AND (PRODUCT__orders_share_in_category_28d IS NULL OR PRODUCT__orders_share_in_category_28d BETWEEN 0 AND 1) AND (PRODUCT__orders_share_in_category_90d IS NULL OR PRODUCT__orders_share_in_category_90d BETWEEN 0 AND 1)"
     - name: expression_is_true
-      expression: "(PRODUCT_BASE__return_rate_7d IS NULL OR PRODUCT_BASE__return_rate_7d BETWEEN 0 AND 1) AND (PRODUCT_BASE__return_rate_14d IS NULL OR PRODUCT_BASE__return_rate_14d BETWEEN 0 AND 1) AND (PRODUCT_BASE__return_rate_28d IS NULL OR PRODUCT_BASE__return_rate_28d BETWEEN 0 AND 1) AND (PRODUCT_BASE__return_rate_60d IS NULL OR PRODUCT_BASE__return_rate_60d BETWEEN 0 AND 1) AND (PRODUCT_BASE__return_rate_90d IS NULL OR PRODUCT_BASE__return_rate_90d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT__return_rate_7d IS NULL OR PRODUCT__return_rate_7d BETWEEN 0 AND 1) AND (PRODUCT__return_rate_14d IS NULL OR PRODUCT__return_rate_14d BETWEEN 0 AND 1) AND (PRODUCT__return_rate_28d IS NULL OR PRODUCT__return_rate_28d BETWEEN 0 AND 1) AND (PRODUCT__return_rate_60d IS NULL OR PRODUCT__return_rate_60d BETWEEN 0 AND 1) AND (PRODUCT__return_rate_90d IS NULL OR PRODUCT__return_rate_90d BETWEEN 0 AND 1)"
     - name: expression_is_true
-      expression: "(PRODUCT_BASE__n_unique_cat_clicks_by_women_28d IS NULL OR PRODUCT_BASE__n_unique_cat_clicks_by_women_28d BETWEEN 0 AND 1) AND (PRODUCT_BASE__candidate_female_click_share_28d IS NULL OR PRODUCT_BASE__candidate_female_click_share_28d BETWEEN 0 AND 1) AND (PRODUCT_BASE__candidate_male_click_share_28d IS NULL OR PRODUCT_BASE__candidate_male_click_share_28d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT__n_unique_cat_clicks_by_women_28d IS NULL OR PRODUCT__n_unique_cat_clicks_by_women_28d BETWEEN 0 AND 1) AND (PRODUCT__candidate_female_click_share_28d IS NULL OR PRODUCT__candidate_female_click_share_28d BETWEEN 0 AND 1) AND (PRODUCT__candidate_male_click_share_28d IS NULL OR PRODUCT__candidate_male_click_share_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
-      expression: "PRODUCT_BASE__candidate_female_click_share_28d IS NULL OR ABS(PRODUCT_BASE__candidate_female_click_share_28d + PRODUCT_BASE__candidate_male_click_share_28d - 1.0) < 0.000001"
+      expression: "PRODUCT__candidate_female_click_share_28d IS NULL OR ABS(PRODUCT__candidate_female_click_share_28d + PRODUCT__candidate_male_click_share_28d - 1.0) < 0.000001"
     - name: expression_is_true
-      expression: "PRODUCT_BASE__n_unique_known_gender_clickers_category_28d IS NULL OR PRODUCT_BASE__n_unique_known_gender_clickers_category_28d = PRODUCT_BASE__n_unique_female_clickers_category_28d + PRODUCT_BASE__n_unique_male_clickers_category_28d"
+      expression: "PRODUCT__n_unique_known_gender_clickers_category_28d IS NULL OR PRODUCT__n_unique_known_gender_clickers_category_28d = PRODUCT__n_unique_female_clickers_category_28d + PRODUCT__n_unique_male_clickers_category_28d"
     - name: expression_is_true
-      expression: "COALESCE(PRODUCT_BASE__is_female_category, 0) + COALESCE(PRODUCT_BASE__is_male_category, 0) <= 1"
+      expression: "COALESCE(PRODUCT__is_female_category, 0) + COALESCE(PRODUCT__is_male_category, 0) <= 1"
 
 feature_stats:
   trino_conn_id: trino_recsys

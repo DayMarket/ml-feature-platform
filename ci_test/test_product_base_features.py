@@ -52,9 +52,9 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertEqual(len(query.FEATURE_COLUMNS), 105)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
-            all(column.startswith("PRODUCT_BASE__") for column in query.FEATURE_COLUMNS)
+            all(column.startswith("PRODUCT__") for column in query.FEATURE_COLUMNS)
         )
-        self.assertIn("AS PRODUCT_BASE__product_orders_28d", self.sql)
+        self.assertIn("AS PRODUCT__orders_28d", self.sql)
 
     def test_population_is_latest_s1_snapshot_and_joins_are_left(self):
         self.assertIn("SELECT MAX(dt) AS dt", self.sql)
@@ -74,8 +74,8 @@ class ProductBaseFeaturesTest(unittest.TestCase):
     def test_actions_sum_source_event_multiplicity_without_impressions(self):
         self.assertIn("THEN n_events ELSE 0 END", self.sql)
         self.assertIn("event_type IN ('PRODUCT_VIEW', 'ADD_TO_FAVORITES')", self.sql)
-        self.assertIn("AS product_clicks_3d", self.sql)
-        self.assertIn("AS product_clicks_28d", self.sql)
+        self.assertIn("AS clicks_3d", self.sql)
+        self.assertIn("AS clicks_28d", self.sql)
         self.assertIn("AS favorites_last_21d", self.sql)
         self.assertNotIn("impression", self.sql.lower())
 
@@ -87,10 +87,10 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.b2b_order = FALSE", self.sql)
         self.assertIn("COUNT(DISTINCT CASE WHEN order_item_status IN", self.sql)
         self.assertIn(
-            "SUM(product_orders_28d) OVER (PARTITION BY category_id)",
+            "SUM(orders_28d) OVER (PARTITION BY category_id)",
             self.sql,
         )
-        self.assertIn("AS product_orders_share_in_category_28d", self.sql)
+        self.assertIn("AS orders_share_in_category_28d", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
 
     def test_feedback_uses_rating_buckets_and_keeps_smoothing_for_g8(self):
@@ -139,7 +139,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
 
     def test_g6_features_are_mapped_to_each_product(self):
         self.assertIn(
-            "CATEGORY_GENDER__category_female_product_session_share_28d",
+            "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d",
             self.sql,
         )
         self.assertIn("AS n_unique_cat_clicks_by_women_28d", self.sql)

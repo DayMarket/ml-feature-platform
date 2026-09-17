@@ -6,7 +6,7 @@ DAG id: `feature-platform.layers.gold.product_id.product_base_features`.
 
 Grain и primary key: `calculated_at,product_id`.
 
-Namespace — `PRODUCT_BASE`. Все физические feature-колонки содержат этот
+Namespace — `PRODUCT`. Все физические feature-колонки содержат этот
 префикс; ключи `calculated_at` и `product_id` остаются без namespace.
 
 ## Назначение и population
@@ -55,7 +55,7 @@ weighted_price = sum(sell_price_uzs * n_orders_28d) / sum(n_orders_28d), ина�
 остаётся `NULL`.
 
 ```text
-product_discount = clip(100 * (1 - min_sell_price_eod / min_full_price_eod), 0, 100)
+discount = clip(100 * (1 - min_sell_price_eod / min_full_price_eod), 0, 100)
 ```
 
 Если `min_sell_price_eod` отсутствует, discount остаётся `NULL`. При
@@ -69,7 +69,7 @@ discount равен нулю.
 
 Product-level actions сохраняют event multiplicity и суммируют `S2c.n_events`:
 
-- `product_clicks_{3,28}d` — `PRODUCT_VIEW`;
+- `clicks_{3,28}d` — `PRODUCT_VIEW`;
 - `favorites_daily` и `favorites_last_{3,7,14,21,28}d` —
   `ADD_TO_FAVORITES`.
 
@@ -82,16 +82,16 @@ Product-level impressions намеренно отсутствуют.
 `IN_DELIVERY`; B2B исключаются. `order_items.sku_id` маппится в `product_id`
 через `silver.sku`.
 
-- `orders_quantity_daily` и `product_orders_{7,28,90}d` — distinct `order_id`;
+- `orders_quantity_daily` и `orders_{7,28,90}d` — distinct `order_id`;
 - `items_purchased_quantity_daily` — сумма `item_quantity`;
-- `product_orders_total` — distinct успешных заказов за всю историю;
-- `has_product_orders_total` — бинарный флаг.
+- `orders_total` — distinct успешных заказов за всю историю;
+- `has_orders_total` — бинарный флаг.
 
 Category denominator считается как сумма product-level order counts:
 
 ```text
-category_orders_Nd = sum(product_orders_Nd) over category_id
-product_orders_share_in_category_Nd = product_orders_Nd / category_orders_Nd
+category_orders_Nd = sum(orders_Nd) over category_id
+orders_share_in_category_Nd = orders_Nd / category_orders_Nd
 ```
 
 Заказ с двумя разными товарами одной листовой категории участвует в denominator дважды — по
@@ -104,12 +104,12 @@ rating, counts `rating >= 4`/`rating <= 3`, их доли и средний rati
 counts используют последние 24 часа.
 
 All-time признаки пересчитываются из пяти rating bucket существующего feedback
-Gold: `product_rating`, `product_feedback_quantity`, `feedback_gte_4`,
+Gold: `rating`, `feedback_quantity`, `feedback_gte_4`,
 `feedback_lte_3`, соответствующие ratios и `log_feedback_quantity`.
 
 Raw feedback-to-orders rates делят all-time feedback counts на
-`product_orders_total`. `feedback_lte_3_to_orders_rate` использует в
-знаменателе `product_orders_28d`. Нулевой denominator даёт `NULL`; rates не
+`orders_total`. `feedback_lte_3_to_orders_rate` использует в
+знаменателе `orders_28d`. Нулевой denominator даёт `NULL`; rates не
 ограничиваются единицей.
 
 Population-dependent `feedback_lte_3_to_orders_rate_smoothed` в G7 не
