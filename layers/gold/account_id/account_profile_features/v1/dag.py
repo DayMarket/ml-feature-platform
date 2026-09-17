@@ -40,8 +40,8 @@ ACTION_COUNTS_DAG_ID = (
     "feature-platform.layers.silver.account_id_product_id."
     "account_product_session_action_counts_12h"
 )
-L6_CATEGORY_GENDER_DAG_ID = (
-    "feature-platform.layers.gold.l6_category_id.l6_category_gender_features"
+CATEGORY_GENDER_DAG_ID = (
+    "feature-platform.layers.gold.category_id.category_gender_features"
 )
 PRODUCT_BASE_DAG_ID = (
     "feature-platform.layers.gold.product_id.product_base_features"
@@ -147,9 +147,9 @@ def collect_gold_account_profile_features():
         timeout=6 * 60 * 60,
         check_existence=True,
     )
-    wait_for_l6_category_gender_dq = ExternalTaskSensor(
-        task_id="wait_for_gold_l6_category_gender_dq",
-        external_dag_id=L6_CATEGORY_GENDER_DAG_ID,
+    wait_for_category_gender_dq = ExternalTaskSensor(
+        task_id="wait_for_gold_category_gender_dq",
+        external_dag_id=CATEGORY_GENDER_DAG_ID,
         external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
@@ -205,7 +205,7 @@ def collect_gold_account_profile_features():
         wait_for_product_prices_dq,
         wait_for_demographics_dq,
         wait_for_action_counts_dq,
-        wait_for_l6_category_gender_dq,
+        wait_for_category_gender_dq,
         wait_for_product_base_dq,
         wait_for_product_ranking_dq,
     ] >> materialize_task >> [dq_task, stats_task]

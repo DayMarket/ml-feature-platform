@@ -27,7 +27,7 @@ source:
   action_counts_table: iceberg.silver.feature_platform_account_product_session_action_counts_12h
   order_items_table: iceberg.silver.order_items
   sku_table: iceberg.silver.sku
-  l6_category_gender_features_table: iceberg.gold.feature_platform_l6_category_gender_features
+  category_gender_features_table: iceberg.gold.feature_platform_category_gender_features
   product_base_features_table: iceberg.gold.feature_platform_product_base_features
   product_ranking_features_table: iceberg.gold.feature_platform_product_ranking_features
   business_timezone: Asia/Tashkent

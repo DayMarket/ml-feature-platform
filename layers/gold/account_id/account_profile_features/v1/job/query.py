@@ -84,7 +84,7 @@ class SourceSettings(Protocol):
     action_counts_table: str
     order_items_table: str
     sku_table: str
-    l6_category_gender_features_table: str
+    category_gender_features_table: str
     product_base_features_table: str
     product_ranking_features_table: str
     business_timezone: str
@@ -158,7 +158,7 @@ def _order_line_expressions(calculated_at_utc: str) -> str:
         line_count = f"SUM(CASE WHEN {condition} THEN 1 ELSE 0 END)"
         gender_denominator = (
             "SUM(CASE WHEN "
-            f"{condition} AND l6_category_id IS NOT NULL THEN 1 ELSE 0 END)"
+            f"{condition} AND category_id IS NOT NULL THEN 1 ELSE 0 END)"
         )
         expressions.extend(
             (
@@ -265,7 +265,7 @@ def _order_line_expressions(calculated_at_utc: str) -> str:
                 ),
                 (
                     "CAST(SUM(CASE WHEN "
-                    f"{condition} AND l6_category_id IS NOT NULL "
+                    f"{condition} AND category_id IS NOT NULL "
                     "AND (category_gender IS NULL OR category_gender NOT IN ('M', 'F')) "
                     f"THEN 1 ELSE 0 END) AS DOUBLE) / NULLIF(CAST({gender_denominator} "
                     f"AS DOUBLE), 0.0D) AS last_purchased_unisex_ratio_{window}d"
@@ -393,7 +393,7 @@ WITH demographics AS (
 product_metadata AS (
     SELECT
         CAST(product_id AS INT) AS product_id,
-        CAST(l6_category_id AS INT) AS l6_category_id
+        CAST(category_id AS INT) AS category_id
     FROM {settings.product_metadata_table}
     WHERE dt = TIMESTAMP '{metadata_snapshot_utc}'
 ),
@@ -404,11 +404,11 @@ product_prices AS (
     FROM {settings.product_prices_table}
     WHERE dt = TIMESTAMP '{daily_snapshot_local}'
 ),
-l6_category_genders AS (
+category_genders AS (
     SELECT
-        CAST(l6_category_id AS INT) AS l6_category_id,
-        L6_CATEGORY_GENDER__category_gender AS category_gender
-    FROM {settings.l6_category_gender_features_table}
+        CAST(category_id AS INT) AS category_id,
+        CATEGORY_GENDER__category_gender AS category_gender
+    FROM {settings.category_gender_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
 product_base_features AS (
@@ -463,7 +463,7 @@ enriched_order_lines AS (
         orders.generated_at,
         orders.item_quantity,
         orders.line_gmv,
-        metadata.l6_category_id,
+        metadata.category_id,
         category.category_gender,
         base.product_discount,
         base.product_rating,
@@ -472,8 +472,8 @@ enriched_order_lines AS (
     FROM filtered_order_lines orders
     LEFT JOIN product_metadata metadata
         ON orders.product_id = metadata.product_id
-    LEFT JOIN l6_category_genders category
-        ON metadata.l6_category_id = category.l6_category_id
+    LEFT JOIN category_genders category
+        ON metadata.category_id = category.category_id
     LEFT JOIN product_base_features base
         ON orders.product_id = base.product_id
     LEFT JOIN product_ranking_features ranking
@@ -558,8 +558,8 @@ enriched_last_clicks AS (
         ON clicks.product_id = prices.product_id
     LEFT JOIN product_metadata metadata
         ON clicks.product_id = metadata.product_id
-    LEFT JOIN l6_category_genders category
-        ON metadata.l6_category_id = category.l6_category_id
+    LEFT JOIN category_genders category
+        ON metadata.category_id = category.category_id
     LEFT JOIN product_base_features base
         ON clicks.product_id = base.product_id
     LEFT JOIN product_ranking_features ranking

@@ -134,7 +134,7 @@ class AccountProfileFeaturesTest(unittest.TestCase):
 
     def test_order_attributes_are_joined_at_snapshot_time(self):
         for table in (
-            "feature_platform_l6_category_gender_features",
+            "feature_platform_category_gender_features",
             "feature_platform_product_base_features",
             "feature_platform_product_ranking_features",
         ):
@@ -147,7 +147,7 @@ class AccountProfileFeaturesTest(unittest.TestCase):
         self.assertIn("base.product_rating", self.sql)
         self.assertIn("category.category_gender", self.sql)
         self.assertIn(
-            "L6_CATEGORY_GENDER__category_gender AS category_gender",
+            "CATEGORY_GENDER__category_gender AS category_gender",
             self.sql,
         )
         self.assertIn(
@@ -268,7 +268,7 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             "product_id.product_prices_daily",
             "account_id.account_demographics",
             "account_product_session_action_counts_12h",
-            "l6_category_gender_features",
+            "category_gender_features",
             "product_base_features",
             "product_ranking_features",
         ):

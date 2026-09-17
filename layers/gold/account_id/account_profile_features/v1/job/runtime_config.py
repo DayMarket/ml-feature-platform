@@ -12,7 +12,7 @@ class SourceSettings:
     action_counts_table: str
     order_items_table: str
     sku_table: str
-    l6_category_gender_features_table: str
+    category_gender_features_table: str
     product_base_features_table: str
     product_ranking_features_table: str
     business_timezone: str
@@ -26,7 +26,7 @@ class SourceSettings:
             self.action_counts_table,
             self.order_items_table,
             self.sku_table,
-            self.l6_category_gender_features_table,
+            self.category_gender_features_table,
             self.product_base_features_table,
             self.product_ranking_features_table,
         )
@@ -99,9 +99,9 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
         action_counts_table=_required_string(source, "action_counts_table"),
         order_items_table=_required_string(source, "order_items_table"),
         sku_table=_required_string(source, "sku_table"),
-        l6_category_gender_features_table=_required_string(
+        category_gender_features_table=_required_string(
             source,
-            "l6_category_gender_features_table",
+            "category_gender_features_table",
         ),
         product_base_features_table=_required_string(
             source,

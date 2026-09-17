@@ -59,12 +59,12 @@ Product attributes присоединяются point-in-time на snapshot `T`:
 - discount и rating — из физических колонок G7
   `PRODUCT_BASE__product_discount` и `PRODUCT_BASE__product_rating` с
   `calculated_at = T`;
-- global и L6 popularity rank — из физических колонок G8
+- global и leaf-category popularity rank — из физических колонок G8
   `PRODUCT_RANKING__product_popularity_by_orders_neg_rank` и
   `PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat` с
   `calculated_at = T`;
-- L6 — из S1 snapshot текущей локальной даты;
-- gender L6 — из G6 с `calculated_at = T`.
+- листовая `category_id` — из S1 snapshot текущей локальной даты;
+- gender листовой категории — из G6 с `calculated_at = T`.
 
 `last_purchased_neg_p90_popularity_rank_*` вычисляется как p10 уже
 отрицательного rank, то есть как `-p90` положительного rank. Симметричная
@@ -77,7 +77,7 @@ Product attributes присоединяются point-in-time на snapshot `T`:
 2. `PRODUCT_VIEW` дедуплицируется по
    `account_id,session_id,product_id` с `MAX(last_received_at)`.
 3. На account остаются последние 75 строк по `last_received_at`.
-4. Присоединяются текущие S3 price, S1 L6, G6 category gender, G7 rating и
+4. Присоединяются текущие S3 price, S1 leaf category, G6 category gender, G7 rating и
    G8 order popularity rank.
 5. Строки без `min_sell_price_eod` удаляются.
 
