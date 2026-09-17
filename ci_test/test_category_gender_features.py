@@ -42,12 +42,12 @@ class CategoryGenderFeaturesTest(unittest.TestCase):
         self.assertEqual(
             query.FEATURE_COLUMNS,
             (
-                "CATEGORY_GENDER__category_female_product_session_share_28d",
-                "CATEGORY_GENDER__category_male_product_session_share_28d",
-                "CATEGORY_GENDER__n_unique_known_gender_clickers_28d",
-                "CATEGORY_GENDER__n_unique_female_clickers_28d",
-                "CATEGORY_GENDER__n_unique_male_clickers_28d",
-                "CATEGORY_GENDER__category_gender",
+                "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d",
+                "CATEGORY_DEMOGRAPHICS__male_product_session_share_28d",
+                "CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d",
+                "CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d",
+                "CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d",
+                "CATEGORY_DEMOGRAPHICS__gender",
             ),
         )
 
@@ -67,15 +67,15 @@ class CategoryGenderFeaturesTest(unittest.TestCase):
 
     def test_namespace_schedule_resources_and_start_date(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
-        self.assertIn("feature_namespace: CATEGORY_GENDER", config_text)
+        self.assertIn("feature_namespace: CATEGORY_DEMOGRAPHICS", config_text)
         self.assertTrue(
             all(
-                column.startswith("CATEGORY_GENDER__")
+                column.startswith("CATEGORY_DEMOGRAPHICS__")
                 for column in query.FEATURE_COLUMNS
             )
         )
         self.assertIn(
-            "AS CATEGORY_GENDER__category_gender",
+            "AS CATEGORY_DEMOGRAPHICS__gender",
             self.sql,
         )
         self.assertIn("primary_key: calculated_at,category_id", config_text)
@@ -226,14 +226,14 @@ class CategoryGenderFeaturesTest(unittest.TestCase):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("values: [M, F, U]", config_text)
         self.assertIn(
-            "CATEGORY_GENDER__n_unique_known_gender_clickers_28d = "
-            "CATEGORY_GENDER__n_unique_female_clickers_28d + "
-            "CATEGORY_GENDER__n_unique_male_clickers_28d",
+            "CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d = "
+            "CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d + "
+            "CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d",
             config_text,
         )
         self.assertIn(
-            "CATEGORY_GENDER__category_female_product_session_share_28d + "
-            "CATEGORY_GENDER__category_male_product_session_share_28d - 1.0",
+            "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d + "
+            "CATEGORY_DEMOGRAPHICS__male_product_session_share_28d - 1.0",
             config_text,
         )
 

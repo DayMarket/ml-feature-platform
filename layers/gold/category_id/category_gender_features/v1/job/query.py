@@ -4,14 +4,14 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-FEATURE_NAMESPACE = "CATEGORY_GENDER"
+FEATURE_NAMESPACE = "CATEGORY_DEMOGRAPHICS"
 BASE_FEATURE_COLUMNS = (
-    "category_female_product_session_share_28d",
-    "category_male_product_session_share_28d",
+    "female_product_session_share_28d",
+    "male_product_session_share_28d",
     "n_unique_known_gender_clickers_28d",
     "n_unique_female_clickers_28d",
     "n_unique_male_clickers_28d",
-    "category_gender",
+    "gender",
 )
 FEATURE_COLUMNS = tuple(
     f"{FEATURE_NAMESPACE}__{column}" for column in BASE_FEATURE_COLUMNS
@@ -140,7 +140,7 @@ category_statistics AS (
                 ) AS DOUBLE
             ),
             0.0D
-        ) AS category_female_product_session_share_28d,
+        ) AS female_product_session_share_28d,
         CAST(
             SUM(CASE WHEN account_gender = 'MALE' THEN 1 ELSE 0 END)
             AS DOUBLE
@@ -154,7 +154,7 @@ category_statistics AS (
                 ) AS DOUBLE
             ),
             0.0D
-        ) AS category_male_product_session_share_28d,
+        ) AS male_product_session_share_28d,
         CAST(
             COUNT(
                 DISTINCT CASE
@@ -178,12 +178,12 @@ unprefixed_features AS (
     SELECT
         TIMESTAMP '{calculated_at_local}' AS calculated_at,
         statistics.category_id,
-        statistics.category_female_product_session_share_28d,
-        statistics.category_male_product_session_share_28d,
+        statistics.female_product_session_share_28d,
+        statistics.male_product_session_share_28d,
         statistics.n_unique_known_gender_clickers_28d,
         statistics.n_unique_female_clickers_28d,
         statistics.n_unique_male_clickers_28d,
-        statistics.category_gender
+        statistics.category_gender AS gender
     FROM category_statistics statistics
 )
 SELECT

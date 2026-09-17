@@ -6,7 +6,7 @@ DAG id: `feature-platform.layers.gold.category_id.category_gender_features`.
 
 Grain и primary key: `calculated_at,category_id`.
 
-Namespace — `CATEGORY_GENDER`. Все физические feature-колонки уже содержат
+Namespace — `CATEGORY_DEMOGRAPHICS`. Все физические feature-колонки уже содержат
 его; `calculated_at` и `category_id` остаются без namespace.
 
 ## Назначение
@@ -46,14 +46,14 @@ population, но не входят в gender denominator.
 
 ## Колонки и формулы
 
-- `CATEGORY_GENDER__category_female_product_session_share_28d` — доля female product-session
+- `CATEGORY_DEMOGRAPHICS__female_product_session_share_28d` — доля female product-session
   наблюдений среди product-session наблюдений с известным gender;
-- `CATEGORY_GENDER__category_male_product_session_share_28d` — аналогичная male-доля;
-- `CATEGORY_GENDER__n_unique_known_gender_clickers_28d` — уникальные account с gender `MALE` или
+- `CATEGORY_DEMOGRAPHICS__male_product_session_share_28d` — аналогичная male-доля;
+- `CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d` — уникальные account с gender `MALE` или
   `FEMALE`;
-- `CATEGORY_GENDER__n_unique_female_clickers_28d` — уникальные female account;
-- `CATEGORY_GENDER__n_unique_male_clickers_28d` — уникальные male account;
-- `CATEGORY_GENDER__category_gender` — `M`, `F`, `U` или `NULL` для листовой
+- `CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d` — уникальные female account;
+- `CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d` — уникальные male account;
+- `CATEGORY_DEMOGRAPHICS__gender` — `M`, `F`, `U` или `NULL` для листовой
   категории.
 
 ```text
@@ -65,8 +65,8 @@ male_share   = male product-session rows / known-gender product-session rows
 равны `NULL`, а unique counts равны нулю. Для опубликованной категории:
 
 ```text
-CATEGORY_GENDER__n_unique_known_gender_clickers_28d
-    = CATEGORY_GENDER__n_unique_female_clickers_28d + CATEGORY_GENDER__n_unique_male_clickers_28d
+CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d
+    = CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d + CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d
 ```
 
 ## On-the-fly candidate enrichment
@@ -112,7 +112,7 @@ unique count сумме female/male unique counts. Дедупликация prod
 зафиксирована SQL unit-тестами.
 
 `feature_stats` выполняет отдельный Trino-скан каждого 12-часового snapshot;
-строковый `CATEGORY_GENDER__category_gender` исключён из профилирования. Ranking upload не
+строковый `CATEGORY_DEMOGRAPHICS__gender` исключён из профилирования. Ranking upload не
 настраивается. Потребители: G7 и candidate enrichment для Main, push и train.
 
 После merge в `master` dbt PR не создаётся (`create_dbt_pr: false`), а CI может
