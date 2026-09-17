@@ -29,7 +29,7 @@ source:
   order_items_table: iceberg.silver.order_items
   sku_table: iceberg.silver.sku
   product_feedback_base_stats_table: iceberg.gold.feature_platform_product_feedback_base_stats
-  category_gender_features_table: iceberg.gold.feature_platform_category_gender_features
+  category_demographic_features_table: iceberg.gold.feature_platform_category_demographic_features
   business_timezone: Asia/Tashkent
 
 dag:
@@ -134,6 +134,8 @@ dq:
         - PRODUCT__n_unique_known_gender_clickers_category_28d
         - PRODUCT__n_unique_female_clickers_category_28d
         - PRODUCT__n_unique_male_clickers_category_28d
+        - PRODUCT__n_unique_clickers_category_28d
+        - PRODUCT__n_unique_clickers_with_age_category_28d
     - name: accepted_values
       column: PRODUCT__has_orders_total
       values: [0, 1]
@@ -176,9 +178,19 @@ dq:
     - name: expression_is_true
       expression: "(PRODUCT__n_unique_cat_clicks_by_women_28d IS NULL OR PRODUCT__n_unique_cat_clicks_by_women_28d BETWEEN 0 AND 1) AND (PRODUCT__candidate_female_click_share_28d IS NULL OR PRODUCT__candidate_female_click_share_28d BETWEEN 0 AND 1) AND (PRODUCT__candidate_male_click_share_28d IS NULL OR PRODUCT__candidate_male_click_share_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
+      expression: "(PRODUCT__female_unique_clicker_share_category_28d IS NULL OR PRODUCT__female_unique_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__male_unique_clicker_share_category_28d IS NULL OR PRODUCT__male_unique_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__known_age_clicker_share_category_28d IS NULL OR PRODUCT__known_age_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__gender_balance_category_28d IS NULL OR PRODUCT__gender_balance_category_28d BETWEEN 0 AND 1)"
+    - name: expression_is_true
       expression: "PRODUCT__candidate_female_click_share_28d IS NULL OR ABS(PRODUCT__candidate_female_click_share_28d + PRODUCT__candidate_male_click_share_28d - 1.0) < 0.000001"
     - name: expression_is_true
       expression: "PRODUCT__n_unique_known_gender_clickers_category_28d IS NULL OR PRODUCT__n_unique_known_gender_clickers_category_28d = PRODUCT__n_unique_female_clickers_category_28d + PRODUCT__n_unique_male_clickers_category_28d"
+    - name: expression_is_true
+      expression: "PRODUCT__n_unique_known_gender_clickers_category_28d IS NULL OR PRODUCT__n_unique_known_gender_clickers_category_28d <= PRODUCT__n_unique_clickers_category_28d"
+    - name: expression_is_true
+      expression: "PRODUCT__n_unique_clickers_with_age_category_28d IS NULL OR PRODUCT__n_unique_clickers_with_age_category_28d <= PRODUCT__n_unique_clickers_category_28d"
+    - name: expression_is_true
+      expression: "PRODUCT__clicker_age_p10_category_28d IS NULL OR (PRODUCT__clicker_age_p10_category_28d BETWEEN 13 AND 100 AND PRODUCT__clicker_age_p10_category_28d <= PRODUCT__clicker_age_p50_category_28d AND PRODUCT__clicker_age_p50_category_28d <= PRODUCT__clicker_age_p90_category_28d AND PRODUCT__clicker_age_p90_category_28d BETWEEN 13 AND 100)"
+    - name: expression_is_true
+      expression: "(PRODUCT__female_unique_clicker_share_category_28d IS NULL AND PRODUCT__male_unique_clicker_share_category_28d IS NULL) OR ABS(PRODUCT__female_unique_clicker_share_category_28d + PRODUCT__male_unique_clicker_share_category_28d - 1.0) < 0.000001"
     - name: expression_is_true
       expression: "COALESCE(PRODUCT__is_female_category, 0) + COALESCE(PRODUCT__is_male_category, 0) <= 1"
 

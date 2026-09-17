@@ -85,9 +85,18 @@ RETURN_COLUMNS = tuple(
     for family in ("n_completed", "n_returned", "return_rate")
 )
 GENDER_COLUMNS = (
+    "n_unique_clickers_category_28d",
     "n_unique_known_gender_clickers_category_28d",
     "n_unique_female_clickers_category_28d",
     "n_unique_male_clickers_category_28d",
+    "n_unique_clickers_with_age_category_28d",
+    "known_age_clicker_share_category_28d",
+    "clicker_age_p10_category_28d",
+    "clicker_age_p50_category_28d",
+    "clicker_age_p90_category_28d",
+    "female_unique_clicker_share_category_28d",
+    "male_unique_clicker_share_category_28d",
+    "gender_balance_category_28d",
     "n_unique_cat_clicks_by_women_28d",
     "candidate_female_click_share_28d",
     "candidate_male_click_share_28d",
@@ -117,7 +126,7 @@ class SourceSettings(Protocol):
     order_items_table: str
     sku_table: str
     product_feedback_base_stats_table: str
-    category_gender_features_table: str
+    category_demographic_features_table: str
     business_timezone: str
 
 
@@ -576,21 +585,39 @@ all_time_feedback_features AS (
             AS log_feedback_quantity
     FROM all_time_feedback_counts
 ),
-category_gender_features AS (
+category_demographic_features AS (
     SELECT
         CAST(category_id AS INT) AS category_id,
+        CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d
+            AS n_unique_clickers_category_28d,
         CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d
             AS n_unique_known_gender_clickers_category_28d,
         CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d
             AS n_unique_female_clickers_category_28d,
         CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d
             AS n_unique_male_clickers_category_28d,
+        CATEGORY_DEMOGRAPHICS__n_unique_clickers_with_age_28d
+            AS n_unique_clickers_with_age_category_28d,
+        CATEGORY_DEMOGRAPHICS__known_age_clicker_share_28d
+            AS known_age_clicker_share_category_28d,
+        CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d
+            AS clicker_age_p10_category_28d,
+        CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d
+            AS clicker_age_p50_category_28d,
+        CATEGORY_DEMOGRAPHICS__clicker_age_p90_28d
+            AS clicker_age_p90_category_28d,
+        CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d
+            AS female_unique_clicker_share_category_28d,
+        CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d
+            AS male_unique_clicker_share_category_28d,
+        CATEGORY_DEMOGRAPHICS__gender_balance_28d
+            AS gender_balance_category_28d,
         CATEGORY_DEMOGRAPHICS__female_product_session_share_28d
             AS category_female_product_session_share_28d,
         CATEGORY_DEMOGRAPHICS__male_product_session_share_28d
             AS category_male_product_session_share_28d,
         CATEGORY_DEMOGRAPHICS__gender AS category_gender
-    FROM {settings.category_gender_features_table}
+    FROM {settings.category_demographic_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
 feature_inputs AS (
@@ -629,6 +656,15 @@ feature_inputs AS (
         gender.n_unique_known_gender_clickers_category_28d,
         gender.n_unique_female_clickers_category_28d,
         gender.n_unique_male_clickers_category_28d,
+        gender.n_unique_clickers_category_28d,
+        gender.n_unique_clickers_with_age_category_28d,
+        gender.known_age_clicker_share_category_28d,
+        gender.clicker_age_p10_category_28d,
+        gender.clicker_age_p50_category_28d,
+        gender.clicker_age_p90_category_28d,
+        gender.female_unique_clicker_share_category_28d,
+        gender.male_unique_clicker_share_category_28d,
+        gender.gender_balance_category_28d,
         gender.category_female_product_session_share_28d,
         gender.category_male_product_session_share_28d,
         gender.category_gender
@@ -645,7 +681,7 @@ feature_inputs AS (
         ON population.product_id = rolling.product_id
     LEFT JOIN all_time_feedback_features all_time
         ON population.product_id = all_time.product_id
-    LEFT JOIN category_gender_features gender
+    LEFT JOIN category_demographic_features gender
         ON population.category_id = gender.category_id
 ),
 unprefixed_features AS (
@@ -737,9 +773,18 @@ unprefixed_features AS (
             / NULLIF(CAST(orders_28d AS DOUBLE), 0.0D)
             AS feedback_lte_3_to_orders_rate,
         {return_output_select},
+        n_unique_clickers_category_28d,
         n_unique_known_gender_clickers_category_28d,
         n_unique_female_clickers_category_28d,
         n_unique_male_clickers_category_28d,
+        n_unique_clickers_with_age_category_28d,
+        known_age_clicker_share_category_28d,
+        clicker_age_p10_category_28d,
+        clicker_age_p50_category_28d,
+        clicker_age_p90_category_28d,
+        female_unique_clicker_share_category_28d,
+        male_unique_clicker_share_category_28d,
+        gender_balance_category_28d,
         category_female_product_session_share_28d
             AS n_unique_cat_clicks_by_women_28d,
         category_female_product_session_share_28d

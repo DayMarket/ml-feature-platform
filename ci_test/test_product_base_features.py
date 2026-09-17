@@ -49,7 +49,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 105)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 114)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(column.startswith("PRODUCT__") for column in query.FEATURE_COLUMNS)
@@ -67,7 +67,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
             "order_and_return_features order_returns",
             "rolling_feedback_features rolling",
             "all_time_feedback_features all_time",
-            "category_gender_features gender",
+            "category_demographic_features gender",
         ):
             self.assertIn(f"LEFT JOIN {relation}", self.sql)
 
@@ -142,6 +142,18 @@ class ProductBaseFeaturesTest(unittest.TestCase):
             "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d",
             self.sql,
         )
+        self.assertIn(
+            "CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d",
+            self.sql,
+        )
+        self.assertIn(
+            "AS clicker_age_p50_category_28d",
+            self.sql,
+        )
+        self.assertIn(
+            "AS female_unique_clicker_share_category_28d",
+            self.sql,
+        )
         self.assertIn("AS n_unique_cat_clicks_by_women_28d", self.sql)
         self.assertIn("AS candidate_female_click_share_28d", self.sql)
         self.assertIn("CAST(category_gender = 'F' AS INT)", self.sql)
@@ -188,7 +200,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertEqual(dag_text.count('external_task_id="dq"'), 7)
         self.assertIn("product_feedback_counts_12h", dag_text)
         self.assertIn("feedback_product_id", dag_text)
-        self.assertIn("category_gender_features", dag_text)
+        self.assertIn("category_demographic_features", dag_text)
         self.assertIn("sku_cm2_inputs_daily", dag_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
