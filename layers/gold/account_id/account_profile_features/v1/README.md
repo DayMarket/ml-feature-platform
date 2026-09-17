@@ -25,7 +25,7 @@ Snapshot содержит объединение account IDs из:
 ## Demographics
 
 S5 читается по началу локальной даты snapshot. Публикуются `ACCOUNT_PROFILE__gender`, бинарный
-`ACCOUNT_PROFILE__account_gender_is_female`, `ACCOUNT_PROFILE__age`, `ACCOUNT_PROFILE__age_bucket`, `ACCOUNT_PROFILE__city_name` и `ACCOUNT_PROFILE__platform`.
+`ACCOUNT_PROFILE__gender_is_female`, `ACCOUNT_PROFILE__age`, `ACCOUNT_PROFILE__age_bucket`, `ACCOUNT_PROFILE__city_name` и `ACCOUNT_PROFILE__platform`.
 
 Age buckets: `LT_18`, `18_24`, `25_34`, `35_44`, `45_54`, `55_PLUS`,
 `UNKNOWN`.
@@ -57,11 +57,11 @@ Discount, rating, popularity и ACCOUNT_PROFILE__gender категории вз�
 Product attributes присоединяются point-in-time на snapshot `T`:
 
 - discount и rating — из физических колонок G7
-  `PRODUCT_BASE__product_discount` и `PRODUCT_BASE__product_rating` с
+  `PRODUCT__discount` и `PRODUCT__rating` с
   `calculated_at = T`;
 - global и leaf-category popularity rank — из физических колонок G8
-  `PRODUCT_RANKING__product_popularity_by_orders_neg_rank` и
-  `PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat` с
+  `PRODUCT_RANKING__popularity_by_orders_neg_rank` и
+  `PRODUCT_RANKING__popularity_by_orders_neg_rank_in_cat` с
   `calculated_at = T`;
 - листовая `category_id` — из S1 snapshot текущей локальной даты;
 - gender листовой категории — из G6 с `calculated_at = T`.

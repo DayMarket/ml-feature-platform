@@ -9,7 +9,7 @@ FEATURE_NAMESPACE = "ACCOUNT_PROFILE"
 
 DEMOGRAPHIC_COLUMNS = (
     "gender",
-    "account_gender_is_female",
+    "gender_is_female",
     "age",
     "age_bucket",
     "city_name",
@@ -175,79 +175,79 @@ def _order_line_expressions(calculated_at_utc: str) -> str:
                     f"AS n_last_purchased_products_{window}d"
                 ),
                 (
-                    f"AVG(CASE WHEN {condition} THEN product_discount END) "
+                    f"AVG(CASE WHEN {condition} THEN discount END) "
                     f"AS last_purchased_avg_discount_{window}d"
                 ),
                 (
                     "PERCENTILE_APPROX("
-                    f"CASE WHEN {condition} THEN product_discount END, 0.5"
+                    f"CASE WHEN {condition} THEN discount END, 0.5"
                     f") AS last_purchased_median_discount_{window}d"
                 ),
                 (
                     "PERCENTILE_APPROX("
-                    f"CASE WHEN {condition} THEN product_discount END, 0.1"
+                    f"CASE WHEN {condition} THEN discount END, 0.1"
                     f") AS last_purchased_p10_discount_{window}d"
                 ),
                 (
                     "CAST(SUM(CASE WHEN "
-                    f"{condition} AND product_rating IS NULL THEN 1 ELSE 0 END) "
+                    f"{condition} AND rating IS NULL THEN 1 ELSE 0 END) "
                     f"AS DOUBLE) / NULLIF(CAST({line_count} AS DOUBLE), 0.0D) "
                     f"AS last_purchased_null_rating_share_{window}d"
                 ),
                 (
-                    f"AVG(CASE WHEN {condition} THEN product_rating END) "
+                    f"AVG(CASE WHEN {condition} THEN rating END) "
                     f"AS last_purchased_avg_rating_{window}d"
                 ),
                 (
                     "PERCENTILE_APPROX("
-                    f"CASE WHEN {condition} THEN product_rating END, 0.5"
+                    f"CASE WHEN {condition} THEN rating END, 0.5"
                     f") AS last_purchased_median_rating_{window}d"
                 ),
                 (
                     "PERCENTILE_APPROX("
-                    f"CASE WHEN {condition} THEN product_rating END, 0.1"
+                    f"CASE WHEN {condition} THEN rating END, 0.1"
                     f") AS last_purchased_p10_rating_{window}d"
                 ),
                 (
                     "AVG(CASE WHEN "
-                    f"{condition} THEN product_popularity_by_orders_neg_rank END) "
+                    f"{condition} THEN popularity_by_orders_neg_rank END) "
                     f"AS last_purchased_avg_popularity_neg_rank_{window}d"
                 ),
                 (
                     "PERCENTILE_APPROX(CASE WHEN "
-                    f"{condition} THEN product_popularity_by_orders_neg_rank END, 0.5) "
+                    f"{condition} THEN popularity_by_orders_neg_rank END, 0.5) "
                     f"AS last_purchased_median_popularity_neg_rank_{window}d"
                 ),
                 (
                     "PERCENTILE_APPROX(CASE WHEN "
-                    f"{condition} THEN product_popularity_by_orders_neg_rank END, 0.1) "
+                    f"{condition} THEN popularity_by_orders_neg_rank END, 0.1) "
                     f"AS last_purchased_neg_p90_popularity_rank_{window}d"
                 ),
                 (
                     "PERCENTILE_APPROX(CASE WHEN "
-                    f"{condition} THEN product_popularity_by_orders_neg_rank END, 0.9) "
+                    f"{condition} THEN popularity_by_orders_neg_rank END, 0.9) "
                     f"AS last_purchased_neg_p10_popularity_rank_{window}d"
                 ),
                 (
                     "AVG(CASE WHEN "
-                    f"{condition} THEN product_popularity_by_orders_neg_rank_in_cat END) "
+                    f"{condition} THEN popularity_by_orders_neg_rank_in_cat END) "
                     f"AS last_purchased_avg_popularity_neg_rank_in_category_{window}d"
                 ),
                 (
                     "PERCENTILE_APPROX(CASE WHEN "
-                    f"{condition} THEN product_popularity_by_orders_neg_rank_in_cat END, "
+                    f"{condition} THEN popularity_by_orders_neg_rank_in_cat END, "
                     "0.5) AS "
                     f"last_purchased_median_popularity_neg_rank_in_category_{window}d"
                 ),
                 (
                     "PERCENTILE_APPROX(CASE WHEN "
-                    f"{condition} THEN product_popularity_by_orders_neg_rank_in_cat END, "
+                    f"{condition} THEN popularity_by_orders_neg_rank_in_cat END, "
                     "0.1) AS "
                     f"last_purchased_neg_p90_popularity_rank_in_category_{window}d"
                 ),
                 (
                     "PERCENTILE_APPROX(CASE WHEN "
-                    f"{condition} THEN product_popularity_by_orders_neg_rank_in_cat END, "
+                    f"{condition} THEN popularity_by_orders_neg_rank_in_cat END, "
                     "0.9) AS "
                     f"last_purchased_neg_p10_popularity_rank_in_category_{window}d"
                 ),
@@ -374,7 +374,7 @@ WITH demographics AS (
         CASE
             WHEN gender = 'FEMALE' THEN 1
             WHEN gender = 'MALE' THEN 0
-        END AS account_gender_is_female,
+        END AS gender_is_female,
         CAST(age AS INT) AS age,
         CASE
             WHEN age IS NULL THEN 'UNKNOWN'
@@ -407,25 +407,25 @@ product_prices AS (
 category_genders AS (
     SELECT
         CAST(category_id AS INT) AS category_id,
-        CATEGORY_GENDER__category_gender AS category_gender
+        CATEGORY_DEMOGRAPHICS__gender AS category_gender
     FROM {settings.category_gender_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
 product_base_features AS (
     SELECT
         CAST(product_id AS INT) AS product_id,
-        PRODUCT_BASE__product_discount AS product_discount,
-        PRODUCT_BASE__product_rating AS product_rating
+        PRODUCT__discount AS discount,
+        PRODUCT__rating AS rating
     FROM {settings.product_base_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
 product_ranking_features AS (
     SELECT
         CAST(product_id AS INT) AS product_id,
-        PRODUCT_RANKING__product_popularity_by_orders_neg_rank
-            AS product_popularity_by_orders_neg_rank,
-        PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat
-            AS product_popularity_by_orders_neg_rank_in_cat
+        PRODUCT_RANKING__popularity_by_orders_neg_rank
+            AS popularity_by_orders_neg_rank,
+        PRODUCT_RANKING__popularity_by_orders_neg_rank_in_cat
+            AS popularity_by_orders_neg_rank_in_cat
     FROM {settings.product_ranking_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
@@ -465,10 +465,10 @@ enriched_order_lines AS (
         orders.line_gmv,
         metadata.category_id,
         category.category_gender,
-        base.product_discount,
-        base.product_rating,
-        ranking.product_popularity_by_orders_neg_rank,
-        ranking.product_popularity_by_orders_neg_rank_in_cat
+        base.discount,
+        base.rating,
+        ranking.popularity_by_orders_neg_rank,
+        ranking.popularity_by_orders_neg_rank_in_cat
     FROM filtered_order_lines orders
     LEFT JOIN product_metadata metadata
         ON orders.product_id = metadata.product_id
@@ -551,8 +551,8 @@ enriched_last_clicks AS (
         clicks.last_received_at,
         prices.min_sell_price_eod,
         category.category_gender,
-        base.product_rating,
-        ranking.product_popularity_by_orders_neg_rank
+        base.rating,
+        ranking.popularity_by_orders_neg_rank
     FROM selected_clicks clicks
     INNER JOIN product_prices prices
         ON clicks.product_id = prices.product_id
@@ -580,13 +580,13 @@ last_clicked_raw_profile AS (
         CAST(SUM(CASE WHEN category_gender = 'F' THEN 1 ELSE 0 END) AS DOUBLE)
             / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)
             AS last_clicked_female_cat_share,
-        CAST(SUM(CASE WHEN product_rating IS NULL THEN 1 ELSE 0 END) AS DOUBLE)
+        CAST(SUM(CASE WHEN rating IS NULL THEN 1 ELSE 0 END) AS DOUBLE)
             / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)
             AS last_clicked_null_rating_share,
-        PERCENTILE_APPROX(product_rating, 0.1) AS last_clicked_p10_rating,
-        AVG(product_popularity_by_orders_neg_rank)
+        PERCENTILE_APPROX(rating, 0.1) AS last_clicked_p10_rating,
+        AVG(popularity_by_orders_neg_rank)
             AS last_clicked_avg_popularity_neg_rank_by_orders,
-        PERCENTILE_APPROX(product_popularity_by_orders_neg_rank, 0.1)
+        PERCENTILE_APPROX(popularity_by_orders_neg_rank, 0.1)
             AS last_clicked_p10_popularity_neg_rank_by_orders
     FROM enriched_last_clicks
     GROUP BY account_id

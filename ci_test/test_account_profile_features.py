@@ -143,40 +143,40 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             self.sql.count("calculated_at = TIMESTAMP '2026-09-10 12:00:00'"),
             3,
         )
-        self.assertIn("base.product_discount", self.sql)
-        self.assertIn("base.product_rating", self.sql)
+        self.assertIn("base.discount", self.sql)
+        self.assertIn("base.rating", self.sql)
         self.assertIn("category.category_gender", self.sql)
         self.assertIn(
-            "CATEGORY_GENDER__category_gender AS category_gender",
+            "CATEGORY_DEMOGRAPHICS__gender AS category_gender",
             self.sql,
         )
         self.assertIn(
-            "PRODUCT_BASE__product_discount AS product_discount",
+            "PRODUCT__discount AS discount",
             self.sql,
         )
         self.assertIn(
-            "PRODUCT_BASE__product_rating AS product_rating",
+            "PRODUCT__rating AS rating",
             self.sql,
         )
         self.assertIn(
-            "PRODUCT_RANKING__product_popularity_by_orders_neg_rank\n"
-            "            AS product_popularity_by_orders_neg_rank",
+            "PRODUCT_RANKING__popularity_by_orders_neg_rank\n"
+            "            AS popularity_by_orders_neg_rank",
             self.sql,
         )
         self.assertIn(
-            "PRODUCT_RANKING__product_popularity_by_orders_neg_rank_in_cat\n"
-            "            AS product_popularity_by_orders_neg_rank_in_cat",
+            "PRODUCT_RANKING__popularity_by_orders_neg_rank_in_cat\n"
+            "            AS popularity_by_orders_neg_rank_in_cat",
             self.sql,
         )
 
     def test_popularity_percentile_direction_is_explicit(self):
         self.assertIn(
-            "product_popularity_by_orders_neg_rank END, 0.1) AS "
+            "popularity_by_orders_neg_rank END, 0.1) AS "
             "last_purchased_neg_p90_popularity_rank_7d",
             self.sql,
         )
         self.assertIn(
-            "product_popularity_by_orders_neg_rank END, 0.9) AS "
+            "popularity_by_orders_neg_rank END, 0.9) AS "
             "last_purchased_neg_p10_popularity_rank_7d",
             self.sql,
         )

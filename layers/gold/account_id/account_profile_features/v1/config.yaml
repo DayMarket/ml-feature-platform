@@ -66,7 +66,7 @@ dq:
       column: ACCOUNT_PROFILE__gender
       values: [MALE, FEMALE]
     - name: accepted_values
-      column: ACCOUNT_PROFILE__account_gender_is_female
+      column: ACCOUNT_PROFILE__gender_is_female
       values: [0, 1]
     - name: accepted_values
       column: ACCOUNT_PROFILE__age_bucket

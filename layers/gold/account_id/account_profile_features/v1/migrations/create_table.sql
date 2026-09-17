@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     calculated_at TIMESTAMP COMMENT 'Момент Gold snapshot: 00:00 или 12:00 Asia/Tashkent; часть ключа calculated_at, account_id',
     account_id INT COMMENT 'Положительный идентификатор пользователя; часть ключа таблицы',
     ACCOUNT_PROFILE__gender STRING COMMENT 'Нормализованный ACCOUNT_PROFILE__gender пользователя: MALE, FEMALE либо NULL',
-    ACCOUNT_PROFILE__account_gender_is_female INT COMMENT 'FEMALE = 1, MALE = 0, неизвестный ACCOUNT_PROFILE__gender = NULL',
+    ACCOUNT_PROFILE__gender_is_female INT COMMENT 'FEMALE = 1, MALE = 0, неизвестный ACCOUNT_PROFILE__gender = NULL',
     ACCOUNT_PROFILE__age INT COMMENT 'Возраст пользователя в полных годах на дату snapshot либо NULL',
     ACCOUNT_PROFILE__age_bucket STRING COMMENT 'Возрастной бакет: LT_18, 18_24, 25_34, 35_44, 45_54, 55_PLUS или UNKNOWN',
     ACCOUNT_PROFILE__city_name STRING COMMENT 'Канонический город пользователя из S5 либо NULL',
