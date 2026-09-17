@@ -11,12 +11,12 @@ RETURN_WINDOWS = (7, 14, 28, 60, 90)
 RANK_AND_PERCENTILE_COLUMNS = (
     "price_percentile",
     "price_percentile_in_cat",
-    "product_popularity_by_orders_neg_rank",
-    "product_popularity_by_orders_neg_rank_in_cat",
-    "product_popularity_by_clicks_neg_rank_3d",
-    "product_popularity_by_clicks_neg_rank_28d",
-    "product_popularity_by_clicks_neg_rank_in_cat_3d",
-    "product_popularity_by_clicks_neg_rank_in_cat_28d",
+    "popularity_by_orders_neg_rank",
+    "popularity_by_orders_neg_rank_in_cat",
+    "popularity_by_clicks_neg_rank_3d",
+    "popularity_by_clicks_neg_rank_28d",
+    "popularity_by_clicks_neg_rank_in_cat_3d",
+    "popularity_by_clicks_neg_rank_in_cat_28d",
     "rating_percentile_in_cat",
     "discount_percentile_in_cat",
     "feedback_quantity_percentile_in_cat",
@@ -117,13 +117,13 @@ def _rank_and_percentile_expressions() -> str:
             percentile=True,
         ),
         _average_rank_expression(
-            "product_orders_28d",
-            "product_popularity_by_orders_neg_rank",
+            "orders_28d",
+            "popularity_by_orders_neg_rank",
             descending=True,
         ),
         _average_rank_expression(
-            "product_orders_28d",
-            "product_popularity_by_orders_neg_rank_in_cat",
+            "orders_28d",
+            "popularity_by_orders_neg_rank_in_cat",
             partition_columns=("category_id",),
             descending=True,
         ),
@@ -132,13 +132,13 @@ def _rank_and_percentile_expressions() -> str:
         expressions.extend(
             (
                 _average_rank_expression(
-                    f"product_clicks_{window}d",
-                    f"product_popularity_by_clicks_neg_rank_{window}d",
+                    f"clicks_{window}d",
+                    f"popularity_by_clicks_neg_rank_{window}d",
                     descending=True,
                 ),
                 _average_rank_expression(
-                    f"product_clicks_{window}d",
-                    f"product_popularity_by_clicks_neg_rank_in_cat_{window}d",
+                    f"clicks_{window}d",
+                    f"popularity_by_clicks_neg_rank_in_cat_{window}d",
                     partition_columns=("category_id",),
                     descending=True,
                 ),
@@ -147,19 +147,19 @@ def _rank_and_percentile_expressions() -> str:
     expressions.extend(
         (
             _average_rank_expression(
-                "product_rating",
+                "rating",
                 "rating_percentile_in_cat",
                 partition_columns=("category_id",),
                 percentile=True,
             ),
             _average_rank_expression(
-                "product_discount",
+                "discount",
                 "discount_percentile_in_cat",
                 partition_columns=("category_id",),
                 percentile=True,
             ),
             _average_rank_expression(
-                "product_feedback_quantity",
+                "feedback_quantity",
                 "feedback_quantity_percentile_in_cat",
                 partition_columns=("category_id",),
                 percentile=True,
@@ -180,9 +180,9 @@ def _g7_return_input_select() -> str:
         expression
         for window in RETURN_WINDOWS
         for expression in (
-            f"base.PRODUCT_BASE__n_completed_{window}d AS n_completed_{window}d",
-            f"base.PRODUCT_BASE__n_returned_{window}d AS n_returned_{window}d",
-            f"base.PRODUCT_BASE__return_rate_{window}d AS return_rate_{window}d",
+            f"base.PRODUCT__n_completed_{window}d AS n_completed_{window}d",
+            f"base.PRODUCT__n_returned_{window}d AS n_returned_{window}d",
+            f"base.PRODUCT__return_rate_{window}d AS return_rate_{window}d",
         )
     )
 
@@ -290,14 +290,14 @@ g7_snapshot AS (
         base.calculated_at,
         CAST(base.product_id AS INT) AS product_id,
         mapping.category_id,
-        base.PRODUCT_BASE__min_sell_price_eod AS min_sell_price_eod,
-        base.PRODUCT_BASE__product_orders_28d AS product_orders_28d,
-        base.PRODUCT_BASE__product_clicks_3d AS product_clicks_3d,
-        base.PRODUCT_BASE__product_clicks_28d AS product_clicks_28d,
-        base.PRODUCT_BASE__product_rating AS product_rating,
-        base.PRODUCT_BASE__product_discount AS product_discount,
-        base.PRODUCT_BASE__product_feedback_quantity AS product_feedback_quantity,
-        base.PRODUCT_BASE__feedback_lte_3 AS feedback_lte_3,
+        base.PRODUCT__min_sell_price_eod AS min_sell_price_eod,
+        base.PRODUCT__orders_28d AS orders_28d,
+        base.PRODUCT__clicks_3d AS clicks_3d,
+        base.PRODUCT__clicks_28d AS clicks_28d,
+        base.PRODUCT__rating AS rating,
+        base.PRODUCT__discount AS discount,
+        base.PRODUCT__feedback_quantity AS feedback_quantity,
+        base.PRODUCT__feedback_lte_3 AS feedback_lte_3,
         {g7_return_inputs}
     FROM {settings.product_base_features_table} base
     LEFT JOIN product_category_mapping mapping
@@ -307,7 +307,7 @@ g7_snapshot AS (
 global_feedback_prior AS (
     SELECT
         CAST(SUM(feedback_lte_3) AS DOUBLE)
-            / NULLIF(CAST(SUM(product_orders_28d) AS DOUBLE), 0.0D)
+            / NULLIF(CAST(SUM(orders_28d) AS DOUBLE), 0.0D)
             AS global_feedback_lte_3_to_orders_rate
     FROM g7_snapshot
 ),
@@ -323,16 +323,16 @@ smoothed_inputs AS (
         category.product_id,
         category.category_id,
         category.min_sell_price_eod,
-        category.product_orders_28d,
-        category.product_clicks_3d,
-        category.product_clicks_28d,
-        category.product_rating,
-        category.product_discount,
-        category.product_feedback_quantity,
+        category.orders_28d,
+        category.clicks_3d,
+        category.clicks_28d,
+        category.rating,
+        category.discount,
+        category.feedback_quantity,
         category.feedback_lte_3,
         (CAST(category.feedback_lte_3 AS DOUBLE)
             + {SMOOTHING_ALPHA}D * prior.global_feedback_lte_3_to_orders_rate)
-            / NULLIF(CAST(category.product_orders_28d AS DOUBLE)
+            / NULLIF(CAST(category.orders_28d AS DOUBLE)
                 + {SMOOTHING_ALPHA}D, 0.0D)
             AS feedback_lte_3_to_orders_rate_smoothed,
         {return_passthrough},
@@ -347,12 +347,12 @@ derived_rates AS (
         product_id,
         category_id,
         min_sell_price_eod,
-        product_orders_28d,
-        product_clicks_3d,
-        product_clicks_28d,
-        product_rating,
-        product_discount,
-        product_feedback_quantity,
+        orders_28d,
+        clicks_3d,
+        clicks_28d,
+        rating,
+        discount,
+        feedback_quantity,
         feedback_lte_3_to_orders_rate_smoothed,
         {return_features}
     FROM smoothed_inputs

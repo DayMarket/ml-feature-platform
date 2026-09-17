@@ -81,18 +81,18 @@ class ProductRankingFeaturesTest(unittest.TestCase):
     def test_g7_columns_are_read_through_the_physical_namespace(self):
         for column in (
             "min_sell_price_eod",
-            "product_orders_28d",
-            "product_clicks_3d",
-            "product_clicks_28d",
-            "product_rating",
-            "product_discount",
-            "product_feedback_quantity",
+            "orders_28d",
+            "clicks_3d",
+            "clicks_28d",
+            "rating",
+            "discount",
+            "feedback_quantity",
             "feedback_lte_3",
             "n_completed_90d",
             "n_returned_90d",
             "return_rate_90d",
         ):
-            self.assertIn(f"PRODUCT_BASE__{column}", self.sql)
+            self.assertIn(f"PRODUCT__{column}", self.sql)
 
     def test_average_rank_and_non_null_percentile_semantics(self):
         self.assertIn(
@@ -115,19 +115,19 @@ class ProductRankingFeaturesTest(unittest.TestCase):
 
     def test_popularity_ranks_use_28_day_orders_and_click_windows(self):
         self.assertIn(
-            "RANK() OVER (ORDER BY product_orders_28d DESC NULLS LAST)",
+            "RANK() OVER (ORDER BY orders_28d DESC NULLS LAST)",
             self.sql,
         )
-        self.assertIn("AS product_popularity_by_orders_neg_rank", self.sql)
-        self.assertIn("AS product_popularity_by_clicks_neg_rank_3d", self.sql)
-        self.assertIn("AS product_popularity_by_clicks_neg_rank_28d", self.sql)
-        self.assertNotIn("product_orders_30d", self.sql)
-        self.assertNotIn("product_clicks_30d", self.sql)
+        self.assertIn("AS popularity_by_orders_neg_rank", self.sql)
+        self.assertIn("AS popularity_by_clicks_neg_rank_3d", self.sql)
+        self.assertIn("AS popularity_by_clicks_neg_rank_28d", self.sql)
+        self.assertNotIn("orders_30d", self.sql)
+        self.assertNotIn("clicks_30d", self.sql)
 
     def test_feedback_rate_uses_global_prior_and_alpha_ten(self):
         self.assertIn("global_feedback_prior AS (", self.sql)
         self.assertIn("SUM(feedback_lte_3)", self.sql)
-        self.assertIn("SUM(product_orders_28d)", self.sql)
+        self.assertIn("SUM(orders_28d)", self.sql)
         self.assertIn("10.0D * prior.global_feedback_lte_3_to_orders_rate", self.sql)
         self.assertIn("AS feedback_lte_3_to_orders_rate_smoothed", self.sql)
         self.assertIn(

@@ -35,10 +35,10 @@ negative_rank = -average_rank(metric DESC)
 Percentile denominator считает только non-NULL metric values. Global и category
 ranks вычисляются на полной G7 population.
 
-- price percentiles используют `PRODUCT_BASE__min_sell_price_eod`;
-- order popularity использует `PRODUCT_BASE__product_orders_28d`;
-- click popularity использует `PRODUCT_BASE__product_clicks_3d` и
-  `PRODUCT_BASE__product_clicks_28d`;
+- price percentiles используют `PRODUCT__min_sell_price_eod`;
+- order popularity использует `PRODUCT__orders_28d`;
+- click popularity использует `PRODUCT__clicks_3d` и
+  `PRODUCT__clicks_28d`;
 - rating, discount и feedback quantity percentiles считаются внутри листовой категории.
 
 ## Smoothed feedback rate
@@ -46,11 +46,11 @@ ranks вычисляются на полной G7 population.
 `alpha = 10`. Global prior считается на полном G7 snapshot:
 
 ```text
-global_rate = sum(feedback_lte_3) / sum(product_orders_28d)
+global_rate = sum(feedback_lte_3) / sum(orders_28d)
 
 feedback_lte_3_to_orders_rate_smoothed =
     (feedback_lte_3 + alpha * global_rate)
-    / (product_orders_28d + alpha)
+    / (orders_28d + alpha)
 ```
 
 Нулевой global denominator даёт `NULL`. Smoothed rate не ограничивается
