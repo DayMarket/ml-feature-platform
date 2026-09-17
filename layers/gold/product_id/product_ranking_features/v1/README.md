@@ -67,7 +67,7 @@ G8 использует product-level counts из G7. В их population вхо�
 `item_quantity - returned_quantity` в `n_completed_Nd` и
 `returned_quantity` в `n_returned_Nd`.
 
-Для окон `7,14,28,60,90` дней category baseline считается как взвешенная
+Для окон `14,28,60,90` дней category baseline считается как взвешенная
 доля единиц, а не среднее product rates:
 
 ```text
@@ -96,6 +96,6 @@ DAG работает в `07:00` и `19:00 UTC` (`12:00` и `00:00 Asia/Tashkent`
 Alert routing P3 настроен, но callbacks DAG, DQ и feature stats отключены на
 время отладки. DQ проверяет ключи, percentile/rate ranges, неположительные
 ranks и отсутствие NaN/infinity. `feature_stats` делает один Trino-скан
-каждого snapshot по 33 числовым feature-колонкам.
+каждого snapshot по 29 числовым feature-колонкам.
 
 Потребители: Main, push, train и G5. Group tag: `recsys-features`.
