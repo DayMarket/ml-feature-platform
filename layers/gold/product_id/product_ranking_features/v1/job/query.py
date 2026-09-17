@@ -27,10 +27,10 @@ RETURN_FEATURE_COLUMNS = tuple(
     f"{family}_{window}d"
     for window in RETURN_WINDOWS
     for family in (
-        "l6_category_return_rate",
+        "category_return_rate",
         "return_rate_smoothed",
-        "return_rate_to_l6_category_return_rate",
-        "return_rate_smoothed_to_l6_category_return_rate",
+        "return_rate_to_category_return_rate",
+        "return_rate_smoothed_to_category_return_rate",
     )
 )
 BASE_FEATURE_COLUMNS = (
@@ -113,7 +113,7 @@ def _rank_and_percentile_expressions() -> str:
         _average_rank_expression(
             "min_sell_price_eod",
             "price_percentile_in_cat",
-            partition_columns=("l6_category_id",),
+            partition_columns=("category_id",),
             percentile=True,
         ),
         _average_rank_expression(
@@ -124,7 +124,7 @@ def _rank_and_percentile_expressions() -> str:
         _average_rank_expression(
             "product_orders_28d",
             "product_popularity_by_orders_neg_rank_in_cat",
-            partition_columns=("l6_category_id",),
+            partition_columns=("category_id",),
             descending=True,
         ),
     ]
@@ -139,7 +139,7 @@ def _rank_and_percentile_expressions() -> str:
                 _average_rank_expression(
                     f"product_clicks_{window}d",
                     f"product_popularity_by_clicks_neg_rank_in_cat_{window}d",
-                    partition_columns=("l6_category_id",),
+                    partition_columns=("category_id",),
                     descending=True,
                 ),
             )
@@ -149,25 +149,25 @@ def _rank_and_percentile_expressions() -> str:
             _average_rank_expression(
                 "product_rating",
                 "rating_percentile_in_cat",
-                partition_columns=("l6_category_id",),
+                partition_columns=("category_id",),
                 percentile=True,
             ),
             _average_rank_expression(
                 "product_discount",
                 "discount_percentile_in_cat",
-                partition_columns=("l6_category_id",),
+                partition_columns=("category_id",),
                 percentile=True,
             ),
             _average_rank_expression(
                 "product_feedback_quantity",
                 "feedback_quantity_percentile_in_cat",
-                partition_columns=("l6_category_id",),
+                partition_columns=("category_id",),
                 percentile=True,
             ),
             _average_rank_expression(
                 "feedback_lte_3_to_orders_rate_smoothed",
                 "feedback_lte_3_to_orders_rate_percentile_in_cat",
-                partition_columns=("l6_category_id",),
+                partition_columns=("category_id",),
                 percentile=True,
             ),
         )
@@ -190,11 +190,11 @@ def _g7_return_input_select() -> str:
 def _category_return_rate_expressions() -> str:
     return ",\n        ".join(
         (
-            f"CASE WHEN l6_category_id IS NOT NULL THEN "
-            f"CAST(SUM(n_returned_{window}d) OVER (PARTITION BY l6_category_id) "
+            f"CASE WHEN category_id IS NOT NULL THEN "
+            f"CAST(SUM(n_returned_{window}d) OVER (PARTITION BY category_id) "
             f"AS DOUBLE) / NULLIF(CAST(SUM(n_completed_{window}d + "
-            f"n_returned_{window}d) OVER (PARTITION BY l6_category_id) "
-            f"AS DOUBLE), 0.0D) END AS l6_category_return_rate_{window}d"
+            f"n_returned_{window}d) OVER (PARTITION BY category_id) "
+            f"AS DOUBLE), 0.0D) END AS category_return_rate_{window}d"
         )
         for window in RETURN_WINDOWS
     )
@@ -216,7 +216,7 @@ def _smoothed_return_rate_expressions() -> str:
     return ",\n        ".join(
         (
             f"(CAST(n_returned_{window}d AS DOUBLE) "
-            f"+ {SMOOTHING_ALPHA}D * l6_category_return_rate_{window}d) "
+            f"+ {SMOOTHING_ALPHA}D * category_return_rate_{window}d) "
             f"/ NULLIF(CAST(n_completed_{window}d + n_returned_{window}d "
             f"AS DOUBLE) + {SMOOTHING_ALPHA}D, 0.0D) "
             f"AS return_rate_smoothed_{window}d"
@@ -228,7 +228,7 @@ def _smoothed_return_rate_expressions() -> str:
 def _return_feature_expressions() -> str:
     expressions: list[str] = []
     for window in RETURN_WINDOWS:
-        category_rate = f"l6_category_return_rate_{window}d"
+        category_rate = f"category_return_rate_{window}d"
         smoothed_rate = f"return_rate_smoothed_{window}d"
         expressions.extend(
             (
@@ -236,11 +236,11 @@ def _return_feature_expressions() -> str:
                 smoothed_rate,
                 (
                     f"return_rate_{window}d / NULLIF({category_rate}, 0.0D) "
-                    f"AS return_rate_to_l6_category_return_rate_{window}d"
+                    f"AS return_rate_to_category_return_rate_{window}d"
                 ),
                 (
                     f"{smoothed_rate} / NULLIF({category_rate}, 0.0D) AS "
-                    f"return_rate_smoothed_to_l6_category_return_rate_{window}d"
+                    f"return_rate_smoothed_to_category_return_rate_{window}d"
                 ),
             )
         )
@@ -277,10 +277,10 @@ WITH latest_metadata_dt AS (
     FROM {settings.product_metadata_table}
     WHERE dt <= TIMESTAMP '{calculated_at_utc}'
 ),
-product_l6_mapping AS (
+product_category_mapping AS (
     SELECT
         CAST(metadata.product_id AS INT) AS product_id,
-        CAST(metadata.l6_category_id AS INT) AS l6_category_id
+        CAST(metadata.category_id AS INT) AS category_id
     FROM {settings.product_metadata_table} metadata
     INNER JOIN latest_metadata_dt latest
         ON metadata.dt = latest.dt
@@ -289,7 +289,7 @@ g7_snapshot AS (
     SELECT
         base.calculated_at,
         CAST(base.product_id AS INT) AS product_id,
-        mapping.l6_category_id,
+        mapping.category_id,
         base.PRODUCT_BASE__min_sell_price_eod AS min_sell_price_eod,
         base.PRODUCT_BASE__product_orders_28d AS product_orders_28d,
         base.PRODUCT_BASE__product_clicks_3d AS product_clicks_3d,
@@ -300,7 +300,7 @@ g7_snapshot AS (
         base.PRODUCT_BASE__feedback_lte_3 AS feedback_lte_3,
         {g7_return_inputs}
     FROM {settings.product_base_features_table} base
-    LEFT JOIN product_l6_mapping mapping
+    LEFT JOIN product_category_mapping mapping
         ON base.product_id = mapping.product_id
     WHERE base.calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
@@ -321,7 +321,7 @@ smoothed_inputs AS (
     SELECT
         category.calculated_at,
         category.product_id,
-        category.l6_category_id,
+        category.category_id,
         category.min_sell_price_eod,
         category.product_orders_28d,
         category.product_clicks_3d,
@@ -336,7 +336,7 @@ smoothed_inputs AS (
                 + {SMOOTHING_ALPHA}D, 0.0D)
             AS feedback_lte_3_to_orders_rate_smoothed,
         {return_passthrough},
-        {", ".join(f"l6_category_return_rate_{window}d" for window in RETURN_WINDOWS)},
+        {", ".join(f"category_return_rate_{window}d" for window in RETURN_WINDOWS)},
         {smoothed_return_rates}
     FROM category_baselines category
     CROSS JOIN global_feedback_prior prior
@@ -345,7 +345,7 @@ derived_rates AS (
     SELECT
         calculated_at,
         product_id,
-        l6_category_id,
+        category_id,
         min_sell_price_eod,
         product_orders_28d,
         product_clicks_3d,

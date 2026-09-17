@@ -67,16 +67,16 @@ class ProductRankingFeaturesTest(unittest.TestCase):
             "WHERE base.calculated_at = TIMESTAMP '2026-09-10 12:00:00'",
             self.sql,
         )
-        self.assertIn("LEFT JOIN product_l6_mapping mapping", self.sql)
+        self.assertIn("LEFT JOIN product_category_mapping mapping", self.sql)
         self.assertNotIn("candidate", self.sql.lower())
         self.assertNotIn("account_id", self.sql)
 
-    def test_l6_mapping_is_point_in_time_and_not_a_population_filter(self):
+    def test_category_mapping_is_point_in_time_and_not_a_population_filter(self):
         self.assertIn("SELECT MAX(dt) AS dt", self.sql)
         self.assertIn("WHERE dt <= TIMESTAMP '2026-09-10 07:00:00'", self.sql)
         self.assertIn("base.product_id = mapping.product_id", self.sql)
-        self.assertIn("l6_category_id IS NOT NULL", self.sql)
-        self.assertNotIn("WHERE l6_category_id IS NOT NULL", self.sql)
+        self.assertIn("category_id IS NOT NULL", self.sql)
+        self.assertNotIn("WHERE category_id IS NOT NULL", self.sql)
 
     def test_g7_columns_are_read_through_the_physical_namespace(self):
         for column in (
@@ -104,12 +104,12 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         )
         self.assertIn("COUNT(min_sell_price_eod) OVER ()", self.sql)
         self.assertIn(
-            "RANK() OVER (PARTITION BY l6_category_id ORDER BY "
+            "RANK() OVER (PARTITION BY category_id ORDER BY "
             "min_sell_price_eod ASC NULLS LAST)",
             self.sql,
         )
         self.assertIn(
-            "COUNT(min_sell_price_eod) OVER (PARTITION BY l6_category_id)",
+            "COUNT(min_sell_price_eod) OVER (PARTITION BY category_id)",
             self.sql,
         )
 
@@ -138,21 +138,21 @@ class ProductRankingFeaturesTest(unittest.TestCase):
     def test_return_baseline_is_weighted_and_relative_rates_are_safe(self):
         for window in query.RETURN_WINDOWS:
             self.assertIn(
-                f"SUM(n_returned_{window}d) OVER (PARTITION BY l6_category_id)",
+                f"SUM(n_returned_{window}d) OVER (PARTITION BY category_id)",
                 self.sql,
             )
             self.assertIn(
                 f"SUM(n_completed_{window}d + n_returned_{window}d) "
-                "OVER (PARTITION BY l6_category_id)",
+                "OVER (PARTITION BY category_id)",
                 self.sql,
             )
             self.assertIn(f"AS return_rate_smoothed_{window}d", self.sql)
             self.assertIn(
-                f"AS return_rate_to_l6_category_return_rate_{window}d",
+                f"AS return_rate_to_category_return_rate_{window}d",
                 self.sql,
             )
             self.assertIn(
-                f"AS return_rate_smoothed_to_l6_category_return_rate_{window}d",
+                f"AS return_rate_smoothed_to_category_return_rate_{window}d",
                 self.sql,
             )
         self.assertNotIn("AVG(return_rate", self.sql)

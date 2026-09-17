@@ -16,9 +16,9 @@ return-rate baselines поверх полного G7 snapshot с тем же `ca
 Candidate, train, inference и A/B-фильтры не применяются. Каждая строка G7
 сохраняется в G8.
 
-G7 не публикует `l6_category_id`, поэтому G8 присоединяет L6 из
+G7 не публикует `category_id`, поэтому G8 присоединяет листовую категорию из
 последнего S1 snapshot, не более нового, чем `calculated_at`. Это тот же
-point-in-time mapping, который задаёт population G7. Отсутствующий L6 не
+point-in-time mapping, который задаёт population G7. Отсутствующий `category_id` не
 удаляет product из G8, но оставляет category-dependent признаки `NULL`.
 
 ## Rank и percentile
@@ -39,7 +39,7 @@ ranks вычисляются на полной G7 population.
 - order popularity использует `PRODUCT_BASE__product_orders_28d`;
 - click popularity использует `PRODUCT_BASE__product_clicks_3d` и
   `PRODUCT_BASE__product_clicks_28d`;
-- rating, discount и feedback quantity percentiles считаются внутри L6.
+- rating, discount и feedback quantity percentiles считаются внутри листовой категории.
 
 ## Smoothed feedback rate
 
@@ -54,7 +54,7 @@ feedback_lte_3_to_orders_rate_smoothed =
 ```
 
 Нулевой global denominator даёт `NULL`. Smoothed rate не ограничивается
-единицей. Его average-rank percentile внутри L6 публикуется как
+единицей. Его average-rank percentile внутри листовой категории публикуется как
 `feedback_lte_3_to_orders_rate_percentile_in_cat`.
 
 ## Return rates
@@ -71,18 +71,18 @@ G8 использует product-level counts из G7. В их population вхо�
 доля единиц, а не среднее product rates:
 
 ```text
-l6_category_return_rate_Nd =
+category_return_rate_Nd =
     sum(n_returned_Nd)
     / sum(n_completed_Nd + n_returned_Nd)
 ```
 
 ```text
 return_rate_smoothed_Nd =
-    (n_returned_Nd + 10 * l6_category_return_rate_Nd)
+    (n_returned_Nd + 10 * category_return_rate_Nd)
     / (n_completed_Nd + n_returned_Nd + 10)
 ```
 
-Raw и smoothed rates делятся на L6 baseline для relative-признаков.
+Raw и smoothed rates делятся на baseline листовой категории для relative-признаков.
 Если baseline отсутствует или равен нулю, relative rate равен `NULL`.
 Канонические имена используют `smoothed`; вариант `smothed` не публикуется.
 
