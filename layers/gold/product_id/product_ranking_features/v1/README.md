@@ -6,7 +6,7 @@ DAG id: `feature-platform.layers.gold.product_id.product_ranking_features`.
 
 Grain и primary key: `calculated_at,product_id`.
 
-Namespace — `PRODUCT_RANKING`. Все физические feature-колонки содержат
+Namespace — `PRODUCT_STATS`. Все физические feature-колонки содержат
 этот префикс; `calculated_at` и `product_id` остаются без namespace.
 
 ## Назначение и population

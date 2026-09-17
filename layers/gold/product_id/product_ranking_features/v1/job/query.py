@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-FEATURE_NAMESPACE = "PRODUCT_RANKING"
+FEATURE_NAMESPACE = "PRODUCT_STATS"
 SMOOTHING_ALPHA = 10.0
 RETURN_WINDOWS = (7, 14, 28, 60, 90)
 

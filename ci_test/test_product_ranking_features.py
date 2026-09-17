@@ -53,7 +53,7 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(
-                column.startswith("PRODUCT_RANKING__")
+                column.startswith("PRODUCT_STATS__")
                 for column in query.FEATURE_COLUMNS
             )
         )
@@ -189,7 +189,7 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         self.assertIn("product_metadata", dag_text)
         self.assertIn("product_base_features", dag_text)
         self.assertIn("resource_profile: small", config_text)
-        self.assertIn("feature_namespace: PRODUCT_RANKING", config_text)
+        self.assertIn("feature_namespace: PRODUCT_STATS", config_text)
         self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
         self.assertIn('"recsys"', dag_text)
         self.assertIn("is_paused_upon_creation=True", dag_text)
