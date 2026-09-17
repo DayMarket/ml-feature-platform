@@ -124,6 +124,34 @@ def test_bad_severity_rejected() -> None:
         raise AssertionError("bad severity must be rejected")
 
 
+def test_finite_requires_non_empty_columns() -> None:
+    try:
+        load_dq_settings(
+            {
+                "table": {"catalog": "iceberg", "schema": "gold", "name": "t", "primary_key": "date,id"},
+                "dq": {"tests": [{"name": "finite", "columns": []}]},
+            }
+        )
+    except DqConfigError as error:
+        assert "непустым списком" in str(error)
+    else:
+        raise AssertionError("finite must reject an empty columns list")
+
+
+def test_group_max_equals_validates_group_and_tolerance() -> None:
+    base = {"table": {"catalog": "iceberg", "schema": "gold", "name": "t", "primary_key": "date,id"}}
+    for test in (
+        {"name": "group_max_equals", "column": "x", "group_by": [], "value": 0},
+        {"name": "group_max_equals", "column": "x", "group_by": ["id"], "value": 0, "tolerance": -1},
+    ):
+        try:
+            load_dq_settings({**base, "dq": {"tests": [test]}})
+        except DqConfigError:
+            pass
+        else:
+            raise AssertionError(f"group_max_equals must reject {test}")
+
+
 def test_catalog_alias_from_ci_config() -> None:
     assert trino_catalog_alias(Path("."), "iceberg") == "dwh-iceberg"
 
@@ -265,6 +293,8 @@ def main() -> int:
     test_unknown_test_name_rejected()
     test_missing_required_param_rejected()
     test_bad_severity_rejected()
+    test_finite_requires_non_empty_columns()
+    test_group_max_equals_validates_group_and_tolerance()
     test_catalog_alias_from_ci_config()
     test_timestamp_granularity_requires_interval_and_template()
     test_timestamp_granularity_settings()

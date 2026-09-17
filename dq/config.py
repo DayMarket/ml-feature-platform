@@ -30,10 +30,12 @@ TEST_FAMILIES: dict[str, str] = {
     "not_accepted_values": "domain_values",
     "accepted_range": "domain_values",
     "non_negative": "domain_values",
+    "finite": "domain_values",
     "string_not_blank": "domain_values",
     "distinct_count_between": "consistency",
     "columns_sum_equals": "consistency",
     "row_count_matches_reference": "consistency",
+    "group_max_equals": "consistency",
     "expression_is_true": "row_expr",
     "relationships": "referential_integrity",
 }
@@ -55,12 +57,17 @@ TEST_PARAMS: dict[str, tuple[tuple[str, ...], dict[str, Any]]] = {
         {"min": None, "max": None, "min_inclusive": True, "max_inclusive": True, "ignore_nulls": True},
     ),
     "non_negative": (("columns",), {"ignore_nulls": True}),
+    "finite": (("columns",), {"ignore_nulls": True}),
     "string_not_blank": (("columns",), {}),
     "distinct_count_between": (("columns",), {"min": None, "max": None}),
     "columns_sum_equals": (("parts", "total"), {"tolerance": 1e-6}),
     "row_count_matches_reference": (
         ("reference_table", "reference_date_column"),
         {"reference_where": None, "tolerance_ratio": 0.0},
+    ),
+    "group_max_equals": (
+        ("column", "group_by", "value"),
+        {"tolerance": 0.0, "ignore_all_null_groups": True},
     ),
     "expression_is_true": (("expression",), {}),
     "relationships": (("column", "to_table", "to_column"), {"where": None}),
@@ -302,6 +309,16 @@ def _make_spec(entry: dict[str, Any]) -> TestSpec:
         raise DqConfigError("accepted_range: нужен хотя бы один из параметров min/max")
     if name == "distinct_count_between" and params.get("min") is None and params.get("max") is None:
         raise DqConfigError("distinct_count_between: нужен хотя бы один из параметров min/max")
+    if name in {"finite", "non_negative", "not_null", "string_not_blank"}:
+        columns = params.get("columns")
+        if not isinstance(columns, (list, tuple)) or not columns:
+            raise DqConfigError(f"{name}: columns должен быть непустым списком")
+    if name == "group_max_equals":
+        group_by = params.get("group_by")
+        if not isinstance(group_by, (list, tuple)) or not group_by:
+            raise DqConfigError("group_max_equals: group_by должен быть непустым списком")
+        if float(params.get("tolerance", 0.0)) < 0:
+            raise DqConfigError("group_max_equals: tolerance не может быть отрицательным")
 
     return TestSpec(
         name=name,
