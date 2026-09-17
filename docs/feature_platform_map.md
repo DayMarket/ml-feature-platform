@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **64**. Внутренних зависимостей: **30**. Внешних зависимостей: **28**. P1: **0**. P2: **9**. P3: **50**. P4: **5**.
+Всего DAG: **65**. Внутренних зависимостей: **32**. Внешних зависимостей: **28**. P1: **0**. P2: **9**. P3: **51**. P4: **5**.
 
-Таска `dq`: **59** из **64**. Таска `feature_stats`: **59** из **64** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
+Таска `dq`: **60** из **65**. Таска `feature_stats`: **60** из **65** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
 
 Severity policy:
 
@@ -208,69 +208,71 @@ UTC cron 0 12 * * 0 · P4 · search_dataset`"]
 UTC 10:00 · P4 · search_dataset`"]
     d2["`account_brand_features
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d3["`buyout_online_city_features
+    d3["`account_shop_features
+UTC cron 0 7,19 * * * · P3 · small`"]
+    d4["`buyout_online_city_features
 UTC 06:00 · P2 · airflow-python`"]
-    d4["`demand_calendar_daily
+    d5["`demand_calendar_daily
 UTC 04:00 · P3 · airflow-python`"]
-    d5["`search_query_atc_features_qid
+    d6["`search_query_atc_features_qid
 UTC 06:00 · P4 · small`"]
-    d6["`sku_group_query_atc_order_features_qid
+    d7["`sku_group_query_atc_order_features_qid
 UTC 06:00 · P4 · search_dataset`"]
-    d7["`search_query_id
+    d8["`search_query_id
 UTC 05:00 · P3 · airflow-python`"]
-    d8["`sku_group_search_conversion_features
+    d9["`sku_group_search_conversion_features
 UTC 03:00 · P3 · large`"]
-    d9["`sku_group_query_atc_features
+    d10["`sku_group_query_atc_features
 UTC 02:00 · P3 · large`"]
-    d10["`demand_observed_daily
+    d11["`demand_observed_daily
 UTC 05:00 · P3 · airflow-python`"]
-    d11["`account_demographics
+    d12["`account_demographics
 UTC 19:00 · P3 · large`"]
-    d12["`account_l1_imp_counts_12h
+    d13["`account_l1_imp_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d13["`account_l2_imp_counts_12h
+    d14["`account_l2_imp_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d14["`account_product_session_action_counts_12h
+    d15["`account_product_session_action_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d15["`delivery_cpi_city_features
+    d16["`delivery_cpi_city_features
 UTC 03:00 · P2 · airflow-python`"]
-    d16["`backfill
+    d17["`backfill
 UTC 03:00 · P2 · airflow-python`"]
-    d17["`demand_calendar
+    d18["`demand_calendar
 UTC 03:00 · P3 · airflow-python`"]
-    d18["`demand_event_calendar
+    d19["`demand_event_calendar
 UTC 03:10 · P3 · airflow-python`"]
-    d19["`demand_catalog_tree
+    d20["`demand_catalog_tree
 UTC 04:00 · P3 · airflow-python`"]
-    d20["`product_feedback_counts_12h
+    d21["`product_feedback_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d21["`product_metadata
+    d22["`product_metadata
 UTC 19:00 · P3 · small`"]
-    d22["`product_prices_daily
+    d23["`product_prices_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d23["`product_search_queries
+    d24["`product_search_queries
 UTC 09:00 · P4 · search_product`"]
-    d24["`search_query_sku_group_es_features
+    d25["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
-    d25["`demand_catalog_seller
+    d26["`demand_catalog_seller
 UTC 04:00 · P3 · airflow-python`"]
-    d26["`sku_group_orders
+    d27["`sku_group_orders
 UTC 01:00 · P3 · large`"]
-    d27["`demand_catalog_sku
+    d28["`demand_catalog_sku
 UTC 04:00 · P3 · airflow-python`"]
-    d28["`demand_sales_daily
+    d29["`demand_sales_daily
 UTC 04:00 · P3 · airflow-python`"]
-    d29["`demand_stock_daily
+    d30["`demand_stock_daily
 UTC 04:00 · P3 · airflow-python`"]
-    d30["`sku_cm2_inputs_daily
+    d31["`sku_cm2_inputs_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d31["`sku_daily_dynamic_prices
+    d32["`sku_daily_dynamic_prices
 UTC 01:00 · P3 · airflow-python`"]
-    d32["`demand_restored_daily
+    d33["`demand_restored_daily
 manual · P3 · airflow-python`"]
-    d33["`demand_finance_daily
+    d34["`demand_finance_daily
 UTC 04:00 · P3 · airflow-python`"]
-    d34["`demand_seller_sales_observed_daily
+    d35["`demand_seller_sales_observed_daily
 UTC 04:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
@@ -278,32 +280,34 @@ UTC 04:00 · P3 · airflow-python`"]
     x3["feedback_sku_group_id"]
     x4["elasticsearch_collect"]
     x3 -->|"dq"| d0
-    d14 -->|"dq"| d2
-    d21 -->|"dq"| d2
-    d15 -->|"dq Δ3h"| d3
-    d17 -->|"dq"| d4
-    d18 -->|"dq"| d4
-    x0 -.->|"dbt DQ (legacy) Δ5h"| d5
-    x1 -.->|"dbt DQ (legacy) Δ5h"| d5
-    d7 -->|"sensor Δ1h"| d5
+    d15 -->|"dq"| d2
+    d22 -->|"dq"| d2
+    d15 -->|"dq"| d3
+    d22 -->|"dq"| d3
+    d16 -->|"dq Δ3h"| d4
+    d18 -->|"dq"| d5
+    d19 -->|"dq"| d5
     x0 -.->|"dbt DQ (legacy) Δ5h"| d6
     x1 -.->|"dbt DQ (legacy) Δ5h"| d6
-    d7 -->|"sensor Δ1h"| d6
-    x0 -.->|"dbt DQ (legacy) Δ4h"| d7
-    x0 -.->|"dbt DQ (legacy) Δ2h"| d8
-    x1 -.->|"dbt DQ (legacy) Δ2h"| d8
-    x0 -.->|"dbt DQ (legacy) Δ1h"| d9
-    d28 -->|"dq"| d10
-    d29 -->|"dq"| d10
-    d17 -->|"dq"| d18
-    d27 -->|"dq"| d19
-    x2 -->|"sensor Δ19h"| d22
-    x4 -->|"sensor"| d24
-    d25 -->|"dq"| d27
-    d34 -->|"dq"| d28
-    x2 -->|"sensor Δ19h"| d30
-    class d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24,d25,d26,d27,d28,d29,d30,d31,d32,d33,d34 silver
-    class d2,d3,d4,d5,d6,d7,d8,d9,d10 gold
+    d8 -->|"sensor Δ1h"| d6
+    x0 -.->|"dbt DQ (legacy) Δ5h"| d7
+    x1 -.->|"dbt DQ (legacy) Δ5h"| d7
+    d8 -->|"sensor Δ1h"| d7
+    x0 -.->|"dbt DQ (legacy) Δ4h"| d8
+    x0 -.->|"dbt DQ (legacy) Δ2h"| d9
+    x1 -.->|"dbt DQ (legacy) Δ2h"| d9
+    x0 -.->|"dbt DQ (legacy) Δ1h"| d10
+    d29 -->|"dq"| d11
+    d30 -->|"dq"| d11
+    d18 -->|"dq"| d19
+    d28 -->|"dq"| d20
+    x2 -->|"sensor Δ19h"| d23
+    x4 -->|"sensor"| d25
+    d26 -->|"dq"| d28
+    d35 -->|"dq"| d29
+    x2 -->|"sensor Δ19h"| d31
+    class d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d22,d23,d24,d25,d26,d27,d28,d29,d30,d31,d32,d33,d34,d35 silver
+    class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11 gold
     class d0,d1 datasets
     class x0,x1,x2,x3,x4 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
