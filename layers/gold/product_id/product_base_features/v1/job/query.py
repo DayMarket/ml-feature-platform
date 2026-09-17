@@ -24,7 +24,7 @@ PRICE_COLUMNS = (
 ACTION_COLUMNS = (
     "clicks_3d",
     "clicks_28d",
-    "favorites_daily",
+    "favorites_1d",
     "favorites_last_3d",
     "favorites_last_7d",
     "favorites_last_14d",
@@ -32,10 +32,10 @@ ACTION_COLUMNS = (
     "favorites_last_28d",
 )
 ORDER_COLUMNS = (
-    "orders_quantity_daily",
-    "items_purchased_quantity_daily",
+    "orders_quantity_1d",
+    "items_purchased_quantity_1d",
     "orders_total",
-    "has_orders_total",
+    "has_orders",
     "orders_7d",
     "orders_28d",
     "orders_90d",
@@ -47,10 +47,11 @@ ORDER_COLUMNS = (
     "orders_share_in_category_90d",
 )
 ORDER_INPUT_COLUMNS = ORDER_COLUMNS[:-3]
+DERIVED_COLUMNS = ("favorites_to_orders_rate",)
 FEEDBACK_WINDOWS = (3, 7, 14, 21, 28)
 ROLLING_FEEDBACK_COLUMNS = (
-    "feedback_quantity_daily",
-    "sum_rating_daily",
+    "feedback_quantity_1d",
+    "sum_rating_1d",
     *tuple(
         f"{family}_{window}d"
         for window in FEEDBACK_WINDOWS
@@ -78,17 +79,14 @@ ALL_TIME_FEEDBACK_COLUMNS = (
     "feedback_lte_3_to_orders_rate_raw",
     "feedback_lte_3_to_orders_rate",
 )
-RETURN_WINDOWS = (7, 14, 28, 60, 90)
+RETURN_WINDOWS = (3, 28)
 RETURN_COLUMNS = tuple(
     f"{family}_{window}d"
     for window in RETURN_WINDOWS
-    for family in ("n_completed", "n_returned", "return_rate")
+    for family in ("n_completed", "n_returned", "return_rate_neg")
 )
 GENDER_COLUMNS = (
     "n_unique_clickers_category_28d",
-    "n_unique_known_gender_clickers_category_28d",
-    "n_unique_female_clickers_category_28d",
-    "n_unique_male_clickers_category_28d",
     "n_unique_clickers_with_age_category_28d",
     "known_age_clicker_share_category_28d",
     "clicker_age_p10_category_28d",
@@ -107,6 +105,7 @@ BASE_FEATURE_COLUMNS = (
     *PRICE_COLUMNS,
     *ACTION_COLUMNS,
     *ORDER_COLUMNS,
+    *DERIVED_COLUMNS,
     *ROLLING_FEEDBACK_COLUMNS,
     *ALL_TIME_FEEDBACK_COLUMNS,
     *RETURN_COLUMNS,
@@ -167,7 +166,7 @@ def _action_aggregate_expressions(calculated_at_local: str) -> str:
     expressions.append(
         "CAST(SUM(CASE WHEN event_type = 'ADD_TO_FAVORITES' "
         f"AND calculated_at > TIMESTAMP '{calculated_at_local}' "
-        "- INTERVAL 1 DAY THEN n_events ELSE 0 END) AS INT) AS favorites_daily"
+        "- INTERVAL 1 DAY THEN n_events ELSE 0 END) AS favorites_1d"
     )
     for window in (3, 7, 14, 21, 28):
         expressions.append(
@@ -188,13 +187,13 @@ def _order_aggregate_expressions(calculated_at_utc: str) -> str:
             "CAST(COUNT(DISTINCT CASE WHEN "
             f"{successful_status} AND generated_at >= TIMESTAMP "
             f"'{calculated_at_utc}' - INTERVAL 1 DAY THEN order_id END) AS INT) "
-            "AS orders_quantity_daily"
+            "AS orders_quantity_1d"
         ),
         (
             "CAST(SUM(CASE WHEN "
             f"{successful_status} AND generated_at >= TIMESTAMP "
             f"'{calculated_at_utc}' - INTERVAL 1 DAY THEN item_quantity "
-            "ELSE 0 END) AS INT) AS items_purchased_quantity_daily"
+            "ELSE 0 END) AS INT) AS items_purchased_quantity_1d"
         ),
         (
             "CAST(COUNT(DISTINCT CASE WHEN "
@@ -227,8 +226,8 @@ def _feedback_count_expressions(calculated_at_local: str) -> str:
     high_buckets = ((4, 1), (5, 1))
 
     expressions = [
-        f"CAST({bucket_sum(1, all_buckets)} AS INT) AS feedback_quantity_daily",
-        f"CAST({bucket_sum(1, rating_buckets)} AS INT) AS sum_rating_daily",
+        f"CAST({bucket_sum(1, all_buckets)} AS INT) AS feedback_quantity_1d",
+        f"CAST({bucket_sum(1, rating_buckets)} AS INT) AS sum_rating_1d",
     ]
     for window in FEEDBACK_WINDOWS:
         expressions.extend(
@@ -278,6 +277,9 @@ def _rolling_feedback_rate_expressions() -> str:
 
 
 def _return_count_expressions(calculated_at_utc: str) -> str:
+    successful_status = (
+        "order_item_status IN ('COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY')"
+    )
     expressions = []
     for window in RETURN_WINDOWS:
         condition = (
@@ -287,12 +289,12 @@ def _return_count_expressions(calculated_at_utc: str) -> str:
             (
                 (
                     "CAST(SUM(CASE WHEN "
-                    f"{condition} THEN item_quantity - returned_quantity ELSE 0 END) "
+                    f"{condition} AND {successful_status} THEN 1 ELSE 0 END) "
                     f"AS INT) AS n_completed_{window}d"
                 ),
                 (
                     "CAST(SUM(CASE WHEN "
-                    f"{condition} THEN returned_quantity ELSE 0 END) AS INT) "
+                    f"{condition} AND order_item_status = 'RETURNED' THEN 1 ELSE 0 END) AS INT) "
                     f"AS n_returned_{window}d"
                 ),
             )
@@ -339,9 +341,9 @@ def build_product_base_features_query(
             f"n_completed_{window}d",
             f"n_returned_{window}d",
             (
-                f"CAST(n_returned_{window}d AS DOUBLE) / NULLIF("
+                f"-CAST(n_returned_{window}d AS DOUBLE) / NULLIF("
                 f"CAST(n_completed_{window}d + n_returned_{window}d AS DOUBLE), "
-                f"0.0D) AS return_rate_{window}d"
+                f"0.0D) AS return_rate_neg_{window}d"
             ),
         )
     )
@@ -364,7 +366,7 @@ def build_product_base_features_query(
         for expression in (
             f"COALESCE(n_completed_{window}d, 0) AS n_completed_{window}d",
             f"COALESCE(n_returned_{window}d, 0) AS n_returned_{window}d",
-            f"return_rate_{window}d",
+            f"return_rate_neg_{window}d",
         )
     )
     namespaced_feature_select = _namespaced_feature_select("unprefixed_features")
@@ -475,9 +477,9 @@ orders_for_population AS (
     SELECT
         population.product_id,
         population.category_id,
-        COALESCE(orders.orders_quantity_daily, 0) AS orders_quantity_daily,
-        COALESCE(orders.items_purchased_quantity_daily, 0)
-            AS items_purchased_quantity_daily,
+        COALESCE(orders.orders_quantity_1d, 0) AS orders_quantity_1d,
+        COALESCE(orders.items_purchased_quantity_1d, 0)
+            AS items_purchased_quantity_1d,
         COALESCE(orders.orders_total, 0) AS orders_total,
         COALESCE(orders.orders_7d, 0) AS orders_7d,
         COALESCE(orders.orders_28d, 0) AS orders_28d,
@@ -490,10 +492,10 @@ orders_for_population AS (
 order_and_return_features AS (
     SELECT
         product_id,
-        orders_quantity_daily,
-        items_purchased_quantity_daily,
+        orders_quantity_1d,
+        items_purchased_quantity_1d,
         orders_total,
-        CAST(orders_total > 0 AS INT) AS has_orders_total,
+        CAST(orders_total > 0 AS INT) AS has_orders,
         orders_7d,
         orders_28d,
         orders_90d,
@@ -590,12 +592,6 @@ category_demographic_features AS (
         CAST(category_id AS INT) AS category_id,
         CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d
             AS n_unique_clickers_category_28d,
-        CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d
-            AS n_unique_known_gender_clickers_category_28d,
-        CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d
-            AS n_unique_female_clickers_category_28d,
-        CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d
-            AS n_unique_male_clickers_category_28d,
         CATEGORY_DEMOGRAPHICS__n_unique_clickers_with_age_28d
             AS n_unique_clickers_with_age_category_28d,
         CATEGORY_DEMOGRAPHICS__known_age_clicker_share_28d
@@ -635,7 +631,7 @@ feature_inputs AS (
         prices.max_active_sku_sell_price_eod,
         COALESCE(actions.clicks_3d, 0) AS clicks_3d,
         COALESCE(actions.clicks_28d, 0) AS clicks_28d,
-        COALESCE(actions.favorites_daily, 0) AS favorites_daily,
+        COALESCE(actions.favorites_1d, 0) AS favorites_1d,
         COALESCE(actions.favorites_last_3d, 0) AS favorites_last_3d,
         COALESCE(actions.favorites_last_7d, 0) AS favorites_last_7d,
         COALESCE(actions.favorites_last_14d, 0) AS favorites_last_14d,
@@ -653,9 +649,6 @@ feature_inputs AS (
         COALESCE(all_time.log_feedback_quantity, 0.0D)
             AS log_feedback_quantity,
         {return_select},
-        gender.n_unique_known_gender_clickers_category_28d,
-        gender.n_unique_female_clickers_category_28d,
-        gender.n_unique_male_clickers_category_28d,
         gender.n_unique_clickers_category_28d,
         gender.n_unique_clickers_with_age_category_28d,
         gender.known_age_clicker_share_category_28d,
@@ -725,19 +718,22 @@ unprefixed_features AS (
         END AS age_in_days,
         clicks_3d,
         clicks_28d,
-        favorites_daily,
+        favorites_1d,
         favorites_last_3d,
         favorites_last_7d,
         favorites_last_14d,
         favorites_last_21d,
         favorites_last_28d,
-        orders_quantity_daily,
-        items_purchased_quantity_daily,
+        orders_quantity_1d,
+        items_purchased_quantity_1d,
         orders_total,
-        has_orders_total,
+        has_orders,
         orders_7d,
         orders_28d,
         orders_90d,
+        CAST(favorites_last_28d AS DOUBLE)
+            / NULLIF(CAST(orders_28d AS DOUBLE), 0.0D)
+            AS favorites_to_orders_rate,
         category_orders_7d,
         category_orders_28d,
         category_orders_90d,
@@ -750,8 +746,8 @@ unprefixed_features AS (
         CAST(orders_90d AS DOUBLE)
             / NULLIF(CAST(category_orders_90d AS DOUBLE), 0.0D)
             AS orders_share_in_category_90d,
-        COALESCE(feedback_quantity_daily, 0) AS feedback_quantity_daily,
-        COALESCE(sum_rating_daily, 0) AS sum_rating_daily,
+        COALESCE(feedback_quantity_1d, 0) AS feedback_quantity_1d,
+        COALESCE(sum_rating_1d, 0) AS sum_rating_1d,
         {rolling_feedback_output_select},
         rating,
         feedback_quantity,
@@ -774,9 +770,6 @@ unprefixed_features AS (
             AS feedback_lte_3_to_orders_rate,
         {return_output_select},
         n_unique_clickers_category_28d,
-        n_unique_known_gender_clickers_category_28d,
-        n_unique_female_clickers_category_28d,
-        n_unique_male_clickers_category_28d,
         n_unique_clickers_with_age_category_28d,
         known_age_clicker_share_category_28d,
         clicker_age_p10_category_28d,

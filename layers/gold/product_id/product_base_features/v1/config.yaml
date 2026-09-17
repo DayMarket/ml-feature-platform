@@ -76,14 +76,14 @@ dq:
         - PRODUCT__age_in_days
         - PRODUCT__clicks_3d
         - PRODUCT__clicks_28d
-        - PRODUCT__favorites_daily
+        - PRODUCT__favorites_1d
         - PRODUCT__favorites_last_3d
         - PRODUCT__favorites_last_7d
         - PRODUCT__favorites_last_14d
         - PRODUCT__favorites_last_21d
         - PRODUCT__favorites_last_28d
-        - PRODUCT__orders_quantity_daily
-        - PRODUCT__items_purchased_quantity_daily
+        - PRODUCT__orders_quantity_1d
+        - PRODUCT__items_purchased_quantity_1d
         - PRODUCT__orders_total
         - PRODUCT__orders_7d
         - PRODUCT__orders_28d
@@ -91,8 +91,8 @@ dq:
         - PRODUCT__category_orders_7d
         - PRODUCT__category_orders_28d
         - PRODUCT__category_orders_90d
-        - PRODUCT__feedback_quantity_daily
-        - PRODUCT__sum_rating_daily
+        - PRODUCT__feedback_quantity_1d
+        - PRODUCT__sum_rating_1d
         - PRODUCT__feedback_last_3d
         - PRODUCT__sum_rating_last_3d
         - PRODUCT__feedback_gte_4_3d
@@ -121,23 +121,14 @@ dq:
         - PRODUCT__feedback_gte_4_to_orders_rate_raw
         - PRODUCT__feedback_lte_3_to_orders_rate_raw
         - PRODUCT__feedback_lte_3_to_orders_rate
-        - PRODUCT__n_completed_7d
-        - PRODUCT__n_completed_14d
+        - PRODUCT__n_completed_3d
         - PRODUCT__n_completed_28d
-        - PRODUCT__n_completed_60d
-        - PRODUCT__n_completed_90d
-        - PRODUCT__n_returned_7d
-        - PRODUCT__n_returned_14d
+        - PRODUCT__n_returned_3d
         - PRODUCT__n_returned_28d
-        - PRODUCT__n_returned_60d
-        - PRODUCT__n_returned_90d
-        - PRODUCT__n_unique_known_gender_clickers_category_28d
-        - PRODUCT__n_unique_female_clickers_category_28d
-        - PRODUCT__n_unique_male_clickers_category_28d
         - PRODUCT__n_unique_clickers_category_28d
         - PRODUCT__n_unique_clickers_with_age_category_28d
     - name: accepted_values
-      column: PRODUCT__has_orders_total
+      column: PRODUCT__has_orders
       values: [0, 1]
     - name: accepted_values
       column: PRODUCT__is_female_category
@@ -174,17 +165,13 @@ dq:
     - name: expression_is_true
       expression: "(PRODUCT__orders_share_in_category_7d IS NULL OR PRODUCT__orders_share_in_category_7d BETWEEN 0 AND 1) AND (PRODUCT__orders_share_in_category_28d IS NULL OR PRODUCT__orders_share_in_category_28d BETWEEN 0 AND 1) AND (PRODUCT__orders_share_in_category_90d IS NULL OR PRODUCT__orders_share_in_category_90d BETWEEN 0 AND 1)"
     - name: expression_is_true
-      expression: "(PRODUCT__return_rate_7d IS NULL OR PRODUCT__return_rate_7d BETWEEN 0 AND 1) AND (PRODUCT__return_rate_14d IS NULL OR PRODUCT__return_rate_14d BETWEEN 0 AND 1) AND (PRODUCT__return_rate_28d IS NULL OR PRODUCT__return_rate_28d BETWEEN 0 AND 1) AND (PRODUCT__return_rate_60d IS NULL OR PRODUCT__return_rate_60d BETWEEN 0 AND 1) AND (PRODUCT__return_rate_90d IS NULL OR PRODUCT__return_rate_90d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT__return_rate_neg_3d IS NULL OR PRODUCT__return_rate_neg_3d BETWEEN -1 AND 0) AND (PRODUCT__return_rate_neg_28d IS NULL OR PRODUCT__return_rate_neg_28d BETWEEN -1 AND 0)"
     - name: expression_is_true
       expression: "(PRODUCT__n_unique_cat_clicks_by_women_28d IS NULL OR PRODUCT__n_unique_cat_clicks_by_women_28d BETWEEN 0 AND 1) AND (PRODUCT__candidate_female_click_share_28d IS NULL OR PRODUCT__candidate_female_click_share_28d BETWEEN 0 AND 1) AND (PRODUCT__candidate_male_click_share_28d IS NULL OR PRODUCT__candidate_male_click_share_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
       expression: "(PRODUCT__female_unique_clicker_share_category_28d IS NULL OR PRODUCT__female_unique_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__male_unique_clicker_share_category_28d IS NULL OR PRODUCT__male_unique_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__known_age_clicker_share_category_28d IS NULL OR PRODUCT__known_age_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__gender_balance_category_28d IS NULL OR PRODUCT__gender_balance_category_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
       expression: "PRODUCT__candidate_female_click_share_28d IS NULL OR ABS(PRODUCT__candidate_female_click_share_28d + PRODUCT__candidate_male_click_share_28d - 1.0) < 0.000001"
-    - name: expression_is_true
-      expression: "PRODUCT__n_unique_known_gender_clickers_category_28d IS NULL OR PRODUCT__n_unique_known_gender_clickers_category_28d = PRODUCT__n_unique_female_clickers_category_28d + PRODUCT__n_unique_male_clickers_category_28d"
-    - name: expression_is_true
-      expression: "PRODUCT__n_unique_known_gender_clickers_category_28d IS NULL OR PRODUCT__n_unique_known_gender_clickers_category_28d <= PRODUCT__n_unique_clickers_category_28d"
     - name: expression_is_true
       expression: "PRODUCT__n_unique_clickers_with_age_category_28d IS NULL OR PRODUCT__n_unique_clickers_with_age_category_28d <= PRODUCT__n_unique_clickers_category_28d"
     - name: expression_is_true
