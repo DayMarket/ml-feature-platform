@@ -1,12 +1,12 @@
-"""Build the leaf-category gender Gold snapshot and write it to Iceberg."""
+"""Build the leaf-category demographic Gold snapshot and write it to Iceberg."""
 
 from pyspark.sql import DataFrame, SparkSession
 
 from job.entities import Arguments
 from job.partition import parse_airflow_timestamp
 from job.query import (
-    build_category_gender_features_merge_query,
-    build_category_gender_features_query,
+    build_category_demographic_features_merge_query,
+    build_category_demographic_features_query,
 )
 from job.runtime_config import SourceSettings, load_source_settings
 
@@ -23,16 +23,18 @@ def _require_tables(spark: SparkSession, table_names: tuple[str, ...]) -> None:
         )
 
 
-def build_category_gender_features(
+def build_category_demographic_features(
     spark: SparkSession,
     partition_end: str,
     settings: SourceSettings,
 ) -> DataFrame:
     calculated_at = parse_airflow_timestamp(partition_end)
-    return spark.sql(build_category_gender_features_query(settings, calculated_at))
+    return spark.sql(
+        build_category_demographic_features_query(settings, calculated_at)
+    )
 
 
-def save_category_gender_features(
+def save_category_demographic_features(
     spark: SparkSession,
     partition_end: str,
     target_table: str,
@@ -45,13 +47,13 @@ def save_category_gender_features(
 
     calculated_at = parse_airflow_timestamp(partition_end)
     features = spark.sql(
-        build_category_gender_features_query(settings, calculated_at)
+        build_category_demographic_features_query(settings, calculated_at)
     )
     features.createOrReplaceTempView(
-        "category_gender_features_for_calculated_at"
+        "category_demographic_features_for_calculated_at"
     )
     spark.sql(
-        build_category_gender_features_merge_query(
+        build_category_demographic_features_merge_query(
             target_table,
             settings,
             calculated_at,
@@ -60,7 +62,7 @@ def save_category_gender_features(
 
 
 def run(spark: SparkSession, arguments: Arguments) -> None:
-    save_category_gender_features(
+    save_category_demographic_features(
         spark,
         arguments.partition_end,
         arguments.table_name,

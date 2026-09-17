@@ -3,15 +3,15 @@ resources:
 
 spark:
   template_path: ../../../../../config/spark/layer_spark_application.yaml
-  application_name: fetch-gold-category-gender-features
-  main_application_file: local:///git/repo/layers/gold/category_id/category_gender_features/v1/entrypoints/get_category_gender_features.py
+  application_name: fetch-gold-category-demographic-features
+  main_application_file: local:///git/repo/layers/gold/category_id/category_demographic_features/v1/entrypoints/get_category_demographic_features.py
   resource_profile: small
 
 table:
-  key: category_gender_features
+  key: category_demographic_features
   catalog: iceberg
   schema: gold
-  name: feature_platform_category_gender_features
+  name: feature_platform_category_demographic_features
   primary_key: calculated_at,category_id
   feature_namespace: CATEGORY_DEMOGRAPHICS
   meta:
@@ -26,9 +26,11 @@ source:
   demographics_table: iceberg.silver.feature_platform_account_demographics
   business_timezone: Asia/Tashkent
   lookback_days: 28
+  min_valid_age: 13
+  max_valid_age: 100
 
 dag:
-  id: feature-platform.layers.gold.category_id.category_gender_features
+  id: feature-platform.layers.gold.category_id.category_demographic_features
   group_tag: recsys-features
   schedule: "0 7,19 * * *"
   start_date: "2026-09-05T07:00:00Z"
@@ -59,9 +61,11 @@ dq:
       expression: "category_id > 0"
     - name: non_negative
       columns:
+        - CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d
         - CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d
         - CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d
         - CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d
+        - CATEGORY_DEMOGRAPHICS__n_unique_clickers_with_age_28d
     - name: accepted_values
       column: CATEGORY_DEMOGRAPHICS__gender
       values: [M, F, U]
@@ -73,6 +77,22 @@ dq:
       column: CATEGORY_DEMOGRAPHICS__male_product_session_share_28d
       min: 0
       max: 1
+    - name: accepted_range
+      column: CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: CATEGORY_DEMOGRAPHICS__gender_balance_28d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: CATEGORY_DEMOGRAPHICS__known_age_clicker_share_28d
+      min: 0
+      max: 1
     - name: expression_is_true
       expression: "CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d = CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d + CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d"
     - name: expression_is_true
@@ -80,7 +100,15 @@ dq:
     - name: expression_is_true
       expression: "CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d <= CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d"
     - name: expression_is_true
+      expression: "CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d <= CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d"
+    - name: expression_is_true
+      expression: "CATEGORY_DEMOGRAPHICS__n_unique_clickers_with_age_28d <= CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d"
+    - name: expression_is_true
       expression: "(CATEGORY_DEMOGRAPHICS__female_product_session_share_28d IS NULL AND CATEGORY_DEMOGRAPHICS__male_product_session_share_28d IS NULL) OR ABS(CATEGORY_DEMOGRAPHICS__female_product_session_share_28d + CATEGORY_DEMOGRAPHICS__male_product_session_share_28d - 1.0) < 0.000001"
+    - name: expression_is_true
+      expression: "(CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d IS NULL AND CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d IS NULL) OR ABS(CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d + CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d - 1.0) < 0.000001"
+    - name: expression_is_true
+      expression: "CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d IS NULL OR (CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d BETWEEN 13 AND 100 AND CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d <= CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d AND CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d <= CATEGORY_DEMOGRAPHICS__clicker_age_p90_28d AND CATEGORY_DEMOGRAPHICS__clicker_age_p90_28d BETWEEN 13 AND 100)"
 
 feature_stats:
   trino_conn_id: trino_recsys

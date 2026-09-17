@@ -11,6 +11,8 @@ class SourceSettings:
     demographics_table: str
     business_timezone: str
     lookback_days: int
+    min_valid_age: int
+    max_valid_age: int
 
     @property
     def table_names(self) -> tuple[str, ...]:
@@ -88,10 +90,17 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
             f"source.business_timezone is unknown: {business_timezone!r}"
         ) from error
 
+    min_valid_age = _required_positive_int(source, "min_valid_age")
+    max_valid_age = _required_positive_int(source, "max_valid_age")
+    if min_valid_age >= max_valid_age:
+        raise ValueError("source.min_valid_age must be less than source.max_valid_age")
+
     return SourceSettings(
         product_metadata_table=_required_string(source, "product_metadata_table"),
         action_counts_table=_required_string(source, "action_counts_table"),
         demographics_table=_required_string(source, "demographics_table"),
         business_timezone=business_timezone,
         lookback_days=_required_positive_int(source, "lookback_days"),
+        min_valid_age=min_valid_age,
+        max_valid_age=max_valid_age,
     )

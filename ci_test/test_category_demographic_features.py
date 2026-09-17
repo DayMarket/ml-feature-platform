@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ENTITY = ROOT / "layers/gold/category_id/category_gender_features/v1"
+ENTITY = ROOT / "layers/gold/category_id/category_demographic_features/v1"
 
 
 def _load_module(name: str, path: Path):
@@ -17,23 +17,23 @@ def _load_module(name: str, path: Path):
     return module
 
 
-query = _load_module("category_gender_features_query", ENTITY / "job/query.py")
+query = _load_module("category_demographic_features_query", ENTITY / "job/query.py")
 runtime_config = _load_module(
-    "category_gender_features_runtime_config",
+    "category_demographic_features_runtime_config",
     ENTITY / "job/runtime_config.py",
 )
 partition = _load_module(
-    "category_gender_features_partition",
+    "category_demographic_features_partition",
     ENTITY / "job/partition.py",
 )
 
 
-class CategoryGenderFeaturesTest(unittest.TestCase):
+class CategoryDemographicFeaturesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.settings = runtime_config.load_source_settings(ENTITY / "config.yaml")
         cls.calculated_at = datetime(2026, 9, 10, 7, tzinfo=timezone.utc)
-        cls.sql = query.build_category_gender_features_query(
+        cls.sql = query.build_category_demographic_features_query(
             cls.settings,
             cls.calculated_at,
         )
@@ -44,9 +44,18 @@ class CategoryGenderFeaturesTest(unittest.TestCase):
             (
                 "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d",
                 "CATEGORY_DEMOGRAPHICS__male_product_session_share_28d",
+                "CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d",
+                "CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d",
+                "CATEGORY_DEMOGRAPHICS__gender_balance_28d",
+                "CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d",
                 "CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d",
                 "CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d",
                 "CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d",
+                "CATEGORY_DEMOGRAPHICS__n_unique_clickers_with_age_28d",
+                "CATEGORY_DEMOGRAPHICS__known_age_clicker_share_28d",
+                "CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d",
+                "CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d",
+                "CATEGORY_DEMOGRAPHICS__clicker_age_p90_28d",
                 "CATEGORY_DEMOGRAPHICS__gender",
             ),
         )
@@ -83,6 +92,9 @@ class CategoryGenderFeaturesTest(unittest.TestCase):
         self.assertIn('schedule: "0 7,19 * * *"', config_text)
         self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
         self.assertIn("lookback_days: 28", config_text)
+        self.assertIn("min_valid_age: 13", config_text)
+        self.assertIn("max_valid_age: 100", config_text)
+        self.assertIn("name: feature_platform_category_demographic_features", config_text)
 
     def test_query_has_static_cte_topology(self):
         query_text = (ENTITY / "job/query.py").read_text(encoding="utf-8")
@@ -92,7 +104,9 @@ class CategoryGenderFeaturesTest(unittest.TestCase):
             "demographics",
             "deduplicated_product_views",
             "enriched_product_views",
-            "category_statistics",
+            "product_session_statistics",
+            "unique_category_clickers",
+            "unique_clicker_statistics",
         ):
             self.assertIn(f"{cte} AS (", self.sql)
 
@@ -164,9 +178,27 @@ class CategoryGenderFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn("account_gender IN ('MALE', 'FEMALE')", self.sql)
-        self.assertIn("COUNT(DISTINCT CASE WHEN account_gender = 'FEMALE'", self.sql)
-        self.assertIn("COUNT(DISTINCT CASE WHEN account_gender = 'MALE'", self.sql)
+        self.assertIn("COUNT(CASE WHEN account_gender = 'FEMALE'", self.sql)
+        self.assertIn("COUNT(CASE WHEN account_gender = 'MALE'", self.sql)
         self.assertIn("NULLIF(", self.sql)
+
+    def test_age_statistics_use_one_row_per_account_and_category(self):
+        self.assertIn(
+            "GROUP BY\n        category_id,\n        account_id",
+            self.sql,
+        )
+        self.assertIn("CAST(age AS INT) AS age", self.sql)
+        self.assertIn("age BETWEEN 13\n                        AND 100", self.sql)
+        for percentile in ("0.1D", "0.5D", "0.9D"):
+            self.assertIn(percentile, self.sql)
+        self.assertEqual(self.sql.count("PERCENTILE("), 3)
+        self.assertNotIn("PERCENTILE_APPROX", self.sql)
+
+    def test_demographic_coverage_and_balance_are_null_safe(self):
+        self.assertIn("AS known_age_clicker_share_28d", self.sql)
+        self.assertIn("AS gender_balance_28d", self.sql)
+        self.assertIn("female_product_session_share_28d IS NULL", self.sql)
+        self.assertIn("1.0D - 2.0D * ABS(", self.sql)
 
     def test_candidate_enrichment_is_not_materialized(self):
         for column in (
@@ -194,7 +226,7 @@ class CategoryGenderFeaturesTest(unittest.TestCase):
             partition.parse_airflow_timestamp("bad-timestamp")
 
     def test_merge_replaces_only_current_snapshot(self):
-        merge_sql = query.build_category_gender_features_merge_query(
+        merge_sql = query.build_category_demographic_features_merge_query(
             "iceberg.gold.target",
             self.settings,
             self.calculated_at,
@@ -234,6 +266,16 @@ class CategoryGenderFeaturesTest(unittest.TestCase):
         self.assertIn(
             "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d + "
             "CATEGORY_DEMOGRAPHICS__male_product_session_share_28d - 1.0",
+            config_text,
+        )
+        self.assertIn(
+            "CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d + "
+            "CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d - 1.0",
+            config_text,
+        )
+        self.assertIn(
+            "CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d <= "
+            "CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d",
             config_text,
         )
 
