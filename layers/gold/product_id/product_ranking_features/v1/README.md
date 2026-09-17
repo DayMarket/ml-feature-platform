@@ -59,6 +59,14 @@ feedback_lte_3_to_orders_rate_smoothed =
 
 ## Return rates
 
+G8 использует product-level counts из G7. В их population входят позиции
+со статусами `COMPLETED`, `PAID`, `DELIVERED`, `IN_DELIVERY`, `RETURNED`;
+`NOT_CREATED`, `CREATED` и остальные незавершённые статусы исключаются.
+Количество возвратов определяется по `returned_quantity`, а не по одному
+статусу строки, поэтому частично возвращённая позиция одновременно вносит
+`item_quantity - returned_quantity` в `n_completed_Nd` и
+`returned_quantity` в `n_returned_Nd`.
+
 Для окон `7,14,28,60,90` дней category baseline считается как взвешенная
 доля единиц, а не среднее product rates:
 
