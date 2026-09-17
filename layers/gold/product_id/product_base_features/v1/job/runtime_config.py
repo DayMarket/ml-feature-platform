@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 class SourceSettings:
     product_metadata_table: str
     product_prices_table: str
+    sku_cm2_inputs_table: str
     action_counts_table: str
     feedback_counts_table: str
     order_items_table: str
@@ -21,6 +22,7 @@ class SourceSettings:
         return (
             self.product_metadata_table,
             self.product_prices_table,
+            self.sku_cm2_inputs_table,
             self.action_counts_table,
             self.feedback_counts_table,
             self.order_items_table,
@@ -93,6 +95,7 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
     return SourceSettings(
         product_metadata_table=_required_string(source, "product_metadata_table"),
         product_prices_table=_required_string(source, "product_prices_table"),
+        sku_cm2_inputs_table=_required_string(source, "sku_cm2_inputs_table"),
         action_counts_table=_required_string(source, "action_counts_table"),
         feedback_counts_table=_required_string(source, "feedback_counts_table"),
         order_items_table=_required_string(source, "order_items_table"),

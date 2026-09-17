@@ -23,6 +23,7 @@ source:
   engine: spark_iceberg
   product_metadata_table: iceberg.silver.feature_platform_product_metadata
   product_prices_table: iceberg.silver.feature_platform_product_prices_daily
+  sku_cm2_inputs_table: iceberg.silver.feature_platform_sku_cm2_inputs_daily
   action_counts_table: iceberg.silver.feature_platform_account_product_session_action_counts_12h
   feedback_counts_table: iceberg.silver.feature_platform_product_feedback_counts_12h
   order_items_table: iceberg.silver.order_items
@@ -66,6 +67,7 @@ dq:
         - PRODUCT_BASE__min_sell_price_eod
         - PRODUCT_BASE__avg_sell_price_eod
         - PRODUCT_BASE__max_sell_price_eod
+        - PRODUCT_BASE__weighted_price
         - PRODUCT_BASE__min_full_price_eod
         - PRODUCT_BASE__max_full_price_eod
         - PRODUCT_BASE__min_active_sku_sell_price_eod

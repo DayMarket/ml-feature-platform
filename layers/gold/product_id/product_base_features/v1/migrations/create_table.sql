@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     PRODUCT_BASE__min_sell_price_eod DOUBLE COMMENT 'Минимальная sell price всех SKU товара из последнего доступного S3 snapshot',
     PRODUCT_BASE__avg_sell_price_eod DOUBLE COMMENT 'Средняя sell price всех SKU товара из последнего доступного S3 snapshot',
     PRODUCT_BASE__max_sell_price_eod DOUBLE COMMENT 'Максимальная sell price всех SKU товара из последнего доступного S3 snapshot',
+    PRODUCT_BASE__weighted_price DOUBLE COMMENT 'CM2-совместимая SKU sell price: средняя при менее чем 5 заказах за 28 дней, иначе средняя, взвешенная числом строк заказов SKU',
     PRODUCT_BASE__min_full_price_eod DOUBLE COMMENT 'Минимальная full price всех SKU товара',
     PRODUCT_BASE__max_full_price_eod DOUBLE COMMENT 'Максимальная full price всех SKU товара',
     PRODUCT_BASE__min_active_sku_sell_price_eod DOUBLE COMMENT 'Минимальная sell price доступных SKU товара',

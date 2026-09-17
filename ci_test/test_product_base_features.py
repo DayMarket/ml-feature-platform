@@ -49,7 +49,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 104)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 105)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(column.startswith("PRODUCT_BASE__") for column in query.FEATURE_COLUMNS)
@@ -62,6 +62,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertIn("FROM product_population population", self.sql)
         for relation in (
             "product_prices prices",
+            "product_weighted_prices weighted",
             "product_action_features actions",
             "order_and_return_features order_returns",
             "rolling_feedback_features rolling",
@@ -104,7 +105,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertNotIn("smoothed", self.sql)
         self.assertNotIn("bad_feedback", self.sql)
 
-    def test_returns_use_returned_quantity_without_returned_status_filter(self):
+    def test_returns_use_quantities_and_exclude_non_terminal_statuses(self):
         self.assertIn(
             "item_quantity - returned_quantity ELSE 0 END",
             self.sql,
@@ -112,6 +113,29 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertIn("THEN returned_quantity ELSE 0 END", self.sql)
         self.assertIn("AS return_rate_90d", self.sql)
         self.assertNotIn("order_item_status = 'RETURNED'", self.sql)
+        self.assertIn(
+            "'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY', 'RETURNED'",
+            self.sql,
+        )
+
+    def test_weighted_price_reuses_cm2_threshold_and_sku_order_weights(self):
+        self.assertIn(
+            "FROM iceberg.silver.feature_platform_sku_cm2_inputs_daily",
+            self.sql,
+        )
+        self.assertIn("WHEN SUM(inputs.n_orders_28d) < 5", self.sql)
+        self.assertIn("THEN AVG(inputs.sell_price_uzs)", self.sql)
+        self.assertIn(
+            "inputs.sell_price_uzs * CAST(inputs.n_orders_28d AS DOUBLE)",
+            self.sql,
+        )
+        self.assertIn("inputs.sell_price_uzs IS NOT NULL", self.sql)
+        self.assertIn("inputs.commission_pct IS NOT NULL", self.sql)
+        self.assertIn("AS weighted_price", self.sql)
+
+    def test_discount_keeps_missing_sell_price_null(self):
+        self.assertIn("WHEN min_sell_price_eod IS NULL", self.sql)
+        self.assertIn("THEN NULL", self.sql)
 
     def test_g6_features_are_mapped_to_each_product(self):
         self.assertIn(
@@ -161,10 +185,11 @@ class ProductBaseFeaturesTest(unittest.TestCase):
     def test_dag_waits_for_all_repository_sources_and_disables_alerts(self):
         dag_text = (ENTITY / "dag.py").read_text(encoding="utf-8")
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
-        self.assertEqual(dag_text.count('external_task_id="dq"'), 6)
+        self.assertEqual(dag_text.count('external_task_id="dq"'), 7)
         self.assertIn("product_feedback_counts_12h", dag_text)
         self.assertIn("feedback_product_id", dag_text)
         self.assertIn("l6_category_gender_features", dag_text)
+        self.assertIn("sku_cm2_inputs_daily", dag_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
         self.assertIn('"recsys"', dag_text)

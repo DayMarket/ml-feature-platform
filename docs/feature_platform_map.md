@@ -13,7 +13,7 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **73**. Внутренних зависимостей: **50**. Внешних зависимостей: **29**. P1: **0**. P2: **9**. P3: **59**. P4: **5**.
+Всего DAG: **73**. Внутренних зависимостей: **51**. Внешних зависимостей: **29**. P1: **0**. P2: **9**. P3: **59**. P4: **5**.
 
 Таска `dq`: **68** из **73**. Таска `feature_stats`: **68** из **73** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
 
@@ -323,6 +323,7 @@ UTC 04:00 · P3 · airflow-python`"]
     d29 -->|"dq"| d13
     d30 -->|"dq"| d13
     d31 -->|"dq"| d13
+    d39 -->|"dq"| d13
     x0 -.->|"dbt DQ (legacy) Δ5h"| d14
     x1 -.->|"dbt DQ (legacy) Δ5h"| d14
     d16 -->|"sensor Δ1h"| d14

@@ -10,6 +10,7 @@ PRICE_COLUMNS = (
     "min_sell_price_eod",
     "avg_sell_price_eod",
     "max_sell_price_eod",
+    "weighted_price",
     "min_full_price_eod",
     "max_full_price_eod",
     "min_active_sku_sell_price_eod",
@@ -110,6 +111,7 @@ FEATURE_COLUMNS = tuple(
 class SourceSettings(Protocol):
     product_metadata_table: str
     product_prices_table: str
+    sku_cm2_inputs_table: str
     action_counts_table: str
     feedback_counts_table: str
     order_items_table: str
@@ -393,6 +395,31 @@ product_prices AS (
     INNER JOIN latest_price_dt latest
         ON prices.dt = latest.dt
 ),
+latest_cm2_inputs_dt AS (
+    SELECT MAX(dt) AS dt
+    FROM {settings.sku_cm2_inputs_table}
+    WHERE dt <= TIMESTAMP '{calculated_at_local}'
+),
+product_weighted_prices AS (
+    SELECT
+        CAST(inputs.product_id AS INT) AS product_id,
+        CASE
+            WHEN SUM(inputs.n_orders_28d) < 5
+                THEN AVG(inputs.sell_price_uzs)
+            ELSE SUM(
+                inputs.sell_price_uzs * CAST(inputs.n_orders_28d AS DOUBLE)
+            ) / NULLIF(
+                SUM(CAST(inputs.n_orders_28d AS DOUBLE)),
+                0.0D
+            )
+        END AS weighted_price
+    FROM {settings.sku_cm2_inputs_table} inputs
+    INNER JOIN latest_cm2_inputs_dt latest
+        ON inputs.dt = latest.dt
+    WHERE inputs.sell_price_uzs IS NOT NULL
+        AND inputs.commission_pct IS NOT NULL
+    GROUP BY inputs.product_id
+),
 product_action_features AS (
     SELECT
         CAST(product_id AS INT) AS product_id,
@@ -423,6 +450,9 @@ mapped_order_lines AS (
         ON CAST(order_item.sku_id AS INT) = sku.sku_id
     WHERE order_item.generated_at < TIMESTAMP '{calculated_at_utc}'
         AND order_item.b2b_order = FALSE
+        AND order_item.order_item_status IN (
+            'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY', 'RETURNED'
+        )
 ),
 product_order_and_return_counts AS (
     SELECT
@@ -570,6 +600,7 @@ feature_inputs AS (
         prices.min_sell_price_eod,
         prices.avg_sell_price_eod,
         prices.max_sell_price_eod,
+        weighted.weighted_price,
         prices.min_full_price_eod,
         prices.max_full_price_eod,
         prices.min_active_sku_sell_price_eod,
@@ -604,6 +635,8 @@ feature_inputs AS (
     FROM product_population population
     LEFT JOIN product_prices prices
         ON population.product_id = prices.product_id
+    LEFT JOIN product_weighted_prices weighted
+        ON population.product_id = weighted.product_id
     LEFT JOIN product_action_features actions
         ON population.product_id = actions.product_id
     LEFT JOIN order_and_return_features order_returns
@@ -622,6 +655,7 @@ unprefixed_features AS (
         min_sell_price_eod,
         avg_sell_price_eod,
         max_sell_price_eod,
+        weighted_price,
         min_full_price_eod,
         max_full_price_eod,
         min_active_sku_sell_price_eod,
@@ -630,6 +664,8 @@ unprefixed_features AS (
         min_sell_price_eod AS minimal_sell_price,
         min_full_price_eod AS minimal_full_price,
         CASE
+            WHEN min_sell_price_eod IS NULL
+                THEN NULL
             WHEN min_full_price_eod IS NULL OR min_full_price_eod <= 0.0D
                 THEN 0.0D
             ELSE LEAST(

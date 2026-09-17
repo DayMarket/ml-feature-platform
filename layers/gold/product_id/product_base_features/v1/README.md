@@ -26,6 +26,8 @@ rates и category attributes остаются `NULL`.
   `created_at`;
 - S2c `iceberg.silver.feature_platform_account_product_session_action_counts_12h`;
 - S3 `iceberg.silver.feature_platform_product_prices_daily`;
+- S6 `iceberg.silver.feature_platform_sku_cm2_inputs_daily` — SKU EOD sell price
+  и количество строк заказов SKU за 28 дней для `weighted_price`;
 - S4 `iceberg.silver.feature_platform_product_feedback_counts_12h`;
 - `iceberg.silver.order_items` и `iceberg.silver.sku`;
 - `iceberg.gold.feature_platform_product_feedback_base_stats`;
@@ -41,13 +43,24 @@ G6 ограничиваются текущим `calculated_at`. All-time feedbac
 sell prices доступных SKU. `minimal_sell_price` и `minimal_full_price` —
 compatibility-копии соответствующих min-колонок.
 
+`weighted_price` повторяет price-ветку CM2 на SKU-grain:
+
+```text
+weighted_price = avg(sell_price_uzs), если sum(n_orders_28d) < 5
+weighted_price = sum(sell_price_uzs * n_orders_28d) / sum(n_orders_28d), иначе
+```
+
+Как и в актуальном CM2, в расчёт входят только SKU с непустыми
+`sell_price_uzs` и `commission_pct`. Если таких SKU нет, `weighted_price`
+остаётся `NULL`.
+
 ```text
 product_discount = clip(100 * (1 - min_sell_price_eod / min_full_price_eod), 0, 100)
 ```
 
-При отсутствующей или неположительной `min_full_price_eod` discount равен
-нулю. Если sell price отсутствует при положительной full price, discount
-остаётся `NULL`.
+Если `min_sell_price_eod` отсутствует, discount остаётся `NULL`. При
+непустой sell price и отсутствующей или неположительной `min_full_price_eod`
+discount равен нулю.
 
 `age_in_days` — число локальных календарных дней между `S1.created_at` и
 `calculated_at` в `Asia/Tashkent`; отсутствующая или будущая дата даёт `NULL`.
@@ -104,8 +117,9 @@ Population-dependent `feedback_lte_3_to_orders_rate_smoothed` в G7 не
 
 ## Returns
 
-Для окон `7,14,28,60,90` дней B2B исключаются, но successful status set не
-применяется:
+Для окон `7,14,28,60,90` дней B2B исключаются. В population входят позиции
+со статусами `COMPLETED`, `PAID`, `DELIVERED`, `IN_DELIVERY`, `RETURNED`;
+`NOT_CREATED`, `CREATED` и прочие незавершённые статусы не учитываются:
 
 ```text
 n_completed_Nd = sum(item_quantity - coalesce(returned_quantity, 0))
@@ -126,7 +140,7 @@ count. При отсутствии строки G6 все category gender-при
 ## Orchestration, DQ и feature stats
 
 DAG работает в `07:00` и `19:00 UTC` (`12:00` и `00:00 Asia/Tashkent`), ждёт
-DQ S1/S2c/S3/S4, all-time feedback Gold и G6. `start_date` —
+DQ S1/S2c/S3/S4/S6, all-time feedback Gold и G6. `start_date` —
 `2026-09-05T07:00:00Z`, первый согласованный Gold snapshot после накопления 28
 дней S2c/S4. DAG создаётся на паузе; Spark использует `resource_profile: small`.
 

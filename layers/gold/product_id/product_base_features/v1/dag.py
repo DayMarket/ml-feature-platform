@@ -31,6 +31,7 @@ DQ_PARTITION_TIMESTAMP = (
 )
 PRODUCT_METADATA_DAG_ID = "feature-platform.layers.silver.product_id.product_metadata"
 PRODUCT_PRICES_DAG_ID = "feature-platform.layers.silver.product_id.product_prices_daily"
+SKU_CM2_INPUTS_DAG_ID = "feature-platform.layers.silver.sku_id.sku_cm2_inputs_daily"
 ACTION_COUNTS_DAG_ID = (
     "feature-platform.layers.silver.account_id_product_id."
     "account_product_session_action_counts_12h"
@@ -127,6 +128,18 @@ def collect_gold_product_base_features():
         timeout=6 * 60 * 60,
         check_existence=True,
     )
+    wait_for_sku_cm2_inputs_dq = ExternalTaskSensor(
+        task_id="wait_for_silver_sku_cm2_inputs_dq",
+        external_dag_id=SKU_CM2_INPUTS_DAG_ID,
+        external_task_id="dq",
+        execution_date_fn=_daily_snapshot_logical_date,
+        allowed_states=["success"],
+        failed_states=["failed"],
+        mode="reschedule",
+        poke_interval=60,
+        timeout=6 * 60 * 60,
+        check_existence=True,
+    )
     wait_for_action_counts_dq = ExternalTaskSensor(
         task_id="wait_for_silver_account_product_action_counts_dq",
         external_dag_id=ACTION_COUNTS_DAG_ID,
@@ -196,6 +209,7 @@ def collect_gold_product_base_features():
         [
             wait_for_product_metadata_dq,
             wait_for_product_prices_dq,
+            wait_for_sku_cm2_inputs_dq,
             wait_for_action_counts_dq,
             wait_for_feedback_counts_dq,
             wait_for_product_feedback_base_stats_dq,
