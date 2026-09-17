@@ -42,8 +42,8 @@ FEEDBACK_COUNTS_DAG_ID = (
 PRODUCT_FEEDBACK_BASE_STATS_DAG_ID = (
     "feature-platform.layers.gold.product_id.feedback_product_id"
 )
-L6_CATEGORY_GENDER_DAG_ID = (
-    "feature-platform.layers.gold.l6_category_id.l6_category_gender_features"
+CATEGORY_GENDER_DAG_ID = (
+    "feature-platform.layers.gold.category_id.category_gender_features"
 )
 
 dag_settings = get_dag_settings()
@@ -174,9 +174,9 @@ def collect_gold_product_base_features():
         timeout=6 * 60 * 60,
         check_existence=True,
     )
-    wait_for_l6_category_gender_dq = ExternalTaskSensor(
-        task_id="wait_for_gold_l6_category_gender_dq",
-        external_dag_id=L6_CATEGORY_GENDER_DAG_ID,
+    wait_for_category_gender_dq = ExternalTaskSensor(
+        task_id="wait_for_gold_category_gender_dq",
+        external_dag_id=CATEGORY_GENDER_DAG_ID,
         external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
@@ -213,7 +213,7 @@ def collect_gold_product_base_features():
             wait_for_action_counts_dq,
             wait_for_feedback_counts_dq,
             wait_for_product_feedback_base_stats_dq,
-            wait_for_l6_category_gender_dq,
+            wait_for_category_gender_dq,
         ]
         >> materialize_task
         >> [dq_task, stats_task]

@@ -22,7 +22,7 @@ rates и category attributes остаются `NULL`.
 
 ## Источники
 
-- S1 `iceberg.silver.feature_platform_product_metadata` — population, L6 и
+- S1 `iceberg.silver.feature_platform_product_metadata` — population, листовая категория и
   `created_at`;
 - S2c `iceberg.silver.feature_platform_account_product_session_action_counts_12h`;
 - S3 `iceberg.silver.feature_platform_product_prices_daily`;
@@ -31,7 +31,7 @@ rates и category attributes остаются `NULL`.
 - S4 `iceberg.silver.feature_platform_product_feedback_counts_12h`;
 - `iceberg.silver.order_items` и `iceberg.silver.sku`;
 - `iceberg.gold.feature_platform_product_feedback_base_stats`;
-- G6 `iceberg.gold.feature_platform_l6_category_gender_features`.
+- G6 `iceberg.gold.feature_platform_category_gender_features`.
 
 S1 и S3 читаются по последнему snapshot, который не новее расчёта. S2c/S4 и
 G6 ограничиваются текущим `calculated_at`. All-time feedback берётся из
@@ -90,11 +90,11 @@ Product-level impressions намеренно отсутствуют.
 Category denominator считается как сумма product-level order counts:
 
 ```text
-l6_category_orders_Nd = sum(product_orders_Nd) over l6_category_id
-product_orders_share_in_l6_category_Nd = product_orders_Nd / l6_category_orders_Nd
+category_orders_Nd = sum(product_orders_Nd) over category_id
+product_orders_share_in_category_Nd = product_orders_Nd / category_orders_Nd
 ```
 
-Заказ с двумя разными товарами одной L6 участвует в denominator дважды — по
+Заказ с двумя разными товарами одной листовой категории участвует в denominator дважды — по
 одному product occurrence на каждый товар.
 
 ## Feedback
@@ -132,7 +132,7 @@ return_rate_Nd = n_returned_Nd / (n_completed_Nd + n_returned_Nd)
 
 ## Category gender
 
-G6 присоединяется по `S1.l6_category_id` и переносит unique clickers, weighted
+G6 присоединяется по листовой `S1.category_id` и переносит unique clickers, weighted
 female/male product-session shares и category gender flags. Legacy-колонка
 `n_unique_cat_clicks_by_women_28d` равна weighted female share, а не unique
 count. При отсутствии строки G6 все category gender-признаки остаются `NULL`.

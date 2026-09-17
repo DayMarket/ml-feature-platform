@@ -29,7 +29,7 @@ source:
   order_items_table: iceberg.silver.order_items
   sku_table: iceberg.silver.sku
   product_feedback_base_stats_table: iceberg.gold.feature_platform_product_feedback_base_stats
-  l6_category_gender_features_table: iceberg.gold.feature_platform_l6_category_gender_features
+  category_gender_features_table: iceberg.gold.feature_platform_category_gender_features
   business_timezone: Asia/Tashkent
 
 dag:
@@ -88,9 +88,9 @@ dq:
         - PRODUCT_BASE__product_orders_7d
         - PRODUCT_BASE__product_orders_28d
         - PRODUCT_BASE__product_orders_90d
-        - PRODUCT_BASE__l6_category_orders_7d
-        - PRODUCT_BASE__l6_category_orders_28d
-        - PRODUCT_BASE__l6_category_orders_90d
+        - PRODUCT_BASE__category_orders_7d
+        - PRODUCT_BASE__category_orders_28d
+        - PRODUCT_BASE__category_orders_90d
         - PRODUCT_BASE__feedback_quantity_daily
         - PRODUCT_BASE__sum_rating_daily
         - PRODUCT_BASE__feedback_last_3d
@@ -170,7 +170,7 @@ dq:
     - name: expression_is_true
       expression: "(PRODUCT_BASE__feedback_avg_rating_3d IS NULL OR PRODUCT_BASE__feedback_avg_rating_3d BETWEEN 1 AND 5) AND (PRODUCT_BASE__feedback_avg_rating_7d IS NULL OR PRODUCT_BASE__feedback_avg_rating_7d BETWEEN 1 AND 5) AND (PRODUCT_BASE__feedback_avg_rating_14d IS NULL OR PRODUCT_BASE__feedback_avg_rating_14d BETWEEN 1 AND 5) AND (PRODUCT_BASE__feedback_avg_rating_21d IS NULL OR PRODUCT_BASE__feedback_avg_rating_21d BETWEEN 1 AND 5) AND (PRODUCT_BASE__feedback_avg_rating_28d IS NULL OR PRODUCT_BASE__feedback_avg_rating_28d BETWEEN 1 AND 5)"
     - name: expression_is_true
-      expression: "(PRODUCT_BASE__product_orders_share_in_l6_category_7d IS NULL OR PRODUCT_BASE__product_orders_share_in_l6_category_7d BETWEEN 0 AND 1) AND (PRODUCT_BASE__product_orders_share_in_l6_category_28d IS NULL OR PRODUCT_BASE__product_orders_share_in_l6_category_28d BETWEEN 0 AND 1) AND (PRODUCT_BASE__product_orders_share_in_l6_category_90d IS NULL OR PRODUCT_BASE__product_orders_share_in_l6_category_90d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT_BASE__product_orders_share_in_category_7d IS NULL OR PRODUCT_BASE__product_orders_share_in_category_7d BETWEEN 0 AND 1) AND (PRODUCT_BASE__product_orders_share_in_category_28d IS NULL OR PRODUCT_BASE__product_orders_share_in_category_28d BETWEEN 0 AND 1) AND (PRODUCT_BASE__product_orders_share_in_category_90d IS NULL OR PRODUCT_BASE__product_orders_share_in_category_90d BETWEEN 0 AND 1)"
     - name: expression_is_true
       expression: "(PRODUCT_BASE__return_rate_7d IS NULL OR PRODUCT_BASE__return_rate_7d BETWEEN 0 AND 1) AND (PRODUCT_BASE__return_rate_14d IS NULL OR PRODUCT_BASE__return_rate_14d BETWEEN 0 AND 1) AND (PRODUCT_BASE__return_rate_28d IS NULL OR PRODUCT_BASE__return_rate_28d BETWEEN 0 AND 1) AND (PRODUCT_BASE__return_rate_60d IS NULL OR PRODUCT_BASE__return_rate_60d BETWEEN 0 AND 1) AND (PRODUCT_BASE__return_rate_90d IS NULL OR PRODUCT_BASE__return_rate_90d BETWEEN 0 AND 1)"
     - name: expression_is_true

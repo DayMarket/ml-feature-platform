@@ -14,7 +14,7 @@ class SourceSettings:
     order_items_table: str
     sku_table: str
     product_feedback_base_stats_table: str
-    l6_category_gender_features_table: str
+    category_gender_features_table: str
     business_timezone: str
 
     @property
@@ -28,7 +28,7 @@ class SourceSettings:
             self.order_items_table,
             self.sku_table,
             self.product_feedback_base_stats_table,
-            self.l6_category_gender_features_table,
+            self.category_gender_features_table,
         )
 
 
@@ -104,9 +104,9 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
             source,
             "product_feedback_base_stats_table",
         ),
-        l6_category_gender_features_table=_required_string(
+        category_gender_features_table=_required_string(
             source,
-            "l6_category_gender_features_table",
+            "category_gender_features_table",
         ),
         business_timezone=business_timezone,
     )

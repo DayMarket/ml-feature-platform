@@ -67,7 +67,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
             "order_and_return_features order_returns",
             "rolling_feedback_features rolling",
             "all_time_feedback_features all_time",
-            "l6_category_gender_features gender",
+            "category_gender_features gender",
         ):
             self.assertIn(f"LEFT JOIN {relation}", self.sql)
 
@@ -87,10 +87,10 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.b2b_order = FALSE", self.sql)
         self.assertIn("COUNT(DISTINCT CASE WHEN order_item_status IN", self.sql)
         self.assertIn(
-            "SUM(product_orders_28d) OVER (PARTITION BY l6_category_id)",
+            "SUM(product_orders_28d) OVER (PARTITION BY category_id)",
             self.sql,
         )
-        self.assertIn("AS product_orders_share_in_l6_category_28d", self.sql)
+        self.assertIn("AS product_orders_share_in_category_28d", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
 
     def test_feedback_uses_rating_buckets_and_keeps_smoothing_for_g8(self):
@@ -139,7 +139,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
 
     def test_g6_features_are_mapped_to_each_product(self):
         self.assertIn(
-            "L6_CATEGORY_GENDER__category_female_product_session_share_28d",
+            "CATEGORY_GENDER__category_female_product_session_share_28d",
             self.sql,
         )
         self.assertIn("AS n_unique_cat_clicks_by_women_28d", self.sql)
@@ -188,7 +188,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertEqual(dag_text.count('external_task_id="dq"'), 7)
         self.assertIn("product_feedback_counts_12h", dag_text)
         self.assertIn("feedback_product_id", dag_text)
-        self.assertIn("l6_category_gender_features", dag_text)
+        self.assertIn("category_gender_features", dag_text)
         self.assertIn("sku_cm2_inputs_daily", dag_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)

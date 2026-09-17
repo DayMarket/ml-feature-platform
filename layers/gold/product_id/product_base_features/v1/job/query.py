@@ -39,12 +39,12 @@ ORDER_COLUMNS = (
     "product_orders_7d",
     "product_orders_28d",
     "product_orders_90d",
-    "l6_category_orders_7d",
-    "l6_category_orders_28d",
-    "l6_category_orders_90d",
-    "product_orders_share_in_l6_category_7d",
-    "product_orders_share_in_l6_category_28d",
-    "product_orders_share_in_l6_category_90d",
+    "category_orders_7d",
+    "category_orders_28d",
+    "category_orders_90d",
+    "product_orders_share_in_category_7d",
+    "product_orders_share_in_category_28d",
+    "product_orders_share_in_category_90d",
 )
 ORDER_INPUT_COLUMNS = ORDER_COLUMNS[:-3]
 FEEDBACK_WINDOWS = (3, 7, 14, 21, 28)
@@ -117,7 +117,7 @@ class SourceSettings(Protocol):
     order_items_table: str
     sku_table: str
     product_feedback_base_stats_table: str
-    l6_category_gender_features_table: str
+    category_gender_features_table: str
     business_timezone: str
 
 
@@ -369,7 +369,7 @@ WITH latest_metadata_dt AS (
 product_population AS (
     SELECT
         CAST(metadata.product_id AS INT) AS product_id,
-        CAST(metadata.l6_category_id AS INT) AS l6_category_id,
+        CAST(metadata.category_id AS INT) AS category_id,
         CAST(metadata.created_at AS TIMESTAMP) AS created_at
     FROM {settings.product_metadata_table} metadata
     INNER JOIN latest_metadata_dt latest
@@ -465,7 +465,7 @@ product_order_and_return_counts AS (
 orders_for_population AS (
     SELECT
         population.product_id,
-        population.l6_category_id,
+        population.category_id,
         COALESCE(orders.orders_quantity_daily, 0) AS orders_quantity_daily,
         COALESCE(orders.items_purchased_quantity_daily, 0)
             AS items_purchased_quantity_daily,
@@ -488,15 +488,15 @@ order_and_return_features AS (
         product_orders_7d,
         product_orders_28d,
         product_orders_90d,
-        CASE WHEN l6_category_id IS NOT NULL THEN CAST(
-            SUM(product_orders_7d) OVER (PARTITION BY l6_category_id) AS INT
-        ) END AS l6_category_orders_7d,
-        CASE WHEN l6_category_id IS NOT NULL THEN CAST(
-            SUM(product_orders_28d) OVER (PARTITION BY l6_category_id) AS INT
-        ) END AS l6_category_orders_28d,
-        CASE WHEN l6_category_id IS NOT NULL THEN CAST(
-            SUM(product_orders_90d) OVER (PARTITION BY l6_category_id) AS INT
-        ) END AS l6_category_orders_90d,
+        CASE WHEN category_id IS NOT NULL THEN CAST(
+            SUM(product_orders_7d) OVER (PARTITION BY category_id) AS INT
+        ) END AS category_orders_7d,
+        CASE WHEN category_id IS NOT NULL THEN CAST(
+            SUM(product_orders_28d) OVER (PARTITION BY category_id) AS INT
+        ) END AS category_orders_28d,
+        CASE WHEN category_id IS NOT NULL THEN CAST(
+            SUM(product_orders_90d) OVER (PARTITION BY category_id) AS INT
+        ) END AS category_orders_90d,
         {return_feature_select}
     FROM orders_for_population
 ),
@@ -576,21 +576,21 @@ all_time_feedback_features AS (
             AS log_feedback_quantity
     FROM all_time_feedback_counts
 ),
-l6_category_gender_features AS (
+category_gender_features AS (
     SELECT
-        CAST(l6_category_id AS INT) AS l6_category_id,
-        L6_CATEGORY_GENDER__n_unique_known_gender_clickers_28d
+        CAST(category_id AS INT) AS category_id,
+        CATEGORY_GENDER__n_unique_known_gender_clickers_28d
             AS n_unique_known_gender_clickers_category_28d,
-        L6_CATEGORY_GENDER__n_unique_female_clickers_28d
+        CATEGORY_GENDER__n_unique_female_clickers_28d
             AS n_unique_female_clickers_category_28d,
-        L6_CATEGORY_GENDER__n_unique_male_clickers_28d
+        CATEGORY_GENDER__n_unique_male_clickers_28d
             AS n_unique_male_clickers_category_28d,
-        L6_CATEGORY_GENDER__category_female_product_session_share_28d
+        CATEGORY_GENDER__category_female_product_session_share_28d
             AS category_female_product_session_share_28d,
-        L6_CATEGORY_GENDER__category_male_product_session_share_28d
+        CATEGORY_GENDER__category_male_product_session_share_28d
             AS category_male_product_session_share_28d,
-        L6_CATEGORY_GENDER__category_gender AS category_gender
-    FROM {settings.l6_category_gender_features_table}
+        CATEGORY_GENDER__category_gender AS category_gender
+    FROM {settings.category_gender_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
 feature_inputs AS (
@@ -645,8 +645,8 @@ feature_inputs AS (
         ON population.product_id = rolling.product_id
     LEFT JOIN all_time_feedback_features all_time
         ON population.product_id = all_time.product_id
-    LEFT JOIN l6_category_gender_features gender
-        ON population.l6_category_id = gender.l6_category_id
+    LEFT JOIN category_gender_features gender
+        ON population.category_id = gender.category_id
 ),
 unprefixed_features AS (
     SELECT
@@ -702,18 +702,18 @@ unprefixed_features AS (
         product_orders_7d,
         product_orders_28d,
         product_orders_90d,
-        l6_category_orders_7d,
-        l6_category_orders_28d,
-        l6_category_orders_90d,
+        category_orders_7d,
+        category_orders_28d,
+        category_orders_90d,
         CAST(product_orders_7d AS DOUBLE)
-            / NULLIF(CAST(l6_category_orders_7d AS DOUBLE), 0.0D)
-            AS product_orders_share_in_l6_category_7d,
+            / NULLIF(CAST(category_orders_7d AS DOUBLE), 0.0D)
+            AS product_orders_share_in_category_7d,
         CAST(product_orders_28d AS DOUBLE)
-            / NULLIF(CAST(l6_category_orders_28d AS DOUBLE), 0.0D)
-            AS product_orders_share_in_l6_category_28d,
+            / NULLIF(CAST(category_orders_28d AS DOUBLE), 0.0D)
+            AS product_orders_share_in_category_28d,
         CAST(product_orders_90d AS DOUBLE)
-            / NULLIF(CAST(l6_category_orders_90d AS DOUBLE), 0.0D)
-            AS product_orders_share_in_l6_category_90d,
+            / NULLIF(CAST(category_orders_90d AS DOUBLE), 0.0D)
+            AS product_orders_share_in_category_90d,
         COALESCE(feedback_quantity_daily, 0) AS feedback_quantity_daily,
         COALESCE(sum_rating_daily, 0) AS sum_rating_daily,
         {rolling_feedback_output_select},
