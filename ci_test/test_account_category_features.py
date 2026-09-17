@@ -199,7 +199,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                         )
                         self.assertIn(
                             f"account.{signal}_{window}d AS "
-                            f"total_account_conv_imp2{signal}_raw_{window}d",
+                            f"overall_conv_imp2{signal}_raw_{window}d",
                             sql,
                         )
                         self.assertIn(
@@ -207,7 +207,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                             sql,
                         )
                         self.assertIn(
-                            f"AS conv_imp2{signal}_div_total_account_conv_{window}d",
+                            f"AS conv_imp2{signal}_div_overall_conv_{window}d",
                             sql,
                         )
             self.assertIn("account_order_features AS", sql)
@@ -334,7 +334,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     config_text,
                 )
                 self.assertIn(
-                    f"- ACCOUNT_L{level}__total_account_conv_imp2click_raw_3d",
+                    f"- ACCOUNT_L{level}__overall_conv_imp2click_raw_3d",
                     config_text,
                 )
                 self.assertIn(
@@ -342,7 +342,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     config_text,
                 )
                 self.assertIn(
-                    f"- ACCOUNT_L{level}__conv_imp2order_div_total_account_conv_28d",
+                    f"- ACCOUNT_L{level}__conv_imp2order_div_overall_conv_28d",
                     config_text,
                 )
 
