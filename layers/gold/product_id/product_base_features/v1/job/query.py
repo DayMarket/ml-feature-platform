@@ -95,7 +95,6 @@ GENDER_COLUMNS = (
     "female_unique_clicker_share_category_28d",
     "male_unique_clicker_share_category_28d",
     "gender_balance_category_28d",
-    "n_unique_cat_clicks_by_women_28d",
     "candidate_female_click_share_28d",
     "candidate_male_click_share_28d",
     "is_female_category",
@@ -778,8 +777,6 @@ unprefixed_features AS (
         female_unique_clicker_share_category_28d,
         male_unique_clicker_share_category_28d,
         gender_balance_category_28d,
-        category_female_product_session_share_28d
-            AS n_unique_cat_clicks_by_women_28d,
         category_female_product_session_share_28d
             AS candidate_female_click_share_28d,
         category_male_product_session_share_28d

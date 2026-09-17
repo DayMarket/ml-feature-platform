@@ -140,10 +140,10 @@ and `RETURNED` contributes to `n_returned`. `item_quantity` and
 
 G6 присоединяется по листовой `S1.category_id` и переносит unique clickers,
 weighted female/male product-session shares, unique-clicker gender shares,
-gender balance и возрастные p10/p50/p90. Legacy-колонка
-`n_unique_cat_clicks_by_women_28d` равна weighted female share, а не unique
-count. При отсутствии строки G6 все category demographic-признаки остаются
-`NULL`.
+gender balance и возрастные p10/p50/p90. В Gold сохраняются канонические
+`candidate_female_click_share_28d` и `candidate_male_click_share_28d`;
+старый дублирующий alias `n_unique_cat_clicks_by_women_28d` не публикуется.
+При отсутствии строки G6 все category demographic-признаки остаются `NULL`.
 
 ## Orchestration, DQ и feature stats
 

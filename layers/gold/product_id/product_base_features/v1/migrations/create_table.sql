@@ -99,7 +99,6 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     PRODUCT__female_unique_clicker_share_category_28d DOUBLE COMMENT 'Доля female-пользователей среди уникальных пользователей листовой категории с известным gender за 28 дней из G6',
     PRODUCT__male_unique_clicker_share_category_28d DOUBLE COMMENT 'Доля male-пользователей среди уникальных пользователей листовой категории с известным gender за 28 дней из G6',
     PRODUCT__gender_balance_category_28d DOUBLE COMMENT 'Gender balance product-session аудитории листовой категории за 28 дней из G6',
-    PRODUCT__n_unique_cat_clicks_by_women_28d DOUBLE COMMENT 'Legacy-имя weighted female product-session share листовой категории за 28 дней',
     PRODUCT__candidate_female_click_share_28d DOUBLE COMMENT 'Weighted female product-session share листовой категории за 28 дней',
     PRODUCT__candidate_male_click_share_28d DOUBLE COMMENT 'Weighted male product-session share листовой категории за 28 дней',
     PRODUCT__is_female_category INT COMMENT '1 для category_gender F, 0 для M/U, NULL при неизвестном gender',

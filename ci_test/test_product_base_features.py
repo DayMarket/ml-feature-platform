@@ -49,7 +49,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 103)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 102)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(column.startswith("PRODUCT__") for column in query.FEATURE_COLUMNS)
@@ -157,7 +157,6 @@ class ProductBaseFeaturesTest(unittest.TestCase):
             "AS female_unique_clicker_share_category_28d",
             self.sql,
         )
-        self.assertIn("AS n_unique_cat_clicks_by_women_28d", self.sql)
         self.assertIn("AS candidate_female_click_share_28d", self.sql)
         self.assertIn("CAST(category_gender = 'F' AS INT)", self.sql)
 

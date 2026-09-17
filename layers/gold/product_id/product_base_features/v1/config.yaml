@@ -167,7 +167,7 @@ dq:
     - name: expression_is_true
       expression: "(PRODUCT__return_rate_neg_3d IS NULL OR PRODUCT__return_rate_neg_3d BETWEEN -1 AND 0) AND (PRODUCT__return_rate_neg_28d IS NULL OR PRODUCT__return_rate_neg_28d BETWEEN -1 AND 0)"
     - name: expression_is_true
-      expression: "(PRODUCT__n_unique_cat_clicks_by_women_28d IS NULL OR PRODUCT__n_unique_cat_clicks_by_women_28d BETWEEN 0 AND 1) AND (PRODUCT__candidate_female_click_share_28d IS NULL OR PRODUCT__candidate_female_click_share_28d BETWEEN 0 AND 1) AND (PRODUCT__candidate_male_click_share_28d IS NULL OR PRODUCT__candidate_male_click_share_28d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT__candidate_female_click_share_28d IS NULL OR PRODUCT__candidate_female_click_share_28d BETWEEN 0 AND 1) AND (PRODUCT__candidate_male_click_share_28d IS NULL OR PRODUCT__candidate_male_click_share_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
       expression: "(PRODUCT__female_unique_clicker_share_category_28d IS NULL OR PRODUCT__female_unique_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__male_unique_clicker_share_category_28d IS NULL OR PRODUCT__male_unique_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__known_age_clicker_share_category_28d IS NULL OR PRODUCT__known_age_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__gender_balance_category_28d IS NULL OR PRODUCT__gender_balance_category_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
