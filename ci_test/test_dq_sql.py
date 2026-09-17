@@ -128,6 +128,14 @@ def test_non_negative() -> None:
     assert '"orders_cnt" < 0' in rendered.sql
 
 
+def test_finite_ignores_nulls_but_rejects_nan_and_infinity() -> None:
+    rendered = render(spec("finite", columns=["conversion_rate"], ignore_nulls=True), CTX)
+    assert '"conversion_rate" IS NOT NULL' in rendered.sql
+    assert 'NOT is_finite("conversion_rate")' in rendered.sql
+    assert rendered.sample_sql is not None
+    assert rendered.test_key == "finite[conversion_rate]"
+
+
 def test_null_share_below() -> None:
     rendered = render(spec("null_share_below", column="price_avg", max_share=0.05), CTX)
     assert "> 0.05" in rendered.sql
@@ -191,6 +199,26 @@ def test_row_count_matches_reference_skips_without_reference_rows() -> None:
     )
     assert rendered.needs_baseline is True
     assert "WHEN reference_row_count = 0 THEN -1" in rendered.sql
+
+
+def test_group_max_equals_ignores_groups_without_values() -> None:
+    rendered = render(
+        spec(
+            "group_max_equals",
+            column="relative_recency",
+            group_by=["account_id"],
+            value=0,
+            tolerance=0,
+            ignore_all_null_groups=True,
+        ),
+        CTX,
+    )
+    assert 'GROUP BY "account_id"' in rendered.sql
+    assert 'count("relative_recency") > 0' in rendered.sql
+    assert 'max("relative_recency") IS NULL' in rendered.sql
+    assert 'abs(CAST(max("relative_recency") AS DOUBLE) - CAST(0 AS DOUBLE)) > 0.0' in rendered.sql
+    assert rendered.sample_sql is not None
+    assert rendered.test_key == "group_max_equals[relative_recency|account_id]"
 
 
 def test_every_configured_test_has_a_renderer() -> None:
@@ -270,6 +298,7 @@ def main() -> int:
     test_not_accepted_values()
     test_accepted_range_inclusive_flags()
     test_non_negative()
+    test_finite_ignores_nulls_but_rejects_nan_and_infinity()
     test_null_share_below()
     test_string_not_blank()
     test_unique_combination()
@@ -278,6 +307,7 @@ def main() -> int:
     test_expression_is_true_treats_null_as_failure()
     test_relationships_uses_not_exists()
     test_row_count_matches_reference_skips_without_reference_rows()
+    test_group_max_equals_ignores_groups_without_values()
     test_every_configured_test_has_a_renderer()
     test_snapshot_scope_predicate_pins_the_utc_instant()
     test_snapshot_row_count_growth_compares_previous_snapshot()
