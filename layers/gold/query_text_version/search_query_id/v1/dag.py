@@ -1,4 +1,4 @@
-"""Append canonical query_id rows for search queries first seen on the interval day."""
+"""Append canonical query_id rows for search queries that have no query_id yet."""
 
 import importlib.util
 import os
@@ -149,6 +149,7 @@ def search_query_id_dag() -> None:
         silver_ref = runtime.table_ref(silver_config)
 
         source_config = output_config["source"]
+        ranking_events_config = source_config["ranking_events"]
         elastic = runtime.elasticsearch_config(source_config["elasticsearch"])
 
         catalog = runtime.get_iceberg_catalog(output_ref)
@@ -163,8 +164,15 @@ def search_query_id_dag() -> None:
             query.build_new_queries_query(
                 partition_date=partition_date,
                 install_query_table=runtime.trino_table_name(silver_ref),
+                ranking_events_table=runtime.trino_table_name(
+                    runtime.table_ref_from_identifier(
+                        str(ranking_events_config["table"])
+                    )
+                ),
                 query_id_table=runtime.trino_table_name(output_ref),
                 space=str(source_config["space"]),
+                model_name_like=str(ranking_events_config["model_name_like"]),
+                lookback_days=int(ranking_events_config["lookback_days"]),
                 version=version,
             ),
         )

@@ -128,14 +128,22 @@ class SearchQueryIdQueryTest(unittest.TestCase):
     def setUpClass(cls):
         cls.query = load_job_module("query.py", "test_search_query_id_query")
 
-    def test_query_excludes_already_normalized_queries(self):
-        sql = self.query.build_new_queries_query(
+    def build(self, **overrides):
+        kwargs = dict(
             partition_date=date(2026, 8, 6),
             install_query_table='"dwh-iceberg".silver.feature_platform_search_sku_group_id_install_query',
+            ranking_events_table='"dwh-iceberg".silver.ranking_analytics_events',
             query_id_table='"dwh-iceberg".gold.feature_platform_search_query_id',
             space="SEARCH_RESULTS",
+            model_name_like="search_unified_model_v%",
+            lookback_days=7,
             version="v1",
         )
+        kwargs.update(overrides)
+        return self.query.build_new_queries_query(**kwargs)
+
+    def test_query_excludes_already_normalized_queries(self):
+        sql = self.build()
 
         self.assertIn("SELECT DISTINCT install_query.uniqs AS original_query", sql)
         self.assertIn("LEFT JOIN \"dwh-iceberg\".gold.feature_platform_search_query_id", sql)
@@ -144,16 +152,74 @@ class SearchQueryIdQueryTest(unittest.TestCase):
         self.assertIn("install_query.date = DATE '2026-08-06'", sql)
         self.assertIn("install_query.space = 'SEARCH_RESULTS'", sql)
 
-    def test_string_literals_are_escaped(self):
-        sql = self.query.build_new_queries_query(
-            partition_date=date(2026, 8, 6),
-            install_query_table="silver.source",
-            query_id_table="gold.target",
-            space="SEARCH_RESULTS",
-            version="v'1",
+    def test_both_sources_are_unioned(self):
+        sql = self.build()
+
+        self.assertIn("SELECT DISTINCT install_query.uniqs AS original_query", sql)
+        self.assertIn(
+            "SELECT DISTINCT ranking_events.search_query AS original_query", sql
+        )
+        self.assertIn('"dwh-iceberg".silver.ranking_analytics_events', sql)
+        # UNION, не UNION ALL: одна и та же формулировка приходит из обоих
+        # источников, дубли не должны доезжать до Elasticsearch.
+        self.assertIn("\nUNION\n", sql)
+        self.assertNotIn("UNION ALL", sql)
+
+    def test_anti_join_is_applied_once_over_the_union(self):
+        sql = self.build()
+
+        self.assertEqual(sql.count("LEFT JOIN"), 1)
+        self.assertEqual(sql.count("known_query.query_text IS NULL"), 1)
+        # Анти-джойн стоит после объединения, а не внутри одной из веток.
+        self.assertLess(sql.index("UNION"), sql.index("LEFT JOIN"))
+        self.assertLess(sql.index("source_queries"), sql.index("LEFT JOIN"))
+
+    def test_ranking_events_window_spans_lookback_days(self):
+        sql = self.build(partition_date=date(2026, 8, 6), lookback_days=7)
+
+        # Окно включает день интервала: [partition_date - 6 дней, partition_date + 1 день).
+        self.assertIn(
+            "ranking_events.fired_at >= TIMESTAMP '2026-07-31 00:00:00'", sql
+        )
+        self.assertIn(
+            "ranking_events.fired_at < TIMESTAMP '2026-08-07 00:00:00'", sql
         )
 
+    def test_lookback_of_one_day_covers_only_the_interval_day(self):
+        sql = self.build(partition_date=date(2026, 8, 6), lookback_days=1)
+
+        self.assertIn(
+            "ranking_events.fired_at >= TIMESTAMP '2026-08-06 00:00:00'", sql
+        )
+        self.assertIn(
+            "ranking_events.fired_at < TIMESTAMP '2026-08-07 00:00:00'", sql
+        )
+
+    def test_lookback_below_one_day_is_rejected(self):
+        with self.assertRaises(ValueError) as raised:
+            self.build(lookback_days=0)
+
+        self.assertIn("lookback_days", str(raised.exception))
+
+    def test_model_filter_comes_from_config(self):
+        sql = self.build(model_name_like="search_unified_model_v%")
+
+        self.assertIn(
+            "ranking_events.model_name LIKE 'search_unified_model_v%'", sql
+        )
+
+    def test_blank_search_queries_are_skipped(self):
+        sql = self.build()
+
+        self.assertIn("ranking_events.search_query IS NOT NULL", sql)
+        self.assertIn("ranking_events.search_query <> ''", sql)
+
+    def test_string_literals_are_escaped(self):
+        sql = self.build(version="v'1", space="SEARCH'RESULTS", model_name_like="a'b%")
+
         self.assertIn("known_query.version = 'v''1'", sql)
+        self.assertIn("install_query.space = 'SEARCH''RESULTS'", sql)
+        self.assertIn("ranking_events.model_name LIKE 'a''b%'", sql)
 
 
 class SearchQueryIdPartitionDateTest(unittest.TestCase):
@@ -226,6 +292,23 @@ class SearchQueryIdIdentifierTest(unittest.TestCase):
             self.runtime.trino_table_name(ref),
             '"dwh-iceberg".gold.feature_platform_search_query_id',
         )
+
+    def test_table_ref_from_identifier_maps_catalog_for_trino(self):
+        ref = self.runtime.table_ref_from_identifier(
+            "iceberg.silver.ranking_analytics_events"
+        )
+
+        self.assertEqual(ref.identifier, ("silver", "ranking_analytics_events"))
+        self.assertEqual(
+            self.runtime.trino_table_name(ref),
+            '"dwh-iceberg".silver.ranking_analytics_events',
+        )
+
+    def test_table_ref_from_identifier_rejects_malformed_values(self):
+        for identifier in ("", "silver.table", "a.b.c.d", "iceberg..table"):
+            with self.subTest(identifier=identifier):
+                with self.assertRaises(ValueError):
+                    self.runtime.table_ref_from_identifier(identifier)
 
     def test_malformed_identifiers_are_rejected(self):
         for table in (
