@@ -298,6 +298,7 @@ g7_snapshot AS (
         base.PRODUCT__discount AS discount,
         base.PRODUCT__feedback_quantity AS feedback_quantity,
         base.PRODUCT__feedback_lte_3 AS feedback_lte_3,
+        base.PRODUCT__feedback_lte_3_28d AS feedback_lte_3_28d,
         {g7_return_inputs}
     FROM {settings.product_base_features_table} base
     LEFT JOIN product_category_mapping mapping
@@ -306,7 +307,7 @@ g7_snapshot AS (
 ),
 global_feedback_prior AS (
     SELECT
-        CAST(SUM(feedback_lte_3) AS DOUBLE)
+        CAST(SUM(feedback_lte_3_28d) AS DOUBLE)
             / NULLIF(CAST(SUM(orders_28d) AS DOUBLE), 0.0D)
             AS global_feedback_lte_3_to_orders_rate
     FROM g7_snapshot
@@ -330,7 +331,8 @@ smoothed_inputs AS (
         category.discount,
         category.feedback_quantity,
         category.feedback_lte_3,
-        (CAST(category.feedback_lte_3 AS DOUBLE)
+        category.feedback_lte_3_28d,
+        (CAST(category.feedback_lte_3_28d AS DOUBLE)
             + {SMOOTHING_ALPHA}D * prior.global_feedback_lte_3_to_orders_rate)
             / NULLIF(CAST(category.orders_28d AS DOUBLE)
                 + {SMOOTHING_ALPHA}D, 0.0D)

@@ -126,9 +126,10 @@ class ProductRankingFeaturesTest(unittest.TestCase):
 
     def test_feedback_rate_uses_global_prior_and_alpha_ten(self):
         self.assertIn("global_feedback_prior AS (", self.sql)
-        self.assertIn("SUM(feedback_lte_3)", self.sql)
+        self.assertIn("SUM(feedback_lte_3_28d)", self.sql)
         self.assertIn("SUM(orders_28d)", self.sql)
         self.assertIn("10.0D * prior.global_feedback_lte_3_to_orders_rate", self.sql)
+        self.assertIn("CAST(category.feedback_lte_3_28d AS DOUBLE)", self.sql)
         self.assertIn("AS feedback_lte_3_to_orders_rate_smoothed", self.sql)
         self.assertIn(
             "AS feedback_lte_3_to_orders_rate_percentile_in_cat",

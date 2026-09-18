@@ -46,10 +46,10 @@ ranks вычисляются на полной G7 population.
 `alpha = 10`. Global prior считается на полном G7 snapshot:
 
 ```text
-global_rate = sum(feedback_lte_3) / sum(orders_28d)
+global_rate = sum(feedback_lte_3_28d) / sum(orders_28d)
 
 feedback_lte_3_to_orders_rate_smoothed =
-    (feedback_lte_3 + alpha * global_rate)
+    (feedback_lte_3_28d + alpha * global_rate)
     / (orders_28d + alpha)
 ```
 
