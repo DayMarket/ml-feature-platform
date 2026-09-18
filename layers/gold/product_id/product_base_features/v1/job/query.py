@@ -48,7 +48,7 @@ ORDER_COLUMNS = (
 )
 ORDER_INPUT_COLUMNS = ORDER_COLUMNS[:-3]
 DERIVED_COLUMNS = ("favorites_to_orders_rate",)
-FEEDBACK_WINDOWS = (3, 7, 14, 21, 28)
+FEEDBACK_WINDOWS = (3, 28)
 ROLLING_FEEDBACK_COLUMNS = (
     "feedback_quantity_1d",
     "sum_rating_1d",
