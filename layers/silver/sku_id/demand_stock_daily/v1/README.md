@@ -1,4 +1,4 @@
-# Silver дневного наличия SKU
+# Silver дневного наличия и цен SKU
 
 Выход: `iceberg.silver.feature_platform_demand_stock_daily`.
 Путь: `layers/silver/sku_id/demand_stock_daily/v1`.
@@ -17,8 +17,23 @@ ClickHouse `marts.daily_sku_quantity_eod FINAL` через `clickhouse_dwh_team_
 - отсутствие строки в записанной и прошедшей DQ партиции — ноль;
 - отсутствующая или не прошедшая DQ партиция — unknown, а не OOS.
 
+Для каждой строки пишутся цены на конец дня из того же источника (UZS, `BIGINT`):
+
+| Колонка | Источник | Смысл |
+|---|---|---|
+| `purchase_price_eod` | `purchase_price_eod` | цена покупки для покупателя (тот же смысл, что `order_item_purchase_price` в GMV) |
+| `sell_price_eod` | `sell_price_eod` | цена продавца из карточки |
+| `full_price_eod` | `full_price_eod` | цена до скидки (зачёркнутая) |
+
+Источник — снимок `public.sku` с протяжкой (последнее значение за `dt`, иначе вчерашнее),
+внутридневные изменения не видны. `0` в источнике (история до миграции 183, где цены
+ещё не заполнялись) пишется как `NULL`. Цены есть только у SKU с положительным остатком:
+для дней без остатка строки нет. Колонки добавлены миграцией
+`migrations/20260917_add_eod_prices.sql`; партиции, записанные раньше, содержат `NULL`
+до перезаливки истории ручным запуском.
+
 `source_manifest_id` — `run_id` Airflow-запуска, `source_contract_version` — версия
-фильтра из конфига, `ingested_at` — время захвата UTC. Это не модельные признаки.
+контракта из конфига (`source_eod_positive_availability_prices_v2`), `ingested_at` — время захвата UTC. Это не модельные признаки.
 
 ## Оркестрация
 

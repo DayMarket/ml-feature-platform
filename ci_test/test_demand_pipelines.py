@@ -200,6 +200,15 @@ def test_observed_query_is_full_outer_join_of_one_day():
     assert "FULL OUTER JOIN" in sql and sql.count("DATE '2026-09-01'") == 3
     assert "s.sku_id IS NOT NULL AS sales_component_present" in sql
     assert "s.ingested_at AS sales_ingested_at" in sql
+    assert "SELECT sku_id, purchase_price_eod, sell_price_eod, full_price_eod FROM K" in sql
+    assert "k.purchase_price_eod,\n    k.sell_price_eod,\n    k.full_price_eod\n" in sql
+
+
+def test_stock_query_keeps_positive_eod_and_nulls_zero_prices():
+    sql = job("stock", "query").source_query(config("stock"), date(2026, 9, 1))
+    assert "(quantity_active_eod > 0 OR quantity_fbs_eod > 0)" in sql
+    for name in ("purchase_price_eod", "sell_price_eod", "full_price_eod"):
+        assert f"toInt64(nullIf({name}, 0)) AS {name}" in sql
 
 
 # ------------------------------------------------------------ MDM и категории
@@ -349,12 +358,16 @@ def test_clickhouse_daily_entities_overwrite_each_day(kind, catalog):
 
 def test_empty_source_day_does_not_erase_partition(catalog):
     runtime = job("stock", "runtime")
-    full = ClickHouse(lambda sql: (["date", "sku_id"], [(date(2026, 9, 1), 1)]))
+    names = ["date", "sku_id", "purchase_price_eod", "sell_price_eod", "full_price_eod"]
+    full = ClickHouse(lambda sql: (names, [(date(2026, 9, 1), 1, 900, 1000, None)]))
     runtime.load_range(config("stock"), "2026-09-01", "2026-09-01", run_id="r1", client=full, catalog=catalog)
-    empty = ClickHouse(lambda sql: (["date", "sku_id"], []))
+    empty = ClickHouse(lambda sql: (names, []))
     with pytest.raises(ValueError, match="0 строк"):
         runtime.load_range(config("stock"), "2026-09-01", "2026-09-01", run_id="r2", client=empty, catalog=catalog)
-    assert rows_of(catalog, "stock").num_rows == 1
+    data = rows_of(catalog, "stock")
+    assert data.num_rows == 1
+    assert data.select(names[2:]).to_pylist() == [{"purchase_price_eod": 900, "sell_price_eod": 1000,
+                                                    "full_price_eod": None}]
 
 
 def test_sales_rollup_and_observed_join_write_through_trino(catalog):
