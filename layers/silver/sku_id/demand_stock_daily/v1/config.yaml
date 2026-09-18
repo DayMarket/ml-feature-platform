@@ -11,7 +11,7 @@ source:
   conn_id: clickhouse_dwh_team_logistics
   database: marts
   table: daily_sku_quantity_eod
-  contract_version: source_eod_positive_availability_v1
+  contract_version: source_eod_positive_availability_prices_v2
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2

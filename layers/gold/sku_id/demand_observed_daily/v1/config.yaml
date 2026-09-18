@@ -11,7 +11,7 @@ inputs:
   stock_config: layers/silver/sku_id/demand_stock_daily/v1/config.yaml
 source:
   conn_id: trino_search
-  contract_version: observed_daily_sparse_stock_v2
+  contract_version: observed_daily_sparse_stock_prices_v3
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
   cpu: "2"

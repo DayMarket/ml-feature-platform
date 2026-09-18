@@ -15,13 +15,18 @@ DAG: `feature-platform.layers.gold.sku_id.demand_observed_daily`.
 построения `catalog × days`. Поля продаж сохраняются как есть, технические поля sales
 получают префикс `sales_`. `sales_component_present` — есть sales-строка,
 `is_in_stock_eod` — есть stock-строка. Для stock-only SKU поля продаж NULL.
+Цены на конец дня `purchase_price_eod`, `sell_price_eod`, `full_price_eod` (UZS)
+переносятся из stock-строки как есть; у sales-only SKU они NULL. Смысл полей — в README
+`layers/silver/sku_id/demand_stock_daily/v1`. Колонки добавлены миграцией
+`migrations/20260917_add_eod_prices.sql`; до перезаливки истории старые партиции
+содержат NULL.
 
 Оба входа читаются на snapshot, зафиксированном в начале запуска
 (`FOR VERSION AS OF`); его id и UUID таблиц пишутся в `*_snapshot_id`/`*_table_uuid`.
 Если за день нет строк sales или stock, день не пишется: пустая stock-партиция означала
 бы «всё не в наличии».
 
-Панель не содержит уровней запасов, цен, seller/статусов, календаря и окон.
+Панель не содержит уровней запасов, seller/статусов, календаря и окон.
 
 ## Оркестрация
 
