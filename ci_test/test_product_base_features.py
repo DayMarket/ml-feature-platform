@@ -102,6 +102,8 @@ class ProductBaseFeaturesTest(unittest.TestCase):
             )
         self.assertIn("AS feedback_gte_4_ratio_28d", self.sql)
         self.assertIn("AS feedback_lte_3_to_orders_rate_raw", self.sql)
+        self.assertIn("AS feedback_lte_3_to_orders_rate_28d", self.sql)
+        self.assertIn("CAST(feedback_lte_3_28d AS DOUBLE)", self.sql)
         self.assertNotIn("smoothed", self.sql)
         self.assertNotIn("bad_feedback", self.sql)
 

@@ -109,8 +109,8 @@ Gold: `rating`, `feedback_quantity`, `feedback_gte_4`,
 `feedback_lte_3`, соответствующие ratios и `log_feedback_quantity`.
 
 Raw feedback-to-orders rates делят all-time feedback counts на
-`orders_total`. `feedback_lte_3_to_orders_rate` использует в
-знаменателе `orders_28d`. Нулевой denominator даёт `NULL`; rates не
+`orders_total`. `feedback_lte_3_to_orders_rate_28d` использует
+`feedback_lte_3_28d / orders_28d`. Нулевой denominator даёт `NULL`; rates не
 ограничиваются единицей.
 
 Population-dependent `feedback_lte_3_to_orders_rate_smoothed` в G7 не

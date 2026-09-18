@@ -120,7 +120,7 @@ dq:
         - PRODUCT__feedback_to_orders_rate_raw
         - PRODUCT__feedback_gte_4_to_orders_rate_raw
         - PRODUCT__feedback_lte_3_to_orders_rate_raw
-        - PRODUCT__feedback_lte_3_to_orders_rate
+        - PRODUCT__feedback_lte_3_to_orders_rate_28d
         - PRODUCT__n_completed_3d
         - PRODUCT__n_completed_28d
         - PRODUCT__n_returned_3d

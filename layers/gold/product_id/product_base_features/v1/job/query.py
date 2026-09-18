@@ -77,7 +77,7 @@ ALL_TIME_FEEDBACK_COLUMNS = (
     "feedback_to_orders_rate_raw",
     "feedback_gte_4_to_orders_rate_raw",
     "feedback_lte_3_to_orders_rate_raw",
-    "feedback_lte_3_to_orders_rate",
+    "feedback_lte_3_to_orders_rate_28d",
 )
 RETURN_WINDOWS = (3, 28)
 RETURN_COLUMNS = tuple(
@@ -764,9 +764,9 @@ unprefixed_features AS (
         CAST(feedback_lte_3 AS DOUBLE)
             / NULLIF(CAST(orders_total AS DOUBLE), 0.0D)
             AS feedback_lte_3_to_orders_rate_raw,
-        CAST(feedback_lte_3 AS DOUBLE)
+        CAST(feedback_lte_3_28d AS DOUBLE)
             / NULLIF(CAST(orders_28d AS DOUBLE), 0.0D)
-            AS feedback_lte_3_to_orders_rate,
+            AS feedback_lte_3_to_orders_rate_28d,
         {return_output_select},
         n_unique_clickers_category_28d,
         n_unique_clickers_with_age_category_28d,
