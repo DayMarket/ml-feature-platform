@@ -30,14 +30,24 @@ alerts:
   team: operations-analytics
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_operations
-# Согласованный growth: 20% AND более 100 строк date×sku_id×seller_key, без warmup.
-# Максимальное дневное изменение сентября 2022 — 85 строк; signed суммы не обнуляем.
+# row_count_growth: severity warn, не error. Предыдущий комментарий описывал AND-условие
+# ">100 строк", которого в dq/tests.py никогда не было — 20%-порог применялся сам по
+# себе и ловил ту же сезонность, что и demand_seller_sales_observed_daily (11.11, граница
+# декабрь/январь), а не поломки. signed суммы по-прежнему не обнуляем.
+# active_from 2022-11-01 пропускает сентябрь-октябрь 2022 — стартовый рамп-ап
+# (22-4325 строк/день, шум маленьких чисел).
+# row_count_min: 1000 — с ноября 2022 минимум по месяцам не опускался ниже 3147 строк/день.
 dq:
   trino_conn_id: trino_search
   warmup_days: 0
+  active_from: "2022-11-01"
   partition_column: date
   partition_date_template: '{{ ti.xcom_pull(task_ids="write") | join(",") }}'
   tests:
+    - name: row_count_growth
+      severity: warn
+    - name: row_count_min
+      min_rows: 1000
     - name: accepted_range
       column: seller_id
       min: 1

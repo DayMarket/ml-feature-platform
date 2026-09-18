@@ -30,14 +30,26 @@ alerts:
   team: operations-analytics
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_operations
-# Базовый growth 20% без warmup; SKU-допуск 50 строк не переносится на seller-grain.
-# Полный DQ новой гранулярности требуется перед backfill.
+# row_count_growth: severity warn, не error. Реальная история (Trino, 1477 дней) даёт
+# 55 пробоев 20%-порога (3.7% дней), все объясняются сезонностью спроса: промо 11.11
+# (+40..+400% в год), граница декабрь/январь (-20..-45%, потом отскок), а не поломкой
+# пайплайна. Жёсткий error на каждый такой день — ложный будильник, не сигнал.
+# active_from 2022-11-01 пропускает сентябрь-октябрь 2022 — стартовый рамп-ап новой
+# сущности (12-2716 строк/день), где % рост — шум маленьких чисел, а не аномалия.
+# row_count_min: 500 — с ноября 2022 таблица не опускалась ниже 1979 строк/день ни разу
+# (минимум и максимум по месяцам проверены в Trino); 500 ловит «пайплайн ничего не
+# записал», не мешая органическому росту.
 dq:
   trino_conn_id: trino_search
   warmup_days: 0
+  active_from: "2022-11-01"
   partition_column: date
   partition_date_template: '{{ ti.xcom_pull(task_ids="write") | join(",") }}'
   tests:
+    - name: row_count_growth
+      severity: warn
+    - name: row_count_min
+      min_rows: 500
     - name: accepted_range
       column: seller_id
       min: 1

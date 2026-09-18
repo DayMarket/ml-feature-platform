@@ -30,12 +30,23 @@ alerts:
   team: operations-analytics
   severity: P3
   oncall_webhook_conn_id: oncall_webhook_operations
+# row_count_growth: severity warn, не error. Та же сезонность спроса, что и на
+# demand_seller_sales_observed_daily (эта таблица — sku_id-роллап тех же заказов):
+# промо 11.11, граница декабрь/январь — не поломка пайплайна.
+# active_from 2022-11-01 пропускает сентябрь-октябрь 2022 — стартовый рамп-ап
+# (12-2716 строк/день, шум маленьких чисел).
+# row_count_min: 500 — с ноября 2022 минимум по месяцам не опускался ниже 1979 строк/день.
 dq:
   trino_conn_id: trino_search
   warmup_days: 0
+  active_from: "2022-11-01"
   partition_column: date
   partition_date_template: '{{ ti.xcom_pull(task_ids="write") | join(",") }}'
   tests:
+    - name: row_count_growth
+      severity: warn
+    - name: row_count_min
+      min_rows: 500
     - name: not_null
       columns: [sales_units, sales_order_items, sales_orders, source_updated_at, fx_rate_source, fx_captured_at, source_manifest_id, source_contract_version, ingested_at]
     - name: accepted_values
