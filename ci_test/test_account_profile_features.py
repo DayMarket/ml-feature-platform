@@ -48,15 +48,15 @@ class AccountProfileFeaturesTest(unittest.TestCase):
 
         for window in ORDER_WINDOWS:
             self.assertIn(
-                f"ACCOUNT_PROFILE__median_order_total_{window}d",
+                f"ACCOUNT__median_order_total_{window}d",
                 query.FEATURE_COLUMNS,
             )
             self.assertIn(
-                f"ACCOUNT_PROFILE__last_purchased_neg_p90_popularity_rank_{window}d",
+                f"ACCOUNT__last_purchased_neg_p90_popularity_rank_{window}d",
                 query.FEATURE_COLUMNS,
             )
             self.assertIn(
-                f"ACCOUNT_PROFILE__last_purchased_neg_p10_popularity_rank_{window}d",
+                f"ACCOUNT__last_purchased_neg_p10_popularity_rank_{window}d",
                 query.FEATURE_COLUMNS,
             )
             self.assertIn(f"INTERVAL {window} DAYS", self.sql)
@@ -78,14 +78,14 @@ class AccountProfileFeaturesTest(unittest.TestCase):
 
     def test_namespace_schedule_and_resources(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
-        self.assertIn("feature_namespace: ACCOUNT_PROFILE", config_text)
+        self.assertIn("feature_namespace: ACCOUNT", config_text)
         self.assertTrue(
             all(
-                column.startswith("ACCOUNT_PROFILE__")
+                column.startswith("ACCOUNT__")
                 for column in query.FEATURE_COLUMNS
             )
         )
-        self.assertIn("AS ACCOUNT_PROFILE__gender", self.sql)
+        self.assertIn("AS ACCOUNT__gender", self.sql)
         self.assertIn("primary_key: calculated_at,account_id", config_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('schedule: "0 7,19 * * *"', config_text)
@@ -287,10 +287,10 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             "last_purchased_null_rating_share_90d",
             "last_purchased_unisex_cat_share_28d",
         ):
-            self.assertIn(f"column: ACCOUNT_PROFILE__{column}", config_text)
+            self.assertIn(f"column: ACCOUNT__{column}", config_text)
         self.assertIn(
-            "ACCOUNT_PROFILE__min_order_total_28d <= "
-            "ACCOUNT_PROFILE__median_order_total_28d",
+            "ACCOUNT__min_order_total_28d <= "
+            "ACCOUNT__median_order_total_28d",
             config_text,
         )
 

@@ -13,7 +13,7 @@ table:
   schema: gold
   name: feature_platform_account_profile_features
   primary_key: calculated_at,account_id
-  feature_namespace: ACCOUNT_PROFILE
+  feature_namespace: ACCOUNT
   meta:
     team: team::recsys
     create_dbt_pr: false
@@ -63,211 +63,211 @@ dq:
     - name: expression_is_true
       expression: "account_id > 0"
     - name: accepted_values
-      column: ACCOUNT_PROFILE__gender
+      column: ACCOUNT__gender
       values: [MALE, FEMALE]
     - name: accepted_values
-      column: ACCOUNT_PROFILE__gender_is_female
+      column: ACCOUNT__gender_is_female
       values: [0, 1]
     - name: accepted_values
-      column: ACCOUNT_PROFILE__age_bucket
+      column: ACCOUNT__age_bucket
       values: [LT_18, "18_24", "25_34", "35_44", "45_54", 55_PLUS, UNKNOWN]
     - name: accepted_values
-      column: ACCOUNT_PROFILE__platform
+      column: ACCOUNT__platform
       values: [IOS, ANDROID, WEB]
     - name: non_negative
       columns:
-        - ACCOUNT_PROFILE__age
-        - ACCOUNT_PROFILE__median_order_total_7d
-        - ACCOUNT_PROFILE__median_order_total_28d
-        - ACCOUNT_PROFILE__median_order_total_90d
-        - ACCOUNT_PROFILE__max_order_total_7d
-        - ACCOUNT_PROFILE__max_order_total_28d
-        - ACCOUNT_PROFILE__max_order_total_90d
-        - ACCOUNT_PROFILE__min_order_total_7d
-        - ACCOUNT_PROFILE__min_order_total_28d
-        - ACCOUNT_PROFILE__min_order_total_90d
-        - ACCOUNT_PROFILE__sum_order_total_7d
-        - ACCOUNT_PROFILE__sum_order_total_28d
-        - ACCOUNT_PROFILE__sum_order_total_90d
-        - ACCOUNT_PROFILE__avg_item_price_from_orders_7d
-        - ACCOUNT_PROFILE__avg_item_price_from_orders_28d
-        - ACCOUNT_PROFILE__avg_item_price_from_orders_90d
-        - ACCOUNT_PROFILE__n_last_purchased_products_7d
-        - ACCOUNT_PROFILE__n_last_purchased_products_28d
-        - ACCOUNT_PROFILE__n_last_purchased_products_90d
-        - ACCOUNT_PROFILE__last_clicked_avg_price
-        - ACCOUNT_PROFILE__last_clicked_median_price
-        - ACCOUNT_PROFILE__last_clicked_90th_pct_price
+        - ACCOUNT__age
+        - ACCOUNT__median_order_total_7d
+        - ACCOUNT__median_order_total_28d
+        - ACCOUNT__median_order_total_90d
+        - ACCOUNT__max_order_total_7d
+        - ACCOUNT__max_order_total_28d
+        - ACCOUNT__max_order_total_90d
+        - ACCOUNT__min_order_total_7d
+        - ACCOUNT__min_order_total_28d
+        - ACCOUNT__min_order_total_90d
+        - ACCOUNT__sum_order_total_7d
+        - ACCOUNT__sum_order_total_28d
+        - ACCOUNT__sum_order_total_90d
+        - ACCOUNT__avg_item_price_from_orders_7d
+        - ACCOUNT__avg_item_price_from_orders_28d
+        - ACCOUNT__avg_item_price_from_orders_90d
+        - ACCOUNT__n_last_purchased_products_7d
+        - ACCOUNT__n_last_purchased_products_28d
+        - ACCOUNT__n_last_purchased_products_90d
+        - ACCOUNT__last_clicked_avg_price
+        - ACCOUNT__last_clicked_median_price
+        - ACCOUNT__last_clicked_90th_pct_price
     - name: expression_is_true
-      expression: "ACCOUNT_PROFILE__min_order_total_7d <= ACCOUNT_PROFILE__median_order_total_7d AND ACCOUNT_PROFILE__median_order_total_7d <= ACCOUNT_PROFILE__max_order_total_7d"
+      expression: "ACCOUNT__min_order_total_7d <= ACCOUNT__median_order_total_7d AND ACCOUNT__median_order_total_7d <= ACCOUNT__max_order_total_7d"
     - name: expression_is_true
-      expression: "ACCOUNT_PROFILE__min_order_total_28d <= ACCOUNT_PROFILE__median_order_total_28d AND ACCOUNT_PROFILE__median_order_total_28d <= ACCOUNT_PROFILE__max_order_total_28d"
+      expression: "ACCOUNT__min_order_total_28d <= ACCOUNT__median_order_total_28d AND ACCOUNT__median_order_total_28d <= ACCOUNT__max_order_total_28d"
     - name: expression_is_true
-      expression: "ACCOUNT_PROFILE__min_order_total_90d <= ACCOUNT_PROFILE__median_order_total_90d AND ACCOUNT_PROFILE__median_order_total_90d <= ACCOUNT_PROFILE__max_order_total_90d"
+      expression: "ACCOUNT__min_order_total_90d <= ACCOUNT__median_order_total_90d AND ACCOUNT__median_order_total_90d <= ACCOUNT__max_order_total_90d"
     - name: expression_is_true
-      expression: "ACCOUNT_PROFILE__last_purchased_male_cat_share_7d IS NULL OR ABS(ACCOUNT_PROFILE__last_purchased_male_cat_share_7d + ACCOUNT_PROFILE__last_purchased_female_cat_share_7d + ACCOUNT_PROFILE__last_purchased_unisex_cat_share_7d - 1.0) < 0.000001"
+      expression: "ACCOUNT__last_purchased_male_cat_share_7d IS NULL OR ABS(ACCOUNT__last_purchased_male_cat_share_7d + ACCOUNT__last_purchased_female_cat_share_7d + ACCOUNT__last_purchased_unisex_cat_share_7d - 1.0) < 0.000001"
     - name: expression_is_true
-      expression: "ACCOUNT_PROFILE__last_purchased_male_cat_share_28d IS NULL OR ABS(ACCOUNT_PROFILE__last_purchased_male_cat_share_28d + ACCOUNT_PROFILE__last_purchased_female_cat_share_28d + ACCOUNT_PROFILE__last_purchased_unisex_cat_share_28d - 1.0) < 0.000001"
+      expression: "ACCOUNT__last_purchased_male_cat_share_28d IS NULL OR ABS(ACCOUNT__last_purchased_male_cat_share_28d + ACCOUNT__last_purchased_female_cat_share_28d + ACCOUNT__last_purchased_unisex_cat_share_28d - 1.0) < 0.000001"
     - name: expression_is_true
-      expression: "ACCOUNT_PROFILE__last_purchased_male_cat_share_90d IS NULL OR ABS(ACCOUNT_PROFILE__last_purchased_male_cat_share_90d + ACCOUNT_PROFILE__last_purchased_female_cat_share_90d + ACCOUNT_PROFILE__last_purchased_unisex_cat_share_90d - 1.0) < 0.000001"
+      expression: "ACCOUNT__last_purchased_male_cat_share_90d IS NULL OR ABS(ACCOUNT__last_purchased_male_cat_share_90d + ACCOUNT__last_purchased_female_cat_share_90d + ACCOUNT__last_purchased_unisex_cat_share_90d - 1.0) < 0.000001"
     - name: expression_is_true
-      expression: "ACCOUNT_PROFILE__last_clicked_male_cat_share IS NULL OR ACCOUNT_PROFILE__last_clicked_male_cat_share + ACCOUNT_PROFILE__last_clicked_female_cat_share <= 1.000001"
+      expression: "ACCOUNT__last_clicked_male_cat_share IS NULL OR ACCOUNT__last_clicked_male_cat_share + ACCOUNT__last_clicked_female_cat_share <= 1.000001"
     - name: expression_is_true
-      expression: "(ACCOUNT_PROFILE__last_clicked_female_cat_share_among_gendered IS NULL AND ACCOUNT_PROFILE__last_clicked_male_cat_share_among_gendered IS NULL) OR ABS(ACCOUNT_PROFILE__last_clicked_female_cat_share_among_gendered + ACCOUNT_PROFILE__last_clicked_male_cat_share_among_gendered - 1.0) < 0.000001"
+      expression: "(ACCOUNT__last_clicked_female_cat_share_among_gendered IS NULL AND ACCOUNT__last_clicked_male_cat_share_among_gendered IS NULL) OR ABS(ACCOUNT__last_clicked_female_cat_share_among_gendered + ACCOUNT__last_clicked_male_cat_share_among_gendered - 1.0) < 0.000001"
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_clicked_male_cat_share
+      column: ACCOUNT__last_clicked_male_cat_share
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_clicked_female_cat_share
+      column: ACCOUNT__last_clicked_female_cat_share
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_clicked_null_rating_share
+      column: ACCOUNT__last_clicked_null_rating_share
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_clicked_female_cat_share_among_gendered
+      column: ACCOUNT__last_clicked_female_cat_share_among_gendered
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_clicked_male_cat_share_among_gendered
+      column: ACCOUNT__last_clicked_male_cat_share_among_gendered
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_clicked_avg_price_pctl
+      column: ACCOUNT__last_clicked_avg_price_pctl
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_clicked_median_price_pctl
+      column: ACCOUNT__last_clicked_median_price_pctl
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_clicked_90th_pct_price_pctl
+      column: ACCOUNT__last_clicked_90th_pct_price_pctl
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_clicked_p10_rating
+      column: ACCOUNT__last_clicked_p10_rating
       min: 1
       max: 5
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_null_rating_share_7d
+      column: ACCOUNT__last_purchased_null_rating_share_7d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_null_rating_share_28d
+      column: ACCOUNT__last_purchased_null_rating_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_null_rating_share_90d
+      column: ACCOUNT__last_purchased_null_rating_share_90d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_male_cat_share_7d
+      column: ACCOUNT__last_purchased_male_cat_share_7d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_male_cat_share_28d
+      column: ACCOUNT__last_purchased_male_cat_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_male_cat_share_90d
+      column: ACCOUNT__last_purchased_male_cat_share_90d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_female_cat_share_7d
+      column: ACCOUNT__last_purchased_female_cat_share_7d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_female_cat_share_28d
+      column: ACCOUNT__last_purchased_female_cat_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_female_cat_share_90d
+      column: ACCOUNT__last_purchased_female_cat_share_90d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_unisex_cat_share_7d
+      column: ACCOUNT__last_purchased_unisex_cat_share_7d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_unisex_cat_share_28d
+      column: ACCOUNT__last_purchased_unisex_cat_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_unisex_cat_share_90d
+      column: ACCOUNT__last_purchased_unisex_cat_share_90d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_avg_discount_7d
+      column: ACCOUNT__last_purchased_avg_discount_7d
       min: 0
       max: 100
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_avg_discount_28d
+      column: ACCOUNT__last_purchased_avg_discount_28d
       min: 0
       max: 100
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_avg_discount_90d
+      column: ACCOUNT__last_purchased_avg_discount_90d
       min: 0
       max: 100
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_median_discount_7d
+      column: ACCOUNT__last_purchased_median_discount_7d
       min: 0
       max: 100
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_median_discount_28d
+      column: ACCOUNT__last_purchased_median_discount_28d
       min: 0
       max: 100
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_median_discount_90d
+      column: ACCOUNT__last_purchased_median_discount_90d
       min: 0
       max: 100
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_p10_discount_7d
+      column: ACCOUNT__last_purchased_p10_discount_7d
       min: 0
       max: 100
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_p10_discount_28d
+      column: ACCOUNT__last_purchased_p10_discount_28d
       min: 0
       max: 100
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_p10_discount_90d
+      column: ACCOUNT__last_purchased_p10_discount_90d
       min: 0
       max: 100
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_avg_rating_7d
+      column: ACCOUNT__last_purchased_avg_rating_7d
       min: 1
       max: 5
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_avg_rating_28d
+      column: ACCOUNT__last_purchased_avg_rating_28d
       min: 1
       max: 5
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_avg_rating_90d
+      column: ACCOUNT__last_purchased_avg_rating_90d
       min: 1
       max: 5
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_median_rating_7d
+      column: ACCOUNT__last_purchased_median_rating_7d
       min: 1
       max: 5
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_median_rating_28d
+      column: ACCOUNT__last_purchased_median_rating_28d
       min: 1
       max: 5
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_median_rating_90d
+      column: ACCOUNT__last_purchased_median_rating_90d
       min: 1
       max: 5
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_p10_rating_7d
+      column: ACCOUNT__last_purchased_p10_rating_7d
       min: 1
       max: 5
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_p10_rating_28d
+      column: ACCOUNT__last_purchased_p10_rating_28d
       min: 1
       max: 5
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_p10_rating_90d
+      column: ACCOUNT__last_purchased_p10_rating_90d
       min: 1
       max: 5
 

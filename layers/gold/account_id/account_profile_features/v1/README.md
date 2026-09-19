@@ -7,7 +7,7 @@ DAG id: `feature-platform.layers.gold.account_id.account_profile_features`.
 Grain и primary key: `calculated_at,account_id`.
 
 Namespace — `ACCOUNT_PROFILE`. Все физические feature-колонки уже содержат его,
-например `ACCOUNT_PROFILE__last_clicked_avg_price`. Ключи `calculated_at` и
+например `ACCOUNT__last_clicked_avg_price`. Ключи `calculated_at` и
 `account_id` остаются без namespace.
 
 ## Population
@@ -24,8 +24,8 @@ Snapshot содержит объединение account IDs из:
 
 ## Demographics
 
-S5 читается по началу локальной даты snapshot. Публикуются `ACCOUNT_PROFILE__gender`, бинарный
-`ACCOUNT_PROFILE__gender_is_female`, `ACCOUNT_PROFILE__age`, `ACCOUNT_PROFILE__age_bucket`, `ACCOUNT_PROFILE__city_name` и `ACCOUNT_PROFILE__platform`.
+S5 читается по началу локальной даты snapshot. Публикуются `ACCOUNT__gender`, бинарный
+`ACCOUNT__gender_is_female`, `ACCOUNT__age`, `ACCOUNT__age_bucket`, `ACCOUNT__city_name` и `ACCOUNT__platform`.
 
 Age buckets: `LT_18`, `18_24`, `25_34`, `35_44`, `45_54`, `55_PLUS`,
 `UNKNOWN`.
@@ -50,7 +50,7 @@ order_total = SUM(line_gmv) GROUP BY account_id, order_id
 Median, min, max и sum затем считаются по заказам. Средняя цена позиции равна
 общему GMV, делённому на общее `item_quantity`.
 
-Discount, rating, popularity и ACCOUNT_PROFILE__gender категории взвешиваются строками
+Discount, rating, popularity и ACCOUNT__gender категории взвешиваются строками
 `order_items`: строки не дедуплицируются до одного product, но `item_quantity`
 не создаёт дополнительный вес для этих семейств.
 
@@ -81,7 +81,7 @@ Product attributes присоединяются point-in-time на snapshot `T`:
    G8 order popularity rank.
 5. Строки без `min_sell_price_eod` удаляются.
 
-Price, ACCOUNT_PROFILE__gender shares, rating и popularity агрегируются по оставшимся
+Price, ACCOUNT__gender shares, rating и popularity агрегируются по оставшимся
 product-session наблюдениям. Male/female shares имеют denominator из всех
 оставшихся строк; `U` и `NULL` входят только в denominator.
 

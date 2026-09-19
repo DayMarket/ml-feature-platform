@@ -5,7 +5,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 ORDER_WINDOWS = (7, 28, 90)
-FEATURE_NAMESPACE = "ACCOUNT_PROFILE"
+FEATURE_NAMESPACE = "ACCOUNT"
 
 DEMOGRAPHIC_COLUMNS = (
     "gender",
