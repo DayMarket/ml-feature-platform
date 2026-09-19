@@ -105,11 +105,11 @@ dq:
     - name: expression_is_true
       expression: "ACCOUNT_PROFILE__min_order_total_90d <= ACCOUNT_PROFILE__median_order_total_90d AND ACCOUNT_PROFILE__median_order_total_90d <= ACCOUNT_PROFILE__max_order_total_90d"
     - name: expression_is_true
-      expression: "ACCOUNT_PROFILE__last_purchased_male_ratio_7d IS NULL OR ABS(ACCOUNT_PROFILE__last_purchased_male_ratio_7d + ACCOUNT_PROFILE__last_purchased_female_ratio_7d + ACCOUNT_PROFILE__last_purchased_unisex_ratio_7d - 1.0) < 0.000001"
+      expression: "ACCOUNT_PROFILE__last_purchased_male_cat_share_7d IS NULL OR ABS(ACCOUNT_PROFILE__last_purchased_male_cat_share_7d + ACCOUNT_PROFILE__last_purchased_female_cat_share_7d + ACCOUNT_PROFILE__last_purchased_unisex_cat_share_7d - 1.0) < 0.000001"
     - name: expression_is_true
-      expression: "ACCOUNT_PROFILE__last_purchased_male_ratio_28d IS NULL OR ABS(ACCOUNT_PROFILE__last_purchased_male_ratio_28d + ACCOUNT_PROFILE__last_purchased_female_ratio_28d + ACCOUNT_PROFILE__last_purchased_unisex_ratio_28d - 1.0) < 0.000001"
+      expression: "ACCOUNT_PROFILE__last_purchased_male_cat_share_28d IS NULL OR ABS(ACCOUNT_PROFILE__last_purchased_male_cat_share_28d + ACCOUNT_PROFILE__last_purchased_female_cat_share_28d + ACCOUNT_PROFILE__last_purchased_unisex_cat_share_28d - 1.0) < 0.000001"
     - name: expression_is_true
-      expression: "ACCOUNT_PROFILE__last_purchased_male_ratio_90d IS NULL OR ABS(ACCOUNT_PROFILE__last_purchased_male_ratio_90d + ACCOUNT_PROFILE__last_purchased_female_ratio_90d + ACCOUNT_PROFILE__last_purchased_unisex_ratio_90d - 1.0) < 0.000001"
+      expression: "ACCOUNT_PROFILE__last_purchased_male_cat_share_90d IS NULL OR ABS(ACCOUNT_PROFILE__last_purchased_male_cat_share_90d + ACCOUNT_PROFILE__last_purchased_female_cat_share_90d + ACCOUNT_PROFILE__last_purchased_unisex_cat_share_90d - 1.0) < 0.000001"
     - name: expression_is_true
       expression: "ACCOUNT_PROFILE__last_clicked_male_cat_share IS NULL OR ACCOUNT_PROFILE__last_clicked_male_cat_share + ACCOUNT_PROFILE__last_clicked_female_cat_share <= 1.000001"
     - name: expression_is_true
@@ -163,39 +163,39 @@ dq:
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_male_ratio_7d
+      column: ACCOUNT_PROFILE__last_purchased_male_cat_share_7d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_male_ratio_28d
+      column: ACCOUNT_PROFILE__last_purchased_male_cat_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_male_ratio_90d
+      column: ACCOUNT_PROFILE__last_purchased_male_cat_share_90d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_female_ratio_7d
+      column: ACCOUNT_PROFILE__last_purchased_female_cat_share_7d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_female_ratio_28d
+      column: ACCOUNT_PROFILE__last_purchased_female_cat_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_female_ratio_90d
+      column: ACCOUNT_PROFILE__last_purchased_female_cat_share_90d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_unisex_ratio_7d
+      column: ACCOUNT_PROFILE__last_purchased_unisex_cat_share_7d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_unisex_ratio_28d
+      column: ACCOUNT_PROFILE__last_purchased_unisex_cat_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT_PROFILE__last_purchased_unisex_ratio_90d
+      column: ACCOUNT_PROFILE__last_purchased_unisex_cat_share_90d
       min: 0
       max: 1
     - name: accepted_range

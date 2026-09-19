@@ -285,7 +285,7 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             "last_clicked_avg_price_pctl",
             "last_clicked_female_cat_share_among_gendered",
             "last_purchased_null_rating_share_90d",
-            "last_purchased_unisex_ratio_28d",
+            "last_purchased_unisex_cat_share_28d",
         ):
             self.assertIn(f"column: ACCOUNT_PROFILE__{column}", config_text)
         self.assertIn(

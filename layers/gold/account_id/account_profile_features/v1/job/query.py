@@ -38,9 +38,9 @@ ORDER_FEATURE_TEMPLATES = (
     "last_purchased_median_popularity_neg_rank_in_category_{window}d",
     "last_purchased_neg_p90_popularity_rank_in_category_{window}d",
     "last_purchased_neg_p10_popularity_rank_in_category_{window}d",
-    "last_purchased_male_ratio_{window}d",
-    "last_purchased_female_ratio_{window}d",
-    "last_purchased_unisex_ratio_{window}d",
+    "last_purchased_male_cat_share_{window}d",
+    "last_purchased_female_cat_share_{window}d",
+    "last_purchased_unisex_cat_share_{window}d",
 )
 ORDER_FEATURE_COLUMNS = tuple(
     template.format(window=window)
@@ -255,20 +255,20 @@ def _order_line_expressions(calculated_at_utc: str) -> str:
                     "CAST(SUM(CASE WHEN "
                     f"{condition} AND category_gender = 'M' THEN 1 ELSE 0 END) "
                     f"AS DOUBLE) / NULLIF(CAST({gender_denominator} AS DOUBLE), 0.0D) "
-                    f"AS last_purchased_male_ratio_{window}d"
+                    f"AS last_purchased_male_cat_share_{window}d"
                 ),
                 (
                     "CAST(SUM(CASE WHEN "
                     f"{condition} AND category_gender = 'F' THEN 1 ELSE 0 END) "
                     f"AS DOUBLE) / NULLIF(CAST({gender_denominator} AS DOUBLE), 0.0D) "
-                    f"AS last_purchased_female_ratio_{window}d"
+                    f"AS last_purchased_female_cat_share_{window}d"
                 ),
                 (
                     "CAST(SUM(CASE WHEN "
                     f"{condition} AND category_id IS NOT NULL "
                     "AND (category_gender IS NULL OR category_gender NOT IN ('M', 'F')) "
                     f"THEN 1 ELSE 0 END) AS DOUBLE) / NULLIF(CAST({gender_denominator} "
-                    f"AS DOUBLE), 0.0D) AS last_purchased_unisex_ratio_{window}d"
+                f"AS DOUBLE), 0.0D) AS last_purchased_unisex_cat_share_{window}d"
                 ),
             )
         )
