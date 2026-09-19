@@ -8,13 +8,6 @@ FEATURE_NAMESPACE = "CATEGORY"
 BASE_FEATURE_COLUMNS = (
     "female_click_share_28d",
     "male_click_share_28d",
-    "gender_balance_28d",
-    "n_unique_clickers_28d",
-    "n_unique_known_gender_clickers_28d",
-    "n_unique_female_clickers_28d",
-    "n_unique_male_clickers_28d",
-    "n_unique_clickers_with_age_28d",
-    "known_age_clicker_share_28d",
     "clicker_age_p10_28d",
     "clicker_age_p50_28d",
     "clicker_age_p90_28d",
@@ -184,38 +177,6 @@ unique_category_clickers AS (
 unique_clicker_statistics AS (
     SELECT
         category_id,
-        CAST(COUNT(*) AS INT) AS n_unique_clickers_28d,
-        CAST(
-            COUNT(CASE WHEN account_gender IN ('MALE', 'FEMALE') THEN 1 END)
-            AS INT
-        ) AS n_unique_known_gender_clickers_28d,
-        CAST(
-            COUNT(CASE WHEN account_gender = 'FEMALE' THEN 1 END)
-            AS INT
-        ) AS n_unique_female_clickers_28d,
-        CAST(
-            COUNT(CASE WHEN account_gender = 'MALE' THEN 1 END)
-            AS INT
-        ) AS n_unique_male_clickers_28d,
-        CAST(
-            COUNT(
-                CASE
-                    WHEN age BETWEEN {settings.min_valid_age}
-                        AND {settings.max_valid_age}
-                    THEN 1
-                END
-            ) AS INT
-        ) AS n_unique_clickers_with_age_28d,
-        CAST(
-            COUNT(
-                CASE
-                    WHEN age BETWEEN {settings.min_valid_age}
-                        AND {settings.max_valid_age}
-                    THEN 1
-                END
-            ) AS DOUBLE
-        ) / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)
-            AS known_age_clicker_share_28d,
         PERCENTILE(
             CASE
                 WHEN age BETWEEN {settings.min_valid_age}
@@ -249,19 +210,6 @@ unprefixed_features AS (
         product_sessions.category_id,
         product_sessions.female_click_share_28d,
         product_sessions.male_click_share_28d,
-        CASE
-            WHEN product_sessions.female_click_share_28d IS NULL
-                THEN NULL
-            ELSE 1.0D - 2.0D * ABS(
-                product_sessions.female_click_share_28d - 0.5D
-            )
-        END AS gender_balance_28d,
-        unique_clickers.n_unique_clickers_28d,
-        unique_clickers.n_unique_known_gender_clickers_28d,
-        unique_clickers.n_unique_female_clickers_28d,
-        unique_clickers.n_unique_male_clickers_28d,
-        unique_clickers.n_unique_clickers_with_age_28d,
-        unique_clickers.known_age_clicker_share_28d,
         unique_clickers.clicker_age_p10_28d,
         unique_clickers.clicker_age_p50_28d,
         unique_clickers.clicker_age_p90_28d,

@@ -59,13 +59,6 @@ dq:
       severity: warn
     - name: expression_is_true
       expression: "category_id > 0"
-    - name: non_negative
-      columns:
-        - CATEGORY__n_unique_clickers_28d
-        - CATEGORY__n_unique_known_gender_clickers_28d
-        - CATEGORY__n_unique_female_clickers_28d
-        - CATEGORY__n_unique_male_clickers_28d
-        - CATEGORY__n_unique_clickers_with_age_28d
     - name: accepted_values
       column: CATEGORY__gender
       values: [M, F, U]
@@ -77,24 +70,6 @@ dq:
       column: CATEGORY__male_click_share_28d
       min: 0
       max: 1
-    - name: accepted_range
-      column: CATEGORY__gender_balance_28d
-      min: 0
-      max: 1
-    - name: accepted_range
-      column: CATEGORY__known_age_clicker_share_28d
-      min: 0
-      max: 1
-    - name: expression_is_true
-      expression: "CATEGORY__n_unique_known_gender_clickers_28d = CATEGORY__n_unique_female_clickers_28d + CATEGORY__n_unique_male_clickers_28d"
-    - name: expression_is_true
-      expression: "CATEGORY__n_unique_female_clickers_28d <= CATEGORY__n_unique_known_gender_clickers_28d"
-    - name: expression_is_true
-      expression: "CATEGORY__n_unique_male_clickers_28d <= CATEGORY__n_unique_known_gender_clickers_28d"
-    - name: expression_is_true
-      expression: "CATEGORY__n_unique_known_gender_clickers_28d <= CATEGORY__n_unique_clickers_28d"
-    - name: expression_is_true
-      expression: "CATEGORY__n_unique_clickers_with_age_28d <= CATEGORY__n_unique_clickers_28d"
     - name: expression_is_true
       expression: "(CATEGORY__female_click_share_28d IS NULL AND CATEGORY__male_click_share_28d IS NULL) OR ABS(CATEGORY__female_click_share_28d + CATEGORY__male_click_share_28d - 1.0) < 0.000001"
     - name: expression_is_true

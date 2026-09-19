@@ -45,30 +45,20 @@ account_id, session_id, product_id
 просмотры пользователей без известного gender сохраняют категорию в
 population, но не входят в gender denominator.
 
-## Unique-clicker семантика
+## Age-статистики
 
-Для unique-user и age-статистик product-session наблюдения дополнительно
+Для age-статистик product-session наблюдения дополнительно
 дедуплицируются до одной строки на `account_id,category_id` на полном 28-дневном
 окне. Поэтому пользователь, просмотревший один или сто товаров категории,
 получает один голос. Age-перцентили используют пользователей с возрастом от 13
-до 100 лет включительно; пользователи без валидного возраста остаются в общем
-`n_unique_clickers_28d`, но не входят в age-распределение.
+до 100 лет включительно; пользователи без валидного возраста не входят в
+age-распределение.
 
 ## Колонки и формулы
 
 - `CATEGORY__female_click_share_28d` — взвешенная доля female product-session
   кликов среди product-session наблюдений с известным gender;
 - `CATEGORY__male_click_share_28d` — аналогичная male-доля;
-- `CATEGORY__gender_balance_28d` — непрерывная сбалансированность
-  product-session gender-аудитории от 0 до 1;
-- `CATEGORY__n_unique_clickers_28d` — все уникальные account категории;
-- `CATEGORY__n_unique_known_gender_clickers_28d` — уникальные account с gender `MALE` или
-  `FEMALE`;
-- `CATEGORY__n_unique_female_clickers_28d` — уникальные female account;
-- `CATEGORY__n_unique_male_clickers_28d` — уникальные male account;
-- `CATEGORY__n_unique_clickers_with_age_28d` — уникальные account с
-  валидным возрастом;
-- `CATEGORY__known_age_clicker_share_28d` — покрытие валидного возраста;
 - `CATEGORY__clicker_age_p10_28d`,
   `CATEGORY__clicker_age_p50_28d` и
   `CATEGORY__clicker_age_p90_28d` — точные перцентили возраста
@@ -79,19 +69,11 @@ population, но не входят в gender denominator.
 ```text
 female_share = female product-session rows / known-gender product-session rows
 male_share   = male product-session rows / known-gender product-session rows
-female_unique_share = unique female accounts / unique known-gender accounts
-male_unique_share   = unique male accounts / unique known-gender accounts
-gender_balance      = 1 - 2 * abs(female_share - 0.5)
-known_age_share     = unique accounts with valid age / all unique accounts
 ```
 
 Если в категории нет product-session наблюдений с известным gender, обе доли
-равны `NULL`, а unique counts равны нулю. Для опубликованной категории:
-
-```text
-CATEGORY__n_unique_known_gender_clickers_28d
-    = CATEGORY__n_unique_female_clickers_28d + CATEGORY__n_unique_male_clickers_28d
-```
+равны `NULL`. Age-перцентили равны `NULL`, если нет пользователей с валидным
+возрастом.
 
 ## On-the-fly candidate enrichment
 

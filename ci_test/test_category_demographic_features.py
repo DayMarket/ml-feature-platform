@@ -44,13 +44,6 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
             (
                 "CATEGORY__female_click_share_28d",
                 "CATEGORY__male_click_share_28d",
-                "CATEGORY__gender_balance_28d",
-                "CATEGORY__n_unique_clickers_28d",
-                "CATEGORY__n_unique_known_gender_clickers_28d",
-                "CATEGORY__n_unique_female_clickers_28d",
-                "CATEGORY__n_unique_male_clickers_28d",
-                "CATEGORY__n_unique_clickers_with_age_28d",
-                "CATEGORY__known_age_clicker_share_28d",
                 "CATEGORY__clicker_age_p10_28d",
                 "CATEGORY__clicker_age_p50_28d",
                 "CATEGORY__clicker_age_p90_28d",
@@ -166,7 +159,7 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
         self.assertIn("MAX(category_gender) AS category_gender", self.sql)
         self.assertNotIn("recsys_category_genders", self.sql)
 
-    def test_shares_and_unique_counts_use_documented_gender_semantics(self):
+    def test_click_shares_use_documented_gender_semantics(self):
         self.assertIn(
             "SUM(CASE WHEN account_gender = 'FEMALE' THEN 1 ELSE 0 END)",
             self.sql,
@@ -176,8 +169,6 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn("account_gender IN ('MALE', 'FEMALE')", self.sql)
-        self.assertIn("COUNT(CASE WHEN account_gender = 'FEMALE'", self.sql)
-        self.assertIn("COUNT(CASE WHEN account_gender = 'MALE'", self.sql)
         self.assertIn("NULLIF(", self.sql)
 
     def test_age_statistics_use_one_row_per_account_and_category(self):
@@ -186,17 +177,11 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn("CAST(age AS INT) AS age", self.sql)
-        self.assertIn("age BETWEEN 13\n                        AND 100", self.sql)
+        self.assertIn("age BETWEEN 13\n                    AND 100", self.sql)
         for percentile in ("0.1D", "0.5D", "0.9D"):
             self.assertIn(percentile, self.sql)
         self.assertEqual(self.sql.count("PERCENTILE("), 3)
         self.assertNotIn("PERCENTILE_APPROX", self.sql)
-
-    def test_demographic_coverage_and_balance_are_null_safe(self):
-        self.assertIn("AS known_age_clicker_share_28d", self.sql)
-        self.assertIn("AS gender_balance_28d", self.sql)
-        self.assertIn("female_click_share_28d IS NULL", self.sql)
-        self.assertIn("1.0D - 2.0D * ABS(", self.sql)
 
     def test_candidate_enrichment_is_not_materialized(self):
         for column in (
@@ -252,15 +237,9 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
         self.assertIn('# default_args["on_failure_callback"]', dag_text)
         self.assertEqual(dag_text.count("failure_callback_enabled=False"), 2)
 
-    def test_dq_covers_gender_domains_shares_and_count_invariants(self):
+    def test_dq_covers_gender_domains_shares_and_age_percentiles(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("values: [M, F, U]", config_text)
-        self.assertIn(
-            "CATEGORY__n_unique_known_gender_clickers_28d = "
-            "CATEGORY__n_unique_female_clickers_28d + "
-            "CATEGORY__n_unique_male_clickers_28d",
-            config_text,
-        )
         self.assertIn(
             "CATEGORY__female_click_share_28d + "
             "CATEGORY__male_click_share_28d - 1.0",
