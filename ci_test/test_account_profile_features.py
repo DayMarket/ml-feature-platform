@@ -147,15 +147,15 @@ class AccountProfileFeaturesTest(unittest.TestCase):
         self.assertIn("base.rating", self.sql)
         self.assertIn("category.category_gender", self.sql)
         self.assertIn(
-            "CATEGORY_DEMOGRAPHICS__gender AS category_gender",
+            "CATEGORY__gender AS category_gender",
             self.sql,
         )
         self.assertIn(
-            "CATEGORY_DEMOGRAPHICS__male_product_session_share_28d",
+            "CATEGORY__male_product_session_share_28d",
             self.sql,
         )
         self.assertIn(
-            "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d",
+            "CATEGORY__female_product_session_share_28d",
             self.sql,
         )
         self.assertIn(

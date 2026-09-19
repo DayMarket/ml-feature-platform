@@ -405,10 +405,10 @@ product_prices AS (
 category_demographics AS (
     SELECT
         CAST(category_id AS INT) AS category_id,
-        CATEGORY_DEMOGRAPHICS__gender AS category_gender,
-        CATEGORY_DEMOGRAPHICS__male_product_session_share_28d
+        CATEGORY__gender AS category_gender,
+        CATEGORY__male_product_session_share_28d
             AS male_product_session_share_28d,
-        CATEGORY_DEMOGRAPHICS__female_product_session_share_28d
+        CATEGORY__female_product_session_share_28d
             AS female_product_session_share_28d
     FROM {settings.category_demographic_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
