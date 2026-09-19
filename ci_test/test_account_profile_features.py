@@ -151,19 +151,19 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn(
-            "CATEGORY__male_product_session_share_28d",
+            "CATEGORY__male_click_share_28d",
             self.sql,
         )
         self.assertIn(
-            "CATEGORY__female_product_session_share_28d",
+            "CATEGORY__female_click_share_28d",
             self.sql,
         )
         self.assertIn(
-            "AVG(male_product_session_share_28d)",
+            "AVG(male_click_share_28d)",
             self.sql,
         )
         self.assertIn(
-            "AVG(female_product_session_share_28d)",
+            "AVG(female_click_share_28d)",
             self.sql,
         )
         self.assertIn(

@@ -253,12 +253,12 @@ def _order_line_expressions(calculated_at_utc: str) -> str:
                 ),
                 (
                     "AVG(CASE WHEN "
-                    f"{condition} THEN male_product_session_share_28d END) "
+                    f"{condition} THEN male_click_share_28d END) "
                     f"AS last_purchased_male_cat_share_{window}d"
                 ),
                 (
                     "AVG(CASE WHEN "
-                    f"{condition} THEN female_product_session_share_28d END) "
+                    f"{condition} THEN female_click_share_28d END) "
                     f"AS last_purchased_female_cat_share_{window}d"
                 ),
                 (
@@ -406,10 +406,10 @@ category_demographics AS (
     SELECT
         CAST(category_id AS INT) AS category_id,
         CATEGORY__gender AS category_gender,
-        CATEGORY__male_product_session_share_28d
-            AS male_product_session_share_28d,
-        CATEGORY__female_product_session_share_28d
-            AS female_product_session_share_28d
+        CATEGORY__male_click_share_28d
+            AS male_click_share_28d,
+        CATEGORY__female_click_share_28d
+            AS female_click_share_28d
     FROM {settings.category_demographic_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
@@ -467,8 +467,8 @@ enriched_order_lines AS (
         orders.line_gmv,
         metadata.category_id,
         category.category_gender,
-        category.male_product_session_share_28d,
-        category.female_product_session_share_28d,
+        category.male_click_share_28d,
+        category.female_click_share_28d,
         base.discount,
         base.rating,
         ranking.popularity_by_orders_neg_rank,
@@ -555,8 +555,8 @@ enriched_last_clicks AS (
         clicks.last_received_at,
         prices.min_sell_price_eod,
         category.category_gender,
-        category.male_product_session_share_28d,
-        category.female_product_session_share_28d,
+        category.male_click_share_28d,
+        category.female_click_share_28d,
         base.rating,
         ranking.popularity_by_orders_neg_rank
     FROM selected_clicks clicks
@@ -580,9 +580,9 @@ last_clicked_raw_profile AS (
             AS last_clicked_median_price,
         PERCENTILE_APPROX(min_sell_price_eod, 0.9)
             AS last_clicked_90th_pct_price,
-        AVG(male_product_session_share_28d)
+        AVG(male_click_share_28d)
             AS last_clicked_male_cat_share_raw,
-        AVG(female_product_session_share_28d)
+        AVG(female_click_share_28d)
             AS last_clicked_female_cat_share_raw,
         CAST(SUM(CASE WHEN rating IS NULL THEN 1 ELSE 0 END) AS DOUBLE)
             / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)

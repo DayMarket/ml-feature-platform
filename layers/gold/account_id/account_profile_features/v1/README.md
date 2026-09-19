@@ -66,7 +66,7 @@ Product attributes присоединяются point-in-time на snapshot `T`:
 - листовая `category_id` — из S1 snapshot текущей локальной даты;
 - population male/female shares и gender листовой категории — из G6 с
   `calculated_at = T`. Purchased male/female category shares — это среднее
-  `male_product_session_share_28d` / `female_product_session_share_28d` по
+  `male_click_share_28d` / `female_click_share_28d` по
   строкам заказов в соответствующем окне. Unisex share остаётся долей строк с
   category gender `U` или `NULL`.
 
