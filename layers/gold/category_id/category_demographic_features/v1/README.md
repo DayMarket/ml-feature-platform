@@ -56,12 +56,9 @@ population, но не входят в gender denominator.
 
 ## Колонки и формулы
 
-- `CATEGORY__female_product_session_share_28d` — доля female product-session
-  наблюдений среди product-session наблюдений с известным gender;
-- `CATEGORY__male_product_session_share_28d` — аналогичная male-доля;
-- `CATEGORY__female_unique_clicker_share_28d` и
-  `CATEGORY__male_unique_clicker_share_28d` — gender-доли среди
-  уникальных пользователей с известным gender;
+- `CATEGORY__female_click_share_28d` — взвешенная доля female product-session
+  кликов среди product-session наблюдений с известным gender;
+- `CATEGORY__male_click_share_28d` — аналогичная male-доля;
 - `CATEGORY__gender_balance_28d` — непрерывная сбалансированность
   product-session gender-аудитории от 0 до 1;
 - `CATEGORY__n_unique_clickers_28d` — все уникальные account категории;

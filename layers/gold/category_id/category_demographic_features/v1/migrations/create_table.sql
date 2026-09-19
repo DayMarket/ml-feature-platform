@@ -1,10 +1,8 @@
 CREATE TABLE IF NOT EXISTS {target_table} (
     calculated_at TIMESTAMP COMMENT 'Правая граница 28-дневного окна в Asia/Tashkent; часть уникального ключа calculated_at, category_id',
     category_id INT COMMENT 'Положительный идентификатор листовой категории из S1 product metadata; часть уникального ключа calculated_at, category_id',
-    CATEGORY__female_product_session_share_28d DOUBLE COMMENT 'Доля female product-session просмотров среди product-session просмотров пользователей с известным gender за полуоткрытое окно 28 дней',
-    CATEGORY__male_product_session_share_28d DOUBLE COMMENT 'Доля male product-session просмотров среди product-session просмотров пользователей с известным gender за полуоткрытое окно 28 дней',
-    CATEGORY__female_unique_clicker_share_28d DOUBLE COMMENT 'Доля female-пользователей среди уникальных пользователей категории с известным gender за 28 дней',
-    CATEGORY__male_unique_clicker_share_28d DOUBLE COMMENT 'Доля male-пользователей среди уникальных пользователей категории с известным gender за 28 дней',
+    CATEGORY__female_click_share_28d DOUBLE COMMENT 'Взвешенная доля female product-session кликов среди наблюдений с известным gender за полуоткрытое окно 28 дней',
+    CATEGORY__male_click_share_28d DOUBLE COMMENT 'Взвешенная доля male product-session кликов среди наблюдений с известным gender за полуоткрытое окно 28 дней',
     CATEGORY__gender_balance_28d DOUBLE COMMENT 'Сбалансированность product-session gender-аудитории: 1 означает равные female/male доли, 0 означает аудиторию одного gender',
     CATEGORY__n_unique_clickers_28d INT COMMENT 'Количество уникальных пользователей листовой категории за 28 дней независимо от наличия demographic-атрибутов',
     CATEGORY__n_unique_known_gender_clickers_28d INT COMMENT 'Количество уникальных пользователей листовой категории с gender MALE или FEMALE за 28 дней',

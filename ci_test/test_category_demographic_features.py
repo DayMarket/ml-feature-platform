@@ -42,10 +42,8 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
         self.assertEqual(
             query.FEATURE_COLUMNS,
             (
-                "CATEGORY__female_product_session_share_28d",
-                "CATEGORY__male_product_session_share_28d",
-                "CATEGORY__female_unique_clicker_share_28d",
-                "CATEGORY__male_unique_clicker_share_28d",
+                "CATEGORY__female_click_share_28d",
+                "CATEGORY__male_click_share_28d",
                 "CATEGORY__gender_balance_28d",
                 "CATEGORY__n_unique_clickers_28d",
                 "CATEGORY__n_unique_known_gender_clickers_28d",
@@ -197,7 +195,7 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
     def test_demographic_coverage_and_balance_are_null_safe(self):
         self.assertIn("AS known_age_clicker_share_28d", self.sql)
         self.assertIn("AS gender_balance_28d", self.sql)
-        self.assertIn("female_product_session_share_28d IS NULL", self.sql)
+        self.assertIn("female_click_share_28d IS NULL", self.sql)
         self.assertIn("1.0D - 2.0D * ABS(", self.sql)
 
     def test_candidate_enrichment_is_not_materialized(self):
@@ -264,13 +262,8 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
             config_text,
         )
         self.assertIn(
-            "CATEGORY__female_product_session_share_28d + "
-            "CATEGORY__male_product_session_share_28d - 1.0",
-            config_text,
-        )
-        self.assertIn(
-            "CATEGORY__female_unique_clicker_share_28d + "
-            "CATEGORY__male_unique_clicker_share_28d - 1.0",
+            "CATEGORY__female_click_share_28d + "
+            "CATEGORY__male_click_share_28d - 1.0",
             config_text,
         )
         self.assertIn(

@@ -70,19 +70,11 @@ dq:
       column: CATEGORY__gender
       values: [M, F, U]
     - name: accepted_range
-      column: CATEGORY__female_product_session_share_28d
+      column: CATEGORY__female_click_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: CATEGORY__male_product_session_share_28d
-      min: 0
-      max: 1
-    - name: accepted_range
-      column: CATEGORY__female_unique_clicker_share_28d
-      min: 0
-      max: 1
-    - name: accepted_range
-      column: CATEGORY__male_unique_clicker_share_28d
+      column: CATEGORY__male_click_share_28d
       min: 0
       max: 1
     - name: accepted_range
@@ -104,9 +96,7 @@ dq:
     - name: expression_is_true
       expression: "CATEGORY__n_unique_clickers_with_age_28d <= CATEGORY__n_unique_clickers_28d"
     - name: expression_is_true
-      expression: "(CATEGORY__female_product_session_share_28d IS NULL AND CATEGORY__male_product_session_share_28d IS NULL) OR ABS(CATEGORY__female_product_session_share_28d + CATEGORY__male_product_session_share_28d - 1.0) < 0.000001"
-    - name: expression_is_true
-      expression: "(CATEGORY__female_unique_clicker_share_28d IS NULL AND CATEGORY__male_unique_clicker_share_28d IS NULL) OR ABS(CATEGORY__female_unique_clicker_share_28d + CATEGORY__male_unique_clicker_share_28d - 1.0) < 0.000001"
+      expression: "(CATEGORY__female_click_share_28d IS NULL AND CATEGORY__male_click_share_28d IS NULL) OR ABS(CATEGORY__female_click_share_28d + CATEGORY__male_click_share_28d - 1.0) < 0.000001"
     - name: expression_is_true
       expression: "CATEGORY__clicker_age_p10_28d IS NULL OR (CATEGORY__clicker_age_p10_28d BETWEEN 13 AND 100 AND CATEGORY__clicker_age_p10_28d <= CATEGORY__clicker_age_p50_28d AND CATEGORY__clicker_age_p50_28d <= CATEGORY__clicker_age_p90_28d AND CATEGORY__clicker_age_p90_28d BETWEEN 13 AND 100)"
 

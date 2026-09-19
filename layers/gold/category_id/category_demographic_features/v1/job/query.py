@@ -6,10 +6,8 @@ from zoneinfo import ZoneInfo
 
 FEATURE_NAMESPACE = "CATEGORY"
 BASE_FEATURE_COLUMNS = (
-    "female_product_session_share_28d",
-    "male_product_session_share_28d",
-    "female_unique_clicker_share_28d",
-    "male_unique_clicker_share_28d",
+    "female_click_share_28d",
+    "male_click_share_28d",
     "gender_balance_28d",
     "n_unique_clickers_28d",
     "n_unique_known_gender_clickers_28d",
@@ -153,7 +151,7 @@ product_session_statistics AS (
                 ) AS DOUBLE
             ),
             0.0D
-        ) AS female_product_session_share_28d,
+        ) AS female_click_share_28d,
         CAST(
             SUM(CASE WHEN account_gender = 'MALE' THEN 1 ELSE 0 END)
             AS DOUBLE
@@ -167,7 +165,7 @@ product_session_statistics AS (
                 ) AS DOUBLE
             ),
             0.0D
-        ) AS male_product_session_share_28d,
+        ) AS male_click_share_28d,
         MAX(category_gender) AS category_gender
     FROM enriched_product_views
     GROUP BY category_id
@@ -199,34 +197,6 @@ unique_clicker_statistics AS (
             COUNT(CASE WHEN account_gender = 'MALE' THEN 1 END)
             AS INT
         ) AS n_unique_male_clickers_28d,
-        CAST(
-            SUM(CASE WHEN account_gender = 'FEMALE' THEN 1 ELSE 0 END)
-            AS DOUBLE
-        ) / NULLIF(
-            CAST(
-                SUM(
-                    CASE
-                        WHEN account_gender IN ('MALE', 'FEMALE') THEN 1
-                        ELSE 0
-                    END
-                ) AS DOUBLE
-            ),
-            0.0D
-        ) AS female_unique_clicker_share_28d,
-        CAST(
-            SUM(CASE WHEN account_gender = 'MALE' THEN 1 ELSE 0 END)
-            AS DOUBLE
-        ) / NULLIF(
-            CAST(
-                SUM(
-                    CASE
-                        WHEN account_gender IN ('MALE', 'FEMALE') THEN 1
-                        ELSE 0
-                    END
-                ) AS DOUBLE
-            ),
-            0.0D
-        ) AS male_unique_clicker_share_28d,
         CAST(
             COUNT(
                 CASE
@@ -277,15 +247,13 @@ unprefixed_features AS (
     SELECT
         TIMESTAMP '{calculated_at_local}' AS calculated_at,
         product_sessions.category_id,
-        product_sessions.female_product_session_share_28d,
-        product_sessions.male_product_session_share_28d,
-        unique_clickers.female_unique_clicker_share_28d,
-        unique_clickers.male_unique_clicker_share_28d,
+        product_sessions.female_click_share_28d,
+        product_sessions.male_click_share_28d,
         CASE
-            WHEN product_sessions.female_product_session_share_28d IS NULL
+            WHEN product_sessions.female_click_share_28d IS NULL
                 THEN NULL
             ELSE 1.0D - 2.0D * ABS(
-                product_sessions.female_product_session_share_28d - 0.5D
+                product_sessions.female_click_share_28d - 0.5D
             )
         END AS gender_balance_28d,
         unique_clickers.n_unique_clickers_28d,
