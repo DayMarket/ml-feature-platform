@@ -42,9 +42,9 @@ ORDER_COLUMNS = (
     "category_orders_7d",
     "category_orders_28d",
     "category_orders_90d",
-    "orders_share_in_category_7d",
-    "orders_share_in_category_28d",
-    "orders_share_in_category_90d",
+    "category_orders_share_7d",
+    "category_orders_share_28d",
+    "category_orders_share_90d",
 )
 ORDER_INPUT_COLUMNS = ORDER_COLUMNS[:-3]
 DERIVED_COLUMNS = ("favorites_to_orders_rate",)
@@ -85,20 +85,14 @@ RETURN_COLUMNS = tuple(
     for window in RETURN_WINDOWS
     for family in ("n_completed", "n_returned", "return_rate_neg")
 )
-GENDER_COLUMNS = (
-    "n_unique_clickers_category_28d",
-    "n_unique_clickers_with_age_category_28d",
-    "known_age_clicker_share_category_28d",
-    "clicker_age_p10_category_28d",
-    "clicker_age_p50_category_28d",
-    "clicker_age_p90_category_28d",
-    "female_unique_clicker_share_category_28d",
-    "male_unique_clicker_share_category_28d",
-    "gender_balance_category_28d",
-    "candidate_female_click_share_28d",
-    "candidate_male_click_share_28d",
-    "is_female_category",
-    "is_male_category",
+CATEGORY_COLUMNS = (
+    "category_clicker_age_p10_28d",
+    "category_clicker_age_p50_28d",
+    "category_clicker_age_p90_28d",
+    "category_female_click_share_28d",
+    "category_male_click_share_28d",
+    "category_is_female",
+    "category_is_male",
 )
 BASE_FEATURE_COLUMNS = (
     *PRICE_COLUMNS,
@@ -108,7 +102,7 @@ BASE_FEATURE_COLUMNS = (
     *ROLLING_FEEDBACK_COLUMNS,
     *ALL_TIME_FEEDBACK_COLUMNS,
     *RETURN_COLUMNS,
-    *GENDER_COLUMNS,
+    *CATEGORY_COLUMNS,
 )
 FEATURE_COLUMNS = tuple(
     f"{FEATURE_NAMESPACE}__{column}" for column in BASE_FEATURE_COLUMNS
@@ -589,29 +583,12 @@ all_time_feedback_features AS (
 category_demographic_features AS (
     SELECT
         CAST(category_id AS INT) AS category_id,
-        CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d
-            AS n_unique_clickers_category_28d,
-        CATEGORY_DEMOGRAPHICS__n_unique_clickers_with_age_28d
-            AS n_unique_clickers_with_age_category_28d,
-        CATEGORY_DEMOGRAPHICS__known_age_clicker_share_28d
-            AS known_age_clicker_share_category_28d,
-        CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d
-            AS clicker_age_p10_category_28d,
-        CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d
-            AS clicker_age_p50_category_28d,
-        CATEGORY_DEMOGRAPHICS__clicker_age_p90_28d
-            AS clicker_age_p90_category_28d,
-        CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d
-            AS female_unique_clicker_share_category_28d,
-        CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d
-            AS male_unique_clicker_share_category_28d,
-        CATEGORY_DEMOGRAPHICS__gender_balance_28d
-            AS gender_balance_category_28d,
-        CATEGORY_DEMOGRAPHICS__female_product_session_share_28d
-            AS category_female_product_session_share_28d,
-        CATEGORY_DEMOGRAPHICS__male_product_session_share_28d
-            AS category_male_product_session_share_28d,
-        CATEGORY_DEMOGRAPHICS__gender AS category_gender
+        CATEGORY__clicker_age_p10_28d AS category_clicker_age_p10_28d,
+        CATEGORY__clicker_age_p50_28d AS category_clicker_age_p50_28d,
+        CATEGORY__clicker_age_p90_28d AS category_clicker_age_p90_28d,
+        CATEGORY__female_click_share_28d AS category_female_click_share_28d,
+        CATEGORY__male_click_share_28d AS category_male_click_share_28d,
+        CATEGORY__gender AS category_gender
     FROM {settings.category_demographic_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
@@ -648,17 +625,11 @@ feature_inputs AS (
         COALESCE(all_time.log_feedback_quantity, 0.0D)
             AS log_feedback_quantity,
         {return_select},
-        gender.n_unique_clickers_category_28d,
-        gender.n_unique_clickers_with_age_category_28d,
-        gender.known_age_clicker_share_category_28d,
-        gender.clicker_age_p10_category_28d,
-        gender.clicker_age_p50_category_28d,
-        gender.clicker_age_p90_category_28d,
-        gender.female_unique_clicker_share_category_28d,
-        gender.male_unique_clicker_share_category_28d,
-        gender.gender_balance_category_28d,
-        gender.category_female_product_session_share_28d,
-        gender.category_male_product_session_share_28d,
+        gender.category_clicker_age_p10_28d,
+        gender.category_clicker_age_p50_28d,
+        gender.category_clicker_age_p90_28d,
+        gender.category_female_click_share_28d,
+        gender.category_male_click_share_28d,
         gender.category_gender
     FROM product_population population
     LEFT JOIN product_prices prices
@@ -738,13 +709,13 @@ unprefixed_features AS (
         category_orders_90d,
         CAST(orders_7d AS DOUBLE)
             / NULLIF(CAST(category_orders_7d AS DOUBLE), 0.0D)
-            AS orders_share_in_category_7d,
+            AS category_orders_share_7d,
         CAST(orders_28d AS DOUBLE)
             / NULLIF(CAST(category_orders_28d AS DOUBLE), 0.0D)
-            AS orders_share_in_category_28d,
+            AS category_orders_share_28d,
         CAST(orders_90d AS DOUBLE)
             / NULLIF(CAST(category_orders_90d AS DOUBLE), 0.0D)
-            AS orders_share_in_category_90d,
+            AS category_orders_share_90d,
         COALESCE(feedback_quantity_1d, 0) AS feedback_quantity_1d,
         COALESCE(sum_rating_1d, 0) AS sum_rating_1d,
         {rolling_feedback_output_select},
@@ -768,21 +739,13 @@ unprefixed_features AS (
             / NULLIF(CAST(orders_28d AS DOUBLE), 0.0D)
             AS feedback_lte_3_to_orders_rate_28d,
         {return_output_select},
-        n_unique_clickers_category_28d,
-        n_unique_clickers_with_age_category_28d,
-        known_age_clicker_share_category_28d,
-        clicker_age_p10_category_28d,
-        clicker_age_p50_category_28d,
-        clicker_age_p90_category_28d,
-        female_unique_clicker_share_category_28d,
-        male_unique_clicker_share_category_28d,
-        gender_balance_category_28d,
-        category_female_product_session_share_28d
-            AS candidate_female_click_share_28d,
-        category_male_product_session_share_28d
-            AS candidate_male_click_share_28d,
-        CAST(category_gender = 'F' AS INT) AS is_female_category,
-        CAST(category_gender = 'M' AS INT) AS is_male_category
+        category_clicker_age_p10_28d,
+        category_clicker_age_p50_28d,
+        category_clicker_age_p90_28d,
+        category_female_click_share_28d,
+        category_male_click_share_28d,
+        CAST(category_gender = 'F' AS INT) AS category_is_female,
+        CAST(category_gender = 'M' AS INT) AS category_is_male
     FROM feature_inputs
 )
 SELECT

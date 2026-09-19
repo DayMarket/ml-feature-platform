@@ -97,18 +97,6 @@ dq:
         - PRODUCT__sum_rating_last_3d
         - PRODUCT__feedback_gte_4_3d
         - PRODUCT__feedback_lte_3_3d
-        - PRODUCT__feedback_last_7d
-        - PRODUCT__sum_rating_last_7d
-        - PRODUCT__feedback_gte_4_7d
-        - PRODUCT__feedback_lte_3_7d
-        - PRODUCT__feedback_last_14d
-        - PRODUCT__sum_rating_last_14d
-        - PRODUCT__feedback_gte_4_14d
-        - PRODUCT__feedback_lte_3_14d
-        - PRODUCT__feedback_last_21d
-        - PRODUCT__sum_rating_last_21d
-        - PRODUCT__feedback_gte_4_21d
-        - PRODUCT__feedback_lte_3_21d
         - PRODUCT__feedback_last_28d
         - PRODUCT__sum_rating_last_28d
         - PRODUCT__feedback_gte_4_28d
@@ -125,16 +113,14 @@ dq:
         - PRODUCT__n_completed_28d
         - PRODUCT__n_returned_3d
         - PRODUCT__n_returned_28d
-        - PRODUCT__n_unique_clickers_category_28d
-        - PRODUCT__n_unique_clickers_with_age_category_28d
     - name: accepted_values
       column: PRODUCT__has_orders
       values: [0, 1]
     - name: accepted_values
-      column: PRODUCT__is_female_category
+      column: PRODUCT__category_is_female
       values: [0, 1]
     - name: accepted_values
-      column: PRODUCT__is_male_category
+      column: PRODUCT__category_is_male
       values: [0, 1]
     - name: accepted_range
       column: PRODUCT__discount
@@ -157,29 +143,23 @@ dq:
     - name: expression_is_true
       expression: "(PRODUCT__feedback_quantity = 0 AND PRODUCT__feedback_gte_4_ratio IS NULL AND PRODUCT__feedback_lte_3_ratio IS NULL) OR (PRODUCT__feedback_gte_4_ratio BETWEEN 0 AND 1 AND PRODUCT__feedback_lte_3_ratio BETWEEN 0 AND 1 AND ABS(PRODUCT__feedback_gte_4_ratio + PRODUCT__feedback_lte_3_ratio - 1.0) < 0.000001)"
     - name: expression_is_true
-      expression: "PRODUCT__feedback_gte_4_3d + PRODUCT__feedback_lte_3_3d = PRODUCT__feedback_last_3d AND PRODUCT__feedback_gte_4_7d + PRODUCT__feedback_lte_3_7d = PRODUCT__feedback_last_7d AND PRODUCT__feedback_gte_4_14d + PRODUCT__feedback_lte_3_14d = PRODUCT__feedback_last_14d AND PRODUCT__feedback_gte_4_21d + PRODUCT__feedback_lte_3_21d = PRODUCT__feedback_last_21d AND PRODUCT__feedback_gte_4_28d + PRODUCT__feedback_lte_3_28d = PRODUCT__feedback_last_28d"
+      expression: "PRODUCT__feedback_gte_4_3d + PRODUCT__feedback_lte_3_3d = PRODUCT__feedback_last_3d AND PRODUCT__feedback_gte_4_28d + PRODUCT__feedback_lte_3_28d = PRODUCT__feedback_last_28d"
     - name: expression_is_true
-      expression: "(PRODUCT__feedback_gte_4_ratio_3d IS NULL OR PRODUCT__feedback_gte_4_ratio_3d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_3d IS NULL OR PRODUCT__feedback_lte_3_ratio_3d BETWEEN 0 AND 1) AND (PRODUCT__feedback_gte_4_ratio_7d IS NULL OR PRODUCT__feedback_gte_4_ratio_7d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_7d IS NULL OR PRODUCT__feedback_lte_3_ratio_7d BETWEEN 0 AND 1) AND (PRODUCT__feedback_gte_4_ratio_14d IS NULL OR PRODUCT__feedback_gte_4_ratio_14d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_14d IS NULL OR PRODUCT__feedback_lte_3_ratio_14d BETWEEN 0 AND 1) AND (PRODUCT__feedback_gte_4_ratio_21d IS NULL OR PRODUCT__feedback_gte_4_ratio_21d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_21d IS NULL OR PRODUCT__feedback_lte_3_ratio_21d BETWEEN 0 AND 1) AND (PRODUCT__feedback_gte_4_ratio_28d IS NULL OR PRODUCT__feedback_gte_4_ratio_28d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_28d IS NULL OR PRODUCT__feedback_lte_3_ratio_28d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT__feedback_gte_4_ratio_3d IS NULL OR PRODUCT__feedback_gte_4_ratio_3d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_3d IS NULL OR PRODUCT__feedback_lte_3_ratio_3d BETWEEN 0 AND 1) AND (PRODUCT__feedback_gte_4_ratio_28d IS NULL OR PRODUCT__feedback_gte_4_ratio_28d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_28d IS NULL OR PRODUCT__feedback_lte_3_ratio_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
-      expression: "(PRODUCT__feedback_avg_rating_3d IS NULL OR PRODUCT__feedback_avg_rating_3d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_7d IS NULL OR PRODUCT__feedback_avg_rating_7d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_14d IS NULL OR PRODUCT__feedback_avg_rating_14d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_21d IS NULL OR PRODUCT__feedback_avg_rating_21d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_28d IS NULL OR PRODUCT__feedback_avg_rating_28d BETWEEN 1 AND 5)"
+      expression: "(PRODUCT__feedback_avg_rating_3d IS NULL OR PRODUCT__feedback_avg_rating_3d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_28d IS NULL OR PRODUCT__feedback_avg_rating_28d BETWEEN 1 AND 5)"
     - name: expression_is_true
-      expression: "(PRODUCT__orders_share_in_category_7d IS NULL OR PRODUCT__orders_share_in_category_7d BETWEEN 0 AND 1) AND (PRODUCT__orders_share_in_category_28d IS NULL OR PRODUCT__orders_share_in_category_28d BETWEEN 0 AND 1) AND (PRODUCT__orders_share_in_category_90d IS NULL OR PRODUCT__orders_share_in_category_90d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT__category_orders_share_7d IS NULL OR PRODUCT__category_orders_share_7d BETWEEN 0 AND 1) AND (PRODUCT__category_orders_share_28d IS NULL OR PRODUCT__category_orders_share_28d BETWEEN 0 AND 1) AND (PRODUCT__category_orders_share_90d IS NULL OR PRODUCT__category_orders_share_90d BETWEEN 0 AND 1)"
     - name: expression_is_true
       expression: "(PRODUCT__return_rate_neg_3d IS NULL OR PRODUCT__return_rate_neg_3d BETWEEN -1 AND 0) AND (PRODUCT__return_rate_neg_28d IS NULL OR PRODUCT__return_rate_neg_28d BETWEEN -1 AND 0)"
     - name: expression_is_true
-      expression: "(PRODUCT__candidate_female_click_share_28d IS NULL OR PRODUCT__candidate_female_click_share_28d BETWEEN 0 AND 1) AND (PRODUCT__candidate_male_click_share_28d IS NULL OR PRODUCT__candidate_male_click_share_28d BETWEEN 0 AND 1)"
+      expression: "(PRODUCT__category_female_click_share_28d IS NULL OR PRODUCT__category_female_click_share_28d BETWEEN 0 AND 1) AND (PRODUCT__category_male_click_share_28d IS NULL OR PRODUCT__category_male_click_share_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
-      expression: "(PRODUCT__female_unique_clicker_share_category_28d IS NULL OR PRODUCT__female_unique_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__male_unique_clicker_share_category_28d IS NULL OR PRODUCT__male_unique_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__known_age_clicker_share_category_28d IS NULL OR PRODUCT__known_age_clicker_share_category_28d BETWEEN 0 AND 1) AND (PRODUCT__gender_balance_category_28d IS NULL OR PRODUCT__gender_balance_category_28d BETWEEN 0 AND 1)"
+      expression: "PRODUCT__category_female_click_share_28d IS NULL OR ABS(PRODUCT__category_female_click_share_28d + PRODUCT__category_male_click_share_28d - 1.0) < 0.000001"
     - name: expression_is_true
-      expression: "PRODUCT__candidate_female_click_share_28d IS NULL OR ABS(PRODUCT__candidate_female_click_share_28d + PRODUCT__candidate_male_click_share_28d - 1.0) < 0.000001"
+      expression: "PRODUCT__category_clicker_age_p10_28d IS NULL OR (PRODUCT__category_clicker_age_p10_28d BETWEEN 13 AND 100 AND PRODUCT__category_clicker_age_p10_28d <= PRODUCT__category_clicker_age_p50_28d AND PRODUCT__category_clicker_age_p50_28d <= PRODUCT__category_clicker_age_p90_28d AND PRODUCT__category_clicker_age_p90_28d BETWEEN 13 AND 100)"
     - name: expression_is_true
-      expression: "PRODUCT__n_unique_clickers_with_age_category_28d IS NULL OR PRODUCT__n_unique_clickers_with_age_category_28d <= PRODUCT__n_unique_clickers_category_28d"
-    - name: expression_is_true
-      expression: "PRODUCT__clicker_age_p10_category_28d IS NULL OR (PRODUCT__clicker_age_p10_category_28d BETWEEN 13 AND 100 AND PRODUCT__clicker_age_p10_category_28d <= PRODUCT__clicker_age_p50_category_28d AND PRODUCT__clicker_age_p50_category_28d <= PRODUCT__clicker_age_p90_category_28d AND PRODUCT__clicker_age_p90_category_28d BETWEEN 13 AND 100)"
-    - name: expression_is_true
-      expression: "(PRODUCT__female_unique_clicker_share_category_28d IS NULL AND PRODUCT__male_unique_clicker_share_category_28d IS NULL) OR ABS(PRODUCT__female_unique_clicker_share_category_28d + PRODUCT__male_unique_clicker_share_category_28d - 1.0) < 0.000001"
-    - name: expression_is_true
-      expression: "COALESCE(PRODUCT__is_female_category, 0) + COALESCE(PRODUCT__is_male_category, 0) <= 1"
+      expression: "COALESCE(PRODUCT__category_is_female, 0) + COALESCE(PRODUCT__category_is_male, 0) <= 1"
 
 feature_stats:
   trino_conn_id: trino_recsys

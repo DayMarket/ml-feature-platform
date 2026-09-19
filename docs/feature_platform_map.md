@@ -293,7 +293,7 @@ UTC 04:00 · P3 · airflow-python`"]
     x0["feature_platform_search_sku_group_id_install_query.dq"]
     x1["feature_platform_sku_group_query_search_orders.dq"]
     x2["dwh_core.quantity_eod"]
-    x3["category_gender_features"]
+    x3["category_demographic_features"]
     x4["feedback_sku_group_id"]
     x5["elasticsearch_collect"]
     x4 -->|"dq"| d0

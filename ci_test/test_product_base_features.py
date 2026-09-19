@@ -49,7 +49,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 102)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 75)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(column.startswith("PRODUCT__") for column in query.FEATURE_COLUMNS)
@@ -90,7 +90,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
             "SUM(orders_28d) OVER (PARTITION BY category_id)",
             self.sql,
         )
-        self.assertIn("AS orders_share_in_category_28d", self.sql)
+        self.assertIn("AS category_orders_share_28d", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
 
     def test_feedback_uses_rating_buckets_and_keeps_smoothing_for_g8(self):
@@ -144,23 +144,23 @@ class ProductBaseFeaturesTest(unittest.TestCase):
 
     def test_g6_features_are_mapped_to_each_product(self):
         self.assertIn(
-            "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d",
+            "CATEGORY__female_click_share_28d",
             self.sql,
         )
         self.assertIn(
-            "CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d",
+            "CATEGORY__clicker_age_p10_28d",
             self.sql,
         )
         self.assertIn(
-            "AS clicker_age_p50_category_28d",
+            "AS category_clicker_age_p50_28d",
             self.sql,
         )
         self.assertIn(
-            "AS female_unique_clicker_share_category_28d",
+            "AS category_female_click_share_28d",
             self.sql,
         )
-        self.assertIn("AS candidate_female_click_share_28d", self.sql)
-        self.assertIn("CAST(category_gender = 'F' AS INT)", self.sql)
+        self.assertIn("AS category_female_click_share_28d", self.sql)
+        self.assertIn("CAST(category_gender = 'F' AS INT) AS category_is_female", self.sql)
 
     def test_cutoffs_are_half_open_and_output_uses_local_clock(self):
         self.assertIn("TIMESTAMP '2026-09-10 12:00:00' AS calculated_at", self.sql)
