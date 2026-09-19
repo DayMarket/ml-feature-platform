@@ -84,7 +84,7 @@ class SourceSettings(Protocol):
     action_counts_table: str
     order_items_table: str
     sku_table: str
-    category_gender_features_table: str
+    category_demographic_features_table: str
     product_base_features_table: str
     product_ranking_features_table: str
     business_timezone: str
@@ -156,7 +156,7 @@ def _order_line_expressions(calculated_at_utc: str) -> str:
             f"generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL {window} DAYS"
         )
         line_count = f"SUM(CASE WHEN {condition} THEN 1 ELSE 0 END)"
-        gender_denominator = (
+        category_label_denominator = (
             "SUM(CASE WHEN "
             f"{condition} AND category_id IS NOT NULL THEN 1 ELSE 0 END)"
         )
@@ -252,22 +252,20 @@ def _order_line_expressions(calculated_at_utc: str) -> str:
                     f"last_purchased_neg_p10_popularity_rank_in_category_{window}d"
                 ),
                 (
-                    "CAST(SUM(CASE WHEN "
-                    f"{condition} AND category_gender = 'M' THEN 1 ELSE 0 END) "
-                    f"AS DOUBLE) / NULLIF(CAST({gender_denominator} AS DOUBLE), 0.0D) "
+                    "AVG(CASE WHEN "
+                    f"{condition} THEN male_product_session_share_28d END) "
                     f"AS last_purchased_male_cat_share_{window}d"
                 ),
                 (
-                    "CAST(SUM(CASE WHEN "
-                    f"{condition} AND category_gender = 'F' THEN 1 ELSE 0 END) "
-                    f"AS DOUBLE) / NULLIF(CAST({gender_denominator} AS DOUBLE), 0.0D) "
+                    "AVG(CASE WHEN "
+                    f"{condition} THEN female_product_session_share_28d END) "
                     f"AS last_purchased_female_cat_share_{window}d"
                 ),
                 (
                     "CAST(SUM(CASE WHEN "
                     f"{condition} AND category_id IS NOT NULL "
                     "AND (category_gender IS NULL OR category_gender NOT IN ('M', 'F')) "
-                    f"THEN 1 ELSE 0 END) AS DOUBLE) / NULLIF(CAST({gender_denominator} "
+                    f"THEN 1 ELSE 0 END) AS DOUBLE) / NULLIF(CAST({category_label_denominator} "
                 f"AS DOUBLE), 0.0D) AS last_purchased_unisex_cat_share_{window}d"
                 ),
             )
@@ -404,11 +402,15 @@ product_prices AS (
     FROM {settings.product_prices_table}
     WHERE dt = TIMESTAMP '{daily_snapshot_local}'
 ),
-category_genders AS (
+category_demographics AS (
     SELECT
         CAST(category_id AS INT) AS category_id,
-        CATEGORY_DEMOGRAPHICS__gender AS category_gender
-    FROM {settings.category_gender_features_table}
+        CATEGORY_DEMOGRAPHICS__gender AS category_gender,
+        CATEGORY_DEMOGRAPHICS__male_product_session_share_28d
+            AS male_product_session_share_28d,
+        CATEGORY_DEMOGRAPHICS__female_product_session_share_28d
+            AS female_product_session_share_28d
+    FROM {settings.category_demographic_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
 product_base_features AS (
@@ -422,9 +424,9 @@ product_base_features AS (
 product_ranking_features AS (
     SELECT
         CAST(product_id AS INT) AS product_id,
-        PRODUCT_RANKING__popularity_by_orders_neg_rank
+        PRODUCT_STATS__popularity_by_orders_neg_rank
             AS popularity_by_orders_neg_rank,
-        PRODUCT_RANKING__popularity_by_orders_neg_rank_in_cat
+        PRODUCT_STATS__popularity_by_orders_neg_rank_in_cat
             AS popularity_by_orders_neg_rank_in_cat
     FROM {settings.product_ranking_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
@@ -465,6 +467,8 @@ enriched_order_lines AS (
         orders.line_gmv,
         metadata.category_id,
         category.category_gender,
+        category.male_product_session_share_28d,
+        category.female_product_session_share_28d,
         base.discount,
         base.rating,
         ranking.popularity_by_orders_neg_rank,
@@ -472,7 +476,7 @@ enriched_order_lines AS (
     FROM filtered_order_lines orders
     LEFT JOIN product_metadata metadata
         ON orders.product_id = metadata.product_id
-    LEFT JOIN category_genders category
+    LEFT JOIN category_demographics category
         ON metadata.category_id = category.category_id
     LEFT JOIN product_base_features base
         ON orders.product_id = base.product_id
@@ -551,6 +555,8 @@ enriched_last_clicks AS (
         clicks.last_received_at,
         prices.min_sell_price_eod,
         category.category_gender,
+        category.male_product_session_share_28d,
+        category.female_product_session_share_28d,
         base.rating,
         ranking.popularity_by_orders_neg_rank
     FROM selected_clicks clicks
@@ -558,7 +564,7 @@ enriched_last_clicks AS (
         ON clicks.product_id = prices.product_id
     LEFT JOIN product_metadata metadata
         ON clicks.product_id = metadata.product_id
-    LEFT JOIN category_genders category
+    LEFT JOIN category_demographics category
         ON metadata.category_id = category.category_id
     LEFT JOIN product_base_features base
         ON clicks.product_id = base.product_id
@@ -574,11 +580,9 @@ last_clicked_raw_profile AS (
             AS last_clicked_median_price,
         PERCENTILE_APPROX(min_sell_price_eod, 0.9)
             AS last_clicked_90th_pct_price,
-        CAST(SUM(CASE WHEN category_gender = 'M' THEN 1 ELSE 0 END) AS DOUBLE)
-            / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)
+        AVG(male_product_session_share_28d)
             AS last_clicked_male_cat_share_raw,
-        CAST(SUM(CASE WHEN category_gender = 'F' THEN 1 ELSE 0 END) AS DOUBLE)
-            / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)
+        AVG(female_product_session_share_28d)
             AS last_clicked_female_cat_share_raw,
         CAST(SUM(CASE WHEN rating IS NULL THEN 1 ELSE 0 END) AS DOUBLE)
             / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)

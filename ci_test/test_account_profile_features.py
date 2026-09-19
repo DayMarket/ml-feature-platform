@@ -134,7 +134,7 @@ class AccountProfileFeaturesTest(unittest.TestCase):
 
     def test_order_attributes_are_joined_at_snapshot_time(self):
         for table in (
-            "feature_platform_category_gender_features",
+            "feature_platform_category_demographic_features",
             "feature_platform_product_base_features",
             "feature_platform_product_ranking_features",
         ):
@@ -151,6 +151,22 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn(
+            "CATEGORY_DEMOGRAPHICS__male_product_session_share_28d",
+            self.sql,
+        )
+        self.assertIn(
+            "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d",
+            self.sql,
+        )
+        self.assertIn(
+            "AVG(male_product_session_share_28d)",
+            self.sql,
+        )
+        self.assertIn(
+            "AVG(female_product_session_share_28d)",
+            self.sql,
+        )
+        self.assertIn(
             "PRODUCT__discount AS discount",
             self.sql,
         )
@@ -159,12 +175,12 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn(
-            "PRODUCT_RANKING__popularity_by_orders_neg_rank\n"
+            "PRODUCT_STATS__popularity_by_orders_neg_rank\n"
             "            AS popularity_by_orders_neg_rank",
             self.sql,
         )
         self.assertIn(
-            "PRODUCT_RANKING__popularity_by_orders_neg_rank_in_cat\n"
+            "PRODUCT_STATS__popularity_by_orders_neg_rank_in_cat\n"
             "            AS popularity_by_orders_neg_rank_in_cat",
             self.sql,
         )
@@ -268,7 +284,7 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             "product_id.product_prices_daily",
             "account_id.account_demographics",
             "account_product_session_action_counts_12h",
-            "category_gender_features",
+            "category_demographic_features",
             "product_base_features",
             "product_ranking_features",
         ):

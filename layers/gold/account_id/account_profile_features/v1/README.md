@@ -6,7 +6,7 @@ DAG id: `feature-platform.layers.gold.account_id.account_profile_features`.
 
 Grain и primary key: `calculated_at,account_id`.
 
-Namespace — `ACCOUNT_PROFILE`. Все физические feature-колонки уже содержат его,
+Namespace — `ACCOUNT`. Все физические feature-колонки уже содержат его,
 например `ACCOUNT__last_clicked_avg_price`. Ключи `calculated_at` и
 `account_id` остаются без namespace.
 
@@ -60,11 +60,15 @@ Product attributes присоединяются point-in-time на snapshot `T`:
   `PRODUCT__discount` и `PRODUCT__rating` с
   `calculated_at = T`;
 - global и leaf-category popularity rank — из физических колонок G8
-  `PRODUCT_RANKING__popularity_by_orders_neg_rank` и
-  `PRODUCT_RANKING__popularity_by_orders_neg_rank_in_cat` с
+  `PRODUCT_STATS__popularity_by_orders_neg_rank` и
+  `PRODUCT_STATS__popularity_by_orders_neg_rank_in_cat` с
   `calculated_at = T`;
 - листовая `category_id` — из S1 snapshot текущей локальной даты;
-- gender листовой категории — из G6 с `calculated_at = T`.
+- population male/female shares и gender листовой категории — из G6 с
+  `calculated_at = T`. Purchased male/female category shares — это среднее
+  `male_product_session_share_28d` / `female_product_session_share_28d` по
+  строкам заказов в соответствующем окне. Unisex share остаётся долей строк с
+  category gender `U` или `NULL`.
 
 `last_purchased_neg_p90_popularity_rank_*` вычисляется как p10 уже
 отрицательного rank, то есть как `-p90` положительного rank. Симметричная
@@ -77,16 +81,17 @@ Product attributes присоединяются point-in-time на snapshot `T`:
 2. `PRODUCT_VIEW` дедуплицируется по
    `account_id,session_id,product_id` с `MAX(last_received_at)`.
 3. На account остаются последние 75 строк по `last_received_at`.
-4. Присоединяются текущие S3 price, S1 leaf category, G6 category gender, G7 rating и
+4. Присоединяются текущие S3 price, S1 leaf category, G6 category demographics, G7 rating и
    G8 order popularity rank.
 5. Строки без `min_sell_price_eod` удаляются.
 
-Price, ACCOUNT__gender shares, rating и popularity агрегируются по оставшимся
-product-session наблюдениям. Male/female shares имеют denominator из всех
-оставшихся строк; `U` и `NULL` входят только в denominator.
+Price, category population shares, rating и popularity агрегируются по оставшимся
+product-session наблюдениям. `*_male_cat_share_raw` и
+`*_female_cat_share_raw` — средние G6 product-session shares по категориям
+последних кликов; они не являются долями category labels. Нормализованные
+shares делят эти две величины на их сумму.
 
-Нормализованные shares делят female/male share на их сумму. Price percentiles
-рассчитываются на полной account population snapshot с average-rank tie
+Price percentiles рассчитываются на полной account population snapshot с average-rank tie
 semantics:
 
 ```text
