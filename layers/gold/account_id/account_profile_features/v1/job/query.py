@@ -52,8 +52,8 @@ LAST_CLICKED_RAW_COLUMNS = (
     "last_clicked_avg_price",
     "last_clicked_median_price",
     "last_clicked_90th_pct_price",
-    "last_clicked_male_cat_share",
-    "last_clicked_female_cat_share",
+    "last_clicked_male_cat_share_raw",
+    "last_clicked_female_cat_share_raw",
     "last_clicked_null_rating_share",
     "last_clicked_p10_rating",
     "last_clicked_avg_popularity_neg_rank_by_orders",
@@ -576,10 +576,10 @@ last_clicked_raw_profile AS (
             AS last_clicked_90th_pct_price,
         CAST(SUM(CASE WHEN category_gender = 'M' THEN 1 ELSE 0 END) AS DOUBLE)
             / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)
-            AS last_clicked_male_cat_share,
+            AS last_clicked_male_cat_share_raw,
         CAST(SUM(CASE WHEN category_gender = 'F' THEN 1 ELSE 0 END) AS DOUBLE)
             / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)
-            AS last_clicked_female_cat_share,
+            AS last_clicked_female_cat_share_raw,
         CAST(SUM(CASE WHEN rating IS NULL THEN 1 ELSE 0 END) AS DOUBLE)
             / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)
             AS last_clicked_null_rating_share,
@@ -594,16 +594,16 @@ last_clicked_raw_profile AS (
 last_clicked_profile AS (
     SELECT
         raw.*,
-        raw.last_clicked_female_cat_share
+        raw.last_clicked_female_cat_share_raw
             / NULLIF(
-                raw.last_clicked_female_cat_share
-                    + raw.last_clicked_male_cat_share,
+                raw.last_clicked_female_cat_share_raw
+                    + raw.last_clicked_male_cat_share_raw,
                 0.0D
             ) AS last_clicked_female_cat_share_among_gendered,
-        raw.last_clicked_male_cat_share
+        raw.last_clicked_male_cat_share_raw
             / NULLIF(
-                raw.last_clicked_female_cat_share
-                    + raw.last_clicked_male_cat_share,
+                raw.last_clicked_female_cat_share_raw
+                    + raw.last_clicked_male_cat_share_raw,
                 0.0D
             ) AS last_clicked_male_cat_share_among_gendered
     FROM last_clicked_raw_profile raw
