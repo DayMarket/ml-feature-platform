@@ -14,7 +14,6 @@
   "excluded_dags": {
     "feature-platform.layers.gold.calculated_at_sku_group_id_promotion_id.dynamic_pricing_sku_group_price_features": "Paused in Airflow; confirmed on 2026-08-13",
     "feature-platform.layers.gold.calculated_at_sku_id_promotion_id.dynamic_pricing_price_features": "Paused in Airflow; confirmed on 2026-08-13",
-    "feature-platform.layers.gold.product_id.feedback_product_id": "Paused in Airflow; confirmed on 2026-08-13",
     "feature-platform.layers.gold.query_sku_group_id.query_skg_aggregated_conversions_legacy": "Paused in Airflow; confirmed on 2026-08-13",
     "feature-platform.layers.gold.query_sku_group_id.query_skg_aggregated_conversions_legacy.backfill": "Paused in Airflow; confirmed on 2026-08-13",
     "feature-platform.layers.gold.query_sku_group_id.query_skg_pairwise_features_legacy": "Paused in Airflow; confirmed on 2026-08-13",
