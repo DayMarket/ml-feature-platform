@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **74**. Внутренних зависимостей: **48**. Внешних зависимостей: **28**. P1: **0**. P2: **9**. P3: **60**. P4: **5**.
+Всего DAG: **74**. Внутренних зависимостей: **68**. Внешних зависимостей: **8**. P1: **0**. P2: **9**. P3: **60**. P4: **5**.
 
-Таска `dq`: **67** из **74**. Таска `feature_stats`: **67** из **74** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **20**.
+Таска `dq`: **67** из **74**. Таска `feature_stats`: **67** из **74** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **0**.
 
 Severity policy:
 
@@ -93,15 +93,15 @@ UTC 04:00 · P3 · spark-custom`"]
     x4 -->|"dq Δ3h"| d1
     d2 -->|"sensor Δ30m"| d3
     d7 -->|"dq Δ22h 30m"| d3
-    d15 -.->|"dbt DQ (legacy) Δ2h"| d5
-    d17 -.->|"dbt DQ (legacy) Δ2h"| d5
-    d15 -.->|"dbt DQ (legacy) Δ2h"| d6
-    d17 -.->|"dbt DQ (legacy) Δ2h"| d6
-    d17 -.->|"dbt DQ (legacy) Δ4h"| d7
+    d15 -->|"dq Δ2h"| d5
+    d17 -->|"dq Δ2h"| d5
+    d15 -->|"dq Δ2h"| d6
+    d17 -->|"dq Δ2h"| d6
+    d17 -->|"dq Δ4h"| d7
     d16 -->|"dq Δ1h"| d9
-    d15 -.->|"dbt DQ (legacy) Δ2h"| d10
-    d17 -.->|"dbt DQ (legacy) Δ2h"| d10
-    d18 -.->|"dbt DQ (legacy) Δ2h"| d11
+    d15 -->|"dq Δ2h"| d10
+    d17 -->|"dq Δ2h"| d10
+    d18 -->|"dq Δ3h"| d11
     d4 -->|"dq Δ3h"| d12
     d12 -->|"dq Δ1h"| d13
     x0 -->|"sensor Δ1h"| d16
@@ -180,11 +180,11 @@ UTC 00:00 · P3 · airflow-python`"]
 UTC 03:00 · P3 · airflow-python`"]
     d8["`order_completion_region_features
 UTC 03:00 · P3 · airflow-python`"]
-    d2 -.->|"dbt DQ (legacy) Δ1h"| d0
-    d3 -.->|"dbt DQ (legacy) Δ1h"| d0
-    d4 -.->|"dbt DQ (legacy) Δ1h"| d0
-    d5 -.->|"dbt DQ (legacy) Δ1h"| d0
-    d6 -.->|"dbt DQ (legacy) Δ1h"| d0
+    d2 -->|"dq Δ2h"| d0
+    d3 -->|"dq Δ2h"| d0
+    d4 -->|"dq Δ2h"| d0
+    d5 -->|"dq Δ2h"| d0
+    d6 -->|"dq Δ2h"| d0
     class d1,d2,d3,d4,d5,d6,d7,d8 silver
     class d0 gold
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
@@ -298,13 +298,13 @@ manual · P3 · airflow-python`"]
 UTC 04:00 · P3 · airflow-python`"]
     d40["`demand_seller_sales_observed_daily
 UTC 04:00 · P3 · airflow-python`"]
-    x0["feature_platform_search_sku_group_id_install_query.dq"]
-    x1["feature_platform_sku_group_query_search_orders.dq"]
-    x2["dwh_core.quantity_eod"]
-    x3["search_query_id"]
-    x4["feedback_sku_group_id"]
-    x5["elasticsearch_collect"]
-    x4 -->|"dq"| d0
+    x0["dwh_core.quantity_eod"]
+    x1["search_query_id"]
+    x2["feedback_sku_group_id"]
+    x3["elasticsearch_collect"]
+    x4["sku_group_query_search_orders"]
+    x5["sku_group_install"]
+    x2 -->|"dq"| d0
     d20 -->|"dq"| d2
     d27 -->|"dq"| d2
     d18 -->|"dq"| d3
@@ -325,24 +325,24 @@ UTC 04:00 · P3 · airflow-python`"]
     d21 -->|"dq Δ3h"| d10
     d23 -->|"dq Δ1h"| d11
     d24 -->|"dq Δ50m"| d11
-    x0 -.->|"dbt DQ (legacy) Δ5h"| d12
-    x1 -.->|"dbt DQ (legacy) Δ5h"| d12
-    x3 -->|"sensor Δ1h"| d12
-    x0 -.->|"dbt DQ (legacy) Δ5h"| d13
-    x1 -.->|"dbt DQ (legacy) Δ5h"| d13
-    x3 -->|"sensor Δ1h"| d13
-    x0 -.->|"dbt DQ (legacy) Δ2h"| d14
-    x1 -.->|"dbt DQ (legacy) Δ2h"| d14
-    x0 -.->|"dbt DQ (legacy) Δ1h"| d15
+    x1 -->|"sensor Δ1h"| d12
+    x4 -->|"dq Δ5h"| d12
+    x5 -->|"dq Δ5h"| d12
+    x1 -->|"sensor Δ1h"| d13
+    x4 -->|"dq Δ5h"| d13
+    x5 -->|"dq Δ5h"| d13
+    x4 -->|"dq Δ2h"| d14
+    x5 -->|"dq Δ2h"| d14
+    x5 -->|"dq Δ1h"| d15
     d34 -->|"dq Δ1h"| d16
     d35 -->|"dq Δ1h"| d16
     d23 -->|"dq Δ10m"| d24
     d33 -->|"dq"| d25
-    x2 -->|"sensor Δ19h"| d28
-    x5 -->|"sensor"| d30
+    x0 -->|"sensor Δ19h"| d28
+    x3 -->|"sensor"| d30
     d31 -->|"dq"| d33
     d40 -->|"dq"| d34
-    x2 -->|"sensor Δ19h"| d36
+    x0 -->|"sensor Δ19h"| d36
     class d17,d18,d19,d20,d21,d22,d23,d24,d25,d26,d27,d28,d29,d30,d31,d32,d33,d34,d35,d36,d37,d38,d39,d40 silver
     class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16 gold
     class d0,d1 datasets
@@ -417,30 +417,7 @@ DAG энтити без таски `feature_stats`:
 
 - `feature-platform.layers.gold.category_id_query_text.query_category_relevance`
 
-Сенсоров на устаревшем dbt-DQ-контракте: **20**. Каждый из них уходит на фазе 3 миграции DQ — сенсор должен ждать `external_dag_id=<DAG-владелец>` и `external_task_id="dq"`:
-
-| Downstream DAG | Ждёт |
-|---|---|
-| `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_dp_neighbor_order_features.dq` |
-| `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_geo_geointellect_features.dq` |
-| `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_geo_user_activity_features.dq` |
-| `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_geo_user_location_features.dq` |
-| `feature-platform.layers.gold.h3_index.location_h3_forecast_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_geo_yandex_poi_features.dq` |
-| `feature-platform.layers.gold.query.search_query_atc_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
-| `feature-platform.layers.gold.query.search_query_atc_features_qid` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
-| `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features.v2` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
-| `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features_qid` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
-| `feature-platform.layers.gold.query_text_version.search_query_id` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
-| `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
-| `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features.v2` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
-| `feature-platform.layers.gold.sku_group_id_query_text.sku_group_query_atc_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq` |
-| `feature-platform.layers.gold.query.search_query_atc_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
-| `feature-platform.layers.gold.query.search_query_atc_features_qid` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
-| `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features.v2` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
-| `feature-platform.layers.gold.query_sku_group_id.sku_group_query_atc_order_features_qid` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
-| `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
-| `feature-platform.layers.gold.sku_group_id.sku_group_search_conversion_features.v2` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq` |
-| `feature-platform.layers.gold.sku_group_id.sku_group_stock_features` | `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_stock_daily.dq` |
+Все сенсоры переведены на таску `dq` DAG'а-владельца.
 
 ## Reading the map
 

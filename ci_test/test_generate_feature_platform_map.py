@@ -60,11 +60,27 @@ def test_map_contains_cross_dag_dependencies_and_schedules():
         "feature-platform.layers.gold.query_text_version.search_query_id"
     ]
     assert generator.Dependency(
-        "dbt.source.trino.ml_feature_platform_silver."
-        "feature_platform_search_sku_group_id_install_query.dq",
-        "legacy-dq",
+        "feature-platform.layers.silver.sku_group_id_query_category.sku_group_install",
+        "dq",
         240,
     ) in query_id.dependencies
+    assert not [
+        dependency
+        for record in records.values()
+        for dependency in record.dependencies
+        if dependency.kind == "legacy-dq"
+    ], "в репозитории не должно остаться рёбер на dbt-DQ-контракте"
+
+    # Сенсор внутри list comprehension: external_dag_id берётся из конфига
+    # владельца и статически не вычисляется, но генератор обязан восстановить
+    # ребро по прочитанным конфигам, а не ронять его в parse notes.
+    h3_gold = records["feature-platform.layers.gold.h3_index.location_h3_forecast_features"]
+    assert generator.Dependency(
+        "feature-platform.layers.silver.h3_index.geo_yandex_poi_features",
+        "dq",
+        120,
+    ) in h3_gold.dependencies
+    assert len([d for d in h3_gold.dependencies if d.kind == "dq"]) == 5
 
     es_writer_id = (
         "feature-platform.layers.silver.query_sku_group_id."

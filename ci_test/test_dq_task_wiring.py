@@ -27,6 +27,8 @@ UPLOAD_SOURCE_DAGS = (
 
 DQ_OWNING_DAGS = PILOT_DAGS + UPLOAD_SOURCE_DAGS
 
+LEGACY_DQ_PREFIX = "dbt.source.trino.ml_feature_platform"
+
 
 def uses_build_dq_task(dag_path: Path) -> bool:
     tree = ast.parse(dag_path.read_text(encoding="utf-8"))
@@ -66,6 +68,27 @@ def test_every_dq_owning_dag_has_a_dq_config_block() -> None:
         assert config["dq"].get("tests"), f"{config_path}: dq.tests пуст"
 
 
+def test_no_dag_waits_on_the_legacy_dbt_dq_contract() -> None:
+    """Фаза 3 миграции DQ: ни один сенсор не ссылается на dbt-DQ-DAG'и платформы.
+
+    Генератор `scripts/sync_dbt_sources.py` больше не создаёт в `dbt-trino` ни
+    `tests:`, ни `freshness:`, поэтому у новой таблицы DAG'а
+    `dbt.source.trino.ml_feature_platform_*.dq` попросту не появится: сенсор с
+    `check_existence=True` упадёт, без него — провисит до таймаута. Ждать надо таску
+    `dq` DAG'а-владельца таблицы.
+    """
+    offenders = []
+    for pattern in ("layers/**/dag.py", "datasets/**/dag.py"):
+        for dag_path in sorted(Path(".").glob(pattern)):
+            text = dag_path.read_text(encoding="utf-8")
+            if LEGACY_DQ_PREFIX in text:
+                offenders.append(str(dag_path))
+    assert not offenders, (
+        "эти DAG'и всё ещё ссылаются на устаревший dbt-DQ-контракт "
+        f"{LEGACY_DQ_PREFIX}*: {offenders}"
+    )
+
+
 def test_snapshot_dag_passes_a_timestamp_template() -> None:
     """Снапшотной энтити нужен data_interval_end со временем, иначе DQ упадёт на разборе."""
     relative = (
@@ -80,6 +103,7 @@ def main() -> int:
     test_pilot_dags_build_the_dq_task()
     test_pilot_dags_declare_dq_as_terminal_task()
     test_every_dq_owning_dag_has_a_dq_config_block()
+    test_no_dag_waits_on_the_legacy_dbt_dq_contract()
     test_snapshot_dag_passes_a_timestamp_template()
     print("DQ task wiring tests completed successfully")
     return 0

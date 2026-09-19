@@ -37,6 +37,11 @@ SILVER_CONFIG_PATH = os.path.join(
     "config.yaml",
 )
 
+# DAG-владелец silver-источника: ждём его таску dq, а не отдельный dbt-DQ-DAG.
+# Идентификатор записан литералом, потому что у sku_group_install блок dag:
+# в config.yaml несёт только team — сам dag_id объявлен прямо в его dag.py.
+SILVER_DAG_ID = "feature-platform.layers.silver.sku_group_id_query_category.sku_group_install"
+
 
 def _read_config(path: str) -> dict:
     with open(path, encoding="utf-8") as config_stream:
@@ -44,7 +49,6 @@ def _read_config(path: str) -> dict:
 
 
 CONFIG = _read_config(CONFIG_PATH)
-SILVER_CONFIG = _read_config(SILVER_CONFIG_PATH)
 
 
 def _load_job_module(filename: str, module_name: str):
@@ -77,14 +81,6 @@ def _executor_config() -> dict:
             )
         )
     }
-
-
-def _dq_dag_id(config: dict) -> str:
-    table = config["table"]
-    return (
-        f"dbt.source.trino.ml_feature_platform_{table['schema']}."
-        f"{table['name']}.dq"
-    )
 
 
 def get_dag_default_args() -> dict:
@@ -126,7 +122,8 @@ def get_dag_default_args() -> dict:
 def search_query_id_dag() -> None:
     wait_for_silver_install_query = ExternalTaskSensor(
         task_id="wait_for_silver_sku_group_install_query_dq",
-        external_dag_id=_dq_dag_id(SILVER_CONFIG),
+        external_dag_id=SILVER_DAG_ID,
+        external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
         mode="reschedule",

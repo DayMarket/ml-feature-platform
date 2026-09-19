@@ -226,19 +226,22 @@ class QueryLevelDagTest(unittest.TestCase):
             self.source,
         )
 
-    def test_it_waits_for_both_silver_dq_dags(self):
+    def test_it_waits_for_the_dq_task_of_both_silver_owners(self):
+        # Ждём таску dq DAG'ов-владельцев, а не снятый dbt-DQ-контракт.
         self.assertIn(
-            "feature_platform_search_sku_group_id_install_query.dq",
+            '"feature-platform.layers.silver.sku_group_id_query_category.sku_group_install"',
             self.source,
         )
         self.assertIn(
-            "feature_platform_sku_group_query_search_orders.dq",
+            '"feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders"',
             self.source,
         )
+        self.assertEqual(2, self.source.count('external_task_id="dq"'))
+        self.assertNotIn("dbt.source.trino.ml_feature_platform", self.source)
 
     def test_execution_deltas_line_up_with_the_schedule(self):
         # 06:00 логической даты минус 1 час = 05:00, логическая дата прогона search_query_id.
-        # 06:00 минус 5 часов = 01:00, логическая дата DQ силверов.
+        # 06:00 минус 5 часов = 01:00, логическая дата прогонов обоих silver-владельцев.
         self.assertIn("execution_delta=timedelta(hours=1)", self.source)
         self.assertIn("execution_delta=timedelta(hours=5)", self.source)
 
@@ -436,9 +439,12 @@ class PairDagTest(unittest.TestCase):
         )
         self.assertIn("execution_delta=timedelta(hours=1)", self.source)
 
-    def test_it_waits_for_both_silver_dq_dags(self):
-        self.assertIn("feature_platform_search_sku_group_id_install_query.dq", self.source)
-        self.assertIn("feature_platform_sku_group_query_search_orders.dq", self.source)
+    def test_it_waits_for_the_dq_task_of_both_silver_owners(self):
+        # Ждём таску dq DAG'ов-владельцев, а не снятый dbt-DQ-контракт.
+        self.assertIn('"feature-platform.layers.silver.sku_group_id_query_category.sku_group_install"', self.source)
+        self.assertIn('"feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders"', self.source)
+        self.assertEqual(2, self.source.count('external_task_id="dq"'))
+        self.assertNotIn("dbt.source.trino.ml_feature_platform", self.source)
         self.assertIn("execution_delta=timedelta(hours=5)", self.source)
 
     def test_dag_is_paused_upon_creation(self):

@@ -57,8 +57,8 @@
 
 ## Зависимости
 
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`
-  (`execution_delta = 4 часа`: логическая дата DQ-прогона `01:00` UTC против `05:00` UTC у этого DAG).
+- `feature-platform.layers.silver.sku_group_id_query_category.sku_group_install`, таска `dq`
+  (`execution_delta = 4 часа`: владелец идёт в `01:00` UTC, этот DAG — в `05:00` UTC).
 
 Сенсора на `ranking_analytics_events` нет: таблица DE-owned, ее DQ-контракт живет вне этого
 репозитория. Так же читает ее `layers/silver/query_sku_group_id/search_query_sku_group_dssm_scores/v1`.
