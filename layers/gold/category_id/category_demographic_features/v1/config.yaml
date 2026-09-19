@@ -13,7 +13,7 @@ table:
   schema: gold
   name: feature_platform_category_demographic_features
   primary_key: calculated_at,category_id
-  feature_namespace: CATEGORY_DEMOGRAPHICS
+  feature_namespace: CATEGORY
   meta:
     team: team::recsys
     create_dbt_pr: false
@@ -61,54 +61,54 @@ dq:
       expression: "category_id > 0"
     - name: non_negative
       columns:
-        - CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d
-        - CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d
-        - CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d
-        - CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d
-        - CATEGORY_DEMOGRAPHICS__n_unique_clickers_with_age_28d
+        - CATEGORY__n_unique_clickers_28d
+        - CATEGORY__n_unique_known_gender_clickers_28d
+        - CATEGORY__n_unique_female_clickers_28d
+        - CATEGORY__n_unique_male_clickers_28d
+        - CATEGORY__n_unique_clickers_with_age_28d
     - name: accepted_values
-      column: CATEGORY_DEMOGRAPHICS__gender
+      column: CATEGORY__gender
       values: [M, F, U]
     - name: accepted_range
-      column: CATEGORY_DEMOGRAPHICS__female_product_session_share_28d
+      column: CATEGORY__female_product_session_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: CATEGORY_DEMOGRAPHICS__male_product_session_share_28d
+      column: CATEGORY__male_product_session_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d
+      column: CATEGORY__female_unique_clicker_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d
+      column: CATEGORY__male_unique_clicker_share_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: CATEGORY_DEMOGRAPHICS__gender_balance_28d
+      column: CATEGORY__gender_balance_28d
       min: 0
       max: 1
     - name: accepted_range
-      column: CATEGORY_DEMOGRAPHICS__known_age_clicker_share_28d
+      column: CATEGORY__known_age_clicker_share_28d
       min: 0
       max: 1
     - name: expression_is_true
-      expression: "CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d = CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d + CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d"
+      expression: "CATEGORY__n_unique_known_gender_clickers_28d = CATEGORY__n_unique_female_clickers_28d + CATEGORY__n_unique_male_clickers_28d"
     - name: expression_is_true
-      expression: "CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d <= CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d"
+      expression: "CATEGORY__n_unique_female_clickers_28d <= CATEGORY__n_unique_known_gender_clickers_28d"
     - name: expression_is_true
-      expression: "CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d <= CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d"
+      expression: "CATEGORY__n_unique_male_clickers_28d <= CATEGORY__n_unique_known_gender_clickers_28d"
     - name: expression_is_true
-      expression: "CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d <= CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d"
+      expression: "CATEGORY__n_unique_known_gender_clickers_28d <= CATEGORY__n_unique_clickers_28d"
     - name: expression_is_true
-      expression: "CATEGORY_DEMOGRAPHICS__n_unique_clickers_with_age_28d <= CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d"
+      expression: "CATEGORY__n_unique_clickers_with_age_28d <= CATEGORY__n_unique_clickers_28d"
     - name: expression_is_true
-      expression: "(CATEGORY_DEMOGRAPHICS__female_product_session_share_28d IS NULL AND CATEGORY_DEMOGRAPHICS__male_product_session_share_28d IS NULL) OR ABS(CATEGORY_DEMOGRAPHICS__female_product_session_share_28d + CATEGORY_DEMOGRAPHICS__male_product_session_share_28d - 1.0) < 0.000001"
+      expression: "(CATEGORY__female_product_session_share_28d IS NULL AND CATEGORY__male_product_session_share_28d IS NULL) OR ABS(CATEGORY__female_product_session_share_28d + CATEGORY__male_product_session_share_28d - 1.0) < 0.000001"
     - name: expression_is_true
-      expression: "(CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d IS NULL AND CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d IS NULL) OR ABS(CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d + CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d - 1.0) < 0.000001"
+      expression: "(CATEGORY__female_unique_clicker_share_28d IS NULL AND CATEGORY__male_unique_clicker_share_28d IS NULL) OR ABS(CATEGORY__female_unique_clicker_share_28d + CATEGORY__male_unique_clicker_share_28d - 1.0) < 0.000001"
     - name: expression_is_true
-      expression: "CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d IS NULL OR (CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d BETWEEN 13 AND 100 AND CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d <= CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d AND CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d <= CATEGORY_DEMOGRAPHICS__clicker_age_p90_28d AND CATEGORY_DEMOGRAPHICS__clicker_age_p90_28d BETWEEN 13 AND 100)"
+      expression: "CATEGORY__clicker_age_p10_28d IS NULL OR (CATEGORY__clicker_age_p10_28d BETWEEN 13 AND 100 AND CATEGORY__clicker_age_p10_28d <= CATEGORY__clicker_age_p50_28d AND CATEGORY__clicker_age_p50_28d <= CATEGORY__clicker_age_p90_28d AND CATEGORY__clicker_age_p90_28d BETWEEN 13 AND 100)"
 
 feature_stats:
   trino_conn_id: trino_recsys
@@ -117,4 +117,4 @@ feature_stats:
   snapshot_interval_hours: 12
   partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
   exclude_columns:
-    - CATEGORY_DEMOGRAPHICS__gender
+    - CATEGORY__gender

@@ -42,21 +42,21 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
         self.assertEqual(
             query.FEATURE_COLUMNS,
             (
-                "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d",
-                "CATEGORY_DEMOGRAPHICS__male_product_session_share_28d",
-                "CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d",
-                "CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d",
-                "CATEGORY_DEMOGRAPHICS__gender_balance_28d",
-                "CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d",
-                "CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d",
-                "CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d",
-                "CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d",
-                "CATEGORY_DEMOGRAPHICS__n_unique_clickers_with_age_28d",
-                "CATEGORY_DEMOGRAPHICS__known_age_clicker_share_28d",
-                "CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d",
-                "CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d",
-                "CATEGORY_DEMOGRAPHICS__clicker_age_p90_28d",
-                "CATEGORY_DEMOGRAPHICS__gender",
+                "CATEGORY__female_product_session_share_28d",
+                "CATEGORY__male_product_session_share_28d",
+                "CATEGORY__female_unique_clicker_share_28d",
+                "CATEGORY__male_unique_clicker_share_28d",
+                "CATEGORY__gender_balance_28d",
+                "CATEGORY__n_unique_clickers_28d",
+                "CATEGORY__n_unique_known_gender_clickers_28d",
+                "CATEGORY__n_unique_female_clickers_28d",
+                "CATEGORY__n_unique_male_clickers_28d",
+                "CATEGORY__n_unique_clickers_with_age_28d",
+                "CATEGORY__known_age_clicker_share_28d",
+                "CATEGORY__clicker_age_p10_28d",
+                "CATEGORY__clicker_age_p50_28d",
+                "CATEGORY__clicker_age_p90_28d",
+                "CATEGORY__gender",
             ),
         )
 
@@ -76,15 +76,15 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
 
     def test_namespace_schedule_resources_and_start_date(self):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
-        self.assertIn("feature_namespace: CATEGORY_DEMOGRAPHICS", config_text)
+        self.assertIn("feature_namespace: CATEGORY", config_text)
         self.assertTrue(
             all(
-                column.startswith("CATEGORY_DEMOGRAPHICS__")
+                column.startswith("CATEGORY__")
                 for column in query.FEATURE_COLUMNS
             )
         )
         self.assertIn(
-            "AS CATEGORY_DEMOGRAPHICS__gender",
+            "AS CATEGORY__gender",
             self.sql,
         )
         self.assertIn("primary_key: calculated_at,category_id", config_text)
@@ -258,24 +258,24 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("values: [M, F, U]", config_text)
         self.assertIn(
-            "CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d = "
-            "CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d + "
-            "CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d",
+            "CATEGORY__n_unique_known_gender_clickers_28d = "
+            "CATEGORY__n_unique_female_clickers_28d + "
+            "CATEGORY__n_unique_male_clickers_28d",
             config_text,
         )
         self.assertIn(
-            "CATEGORY_DEMOGRAPHICS__female_product_session_share_28d + "
-            "CATEGORY_DEMOGRAPHICS__male_product_session_share_28d - 1.0",
+            "CATEGORY__female_product_session_share_28d + "
+            "CATEGORY__male_product_session_share_28d - 1.0",
             config_text,
         )
         self.assertIn(
-            "CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d + "
-            "CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d - 1.0",
+            "CATEGORY__female_unique_clicker_share_28d + "
+            "CATEGORY__male_unique_clicker_share_28d - 1.0",
             config_text,
         )
         self.assertIn(
-            "CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d <= "
-            "CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d",
+            "CATEGORY__clicker_age_p10_28d <= "
+            "CATEGORY__clicker_age_p50_28d",
             config_text,
         )
 

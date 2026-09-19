@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-FEATURE_NAMESPACE = "CATEGORY_DEMOGRAPHICS"
+FEATURE_NAMESPACE = "CATEGORY"
 BASE_FEATURE_COLUMNS = (
     "female_product_session_share_28d",
     "male_product_session_share_28d",

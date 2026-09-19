@@ -56,27 +56,27 @@ population, но не входят в gender denominator.
 
 ## Колонки и формулы
 
-- `CATEGORY_DEMOGRAPHICS__female_product_session_share_28d` — доля female product-session
+- `CATEGORY__female_product_session_share_28d` — доля female product-session
   наблюдений среди product-session наблюдений с известным gender;
-- `CATEGORY_DEMOGRAPHICS__male_product_session_share_28d` — аналогичная male-доля;
-- `CATEGORY_DEMOGRAPHICS__female_unique_clicker_share_28d` и
-  `CATEGORY_DEMOGRAPHICS__male_unique_clicker_share_28d` — gender-доли среди
+- `CATEGORY__male_product_session_share_28d` — аналогичная male-доля;
+- `CATEGORY__female_unique_clicker_share_28d` и
+  `CATEGORY__male_unique_clicker_share_28d` — gender-доли среди
   уникальных пользователей с известным gender;
-- `CATEGORY_DEMOGRAPHICS__gender_balance_28d` — непрерывная сбалансированность
+- `CATEGORY__gender_balance_28d` — непрерывная сбалансированность
   product-session gender-аудитории от 0 до 1;
-- `CATEGORY_DEMOGRAPHICS__n_unique_clickers_28d` — все уникальные account категории;
-- `CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d` — уникальные account с gender `MALE` или
+- `CATEGORY__n_unique_clickers_28d` — все уникальные account категории;
+- `CATEGORY__n_unique_known_gender_clickers_28d` — уникальные account с gender `MALE` или
   `FEMALE`;
-- `CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d` — уникальные female account;
-- `CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d` — уникальные male account;
-- `CATEGORY_DEMOGRAPHICS__n_unique_clickers_with_age_28d` — уникальные account с
+- `CATEGORY__n_unique_female_clickers_28d` — уникальные female account;
+- `CATEGORY__n_unique_male_clickers_28d` — уникальные male account;
+- `CATEGORY__n_unique_clickers_with_age_28d` — уникальные account с
   валидным возрастом;
-- `CATEGORY_DEMOGRAPHICS__known_age_clicker_share_28d` — покрытие валидного возраста;
-- `CATEGORY_DEMOGRAPHICS__clicker_age_p10_28d`,
-  `CATEGORY_DEMOGRAPHICS__clicker_age_p50_28d` и
-  `CATEGORY_DEMOGRAPHICS__clicker_age_p90_28d` — точные перцентили возраста
+- `CATEGORY__known_age_clicker_share_28d` — покрытие валидного возраста;
+- `CATEGORY__clicker_age_p10_28d`,
+  `CATEGORY__clicker_age_p50_28d` и
+  `CATEGORY__clicker_age_p90_28d` — точные перцентили возраста
   уникальных пользователей; p50 является медианным возрастом;
-- `CATEGORY_DEMOGRAPHICS__gender` — `M`, `F`, `U` или `NULL` для листовой
+- `CATEGORY__gender` — `M`, `F`, `U` или `NULL` для листовой
   категории.
 
 ```text
@@ -92,8 +92,8 @@ known_age_share     = unique accounts with valid age / all unique accounts
 равны `NULL`, а unique counts равны нулю. Для опубликованной категории:
 
 ```text
-CATEGORY_DEMOGRAPHICS__n_unique_known_gender_clickers_28d
-    = CATEGORY_DEMOGRAPHICS__n_unique_female_clickers_28d + CATEGORY_DEMOGRAPHICS__n_unique_male_clickers_28d
+CATEGORY__n_unique_known_gender_clickers_28d
+    = CATEGORY__n_unique_female_clickers_28d + CATEGORY__n_unique_male_clickers_28d
 ```
 
 ## On-the-fly candidate enrichment
@@ -141,7 +141,7 @@ unique count сумме female/male unique counts. Дедупликация prod
 сумма female/male unique shares.
 
 `feature_stats` выполняет отдельный Trino-скан каждого 12-часового snapshot;
-строковый `CATEGORY_DEMOGRAPHICS__gender` исключён из профилирования. Ranking upload не
+строковый `CATEGORY__gender` исключён из профилирования. Ranking upload не
 настраивается. Потребители: G7 и candidate enrichment для Main, push и train.
 
 После merge в `master` dbt PR не создаётся (`create_dbt_pr: false`), а CI может
