@@ -13,7 +13,7 @@ table:
   schema: gold
   name: feature_platform_product_ranking_features
   primary_key: calculated_at,product_id
-  feature_namespace: PRODUCT_STATS
+  feature_namespace: PRODUCT
   meta:
     team: team::recsys
     create_dbt_pr: false
@@ -56,20 +56,20 @@ dq:
     - name: expression_is_true
       expression: "product_id > 0"
     - name: expression_is_true
-      expression: "(PRODUCT_STATS__price_percentile IS NULL OR PRODUCT_STATS__price_percentile BETWEEN 0 AND 1) AND (PRODUCT_STATS__price_percentile_in_cat IS NULL OR PRODUCT_STATS__price_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT_STATS__rating_percentile_in_cat IS NULL OR PRODUCT_STATS__rating_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT_STATS__discount_percentile_in_cat IS NULL OR PRODUCT_STATS__discount_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT_STATS__feedback_quantity_percentile_in_cat IS NULL OR PRODUCT_STATS__feedback_quantity_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT_STATS__feedback_lte_3_to_orders_rate_percentile_in_cat IS NULL OR PRODUCT_STATS__feedback_lte_3_to_orders_rate_percentile_in_cat BETWEEN 0 AND 1)"
+      expression: "(PRODUCT__price_percentile IS NULL OR PRODUCT__price_percentile BETWEEN 0 AND 1) AND (PRODUCT__price_percentile_in_cat IS NULL OR PRODUCT__price_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT__rating_percentile_in_cat IS NULL OR PRODUCT__rating_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT__discount_percentile_in_cat IS NULL OR PRODUCT__discount_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT__feedback_quantity_percentile_in_cat IS NULL OR PRODUCT__feedback_quantity_percentile_in_cat BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_to_orders_rate_percentile_in_cat IS NULL OR PRODUCT__feedback_lte_3_to_orders_rate_percentile_in_cat BETWEEN 0 AND 1)"
     - name: expression_is_true
-      expression: "(PRODUCT_STATS__popularity_by_orders_neg_rank IS NULL OR (is_finite(PRODUCT_STATS__popularity_by_orders_neg_rank) AND PRODUCT_STATS__popularity_by_orders_neg_rank <= 0)) AND (PRODUCT_STATS__popularity_by_orders_neg_rank_in_cat IS NULL OR (is_finite(PRODUCT_STATS__popularity_by_orders_neg_rank_in_cat) AND PRODUCT_STATS__popularity_by_orders_neg_rank_in_cat <= 0)) AND (PRODUCT_STATS__popularity_by_clicks_neg_rank_3d IS NULL OR (is_finite(PRODUCT_STATS__popularity_by_clicks_neg_rank_3d) AND PRODUCT_STATS__popularity_by_clicks_neg_rank_3d <= 0)) AND (PRODUCT_STATS__popularity_by_clicks_neg_rank_28d IS NULL OR (is_finite(PRODUCT_STATS__popularity_by_clicks_neg_rank_28d) AND PRODUCT_STATS__popularity_by_clicks_neg_rank_28d <= 0)) AND (PRODUCT_STATS__popularity_by_clicks_neg_rank_in_cat_3d IS NULL OR (is_finite(PRODUCT_STATS__popularity_by_clicks_neg_rank_in_cat_3d) AND PRODUCT_STATS__popularity_by_clicks_neg_rank_in_cat_3d <= 0)) AND (PRODUCT_STATS__popularity_by_clicks_neg_rank_in_cat_28d IS NULL OR (is_finite(PRODUCT_STATS__popularity_by_clicks_neg_rank_in_cat_28d) AND PRODUCT_STATS__popularity_by_clicks_neg_rank_in_cat_28d <= 0))"
+      expression: "(PRODUCT__popularity_by_orders_neg_rank IS NULL OR (is_finite(PRODUCT__popularity_by_orders_neg_rank) AND PRODUCT__popularity_by_orders_neg_rank <= 0)) AND (PRODUCT__popularity_by_orders_neg_rank_in_cat IS NULL OR (is_finite(PRODUCT__popularity_by_orders_neg_rank_in_cat) AND PRODUCT__popularity_by_orders_neg_rank_in_cat <= 0)) AND (PRODUCT__popularity_by_clicks_neg_rank_3d IS NULL OR (is_finite(PRODUCT__popularity_by_clicks_neg_rank_3d) AND PRODUCT__popularity_by_clicks_neg_rank_3d <= 0)) AND (PRODUCT__popularity_by_clicks_neg_rank_28d IS NULL OR (is_finite(PRODUCT__popularity_by_clicks_neg_rank_28d) AND PRODUCT__popularity_by_clicks_neg_rank_28d <= 0)) AND (PRODUCT__popularity_by_clicks_neg_rank_in_cat_3d IS NULL OR (is_finite(PRODUCT__popularity_by_clicks_neg_rank_in_cat_3d) AND PRODUCT__popularity_by_clicks_neg_rank_in_cat_3d <= 0)) AND (PRODUCT__popularity_by_clicks_neg_rank_in_cat_28d IS NULL OR (is_finite(PRODUCT__popularity_by_clicks_neg_rank_in_cat_28d) AND PRODUCT__popularity_by_clicks_neg_rank_in_cat_28d <= 0))"
     - name: non_negative
       columns:
-        - PRODUCT_STATS__feedback_lte_3_to_orders_rate_smoothed
-        - PRODUCT_STATS__return_rate_neg_to_category_return_rate_neg_28d
-        - PRODUCT_STATS__return_rate_neg_smoothed_to_category_return_rate_neg_28d
+        - PRODUCT__feedback_lte_3_to_orders_rate_smoothed
+        - PRODUCT__return_rate_neg_to_category_return_rate_neg_28d
+        - PRODUCT__return_rate_neg_smoothed_to_category_return_rate_neg_28d
     - name: expression_is_true
-      expression: "(PRODUCT_STATS__feedback_lte_3_to_orders_rate_smoothed IS NULL OR is_finite(PRODUCT_STATS__feedback_lte_3_to_orders_rate_smoothed)) AND (PRODUCT_STATS__return_rate_neg_to_category_return_rate_neg_28d IS NULL OR is_finite(PRODUCT_STATS__return_rate_neg_to_category_return_rate_neg_28d)) AND (PRODUCT_STATS__return_rate_neg_smoothed_to_category_return_rate_neg_28d IS NULL OR is_finite(PRODUCT_STATS__return_rate_neg_smoothed_to_category_return_rate_neg_28d))"
+      expression: "(PRODUCT__feedback_lte_3_to_orders_rate_smoothed IS NULL OR is_finite(PRODUCT__feedback_lte_3_to_orders_rate_smoothed)) AND (PRODUCT__return_rate_neg_to_category_return_rate_neg_28d IS NULL OR is_finite(PRODUCT__return_rate_neg_to_category_return_rate_neg_28d)) AND (PRODUCT__return_rate_neg_smoothed_to_category_return_rate_neg_28d IS NULL OR is_finite(PRODUCT__return_rate_neg_smoothed_to_category_return_rate_neg_28d))"
     - name: expression_is_true
-      expression: "PRODUCT_STATS__category_return_rate_neg_28d IS NULL OR PRODUCT_STATS__category_return_rate_neg_28d BETWEEN -1 AND 0"
+      expression: "PRODUCT__category_return_rate_neg_28d IS NULL OR PRODUCT__category_return_rate_neg_28d BETWEEN -1 AND 0"
     - name: expression_is_true
-      expression: "PRODUCT_STATS__return_rate_neg_smoothed_28d IS NULL OR PRODUCT_STATS__return_rate_neg_smoothed_28d BETWEEN -1 AND 0"
+      expression: "PRODUCT__return_rate_neg_smoothed_28d IS NULL OR PRODUCT__return_rate_neg_smoothed_28d BETWEEN -1 AND 0"
 
 feature_stats:
   trino_conn_id: trino_recsys
