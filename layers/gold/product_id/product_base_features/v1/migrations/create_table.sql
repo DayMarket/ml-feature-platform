@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     PRODUCT__n_completed_28d INT COMMENT 'Количество строк order_items со статусом COMPLETED/PAID/DELIVERED/IN_DELIVERY за 28 дней',
     PRODUCT__n_returned_28d INT COMMENT 'Количество строк order_items со статусом RETURNED за 28 дней',
     PRODUCT__return_rate_neg_28d DOUBLE COMMENT 'Отрицательная доля строк order_items со статусом RETURNED за 28 дней',
+    PRODUCT__n_returned_60d INT COMMENT 'Количество строк order_items со статусом RETURNED за 60 дней',
+    PRODUCT__n_returned_90d INT COMMENT 'Количество строк order_items со статусом RETURNED за 90 дней',
     PRODUCT__category_clicker_age_p10_28d DOUBLE COMMENT '10-й перцентиль возраста уникальных пользователей листовой категории за 28 дней из G6',
     PRODUCT__category_clicker_age_p50_28d DOUBLE COMMENT 'Медианный возраст уникальных пользователей листовой категории за 28 дней из G6',
     PRODUCT__category_clicker_age_p90_28d DOUBLE COMMENT '90-й перцентиль возраста уникальных пользователей листовой категории за 28 дней из G6',
