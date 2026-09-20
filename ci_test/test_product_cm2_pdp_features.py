@@ -46,7 +46,7 @@ class ProductCm2PdpFeaturesTest(unittest.TestCase):
         )
         self.assertEqual(columns, {"calculated_at", "product_id", *query.FEATURE_COLUMNS})
         self.assertNotIn("sku_id", migration)
-        self.assertNotIn("PRODUCT_CM2_PDP__price", migration)
+        self.assertNotIn("PRODUCT__price", migration)
         self.assertNotIn("BIGINT", migration)
 
     def test_latest_non_future_s6_and_usd_rate_are_selected(self):
@@ -83,10 +83,10 @@ class ProductCm2PdpFeaturesTest(unittest.TestCase):
         self.assertIn("mean_price", self.sql)
 
     def test_cm2_equals_net_inflow_and_rate_is_published(self):
-        self.assertIn("net_inflow AS PRODUCT_CM2_PDP__score", self.sql)
-        self.assertIn("net_inflow AS PRODUCT_CM2_PDP__net_inflow", self.sql)
-        self.assertIn("weighted_price AS PRODUCT_CM2_PDP__weighted_price", self.sql)
-        self.assertIn("usd_rate AS PRODUCT_CM2_PDP__today_rate", self.sql)
+        self.assertIn("net_inflow AS PRODUCT__score", self.sql)
+        self.assertIn("net_inflow AS PRODUCT__net_inflow", self.sql)
+        self.assertIn("weighted_price AS PRODUCT__weighted_price", self.sql)
+        self.assertIn("usd_rate AS PRODUCT__today_rate", self.sql)
 
     def test_merge_replaces_only_requested_snapshot(self):
         merge_sql = query.build_product_cm2_pdp_features_merge_query(
@@ -118,7 +118,7 @@ class ProductCm2PdpFeaturesTest(unittest.TestCase):
         self.assertEqual(dag_text.count('external_task_id="dq"'), 1)
         self.assertIn("sku_cm2_inputs_daily", dag_text)
         self.assertIn("execution_date_fn=_daily_s6_logical_date", dag_text)
-        self.assertIn("feature_namespace: PRODUCT_CM2_PDP", config_text)
+        self.assertIn("feature_namespace: PRODUCT", config_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
         self.assertIn('"recsys"', dag_text)

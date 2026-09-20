@@ -13,7 +13,7 @@ table:
   schema: gold
   name: feature_platform_product_cm2_pdp_features
   primary_key: calculated_at,product_id
-  feature_namespace: PRODUCT_CM2_PDP
+  feature_namespace: PRODUCT
   meta:
     team: team::recsys
     create_dbt_pr: false
@@ -57,28 +57,28 @@ dq:
       expression: "product_id > 0"
     - name: not_null
       columns:
-        - PRODUCT_CM2_PDP__score
-        - PRODUCT_CM2_PDP__net_inflow
-        - PRODUCT_CM2_PDP__weighted_price
-        - PRODUCT_CM2_PDP__today_rate
+        - PRODUCT__score
+        - PRODUCT__net_inflow
+        - PRODUCT__weighted_price
+        - PRODUCT__today_rate
     - name: finite
       columns:
-        - PRODUCT_CM2_PDP__score
-        - PRODUCT_CM2_PDP__net_inflow
-        - PRODUCT_CM2_PDP__weighted_price
-        - PRODUCT_CM2_PDP__today_rate
+        - PRODUCT__score
+        - PRODUCT__net_inflow
+        - PRODUCT__weighted_price
+        - PRODUCT__today_rate
     - name: non_negative
       columns:
-        - PRODUCT_CM2_PDP__weighted_price
+        - PRODUCT__weighted_price
     - name: expression_is_true
-      expression: "PRODUCT_CM2_PDP__today_rate > 0"
+      expression: "PRODUCT__today_rate > 0"
     - name: distinct_count_between
       columns:
-        - PRODUCT_CM2_PDP__today_rate
+        - PRODUCT__today_rate
       min: 1
       max: 1
     - name: expression_is_true
-      expression: "ABS(PRODUCT_CM2_PDP__score - PRODUCT_CM2_PDP__net_inflow) <= 0.000000001"
+      expression: "ABS(PRODUCT__score - PRODUCT__net_inflow) <= 0.000000001"
 
 feature_stats:
   trino_conn_id: trino_recsys

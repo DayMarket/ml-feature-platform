@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-FEATURE_NAMESPACE = "PRODUCT_CM2_MAIN"
+FEATURE_NAMESPACE = "PRODUCT"
 FEATURE_COLUMNS = (f"{FEATURE_NAMESPACE}__score_uzs",)
 
 DEFAULT_COMMISSION_PCT = 20.0

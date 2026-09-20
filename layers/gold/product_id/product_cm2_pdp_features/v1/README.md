@@ -40,10 +40,10 @@ Logistics, forward cost и seller compensation не вычитаются. Есл
 
 Физические feature-колонки:
 
-- `PRODUCT_CM2_PDP__score` — равен `PRODUCT_CM2_PDP__net_inflow`;
-- `PRODUCT_CM2_PDP__net_inflow` — агрегированный net inflow в USD;
-- `PRODUCT_CM2_PDP__weighted_price` — агрегированная capped sell price в UZS;
-- `PRODUCT_CM2_PDP__today_rate` — использованный USD rate.
+- `PRODUCT__score` — равен `PRODUCT__net_inflow`;
+- `PRODUCT__net_inflow` — агрегированный net inflow в USD;
+- `PRODUCT__weighted_price` — агрегированная capped sell price в UZS;
+- `PRODUCT__today_rate` — использованный USD rate.
 
 Legacy alias `price` не публикуется.
 

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-FEATURE_NAMESPACE = "PRODUCT_CM2_PDP"
+FEATURE_NAMESPACE = "PRODUCT"
 BASE_FEATURE_COLUMNS = ("score", "net_inflow", "weighted_price", "today_rate")
 FEATURE_COLUMNS = tuple(
     f"{FEATURE_NAMESPACE}__{column}" for column in BASE_FEATURE_COLUMNS

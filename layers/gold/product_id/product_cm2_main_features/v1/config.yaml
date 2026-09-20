@@ -13,7 +13,7 @@ table:
   schema: gold
   name: feature_platform_product_cm2_main_features
   primary_key: calculated_at,product_id
-  feature_namespace: PRODUCT_CM2_MAIN
+  feature_namespace: PRODUCT
   meta:
     team: team::recsys
     create_dbt_pr: false
@@ -57,10 +57,10 @@ dq:
       expression: "product_id > 0"
     - name: not_null
       columns:
-        - PRODUCT_CM2_MAIN__score_uzs
+        - PRODUCT__score_uzs
     - name: finite
       columns:
-        - PRODUCT_CM2_MAIN__score_uzs
+        - PRODUCT__score_uzs
 
 feature_stats:
   trino_conn_id: trino_recsys

@@ -46,7 +46,7 @@ class ProductCm2MainFeaturesTest(unittest.TestCase):
         )
         self.assertEqual(
             columns,
-            {"calculated_at", "product_id", "PRODUCT_CM2_MAIN__score_uzs"},
+            {"calculated_at", "product_id", "PRODUCT__score_uzs"},
         )
         self.assertNotIn("sku_id", migration)
         self.assertNotIn("BIGINT", migration)
@@ -83,7 +83,7 @@ class ProductCm2MainFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn("ELSE mean_score", self.sql)
-        self.assertIn("* usd_rate AS PRODUCT_CM2_MAIN__score_uzs", self.sql)
+        self.assertIn("* usd_rate AS PRODUCT__score_uzs", self.sql)
 
     def test_merge_replaces_only_requested_snapshot(self):
         merge_sql = query.build_product_cm2_main_features_merge_query(
@@ -115,7 +115,7 @@ class ProductCm2MainFeaturesTest(unittest.TestCase):
         self.assertEqual(dag_text.count('external_task_id="dq"'), 1)
         self.assertIn("sku_cm2_inputs_daily", dag_text)
         self.assertIn("execution_date_fn=_daily_s6_logical_date", dag_text)
-        self.assertIn("feature_namespace: PRODUCT_CM2_MAIN", config_text)
+        self.assertIn("feature_namespace: PRODUCT", config_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
         self.assertIn('"recsys"', dag_text)
