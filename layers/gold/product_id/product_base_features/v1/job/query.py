@@ -85,6 +85,7 @@ RETURN_COLUMNS = (
     "n_completed_28d",
     "n_returned_28d",
     "return_rate_neg_28d",
+    "n_completed_90d",
     "n_returned_60d",
     "n_returned_90d",
 )
@@ -343,6 +344,8 @@ def build_product_base_features_query(
         )
         for window in RETURN_WINDOWS
     ] + [
+        "n_completed_90d"
+    ] + [
         f"n_returned_{window}d"
         for window in (60, 90)
     ]
@@ -368,6 +371,8 @@ def build_product_base_features_query(
     ] + [
         f"return_rate_neg_{window}d"
         for window in RETURN_WINDOWS
+    ] + [
+        "COALESCE(n_completed_90d, 0) AS n_completed_90d"
     ] + [
         f"COALESCE(n_returned_{window}d, 0) AS n_returned_{window}d"
         for window in (60, 90)
