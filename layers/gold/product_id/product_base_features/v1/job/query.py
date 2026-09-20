@@ -50,13 +50,11 @@ DERIVED_COLUMNS = ("favorites_to_orders_rate",)
 FEEDBACK_WINDOWS = (3, 28)
 ROLLING_FEEDBACK_COLUMNS = (
     "feedback_quantity_1d",
-    "sum_rating_1d",
     *tuple(
         f"{family}_{window}d"
         for window in FEEDBACK_WINDOWS
         for family in (
             "feedback_last",
-            "sum_rating_last",
             "feedback_gte_4",
             "feedback_lte_3",
             "feedback_gte_4_ratio",
@@ -346,7 +344,6 @@ def build_product_base_features_query(
         for window in FEEDBACK_WINDOWS
         for expression in (
             f"COALESCE(feedback_last_{window}d, 0) AS feedback_last_{window}d",
-            f"COALESCE(sum_rating_last_{window}d, 0) AS sum_rating_last_{window}d",
             f"COALESCE(feedback_gte_4_{window}d, 0) AS feedback_gte_4_{window}d",
             f"COALESCE(feedback_lte_3_{window}d, 0) AS feedback_lte_3_{window}d",
             f"feedback_gte_4_ratio_{window}d",
@@ -719,7 +716,6 @@ unprefixed_features AS (
             / NULLIF(CAST(category_orders_90d AS DOUBLE), 0.0D)
             AS category_orders_share_90d,
         COALESCE(feedback_quantity_1d, 0) AS feedback_quantity_1d,
-        COALESCE(sum_rating_1d, 0) AS sum_rating_1d,
         {rolling_feedback_output_select},
         rating,
         feedback_quantity,

@@ -49,7 +49,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 73)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 70)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(column.startswith("PRODUCT__") for column in query.FEATURE_COLUMNS)
