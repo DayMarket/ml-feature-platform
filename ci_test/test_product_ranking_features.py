@@ -49,7 +49,7 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 21)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 17)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(
@@ -137,6 +137,8 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         )
 
     def test_return_baseline_is_weighted_and_relative_rates_are_safe(self):
+        self.assertEqual(query.RETURN_WINDOWS, (28,))
+        self.assertNotIn("return_rate_neg_3d", self.sql)
         for window in query.RETURN_WINDOWS:
             self.assertIn(
                 f"SUM(n_returned_{window}d) OVER (PARTITION BY category_id)",

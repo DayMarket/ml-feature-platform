@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 FEATURE_NAMESPACE = "PRODUCT_STATS"
 SMOOTHING_ALPHA = 10.0
-RETURN_WINDOWS = (3, 28)
+RETURN_WINDOWS = (28,)
 
 RANK_AND_PERCENTILE_COLUMNS = (
     "price_percentile",
