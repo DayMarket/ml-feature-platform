@@ -67,7 +67,7 @@ G8 использует product-level counts из G7. В их population вхо�
 а `RETURNED` увеличивает `n_returned_Nd`. Поля `item_quantity` и
 `returned_quantity` для return-rate не используются.
 
-Для окон `3,28` дней category baseline считается как взвешенная
+Для окон `28,90` дней category baseline считается как взвешенная
 доля строк, а не среднее product rates:
 
 ```text
@@ -84,6 +84,16 @@ return_rate_neg_smoothed_Nd =
 
 Raw и smoothed rates делятся на baseline листовой категории для relative-признаков.
 Если baseline отсутствует или равен нулю, relative rate равен `NULL`.
+Для сохранения направления «больше — лучше» relative-признаки используют
+положительную product return rate, делённую на отрицательный category baseline:
+
+```text
+return_rate_to_category_return_neg_Nd =
+    -return_rate_neg_Nd / category_return_rate_neg_Nd
+```
+
+Такие значения не превышают нуля: чем меньше возвратов у товара относительно
+категории, тем ближе значение к нулю и тем лучше оно для score.
 Канонические имена используют `smoothed`; вариант `smothed` не публикуется.
 
 ## Orchestration, DQ и feature stats

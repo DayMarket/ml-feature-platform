@@ -62,14 +62,12 @@ dq:
     - name: non_negative
       columns:
         - PRODUCT__feedback_lte_3_to_orders_rate_smoothed
-        - PRODUCT__return_rate_neg_to_category_return_rate_neg_28d
-        - PRODUCT__return_rate_neg_smoothed_to_category_return_rate_neg_28d
     - name: expression_is_true
-      expression: "(PRODUCT__feedback_lte_3_to_orders_rate_smoothed IS NULL OR is_finite(PRODUCT__feedback_lte_3_to_orders_rate_smoothed)) AND (PRODUCT__return_rate_neg_to_category_return_rate_neg_28d IS NULL OR is_finite(PRODUCT__return_rate_neg_to_category_return_rate_neg_28d)) AND (PRODUCT__return_rate_neg_smoothed_to_category_return_rate_neg_28d IS NULL OR is_finite(PRODUCT__return_rate_neg_smoothed_to_category_return_rate_neg_28d))"
+      expression: "(PRODUCT__feedback_lte_3_to_orders_rate_smoothed IS NULL OR is_finite(PRODUCT__feedback_lte_3_to_orders_rate_smoothed)) AND (PRODUCT__return_rate_to_category_return_neg_28d IS NULL OR (is_finite(PRODUCT__return_rate_to_category_return_neg_28d) AND PRODUCT__return_rate_to_category_return_neg_28d <= 0)) AND (PRODUCT__return_rate_smoothed_to_category_return_neg_28d IS NULL OR (is_finite(PRODUCT__return_rate_smoothed_to_category_return_neg_28d) AND PRODUCT__return_rate_smoothed_to_category_return_neg_28d <= 0)) AND (PRODUCT__return_rate_to_category_return_neg_90d IS NULL OR (is_finite(PRODUCT__return_rate_to_category_return_neg_90d) AND PRODUCT__return_rate_to_category_return_neg_90d <= 0)) AND (PRODUCT__return_rate_smoothed_to_category_return_neg_90d IS NULL OR (is_finite(PRODUCT__return_rate_smoothed_to_category_return_neg_90d) AND PRODUCT__return_rate_smoothed_to_category_return_neg_90d <= 0))"
     - name: expression_is_true
-      expression: "PRODUCT__category_return_rate_neg_28d IS NULL OR PRODUCT__category_return_rate_neg_28d BETWEEN -1 AND 0"
+      expression: "(PRODUCT__category_return_rate_neg_28d IS NULL OR PRODUCT__category_return_rate_neg_28d BETWEEN -1 AND 0) AND (PRODUCT__category_return_rate_neg_90d IS NULL OR PRODUCT__category_return_rate_neg_90d BETWEEN -1 AND 0)"
     - name: expression_is_true
-      expression: "PRODUCT__return_rate_neg_smoothed_28d IS NULL OR PRODUCT__return_rate_neg_smoothed_28d BETWEEN -1 AND 0"
+      expression: "(PRODUCT__return_rate_neg_smoothed_28d IS NULL OR PRODUCT__return_rate_neg_smoothed_28d BETWEEN -1 AND 0) AND (PRODUCT__return_rate_neg_smoothed_90d IS NULL OR PRODUCT__return_rate_neg_smoothed_90d BETWEEN -1 AND 0)"
 
 feature_stats:
   trino_conn_id: trino_recsys

@@ -16,8 +16,12 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     PRODUCT__feedback_lte_3_to_orders_rate_percentile_in_cat DOUBLE COMMENT 'Average-rank percentile smoothed feedback rating 1..3 to orders rate внутри листовой категории',
     PRODUCT__category_return_rate_neg_28d DOUBLE COMMENT 'Взвешенная отрицательная доля строк RETURNED в листовой категории за 28 дней',
     PRODUCT__return_rate_neg_smoothed_28d DOUBLE COMMENT 'Отрицательная product return rate, сглаженная к baseline листовой категории за 28 дней с alpha 10',
-    PRODUCT__return_rate_neg_to_category_return_rate_neg_28d DOUBLE COMMENT 'Отношение отрицательной product return rate к отрицательному baseline листовой категории за 28 дней',
-    PRODUCT__return_rate_neg_smoothed_to_category_return_rate_neg_28d DOUBLE COMMENT 'Отношение сглаженной отрицательной product return rate к отрицательному baseline листовой категории за 28 дней'
+    PRODUCT__return_rate_to_category_return_neg_28d DOUBLE COMMENT 'Положительная product return rate / отрицательный baseline листовой категории за 28 дней; значение не выше 0, больше — лучше',
+    PRODUCT__return_rate_smoothed_to_category_return_neg_28d DOUBLE COMMENT 'Сглаженная положительная product return rate / отрицательный baseline листовой категории за 28 дней; значение не выше 0, больше — лучше',
+    PRODUCT__category_return_rate_neg_90d DOUBLE COMMENT 'Взвешенная отрицательная доля строк RETURNED в листовой категории за 90 дней',
+    PRODUCT__return_rate_neg_smoothed_90d DOUBLE COMMENT 'Отрицательная product return rate, сглаженная к baseline листовой категории за 90 дней с alpha 10',
+    PRODUCT__return_rate_to_category_return_neg_90d DOUBLE COMMENT 'Положительная product return rate / отрицательный baseline листовой категории за 90 дней; значение не выше 0, больше — лучше',
+    PRODUCT__return_rate_smoothed_to_category_return_neg_90d DOUBLE COMMENT 'Сглаженная положительная product return rate / отрицательный baseline листовой категории за 90 дней; значение не выше 0, больше — лучше'
 )
 USING iceberg
 COMMENT 'Gold: population-dependent product ranks, percentiles and smoothed rates over G7'

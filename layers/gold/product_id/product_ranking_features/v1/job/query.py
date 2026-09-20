@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 FEATURE_NAMESPACE = "PRODUCT"
 SMOOTHING_ALPHA = 10.0
-RETURN_WINDOWS = (28,)
+RETURN_WINDOWS = (28, 90)
 
 RANK_AND_PERCENTILE_COLUMNS = (
     "price_percentile",
@@ -29,8 +29,8 @@ RETURN_FEATURE_COLUMNS = tuple(
     for family in (
         "category_return_rate_neg",
         "return_rate_neg_smoothed",
-        "return_rate_neg_to_category_return_rate_neg",
-        "return_rate_neg_smoothed_to_category_return_rate_neg",
+        "return_rate_to_category_return_neg",
+        "return_rate_smoothed_to_category_return_neg",
     )
 )
 BASE_FEATURE_COLUMNS = (
@@ -235,12 +235,12 @@ def _return_feature_expressions() -> str:
                 category_rate,
                 smoothed_rate,
                 (
-                    f"return_rate_neg_{window}d / NULLIF({category_rate}, 0.0D) "
-                    f"AS return_rate_neg_to_category_return_rate_neg_{window}d"
+                    f"-return_rate_neg_{window}d / NULLIF({category_rate}, 0.0D) "
+                    f"AS return_rate_to_category_return_neg_{window}d"
                 ),
                 (
-                    f"{smoothed_rate} / NULLIF({category_rate}, 0.0D) AS "
-                    f"return_rate_neg_smoothed_to_category_return_rate_neg_{window}d"
+                    f"-{smoothed_rate} / NULLIF({category_rate}, 0.0D) AS "
+                    f"return_rate_smoothed_to_category_return_neg_{window}d"
                 ),
             )
         )
