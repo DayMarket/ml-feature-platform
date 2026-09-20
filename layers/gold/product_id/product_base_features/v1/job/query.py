@@ -79,7 +79,7 @@ ALL_TIME_FEEDBACK_COLUMNS = (
     "feedback_lte_3_to_orders_rate_raw",
     "feedback_lte_3_to_orders_rate_28d",
 )
-RETURN_WINDOWS = (3, 28)
+RETURN_WINDOWS = (28,)
 RETURN_COLUMNS = tuple(
     f"{family}_{window}d"
     for window in RETURN_WINDOWS

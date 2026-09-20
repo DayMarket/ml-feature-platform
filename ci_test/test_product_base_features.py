@@ -49,7 +49,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 75)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 72)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(column.startswith("PRODUCT__") for column in query.FEATURE_COLUMNS)
@@ -108,15 +108,13 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertNotIn("bad_feedback", self.sql)
 
     def test_returns_use_status_rows_and_negative_rate(self):
-        self.assertIn(
-            "THEN 1 ELSE 0 END) AS INT) AS n_completed_3d",
-            self.sql,
-        )
+        self.assertNotIn("n_completed_3d", self.sql)
         self.assertIn(
             "order_item_status = 'RETURNED' THEN 1 ELSE 0 END",
             self.sql,
         )
         self.assertIn("AS return_rate_neg_28d", self.sql)
+        self.assertNotIn("return_rate_neg_3d", self.sql)
         self.assertIn("order_item_status = 'RETURNED'", self.sql)
         self.assertIn(
             "'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY', 'RETURNED'",

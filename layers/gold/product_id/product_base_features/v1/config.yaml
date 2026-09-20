@@ -109,9 +109,7 @@ dq:
         - PRODUCT__feedback_gte_4_to_orders_rate_raw
         - PRODUCT__feedback_lte_3_to_orders_rate_raw
         - PRODUCT__feedback_lte_3_to_orders_rate_28d
-        - PRODUCT__n_completed_3d
         - PRODUCT__n_completed_28d
-        - PRODUCT__n_returned_3d
         - PRODUCT__n_returned_28d
     - name: accepted_values
       column: PRODUCT__has_orders
@@ -151,7 +149,7 @@ dq:
     - name: expression_is_true
       expression: "(PRODUCT__category_orders_share_7d IS NULL OR PRODUCT__category_orders_share_7d BETWEEN 0 AND 1) AND (PRODUCT__category_orders_share_28d IS NULL OR PRODUCT__category_orders_share_28d BETWEEN 0 AND 1) AND (PRODUCT__category_orders_share_90d IS NULL OR PRODUCT__category_orders_share_90d BETWEEN 0 AND 1)"
     - name: expression_is_true
-      expression: "(PRODUCT__return_rate_neg_3d IS NULL OR PRODUCT__return_rate_neg_3d BETWEEN -1 AND 0) AND (PRODUCT__return_rate_neg_28d IS NULL OR PRODUCT__return_rate_neg_28d BETWEEN -1 AND 0)"
+      expression: "PRODUCT__return_rate_neg_28d IS NULL OR PRODUCT__return_rate_neg_28d BETWEEN -1 AND 0"
     - name: expression_is_true
       expression: "(PRODUCT__category_female_click_share_28d IS NULL OR PRODUCT__category_female_click_share_28d BETWEEN 0 AND 1) AND (PRODUCT__category_male_click_share_28d IS NULL OR PRODUCT__category_male_click_share_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
