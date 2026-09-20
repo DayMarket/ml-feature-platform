@@ -32,8 +32,7 @@ ACTION_COLUMNS = (
     "favorites_last_28d",
 )
 ORDER_COLUMNS = (
-    "orders_quantity_1d",
-    "items_purchased_quantity_1d",
+    "orders_1d",
     "orders_total",
     "has_orders",
     "orders_7d",
@@ -180,13 +179,7 @@ def _order_aggregate_expressions(calculated_at_utc: str) -> str:
             "CAST(COUNT(DISTINCT CASE WHEN "
             f"{successful_status} AND generated_at >= TIMESTAMP "
             f"'{calculated_at_utc}' - INTERVAL 1 DAY THEN order_id END) AS INT) "
-            "AS orders_quantity_1d"
-        ),
-        (
-            "CAST(SUM(CASE WHEN "
-            f"{successful_status} AND generated_at >= TIMESTAMP "
-            f"'{calculated_at_utc}' - INTERVAL 1 DAY THEN item_quantity "
-            "ELSE 0 END) AS INT) AS items_purchased_quantity_1d"
+            "AS orders_1d"
         ),
         (
             "CAST(COUNT(DISTINCT CASE WHEN "
@@ -470,9 +463,7 @@ orders_for_population AS (
     SELECT
         population.product_id,
         population.category_id,
-        COALESCE(orders.orders_quantity_1d, 0) AS orders_quantity_1d,
-        COALESCE(orders.items_purchased_quantity_1d, 0)
-            AS items_purchased_quantity_1d,
+        COALESCE(orders.orders_1d, 0) AS orders_1d,
         COALESCE(orders.orders_total, 0) AS orders_total,
         COALESCE(orders.orders_7d, 0) AS orders_7d,
         COALESCE(orders.orders_28d, 0) AS orders_28d,
@@ -485,8 +476,7 @@ orders_for_population AS (
 order_and_return_features AS (
     SELECT
         product_id,
-        orders_quantity_1d,
-        items_purchased_quantity_1d,
+        orders_1d,
         orders_total,
         CAST(orders_total > 0 AS INT) AS has_orders,
         orders_7d,
@@ -694,8 +684,7 @@ unprefixed_features AS (
         favorites_last_14d,
         favorites_last_21d,
         favorites_last_28d,
-        orders_quantity_1d,
-        items_purchased_quantity_1d,
+        orders_1d,
         orders_total,
         has_orders,
         orders_7d,

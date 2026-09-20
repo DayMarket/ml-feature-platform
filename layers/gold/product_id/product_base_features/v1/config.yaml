@@ -82,8 +82,7 @@ dq:
         - PRODUCT__favorites_last_14d
         - PRODUCT__favorites_last_21d
         - PRODUCT__favorites_last_28d
-        - PRODUCT__orders_quantity_1d
-        - PRODUCT__items_purchased_quantity_1d
+        - PRODUCT__orders_1d
         - PRODUCT__orders_total
         - PRODUCT__orders_7d
         - PRODUCT__orders_28d

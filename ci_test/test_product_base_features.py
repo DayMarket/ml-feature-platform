@@ -49,12 +49,14 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 72)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 71)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(column.startswith("PRODUCT__") for column in query.FEATURE_COLUMNS)
         )
         self.assertIn("AS PRODUCT__orders_28d", self.sql)
+        self.assertIn("AS orders_1d", self.sql)
+        self.assertNotIn("items_purchased_quantity_1d", self.sql)
 
     def test_population_is_latest_s1_snapshot_and_joins_are_left(self):
         self.assertIn("SELECT MAX(dt) AS dt", self.sql)

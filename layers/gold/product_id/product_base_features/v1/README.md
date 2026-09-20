@@ -82,8 +82,7 @@ Product-level impressions намеренно отсутствуют.
 `IN_DELIVERY`; B2B исключаются. `order_items.sku_id` маппится в `product_id`
 через `silver.sku`.
 
-- `orders_quantity_1d` и `orders_{7,28,90}d` — distinct `order_id`;
-- `items_purchased_quantity_1d` — сумма `item_quantity`;
+- `orders_1d` и `orders_{7,28,90}d` — distinct `order_id`;
 - `orders_total` — distinct успешных заказов за всю историю;
 - `has_orders` — бинарный флаг;
 - `favorites_to_orders_rate` — `favorites_last_28d / orders_28d`.
