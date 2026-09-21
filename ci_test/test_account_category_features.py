@@ -142,7 +142,11 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     "GROUP BY account_id, session_id, product_id, event_type",
                     sql,
                 )
-                self.assertGreaterEqual(sql.count("AND account_id IS NOT NULL"), 2)
+                expected_account_filters = 2 if level <= 2 else 1
+                self.assertEqual(
+                    sql.count("AND account_id IS NOT NULL"),
+                    expected_account_filters,
+                )
                 self.assertNotIn(
                     "MAX(source_calculated_at) AS source_calculated_at",
                     sql,
