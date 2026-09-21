@@ -48,7 +48,7 @@ ORDER_COLUMNS = (
 ORDER_INPUT_COLUMNS = ORDER_COLUMNS[:-3]
 DERIVED_COLUMNS = ("favorites_to_orders_rate",)
 FEEDBACK_WINDOWS = (3, 28)
-RATING_WINDOWS = (3, 21, 28)
+RATING_WINDOWS = (3, 28)
 ROLLING_FEEDBACK_COLUMNS = (
     "feedback_quantity_1d",
     *tuple(
@@ -63,7 +63,6 @@ ROLLING_FEEDBACK_COLUMNS = (
             "feedback_avg_rating",
         )
     ),
-    "rating_21d",
 )
 ALL_TIME_FEEDBACK_COLUMNS = (
     "rating",
@@ -264,11 +263,6 @@ def _rolling_feedback_rate_expressions() -> str:
                 ),
             )
         )
-    denominator = "NULLIF(CAST(feedback_last_21d AS DOUBLE), 0.0D)"
-    expressions.append(
-        f"CAST(sum_rating_last_21d AS DOUBLE) / {denominator} "
-        "AS feedback_avg_rating_21d"
-    )
     return ",\n        ".join(expressions)
 
 
@@ -361,7 +355,7 @@ def build_product_base_features_query(
             f"feedback_lte_3_ratio_{window}d",
             f"feedback_avg_rating_{window}d",
         )
-    ) + ",\n        feedback_avg_rating_21d AS rating_21d"
+    )
     return_output_expressions = [
         f"COALESCE(n_completed_{window}d, 0) AS n_completed_{window}d"
         for window in RETURN_WINDOWS

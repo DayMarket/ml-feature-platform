@@ -48,7 +48,6 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     PRODUCT__feedback_gte_4_ratio_28d DOUBLE COMMENT 'Доля feedback с rating 4..5 за 28 дней',
     PRODUCT__feedback_lte_3_ratio_28d DOUBLE COMMENT 'Доля feedback с rating 1..3 за 28 дней',
     PRODUCT__feedback_avg_rating_28d DOUBLE COMMENT 'Средний rating feedback за 28 дней',
-    PRODUCT__rating_21d DOUBLE COMMENT 'Средний rating feedback за 21 день',
     PRODUCT__rating DOUBLE COMMENT 'Средний all-time rating товара по опубликованным feedback',
     PRODUCT__feedback_quantity INT COMMENT 'All-time количество опубликованных feedback с rating 1..5',
     PRODUCT__feedback_gte_4 INT COMMENT 'All-time количество feedback с rating 4..5',

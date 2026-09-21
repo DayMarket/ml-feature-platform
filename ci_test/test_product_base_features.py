@@ -49,7 +49,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 73)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 72)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(column.startswith("PRODUCT__") for column in query.FEATURE_COLUMNS)
@@ -106,7 +106,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertIn("AS feedback_lte_3_to_orders_rate_raw", self.sql)
         self.assertIn("AS feedback_lte_3_to_orders_rate_28d", self.sql)
         self.assertIn("AS feedback_gte_4_to_orders_rate_28d", self.sql)
-        self.assertIn("AS rating_21d", self.sql)
+        self.assertNotIn("rating_21d", self.sql)
         self.assertIn("CAST(feedback_lte_3_28d AS DOUBLE)", self.sql)
         self.assertNotIn("smoothed", self.sql)
         self.assertNotIn("bad_feedback", self.sql)

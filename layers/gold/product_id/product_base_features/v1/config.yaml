@@ -145,7 +145,7 @@ dq:
     - name: expression_is_true
       expression: "(PRODUCT__feedback_gte_4_ratio_3d IS NULL OR PRODUCT__feedback_gte_4_ratio_3d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_3d IS NULL OR PRODUCT__feedback_lte_3_ratio_3d BETWEEN 0 AND 1) AND (PRODUCT__feedback_gte_4_ratio_28d IS NULL OR PRODUCT__feedback_gte_4_ratio_28d BETWEEN 0 AND 1) AND (PRODUCT__feedback_lte_3_ratio_28d IS NULL OR PRODUCT__feedback_lte_3_ratio_28d BETWEEN 0 AND 1)"
     - name: expression_is_true
-      expression: "(PRODUCT__feedback_avg_rating_3d IS NULL OR PRODUCT__feedback_avg_rating_3d BETWEEN 1 AND 5) AND (PRODUCT__rating_21d IS NULL OR PRODUCT__rating_21d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_28d IS NULL OR PRODUCT__feedback_avg_rating_28d BETWEEN 1 AND 5)"
+      expression: "(PRODUCT__feedback_avg_rating_3d IS NULL OR PRODUCT__feedback_avg_rating_3d BETWEEN 1 AND 5) AND (PRODUCT__feedback_avg_rating_28d IS NULL OR PRODUCT__feedback_avg_rating_28d BETWEEN 1 AND 5)"
     - name: expression_is_true
       expression: "(PRODUCT__category_orders_share_7d IS NULL OR PRODUCT__category_orders_share_7d BETWEEN 0 AND 1) AND (PRODUCT__category_orders_share_28d IS NULL OR PRODUCT__category_orders_share_28d BETWEEN 0 AND 1) AND (PRODUCT__category_orders_share_90d IS NULL OR PRODUCT__category_orders_share_90d BETWEEN 0 AND 1)"
     - name: expression_is_true
