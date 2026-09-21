@@ -78,15 +78,15 @@ ALL_TIME_FEEDBACK_COLUMNS = (
     "feedback_gte_4_to_orders_rate_28d",
     "feedback_lte_3_to_orders_rate_28d",
 )
-RETURN_WINDOWS = (28,)
-RETURN_COUNT_WINDOWS = (28, 60, 90)
+RETURN_WINDOWS = (28, 90)
+RETURN_COUNT_WINDOWS = (28, 90)
 RETURN_COLUMNS = (
     "n_completed_28d",
     "n_returned_28d",
     "return_rate_neg_28d",
     "n_completed_90d",
-    "n_returned_60d",
     "n_returned_90d",
+    "return_rate_neg_90d",
 )
 CATEGORY_COLUMNS = (
     "category_clicker_age_p10_28d",
@@ -337,11 +337,6 @@ def build_product_base_features_query(
             f"0.0D) AS return_rate_neg_{window}d"
         )
         for window in RETURN_WINDOWS
-    ] + [
-        "n_completed_90d"
-    ] + [
-        f"n_returned_{window}d"
-        for window in (60, 90)
     ]
     return_feature_select = ",\n        ".join(return_feature_expressions)
     rolling_feedback_output_select = ",\n        ".join(
@@ -365,11 +360,6 @@ def build_product_base_features_query(
     ] + [
         f"return_rate_neg_{window}d"
         for window in RETURN_WINDOWS
-    ] + [
-        "COALESCE(n_completed_90d, 0) AS n_completed_90d"
-    ] + [
-        f"COALESCE(n_returned_{window}d, 0) AS n_returned_{window}d"
-        for window in (60, 90)
     ]
     return_output_select = ",\n        ".join(return_output_expressions)
     namespaced_feature_select = _namespaced_feature_select("unprefixed_features")
