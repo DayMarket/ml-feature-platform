@@ -90,6 +90,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
             "GROUP BY account_id, product_id, event_type, session_id",
             self.sql,
         )
+        self.assertIn("AND account_id IS NOT NULL", self.sql)
         self.assertIn("COUNT(DISTINCT CASE", self.sql)
         self.assertNotIn("n_events", self.sql)
 
@@ -105,6 +106,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertIn("COUNT(DISTINCT CASE", self.sql)
         self.assertIn("order_item.b2b_order = FALSE", self.sql)
+        self.assertIn("AND order_item.account_id IS NOT NULL", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
         self.assertNotIn("order_item.order_id > 0", self.sql)
         self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)

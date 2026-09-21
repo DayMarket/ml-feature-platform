@@ -109,6 +109,7 @@ deduplicated_clicks AS (
         AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
         AND last_received_at < TIMESTAMP '{calculated_at_local}'
         AND event_type = 'PRODUCT_VIEW'
+        AND account_id IS NOT NULL
     GROUP BY
         account_id,
         session_id,
@@ -150,6 +151,7 @@ filtered_order_lines AS (
             'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'
         )
         AND order_item.b2b_order = FALSE
+        AND order_item.account_id IS NOT NULL
 ),
 mapped_order_lines AS (
     SELECT

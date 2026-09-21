@@ -99,6 +99,7 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         )
         self.assertIn("SUM(CASE", self.sql)
         self.assertNotIn("n_events", self.sql)
+        self.assertIn("AND account_id IS NOT NULL", self.sql)
 
     def test_brand_filter_is_applied_only_after_feature_calculation(self):
         click_cte = self.sql.split("click_features AS (", 1)[1].split(
@@ -126,6 +127,7 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.payment_price AS DOUBLE", self.sql)
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertIn("order_item.b2b_order = FALSE", self.sql)
+        self.assertIn("AND order_item.account_id IS NOT NULL", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
 
     def test_gmv_denominator_keeps_unbranded_and_unmapped_products(self):

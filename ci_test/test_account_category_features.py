@@ -142,6 +142,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     "GROUP BY account_id, session_id, product_id, event_type",
                     sql,
                 )
+                self.assertGreaterEqual(sql.count("AND account_id IS NOT NULL"), 2)
                 self.assertNotIn(
                     "MAX(source_calculated_at) AS source_calculated_at",
                     sql,
@@ -172,6 +173,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 self.assertIn("order_item.payment_price AS DOUBLE", sql)
                 self.assertIn("order_item.item_quantity AS DOUBLE", sql)
                 self.assertIn("order_item.b2b_order = FALSE", sql)
+                self.assertIn("AND order_item.account_id IS NOT NULL", sql)
                 self.assertNotIn("BETWEEN 1", sql)
                 self.assertNotIn("order_item.account_id >", sql)
                 if level <= 2:
