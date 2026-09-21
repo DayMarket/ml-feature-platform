@@ -114,7 +114,9 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertNotIn("160078", self.sql)
 
     def test_orders_use_sku_mapping_statuses_b2b_filter_and_transaction_gmv(self):
-        self.assertIn("order_item.sku_id AS INT) = sku.sku_id", self.sql)
+        self.assertIn("order_item.sku_id = sku.sku_id", self.sql)
+        self.assertNotIn("CAST(order_item.sku_id AS INT)", self.sql)
+        self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)
         self.assertIn(
             "order_item.order_item_status IN (\n"
             "            'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'\n"

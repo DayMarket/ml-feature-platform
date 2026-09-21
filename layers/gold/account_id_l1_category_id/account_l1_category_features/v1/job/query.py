@@ -211,17 +211,17 @@ impression_features AS (
     SELECT
         CAST(account_id AS INT) AS account_id,
         CAST(l1_category_id AS INT) AS l1_category_id,
-        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 3 DAYS THEN n_impressions ELSE 0 END) AS INT) AS n_imps_3d,
-        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 7 DAYS THEN n_impressions ELSE 0 END) AS INT) AS n_imps_7d,
-        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 14 DAYS THEN n_impressions ELSE 0 END) AS INT) AS n_imps_14d,
-        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS THEN n_impressions ELSE 0 END) AS INT) AS n_imps_28d
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 3 DAYS THEN n_impressions ELSE 0 END) AS BIGINT) AS n_imps_3d,
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 7 DAYS THEN n_impressions ELSE 0 END) AS BIGINT) AS n_imps_7d,
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 14 DAYS THEN n_impressions ELSE 0 END) AS BIGINT) AS n_imps_14d,
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS THEN n_impressions ELSE 0 END) AS BIGINT) AS n_imps_28d
     FROM {settings.impression_counts_table}
     WHERE calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
         AND calculated_at <= TIMESTAMP '{calculated_at_local}'
     GROUP BY account_id, l1_category_id
 ),
 sku_mapping AS (
-    SELECT CAST(id AS INT) AS sku_id, CAST(MIN(product_id) AS INT) AS product_id
+    SELECT id AS sku_id, CAST(MIN(product_id) AS INT) AS product_id
     FROM {settings.sku_table}
     GROUP BY id
 ),
@@ -229,11 +229,11 @@ filtered_order_lines AS (
     SELECT
         CAST(order_item.account_id AS INT) AS account_id,
         sku.product_id,
-        CAST(order_item.order_id AS INT) AS order_id,
+        order_item.order_id AS order_id,
         CAST(order_item.generated_at AS TIMESTAMP) AS generated_at,
         CAST(order_item.payment_price AS DOUBLE) * CAST(order_item.item_quantity AS DOUBLE) AS line_gmv
     FROM {settings.order_items_table} order_item
-    INNER JOIN sku_mapping sku ON CAST(order_item.sku_id AS INT) = sku.sku_id
+    INNER JOIN sku_mapping sku ON order_item.sku_id = sku.sku_id
     WHERE order_item.generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS
         AND order_item.generated_at < TIMESTAMP '{calculated_at_utc}'
         AND order_item.order_item_status IN (

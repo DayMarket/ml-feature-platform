@@ -16,7 +16,9 @@ Alert уровня P3 для команды recsys через oncall_webhook_rec
 
 Grain и primary key: calculated_at,account_id,l2_category_id.
 
-Идентификаторы и счётчики в физическом контракте имеют тип INT.
+Идентификаторы и обычные счётчики в физическом контракте имеют тип INT. Rolling
+impression-счётчики `ACCOUNT_L2__n_imps_*` имеют тип BIGINT, поскольку сумма
+12-часовых `n_impressions` за окно может превышать предел INT.
 
 Namespace контракта — `ACCOUNT_L2`. Все физические feature-колонки уже содержат
 его, например `ACCOUNT_L2__n_clicks_7d`; устаревший префикс `l2_` не

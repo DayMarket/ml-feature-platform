@@ -117,6 +117,8 @@ class AccountShopFeaturesTest(unittest.TestCase):
 
     def test_orders_use_sku_mapping_and_shop_grain_distinct(self):
         self.assertIn("ON order_item.sku_id = sku.sku_id", self.sql)
+        self.assertNotIn("CAST(order_item.sku_id AS INT)", self.sql)
+        self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)
         self.assertIn(
             "'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'",
             self.sql,
