@@ -175,14 +175,26 @@ def _rank_and_percentile_expressions() -> str:
     return ",\n        ".join(expressions)
 
 
-def _g7_return_input_select() -> str:
+def _return_count_expressions(calculated_at_utc: str) -> str:
     return ",\n        ".join(
         expression
         for window in RETURN_WINDOWS
         for expression in (
-            f"base.PRODUCT__n_completed_{window}d AS n_completed_{window}d",
-            f"base.PRODUCT__n_returned_{window}d AS n_returned_{window}d",
-            f"base.PRODUCT__return_rate_neg_{window}d AS return_rate_neg_{window}d",
+            (
+                "CAST(SUM(CASE WHEN order_item.generated_at >= "
+                f"TIMESTAMP '{calculated_at_utc}' - INTERVAL {window} DAYS "
+                "AND order_item.order_item_status IN "
+                "('COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY') "
+                "THEN 1 ELSE 0 END) AS INT) "
+                f"AS n_completed_{window}d"
+            ),
+            (
+                "CAST(SUM(CASE WHEN order_item.generated_at >= "
+                f"TIMESTAMP '{calculated_at_utc}' - INTERVAL {window} DAYS "
+                "AND order_item.order_item_status = 'RETURNED' "
+                "THEN 1 ELSE 0 END) AS INT) "
+                f"AS n_returned_{window}d"
+            ),
         )
     )
 
@@ -201,15 +213,20 @@ def _category_return_rate_expressions() -> str:
 
 
 def _return_input_passthrough() -> str:
-    return ",\n        ".join(
-        column
-        for window in RETURN_WINDOWS
-        for column in (
-            f"n_completed_{window}d",
-            f"n_returned_{window}d",
-            f"return_rate_neg_{window}d",
+    expressions = []
+    for window in RETURN_WINDOWS:
+        expressions.extend(
+            (
+                f"n_completed_{window}d",
+                f"n_returned_{window}d",
+                (
+                    f"-CAST(n_returned_{window}d AS DOUBLE) / NULLIF("
+                    f"CAST(n_completed_{window}d + n_returned_{window}d AS DOUBLE), "
+                    f"0.0D) AS return_rate_neg_{window}d"
+                ),
+            )
         )
-    )
+    return ",\n        ".join(expressions)
 
 
 def _smoothed_return_rate_expressions() -> str:
@@ -263,7 +280,7 @@ def build_product_ranking_features_query(
         settings.business_timezone,
     )
     calculated_at_utc = _utc_timestamp_literal(calculated_at)
-    g7_return_inputs = _g7_return_input_select()
+    return_count_expressions = _return_count_expressions(calculated_at_utc)
     category_return_rates = _category_return_rate_expressions()
     return_passthrough = _return_input_passthrough()
     smoothed_return_rates = _smoothed_return_rate_expressions()
@@ -285,6 +302,25 @@ product_category_mapping AS (
     INNER JOIN latest_metadata_dt latest
         ON metadata.dt = latest.dt
 ),
+sku_mapping AS (
+    SELECT
+        id AS sku_id,
+        CAST(MIN(product_id) AS INT) AS product_id
+    FROM {settings.sku_table}
+    GROUP BY id
+),
+return_counts AS (
+    SELECT
+        sku.product_id,
+        {return_count_expressions}
+    FROM {settings.order_items_table} order_item
+    INNER JOIN sku_mapping sku
+        ON order_item.sku_id = sku.sku_id
+    WHERE order_item.generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS
+        AND order_item.generated_at < TIMESTAMP '{calculated_at_utc}'
+        AND order_item.b2b_order = FALSE
+    GROUP BY sku.product_id
+),
 g7_snapshot AS (
     SELECT
         base.calculated_at,
@@ -299,10 +335,15 @@ g7_snapshot AS (
         base.PRODUCT__feedback_quantity AS feedback_quantity,
         base.PRODUCT__feedback_lte_3 AS feedback_lte_3,
         base.PRODUCT__feedback_lte_3_28d AS feedback_lte_3_28d,
-        {g7_return_inputs}
+        COALESCE(returns.n_completed_28d, 0) AS n_completed_28d,
+        COALESCE(returns.n_returned_28d, 0) AS n_returned_28d,
+        COALESCE(returns.n_completed_90d, 0) AS n_completed_90d,
+        COALESCE(returns.n_returned_90d, 0) AS n_returned_90d
     FROM {settings.product_base_features_table} base
     LEFT JOIN product_category_mapping mapping
         ON base.product_id = mapping.product_id
+    LEFT JOIN return_counts returns
+        ON base.product_id = returns.product_id
     WHERE base.calculated_at = TIMESTAMP '{calculated_at_local}'
 ),
 global_feedback_prior AS (

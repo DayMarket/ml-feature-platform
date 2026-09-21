@@ -23,6 +23,8 @@ source:
   engine: spark_iceberg
   product_metadata_table: iceberg.silver.feature_platform_product_metadata
   product_base_features_table: iceberg.gold.feature_platform_product_base_features
+  order_items_table: iceberg.silver.order_items
+  sku_table: iceberg.silver.sku
   business_timezone: Asia/Tashkent
 
 dag:

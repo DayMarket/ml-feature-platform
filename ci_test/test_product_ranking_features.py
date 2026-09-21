@@ -88,13 +88,12 @@ class ProductRankingFeaturesTest(unittest.TestCase):
             "discount",
             "feedback_quantity",
             "feedback_lte_3",
-            "n_completed_28d",
-            "n_returned_28d",
-            "return_rate_neg_28d",
-            "n_completed_90d",
-            "n_returned_90d",
         ):
             self.assertIn(f"PRODUCT__{column}", self.sql)
+        self.assertNotIn("PRODUCT__n_completed_", self.sql)
+        self.assertNotIn("PRODUCT__n_returned_", self.sql)
+        self.assertNotIn("PRODUCT__return_rate_neg_28d", self.sql)
+        self.assertNotIn("PRODUCT__return_rate_neg_90d", self.sql)
 
     def test_average_rank_and_non_null_percentile_semantics(self):
         self.assertIn(
@@ -162,6 +161,8 @@ class ProductRankingFeaturesTest(unittest.TestCase):
             )
         self.assertNotIn("AVG(return_rate", self.sql)
         self.assertNotIn("smothed", self.sql)
+        self.assertIn("FROM iceberg.silver.order_items order_item", self.sql)
+        self.assertIn("FROM iceberg.silver.sku", self.sql)
 
     def test_merge_replaces_only_the_requested_snapshot(self):
         merge_sql = query.build_product_ranking_features_merge_query(

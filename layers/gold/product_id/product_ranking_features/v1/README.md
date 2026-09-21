@@ -59,12 +59,13 @@ feedback_lte_3_to_orders_rate_smoothed =
 
 ## Return rates
 
-G8 использует product-level counts из G7. В их population входят позиции
+G8 получает временные product-level counts напрямую из `iceberg.silver.order_items`
+через mapping `sku_id → product_id`; они не публикуются ни в G7, ни в G8. В их population входят позиции
 со статусами `COMPLETED`, `PAID`, `DELIVERED`, `IN_DELIVERY`, `RETURNED`;
 `NOT_CREATED`, `CREATED` и остальные незавершённые статусы исключаются.
 Каждая строка `order_items` имеет вес 1: статусы
-`COMPLETED`, `PAID`, `DELIVERED`, `IN_DELIVERY` увеличивают `n_completed_Nd`,
-а `RETURNED` увеличивает `n_returned_Nd`. Поля `item_quantity` и
+`COMPLETED`, `PAID`, `DELIVERED`, `IN_DELIVERY` увеличивают внутренний
+`n_completed_Nd`, а `RETURNED` увеличивает внутренний `n_returned_Nd`. Поля `item_quantity` и
 `returned_quantity` для return-rate не используются.
 
 Для окон `28,90` дней category baseline считается как взвешенная

@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 class SourceSettings:
     product_metadata_table: str
     product_base_features_table: str
+    order_items_table: str
+    sku_table: str
     business_timezone: str
 
     @property
@@ -15,6 +17,8 @@ class SourceSettings:
         return (
             self.product_metadata_table,
             self.product_base_features_table,
+            self.order_items_table,
+            self.sku_table,
         )
 
 
@@ -84,5 +88,7 @@ def load_source_settings(config_path: Path | None = None) -> SourceSettings:
             source,
             "product_base_features_table",
         ),
+        order_items_table=_required_string(source, "order_items_table"),
+        sku_table=_required_string(source, "sku_table"),
         business_timezone=business_timezone,
     )
