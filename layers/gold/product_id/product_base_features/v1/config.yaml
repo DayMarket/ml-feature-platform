@@ -106,11 +106,7 @@ dq:
         - PRODUCT__feedback_lte_3_to_orders_rate_raw
         - PRODUCT__feedback_gte_4_to_orders_rate_28d
         - PRODUCT__feedback_lte_3_to_orders_rate_28d
-        - PRODUCT__n_completed_28d
-        - PRODUCT__n_returned_28d
         - PRODUCT__return_rate_neg_28d
-        - PRODUCT__n_completed_90d
-        - PRODUCT__n_returned_90d
         - PRODUCT__return_rate_neg_90d
     - name: accepted_values
       column: PRODUCT__has_orders

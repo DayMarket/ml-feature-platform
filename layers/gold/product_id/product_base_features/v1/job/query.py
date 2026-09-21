@@ -81,11 +81,7 @@ ALL_TIME_FEEDBACK_COLUMNS = (
 RETURN_WINDOWS = (28, 90)
 RETURN_COUNT_WINDOWS = (28, 90)
 RETURN_COLUMNS = (
-    "n_completed_28d",
-    "n_returned_28d",
     "return_rate_neg_28d",
-    "n_completed_90d",
-    "n_returned_90d",
     "return_rate_neg_90d",
 )
 CATEGORY_COLUMNS = (
@@ -325,12 +321,6 @@ def build_product_base_features_query(
         )
     )
     return_feature_expressions = [
-        f"n_completed_{window}d"
-        for window in RETURN_WINDOWS
-    ] + [
-        f"n_returned_{window}d"
-        for window in RETURN_WINDOWS
-    ] + [
         (
             f"-CAST(n_returned_{window}d AS DOUBLE) / NULLIF("
             f"CAST(n_completed_{window}d + n_returned_{window}d AS DOUBLE), "
@@ -352,12 +342,6 @@ def build_product_base_features_query(
         )
     )
     return_output_expressions = [
-        f"COALESCE(n_completed_{window}d, 0) AS n_completed_{window}d"
-        for window in RETURN_WINDOWS
-    ] + [
-        f"COALESCE(n_returned_{window}d, 0) AS n_returned_{window}d"
-        for window in RETURN_WINDOWS
-    ] + [
         f"return_rate_neg_{window}d"
         for window in RETURN_WINDOWS
     ]

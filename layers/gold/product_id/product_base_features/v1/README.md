@@ -117,18 +117,19 @@ Population-dependent `feedback_lte_3_to_orders_rate_smoothed` в G7 не
 
 ## Returns
 
-Для окон `3,28` дней B2B исключаются. В population входят позиции
+Для окон `28,90` дней B2B исключаются. В population входят позиции
 со статусами `COMPLETED`, `PAID`, `DELIVERED`, `IN_DELIVERY`, `RETURNED`;
 `NOT_CREATED`, `CREATED` и прочие незавершённые статусы не учитываются:
 
 ```text
-n_completed_Nd = count rows with status COMPLETED/PAID/DELIVERED/IN_DELIVERY
-n_returned_Nd  = count rows with status RETURNED
+Внутри запроса считаются временные `n_completed_Nd` и `n_returned_Nd`, но в
+контракт публикуется только:
+
 return_rate_neg_Nd = -n_returned_Nd / (n_completed_Nd + n_returned_Nd)
 
 Return counts use one row per `order_items` record: statuses
-`COMPLETED`, `PAID`, `DELIVERED`, `IN_DELIVERY` contribute to `n_completed`,
-and `RETURNED` contributes to `n_returned`. `item_quantity` and
+`COMPLETED`, `PAID`, `DELIVERED`, `IN_DELIVERY` contribute to the internal
+`n_completed`, and `RETURNED` contributes to the internal `n_returned`. `item_quantity` and
 `returned_quantity` are not used for return-rate numerators or denominators.
 ```
 
