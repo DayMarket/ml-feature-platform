@@ -163,18 +163,7 @@ product_session_statistics AS (
     FROM enriched_product_views
     GROUP BY category_id
 ),
-unique_category_clickers AS (
-    SELECT
-        category_id,
-        account_id,
-        MAX(account_gender) AS account_gender,
-        MAX(age) AS age
-    FROM enriched_product_views
-    GROUP BY
-        category_id,
-        account_id
-),
-unique_clicker_statistics AS (
+age_statistics AS (
     SELECT
         category_id,
         PERCENTILE(
@@ -201,7 +190,7 @@ unique_clicker_statistics AS (
             END,
             0.9D
         ) AS clicker_age_p90_28d
-    FROM unique_category_clickers
+    FROM enriched_product_views
     GROUP BY category_id
 ),
 unprefixed_features AS (
@@ -210,13 +199,13 @@ unprefixed_features AS (
         product_sessions.category_id,
         product_sessions.female_click_share_28d,
         product_sessions.male_click_share_28d,
-        unique_clickers.clicker_age_p10_28d,
-        unique_clickers.clicker_age_p50_28d,
-        unique_clickers.clicker_age_p90_28d,
+        age.clicker_age_p10_28d,
+        age.clicker_age_p50_28d,
+        age.clicker_age_p90_28d,
         product_sessions.category_gender AS gender
     FROM product_session_statistics product_sessions
-    INNER JOIN unique_clicker_statistics unique_clickers
-        ON product_sessions.category_id = unique_clickers.category_id
+    LEFT JOIN age_statistics age
+        ON product_sessions.category_id = age.category_id
 )
 SELECT
     calculated_at,

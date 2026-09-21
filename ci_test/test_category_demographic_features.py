@@ -96,8 +96,7 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
             "deduplicated_product_views",
             "enriched_product_views",
             "product_session_statistics",
-            "unique_category_clickers",
-            "unique_clicker_statistics",
+            "age_statistics",
         ):
             self.assertIn(f"{cte} AS (", self.sql)
 
@@ -171,13 +170,15 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
         self.assertIn("account_gender IN ('MALE', 'FEMALE')", self.sql)
         self.assertIn("NULLIF(", self.sql)
 
-    def test_age_statistics_use_one_row_per_account_and_category(self):
+    def test_age_statistics_use_product_session_weighted_rows(self):
         self.assertIn(
-            "GROUP BY\n        category_id,\n        account_id",
+            "FROM enriched_product_views\n    GROUP BY category_id",
             self.sql,
         )
         self.assertIn("CAST(age AS INT) AS age", self.sql)
         self.assertIn("age BETWEEN 13\n                    AND 100", self.sql)
+        self.assertNotIn("unique_category_clickers AS (", self.sql)
+        self.assertNotIn("MAX(age) AS age", self.sql)
         for percentile in ("0.1D", "0.5D", "0.9D"):
             self.assertIn(percentile, self.sql)
         self.assertEqual(self.sql.count("PERCENTILE("), 3)
