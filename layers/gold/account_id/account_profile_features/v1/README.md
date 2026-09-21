@@ -64,11 +64,14 @@ Product attributes присоединяются point-in-time на snapshot `T`:
   `PRODUCT_STATS__popularity_by_orders_neg_rank_in_cat` с
   `calculated_at = T`;
 - листовая `category_id` — из S1 snapshot текущей локальной даты;
-- population male/female shares и gender листовой категории — из G6 с
-  `calculated_at = T`. Purchased male/female category shares — это среднее
-  `male_click_share_28d` / `female_click_share_28d` по
-  строкам заказов в соответствующем окне. Unisex share остаётся долей строк с
-  category gender `U` или `NULL`.
+- population male/female click-shares и gender листовой категории — из G6 с
+  `calculated_at = T`. `CATEGORY__male_click_share_28d` и
+  `CATEGORY__female_click_share_28d` — это взвешенные доли male/female
+  product-session наблюдений среди пользователей с известным gender; это не
+  доли категорий, которым присвоен label `M` или `F`.
+- Purchased male/female category shares — средние значения этих G6 click-shares
+  по строкам заказов в соответствующем окне. `*_unisex_cat_share_*` — доля
+  строк с `category_id`, у которых `CATEGORY__gender` равен `U` или `NULL`.
 
 `last_purchased_neg_p90_popularity_rank_*` вычисляется как p10 уже
 отрицательного rank, то есть как `-p90` положительного rank. Симметричная
@@ -87,9 +90,10 @@ Product attributes присоединяются point-in-time на snapshot `T`:
 
 Price, category population shares, rating и popularity агрегируются по оставшимся
 product-session наблюдениям. `*_male_cat_share_raw` и
-`*_female_cat_share_raw` — средние G6 product-session shares по категориям
-последних кликов; они не являются долями category labels. Нормализованные
-shares делят эти две величины на их сумму.
+`*_female_cat_share_raw` — средние значения `CATEGORY__male_click_share_28d`
+и `CATEGORY__female_click_share_28d` из G6 по категориям последних кликов;
+они не являются долями category labels `M`/`F`. Нормализованные shares делят
+эти две величины на их сумму.
 
 Price percentiles рассчитываются на полной account population snapshot с average-rank tie
 semantics:
