@@ -81,7 +81,7 @@ class CategoryDemographicFeaturesTest(unittest.TestCase):
         self.assertIn("primary_key: calculated_at,category_id", config_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('schedule: "0 7,19 * * *"', config_text)
-        self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
+        self.assertIn('start_date: "2026-09-13T07:00:00Z"', config_text)
         self.assertIn("lookback_days: 28", config_text)
         self.assertIn("min_valid_age: 13", config_text)
         self.assertIn("max_valid_age: 100", config_text)
