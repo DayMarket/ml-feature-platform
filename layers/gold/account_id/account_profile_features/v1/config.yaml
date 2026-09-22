@@ -187,6 +187,10 @@ dq:
       min: 0
       max: 1
     - name: accepted_range
+      column: ACCOUNT__last_purchased_male_cat_share_raw
+      min: 0
+      max: 1
+    - name: accepted_range
       column: ACCOUNT__last_purchased_female_cat_share_7d
       min: 0
       max: 1
