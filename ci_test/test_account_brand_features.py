@@ -128,6 +128,9 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertIn("order_item.b2b_order = FALSE", self.sql)
         self.assertIn("AND order_item.account_id IS NOT NULL", self.sql)
+        self.assertNotIn("CAST(id AS INT) AS sku_id", self.sql)
+        self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)
+        self.assertNotIn("CAST(order_item.sku_id AS INT)", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
 
     def test_gmv_denominator_keeps_unbranded_and_unmapped_products(self):

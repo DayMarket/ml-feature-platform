@@ -180,9 +180,9 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 self.assertIn("AND order_item.account_id IS NOT NULL", sql)
                 self.assertNotIn("BETWEEN 1", sql)
                 self.assertNotIn("order_item.account_id >", sql)
-                if level <= 2:
-                    self.assertNotIn("CAST(order_item.order_id AS INT)", sql)
-                    self.assertNotIn("CAST(order_item.sku_id AS INT)", sql)
+                self.assertNotIn("CAST(order_item.order_id AS INT)", sql)
+                self.assertNotIn("CAST(order_item.sku_id AS INT)", sql)
+                self.assertNotIn("CAST(id AS INT) AS sku_id", sql)
 
     def test_cross_slice_session_product_distinct_semantics(self):
         rows = (

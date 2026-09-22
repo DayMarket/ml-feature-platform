@@ -131,6 +131,9 @@ class AccountShopFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
         self.assertIn("AND order_item.account_id IS NOT NULL", self.sql)
+        self.assertNotIn("CAST(id AS INT) AS sku_id", self.sql)
+        self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)
+        self.assertNotIn("CAST(order_item.sku_id AS INT)", self.sql)
         self.assertNotIn("brand_id", self.sql)
 
     def test_missing_families_are_zero_and_ratios_use_published_shops(self):

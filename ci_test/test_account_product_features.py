@@ -111,6 +111,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertNotIn("order_item.order_id > 0", self.sql)
         self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)
         self.assertNotIn("CAST(order_item.sku_id AS INT)", self.sql)
+        self.assertNotIn("CAST(id AS INT) AS sku_id", self.sql)
 
     def test_cutoffs_are_half_open_and_snapshot_is_local_time(self):
         self.assertIn("TIMESTAMP '2026-09-10 12:00:00' AS calculated_at", self.sql)
