@@ -199,7 +199,7 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertIn('external_task_id="dq"', dag_text)
         self.assertIn("account_product_session_action_counts_12h", dag_text)
         self.assertIn("resource_profile: small", config_text)
-        self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
+        self.assertIn('start_date: "2026-09-13T07:00:00Z"', config_text)
         self.assertIn("severity: P3", config_text)
         self.assertIn("oncall_webhook_conn_id: oncall_webhook_recsys", config_text)
         self.assertIn("is_paused_upon_creation=True", dag_text)
