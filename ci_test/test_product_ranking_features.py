@@ -196,7 +196,7 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         self.assertIn("product_base_features", dag_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn("feature_namespace: PRODUCT", config_text)
-        self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
+        self.assertIn('start_date: "2026-09-13T07:00:00Z"', config_text)
         self.assertIn('"recsys"', dag_text)
         self.assertIn("is_paused_upon_creation=True", dag_text)
         self.assertIn('# default_args["on_failure_callback"]', dag_text)

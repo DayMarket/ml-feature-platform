@@ -101,7 +101,7 @@ return_rate_to_category_return_neg_Nd =
 
 DAG работает в `07:00` и `19:00 UTC` (`12:00` и `00:00 Asia/Tashkent`),
 ждёт DQ G7 с тем же logical date и DQ дневного S1 snapshot. `start_date` —
-`2026-09-05T07:00:00Z`; `catchup=true`. DAG создаётся на паузе и использует
+`2026-09-13T07:00:00Z` — начало backfill последних 10 дней; `catchup=true`. DAG создаётся на паузе и использует
 `resource_profile: small`.
 
 Alert routing P3 настроен, но callbacks DAG, DQ и feature stats отключены на
