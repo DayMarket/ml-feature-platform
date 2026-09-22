@@ -158,7 +158,7 @@ Asia/Tashkent`. `start_date = 2026-09-13T07:00:00Z` — начало backfill п
 только текущий `calculated_at`. Таблица партиционирована по
 `days(calculated_at)`.
 
-Используется общий Spark image с `git-sync` и `resource_profile: small`.
+Используется общий Spark image с `git-sync` и `resource_profile: medium`.
 
 ## DQ и потребители
 
