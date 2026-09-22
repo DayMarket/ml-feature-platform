@@ -149,7 +149,7 @@ gender balance и возрастные p10/p50/p90. В Gold сохраняютс
 
 DAG работает в `07:00` и `19:00 UTC` (`12:00` и `00:00 Asia/Tashkent`), ждёт
 DQ S1/S2c/S3/S4/S6, all-time feedback Gold и G6. `start_date` —
-`2026-09-05T07:00:00Z`, первый согласованный Gold snapshot после накопления 28
+`2026-09-13T07:00:00Z` — начало backfill последних 10 дней после накопления 28
 дней S2c/S4. DAG создаётся на паузе; Spark использует `resource_profile: small`.
 
 Alert routing P3 настроен, но callbacks DAG, DQ и feature stats отключены на
