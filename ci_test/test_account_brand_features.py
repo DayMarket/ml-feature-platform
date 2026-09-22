@@ -99,6 +99,7 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         )
         self.assertIn("SUM(CASE", self.sql)
         self.assertNotIn("n_events", self.sql)
+        self.assertIn("AND account_id IS NOT NULL", self.sql)
 
     def test_brand_filter_is_applied_only_after_feature_calculation(self):
         click_cte = self.sql.split("click_features AS (", 1)[1].split(
@@ -114,7 +115,9 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertNotIn("160078", self.sql)
 
     def test_orders_use_sku_mapping_statuses_b2b_filter_and_transaction_gmv(self):
-        self.assertIn("order_item.sku_id AS INT) = sku.sku_id", self.sql)
+        self.assertIn("order_item.sku_id = sku.sku_id", self.sql)
+        self.assertNotIn("CAST(order_item.sku_id AS INT)", self.sql)
+        self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)
         self.assertIn(
             "order_item.order_item_status IN (\n"
             "            'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'\n"
@@ -124,6 +127,7 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.payment_price AS DOUBLE", self.sql)
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertIn("order_item.b2b_order = FALSE", self.sql)
+        self.assertIn("AND order_item.account_id IS NOT NULL", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
 
     def test_gmv_denominator_keeps_unbranded_and_unmapped_products(self):

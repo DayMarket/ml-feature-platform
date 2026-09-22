@@ -105,6 +105,7 @@ class AccountShopFeaturesTest(unittest.TestCase):
             "'PRODUCT_VIEW', 'ADD_TO_CART', 'ADD_TO_FAVORITES'",
             self.sql,
         )
+        self.assertIn("AND account_id IS NOT NULL", self.sql)
         self.assertNotIn("n_events", self.sql)
 
     def test_product_shop_mapping_uses_same_day_s1_snapshot(self):
@@ -117,6 +118,8 @@ class AccountShopFeaturesTest(unittest.TestCase):
 
     def test_orders_use_sku_mapping_and_shop_grain_distinct(self):
         self.assertIn("ON order_item.sku_id = sku.sku_id", self.sql)
+        self.assertNotIn("CAST(order_item.sku_id AS INT)", self.sql)
+        self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)
         self.assertIn(
             "'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'",
             self.sql,
@@ -127,6 +130,7 @@ class AccountShopFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.payment_price AS DOUBLE", self.sql)
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
+        self.assertIn("AND order_item.account_id IS NOT NULL", self.sql)
         self.assertNotIn("brand_id", self.sql)
 
     def test_missing_families_are_zero_and_ratios_use_published_shops(self):
