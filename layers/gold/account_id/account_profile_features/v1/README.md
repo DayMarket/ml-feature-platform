@@ -113,7 +113,7 @@ Gold `calculated_at`, S2c и будущие G6–G8 используют лок�
 
 DAG работает в `07:00` и `19:00 UTC`, то есть `12:00` и `00:00`
 Asia/Tashkent. Он ждёт DQ-таски S1, S2c, S3, S5, G6, G7 и G8. G6–G8 должны
-быть опубликованы до включения G5. `start_date = 2026-09-05T07:00:00Z`,
+быть опубликованы до включения G5. `start_date = 2026-09-13T07:00:00Z` — начало backfill последних 10 дней,
 `catchup=true`; DAG создаётся на паузе.
 
 Spark запускается с `resource_profile: small`. Alert routing P3 настроен, но

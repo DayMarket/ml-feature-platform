@@ -89,7 +89,7 @@ class AccountProfileFeaturesTest(unittest.TestCase):
         self.assertIn("primary_key: calculated_at,account_id", config_text)
         self.assertIn("resource_profile: small", config_text)
         self.assertIn('schedule: "0 7,19 * * *"', config_text)
-        self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
+        self.assertIn('start_date: "2026-09-13T07:00:00Z"', config_text)
 
     def test_query_has_explicit_topology(self):
         query_text = (ENTITY / "job/query.py").read_text(encoding="utf-8")
