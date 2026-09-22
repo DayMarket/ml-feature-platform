@@ -42,8 +42,8 @@ class AccountProfileFeaturesTest(unittest.TestCase):
     def test_feature_contract_and_windows(self):
         self.assertEqual(len(query.DEMOGRAPHIC_COLUMNS), 6)
         self.assertEqual(len(query.ORDER_FEATURE_COLUMNS), 72)
-        self.assertEqual(len(query.LAST_CLICKED_COLUMNS), 14)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 92)
+        self.assertEqual(len(query.LAST_CLICKED_COLUMNS), 17)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 95)
         self.assertEqual(len(query.FEATURE_COLUMNS), len(set(query.FEATURE_COLUMNS)))
 
         for window in ORDER_WINDOWS:
@@ -172,6 +172,15 @@ class AccountProfileFeaturesTest(unittest.TestCase):
         )
         self.assertIn(
             "PRODUCT__rating AS rating",
+            self.sql,
+        )
+        self.assertIn("AVG(discount) AS last_clicked_avg_discount", self.sql)
+        self.assertIn(
+            "PERCENTILE_APPROX(discount, 0.5)\n            AS last_clicked_median_discount",
+            self.sql,
+        )
+        self.assertIn(
+            "PERCENTILE_APPROX(discount, 0.1)\n            AS last_clicked_p10_discount",
             self.sql,
         )
         self.assertIn(

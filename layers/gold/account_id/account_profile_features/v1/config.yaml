@@ -151,6 +151,18 @@ dq:
       min: 1
       max: 5
     - name: accepted_range
+      column: ACCOUNT__last_clicked_avg_discount
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_median_discount
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_p10_discount
+      min: 0
+      max: 100
+    - name: accepted_range
       column: ACCOUNT__last_purchased_null_rating_share_7d
       min: 0
       max: 1

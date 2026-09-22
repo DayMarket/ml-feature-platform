@@ -88,8 +88,10 @@ Product attributes присоединяются point-in-time на snapshot `T`:
    G8 order popularity rank.
 5. Строки без `min_sell_price_eod` удаляются.
 
-Price, category population shares, rating и popularity агрегируются по оставшимся
-product-session наблюдениям. `*_male_cat_share_raw` и
+Price, discount, category population shares, rating и popularity агрегируются по
+оставшимся product-session наблюдениям. Discount берётся из G7 и публикуется как
+среднее, медиана и p10 текущего discount по последним 75 наблюдениям; шкала
+discount — 0..100. `*_male_cat_share_raw` и
 `*_female_cat_share_raw` — средние значения `CATEGORY__male_click_share_28d`
 и `CATEGORY__female_click_share_28d` из G6 по категориям последних кликов;
 они не являются долями category labels `M`/`F`. Нормализованные shares делят

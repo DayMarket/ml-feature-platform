@@ -52,6 +52,9 @@ LAST_CLICKED_RAW_COLUMNS = (
     "last_clicked_avg_price",
     "last_clicked_median_price",
     "last_clicked_90th_pct_price",
+    "last_clicked_avg_discount",
+    "last_clicked_median_discount",
+    "last_clicked_p10_discount",
     "last_clicked_male_cat_share_raw",
     "last_clicked_female_cat_share_raw",
     "last_clicked_null_rating_share",
@@ -557,6 +560,7 @@ enriched_last_clicks AS (
         category.category_gender,
         category.male_click_share_28d,
         category.female_click_share_28d,
+        base.discount,
         base.rating,
         ranking.popularity_by_orders_neg_rank
     FROM selected_clicks clicks
@@ -580,6 +584,11 @@ last_clicked_raw_profile AS (
             AS last_clicked_median_price,
         PERCENTILE_APPROX(min_sell_price_eod, 0.9)
             AS last_clicked_90th_pct_price,
+        AVG(discount) AS last_clicked_avg_discount,
+        PERCENTILE_APPROX(discount, 0.5)
+            AS last_clicked_median_discount,
+        PERCENTILE_APPROX(discount, 0.1)
+            AS last_clicked_p10_discount,
         AVG(male_click_share_28d)
             AS last_clicked_male_cat_share_raw,
         AVG(female_click_share_28d)
