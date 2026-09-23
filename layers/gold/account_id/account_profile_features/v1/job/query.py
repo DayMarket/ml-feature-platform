@@ -46,7 +46,12 @@ ORDER_FEATURE_COLUMNS = tuple(
     template.format(window=window)
     for window in ORDER_WINDOWS
     for template in ORDER_FEATURE_TEMPLATES
-) + ("last_purchased_male_cat_share_raw",)
+) + (
+    "last_purchased_male_cat_share_raw",
+    "last_purchased_female_cat_share_raw",
+    "last_purchased_female_cat_share_among_gendered",
+    "last_purchased_male_cat_share_among_gendered",
+)
 
 LAST_CLICKED_RAW_COLUMNS = (
     "last_clicked_avg_price",
@@ -275,6 +280,19 @@ def _order_line_expressions(calculated_at_utc: str) -> str:
         )
     expressions.append(
         "AVG(male_click_share_28d) AS last_purchased_male_cat_share_raw"
+    )
+    expressions.append(
+        "AVG(female_click_share_28d) AS last_purchased_female_cat_share_raw"
+    )
+    expressions.append(
+        "AVG(female_click_share_28d) / NULLIF("
+        "AVG(female_click_share_28d) + AVG(male_click_share_28d), 0.0D) "
+        "AS last_purchased_female_cat_share_among_gendered"
+    )
+    expressions.append(
+        "AVG(male_click_share_28d) / NULLIF("
+        "AVG(female_click_share_28d) + AVG(male_click_share_28d), 0.0D) "
+        "AS last_purchased_male_cat_share_among_gendered"
     )
     return ",\n        ".join(expressions)
 

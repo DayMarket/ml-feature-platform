@@ -191,6 +191,20 @@ dq:
       min: 0
       max: 1
     - name: accepted_range
+      column: ACCOUNT__last_purchased_female_cat_share_raw
+      min: 0
+      max: 1
+    - name: expression_is_true
+      expression: "(ACCOUNT__last_purchased_female_cat_share_among_gendered IS NULL AND ACCOUNT__last_purchased_male_cat_share_among_gendered IS NULL) OR ABS(ACCOUNT__last_purchased_female_cat_share_among_gendered + ACCOUNT__last_purchased_male_cat_share_among_gendered - 1.0) < 0.000001"
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_female_cat_share_among_gendered
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_male_cat_share_among_gendered
+      min: 0
+      max: 1
+    - name: accepted_range
       column: ACCOUNT__last_purchased_female_cat_share_7d
       min: 0
       max: 1

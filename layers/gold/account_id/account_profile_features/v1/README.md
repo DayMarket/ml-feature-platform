@@ -74,7 +74,10 @@ Product attributes присоединяются point-in-time на snapshot `T`:
   строк с `category_id`, у которых `CATEGORY__gender` равен `U` или `NULL`.
   `ACCOUNT__last_purchased_male_cat_share_raw` — то же среднее male click-share
   по полному доступному 90-дневному order lookback, без отдельного суффикса окна;
-  это raw-значение из G6, а не доля категорий с label `M`.
+  это raw-значение из G6, а не доля категорий с label `M`. Аналогично
+  сохраняется `ACCOUNT__last_purchased_female_cat_share_raw`. Фичи
+  `ACCOUNT__last_purchased_*_cat_share_among_gendered` делят соответствующий
+  raw-share на сумму male и female raw-share; при нулевом знаменателе дают `NULL`.
 
 `last_purchased_neg_p90_popularity_rank_*` вычисляется как p10 уже
 отрицательного rank, то есть как `-p90` положительного rank. Симметричная
