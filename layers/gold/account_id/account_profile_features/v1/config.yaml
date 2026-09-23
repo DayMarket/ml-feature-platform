@@ -1,0 +1,310 @@
+resources:
+  path: ../../../../../config/spark/resources.yaml
+
+spark:
+  template_path: ../../../../../config/spark/layer_spark_application.yaml
+  application_name: fetch-gold-account-profile-features
+  main_application_file: local:///git/repo/layers/gold/account_id/account_profile_features/v1/entrypoints/get_account_profile_features.py
+  resource_profile: small
+
+table:
+  key: account_profile_features
+  catalog: iceberg
+  schema: gold
+  name: feature_platform_account_profile_features
+  primary_key: calculated_at,account_id
+  feature_namespace: ACCOUNT
+  meta:
+    team: team::recsys
+    create_dbt_pr: false
+    create_maintenance_pr: true
+
+source:
+  engine: spark_iceberg
+  demographics_table: iceberg.silver.feature_platform_account_demographics
+  product_metadata_table: iceberg.silver.feature_platform_product_metadata
+  product_prices_table: iceberg.silver.feature_platform_product_prices_daily
+  action_counts_table: iceberg.silver.feature_platform_account_product_session_action_counts_12h
+  order_items_table: iceberg.silver.order_items
+  sku_table: iceberg.silver.sku
+  category_demographic_features_table: iceberg.gold.feature_platform_category_demographic_features
+  product_base_features_table: iceberg.gold.feature_platform_product_base_features
+  product_ranking_features_table: iceberg.gold.feature_platform_product_ranking_features
+  business_timezone: Asia/Tashkent
+
+dag:
+  id: feature-platform.layers.gold.account_id.account_profile_features
+  group_tag: recsys-features
+  schedule: "0 7,19 * * *"
+  start_date: "2026-09-13T07:00:00Z"
+  catchup: true
+  team: recsys
+  owner: team:recsys
+
+# Alert routing is ready, but callbacks stay disabled in dag.py during debugging.
+alerts:
+  team: recsys
+  severity: P3
+  oncall_webhook_conn_id: oncall_webhook_recsys
+
+dq:
+  trino_conn_id: trino_recsys
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 12
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
+  tests:
+    - name: freshness
+      severity: warn
+    - name: row_count_min
+      severity: warn
+    - name: row_count_growth
+      severity: warn
+    - name: expression_is_true
+      expression: "account_id > 0"
+    - name: accepted_values
+      column: ACCOUNT__gender
+      values: [MALE, FEMALE]
+    - name: accepted_values
+      column: ACCOUNT__gender_is_female
+      values: [0, 1]
+    - name: accepted_values
+      column: ACCOUNT__age_bucket
+      values: [LT_18, "18_24", "25_34", "35_44", "45_54", 55_PLUS, UNKNOWN]
+    - name: accepted_values
+      column: ACCOUNT__platform
+      values: [IOS, ANDROID, WEB]
+    - name: non_negative
+      columns:
+        - ACCOUNT__age
+        - ACCOUNT__median_order_total_7d
+        - ACCOUNT__median_order_total_28d
+        - ACCOUNT__median_order_total_90d
+        - ACCOUNT__max_order_total_7d
+        - ACCOUNT__max_order_total_28d
+        - ACCOUNT__max_order_total_90d
+        - ACCOUNT__min_order_total_7d
+        - ACCOUNT__min_order_total_28d
+        - ACCOUNT__min_order_total_90d
+        - ACCOUNT__sum_order_total_7d
+        - ACCOUNT__sum_order_total_28d
+        - ACCOUNT__sum_order_total_90d
+        - ACCOUNT__avg_item_price_from_orders_7d
+        - ACCOUNT__avg_item_price_from_orders_28d
+        - ACCOUNT__avg_item_price_from_orders_90d
+        - ACCOUNT__n_last_purchased_products_7d
+        - ACCOUNT__n_last_purchased_products_28d
+        - ACCOUNT__n_last_purchased_products_90d
+        - ACCOUNT__last_clicked_avg_price
+        - ACCOUNT__last_clicked_median_price
+        - ACCOUNT__last_clicked_90th_pct_price
+    - name: expression_is_true
+      expression: "ACCOUNT__min_order_total_7d <= ACCOUNT__median_order_total_7d AND ACCOUNT__median_order_total_7d <= ACCOUNT__max_order_total_7d"
+    - name: expression_is_true
+      expression: "ACCOUNT__min_order_total_28d <= ACCOUNT__median_order_total_28d AND ACCOUNT__median_order_total_28d <= ACCOUNT__max_order_total_28d"
+    - name: expression_is_true
+      expression: "ACCOUNT__min_order_total_90d <= ACCOUNT__median_order_total_90d AND ACCOUNT__median_order_total_90d <= ACCOUNT__max_order_total_90d"
+    - name: expression_is_true
+      expression: "(ACCOUNT__last_purchased_male_cat_share_7d IS NULL AND ACCOUNT__last_purchased_female_cat_share_7d IS NULL) OR ABS(ACCOUNT__last_purchased_male_cat_share_7d + ACCOUNT__last_purchased_female_cat_share_7d - 1.0) < 0.000001"
+    - name: expression_is_true
+      expression: "(ACCOUNT__last_purchased_male_cat_share_28d IS NULL AND ACCOUNT__last_purchased_female_cat_share_28d IS NULL) OR ABS(ACCOUNT__last_purchased_male_cat_share_28d + ACCOUNT__last_purchased_female_cat_share_28d - 1.0) < 0.000001"
+    - name: expression_is_true
+      expression: "(ACCOUNT__last_purchased_male_cat_share_90d IS NULL AND ACCOUNT__last_purchased_female_cat_share_90d IS NULL) OR ABS(ACCOUNT__last_purchased_male_cat_share_90d + ACCOUNT__last_purchased_female_cat_share_90d - 1.0) < 0.000001"
+    - name: expression_is_true
+      expression: "(ACCOUNT__last_clicked_male_cat_share_raw IS NULL AND ACCOUNT__last_clicked_female_cat_share_raw IS NULL) OR ABS(ACCOUNT__last_clicked_male_cat_share_raw + ACCOUNT__last_clicked_female_cat_share_raw - 1.0) < 0.000001"
+    - name: expression_is_true
+      expression: "(ACCOUNT__last_clicked_female_cat_share_among_gendered IS NULL AND ACCOUNT__last_clicked_male_cat_share_among_gendered IS NULL) OR ABS(ACCOUNT__last_clicked_female_cat_share_among_gendered + ACCOUNT__last_clicked_male_cat_share_among_gendered - 1.0) < 0.000001"
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_male_cat_share_raw
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_female_cat_share_raw
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_null_rating_share
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_female_cat_share_among_gendered
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_male_cat_share_among_gendered
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_avg_price_pctl
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_median_price_pctl
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_90th_pct_price_pctl
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_p10_rating
+      min: 1
+      max: 5
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_avg_discount
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_median_discount
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_p10_discount
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_null_rating_share_7d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_null_rating_share_28d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_null_rating_share_90d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_male_cat_share_7d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_male_cat_share_28d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_male_cat_share_90d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_male_cat_share_raw
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_female_cat_share_raw
+      min: 0
+      max: 1
+    - name: expression_is_true
+      expression: "(ACCOUNT__last_purchased_female_cat_share_among_gendered IS NULL AND ACCOUNT__last_purchased_male_cat_share_among_gendered IS NULL) OR ABS(ACCOUNT__last_purchased_female_cat_share_among_gendered + ACCOUNT__last_purchased_male_cat_share_among_gendered - 1.0) < 0.000001"
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_female_cat_share_among_gendered
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_male_cat_share_among_gendered
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_female_cat_share_7d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_female_cat_share_28d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_female_cat_share_90d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_unisex_cat_share_7d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_unisex_cat_share_28d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_unisex_cat_share_90d
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_avg_discount_7d
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_avg_discount_28d
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_avg_discount_90d
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_median_discount_7d
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_median_discount_28d
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_median_discount_90d
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_p10_discount_7d
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_p10_discount_28d
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_p10_discount_90d
+      min: 0
+      max: 100
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_avg_rating_7d
+      min: 1
+      max: 5
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_avg_rating_28d
+      min: 1
+      max: 5
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_avg_rating_90d
+      min: 1
+      max: 5
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_median_rating_7d
+      min: 1
+      max: 5
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_median_rating_28d
+      min: 1
+      max: 5
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_median_rating_90d
+      min: 1
+      max: 5
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_p10_rating_7d
+      min: 1
+      max: 5
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_p10_rating_28d
+      min: 1
+      max: 5
+    - name: accepted_range
+      column: ACCOUNT__last_purchased_p10_rating_90d
+      min: 1
+      max: 5
+
+feature_stats:
+  trino_conn_id: trino_recsys
+  partition_granularity: timestamp
+  partition_column: calculated_at
+  snapshot_interval_hours: 12
+  partition_date_template: '{{ data_interval_end.in_timezone("Asia/Tashkent").strftime("%Y-%m-%d %H:%M:%S") }}'
+  exclude_columns: []
