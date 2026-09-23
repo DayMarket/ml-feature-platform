@@ -31,13 +31,13 @@ BASE_FEATURE_COLUMNS = (
         for window in ACTION_WINDOWS
     )
     + tuple(
-        f"overall_conv_imp2{signal}_raw_{window}d"
+        f"total_account_conv_imp2{signal}_raw_{window}d"
         for signal, _ in CONVERSION_SIGNALS
         for window in ACTION_WINDOWS
     )
     + tuple(
         f"conv_imp2{signal}_div_{feature_baseline}_conv_{window}d"
-        for feature_baseline in ("total_category", "overall")
+        for feature_baseline in ("total_category", "total_account")
         for signal, _ in CONVERSION_SIGNALS
         for window in ACTION_WINDOWS
     )
@@ -118,7 +118,7 @@ def _relative_conversion_expressions() -> str:
         f"conv_imp2{signal}_div_{feature_baseline}_conv_{window}d"
         for baseline, feature_baseline in (
             ("category", "total_category"),
-            ("account", "overall"),
+            ("account", "total_account"),
         )
         for signal, _ in CONVERSION_SIGNALS
         for window in ACTION_WINDOWS
@@ -127,7 +127,7 @@ def _relative_conversion_expressions() -> str:
 
 def _overall_raw_conversion_expressions() -> str:
     return ",\n        ".join(
-        f"account.{signal}_{window}d AS overall_conv_imp2{signal}_raw_{window}d"
+        f"account.{signal}_{window}d AS total_account_conv_imp2{signal}_raw_{window}d"
         for signal, _ in CONVERSION_SIGNALS
         for window in ACTION_WINDOWS
     )

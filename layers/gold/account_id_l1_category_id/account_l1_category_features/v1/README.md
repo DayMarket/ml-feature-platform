@@ -58,14 +58,14 @@ Impressions суммируются из iceberg.silver.feature_platform_account_
 
 - `conv_imp2{signal}_raw_{window}d`: исходная account-category conversion,
   `signal_count / impression_count`;
-- `overall_conv_imp2{signal}_raw_{window}d`: исходная conversion
+- `total_account_conv_imp2{signal}_raw_{window}d`: исходная conversion
   пользователя по всем категориям L1;
 - `conv_imp2{signal}_div_total_category_conv_{window}d`: исходная
   account-category conversion, делённая на общий baseline этой категории;
-- `conv_imp2{signal}_div_overall_conv_{window}d`: account-category
+- `conv_imp2{signal}_div_total_account_conv_{window}d`: account-category
   conversion, делённая на общую conversion пользователя по всем категориям.
 
-`overall_conv_imp2order_raw_{window}d` и соответствующий относительный
+`total_account_conv_imp2order_raw_{window}d` и соответствующий относительный
 признак используют marketplace `COUNT(DISTINCT order_id)`, а не сумму category
 counts: один заказ может включать несколько категорий. Нулевой denominator
 всегда даёт NULL. Conversion может быть больше 1.
