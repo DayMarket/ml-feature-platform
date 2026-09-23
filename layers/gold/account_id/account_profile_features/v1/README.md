@@ -57,7 +57,7 @@ Discount, rating, popularity и ACCOUNT__gender категории взвеши�
 Product attributes присоединяются point-in-time на snapshot `T`:
 
 - discount и rating — из физических колонок G7
-  `PRODUCT__discount` и `PRODUCT__rating` с
+  `PRODUCT__cheapest_sku_discount_pct` и `PRODUCT__rating` с
   `calculated_at = T`;
 - global и leaf-category popularity rank — из физических колонок G8
   `PRODUCT_STATS__popularity_by_orders_neg_rank` и

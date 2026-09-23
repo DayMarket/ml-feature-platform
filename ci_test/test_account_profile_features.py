@@ -183,7 +183,7 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn(
-            "PRODUCT__discount AS discount",
+            "PRODUCT__cheapest_sku_discount_pct AS discount",
             self.sql,
         )
         self.assertIn(

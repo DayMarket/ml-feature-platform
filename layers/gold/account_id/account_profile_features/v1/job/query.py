@@ -440,7 +440,7 @@ category_demographics AS (
 product_base_features AS (
     SELECT
         CAST(product_id AS INT) AS product_id,
-        PRODUCT__discount AS discount,
+        PRODUCT__cheapest_sku_discount_pct AS discount,
         PRODUCT__rating AS rating
     FROM {settings.product_base_features_table}
     WHERE calculated_at = TIMESTAMP '{calculated_at_local}'
