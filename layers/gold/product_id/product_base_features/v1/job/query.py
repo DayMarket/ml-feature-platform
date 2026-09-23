@@ -75,9 +75,9 @@ ALL_TIME_FEEDBACK_COLUMNS = (
     "feedback_gte_4_ratio",
     "feedback_lte_3_ratio",
     "log_feedback_quantity",
-    "feedback_to_orders_rate_raw",
-    "feedback_gte_4_to_orders_rate_raw",
-    "feedback_lte_3_to_orders_rate_raw",
+    "feedback_to_orders_rate_all_time",
+    "feedback_gte_4_to_orders_rate_all_time",
+    "feedback_lte_3_to_orders_rate_all_time",
     "feedback_gte_4_to_orders_rate_28d",
     "feedback_lte_3_to_orders_rate_28d",
 )
@@ -729,13 +729,13 @@ unprefixed_features AS (
         log_feedback_quantity,
         CAST(feedback_quantity AS DOUBLE)
             / NULLIF(CAST(orders_total AS DOUBLE), 0.0D)
-            AS feedback_to_orders_rate_raw,
+            AS feedback_to_orders_rate_all_time,
         CAST(feedback_gte_4 AS DOUBLE)
             / NULLIF(CAST(orders_total AS DOUBLE), 0.0D)
-            AS feedback_gte_4_to_orders_rate_raw,
+            AS feedback_gte_4_to_orders_rate_all_time,
         CAST(feedback_lte_3 AS DOUBLE)
             / NULLIF(CAST(orders_total AS DOUBLE), 0.0D)
-            AS feedback_lte_3_to_orders_rate_raw,
+            AS feedback_lte_3_to_orders_rate_all_time,
         CAST(feedback_gte_4_28d AS DOUBLE)
             / NULLIF(CAST(orders_28d AS DOUBLE), 0.0D)
             AS feedback_gte_4_to_orders_rate_28d,

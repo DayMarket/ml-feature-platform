@@ -122,8 +122,8 @@ All-time признаки пересчитываются из пяти rating bu
 Gold: `rating`, `feedback_quantity`, `feedback_gte_4`,
 `feedback_lte_3`, соответствующие ratios и `log_feedback_quantity`.
 
-Raw feedback-to-orders rates делят all-time feedback counts на
-`orders_total`. `feedback_lte_3_to_orders_rate_28d` использует
+All-time feedback-to-orders rates делят all-time feedback counts на
+`orders_total` и используют суффикс `_all_time`. `feedback_lte_3_to_orders_rate_28d` использует
 `feedback_lte_3_28d / orders_28d`. Нулевой denominator даёт `NULL`; rates не
 ограничиваются единицей.
 

@@ -101,9 +101,9 @@ dq:
         - PRODUCT__feedback_gte_4
         - PRODUCT__feedback_lte_3
         - PRODUCT__log_feedback_quantity
-        - PRODUCT__feedback_to_orders_rate_raw
-        - PRODUCT__feedback_gte_4_to_orders_rate_raw
-        - PRODUCT__feedback_lte_3_to_orders_rate_raw
+        - PRODUCT__feedback_to_orders_rate_all_time
+        - PRODUCT__feedback_gte_4_to_orders_rate_all_time
+        - PRODUCT__feedback_lte_3_to_orders_rate_all_time
         - PRODUCT__feedback_gte_4_to_orders_rate_28d
         - PRODUCT__feedback_lte_3_to_orders_rate_28d
         - PRODUCT__return_rate_neg_28d
