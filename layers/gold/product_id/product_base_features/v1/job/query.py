@@ -10,6 +10,8 @@ PRICE_COLUMNS = (
     "min_sell_price_eod",
     "avg_sell_price_eod",
     "max_sell_price_eod",
+    "min_to_avg_sell_price_eod_ratio",
+    "min_to_max_sell_price_eod_ratio",
     "weighted_price",
     "min_full_price_eod",
     "max_full_price_eod",
@@ -635,6 +637,12 @@ unprefixed_features AS (
         min_sell_price_eod,
         avg_sell_price_eod,
         max_sell_price_eod,
+        CAST(min_sell_price_eod AS DOUBLE)
+            / NULLIF(CAST(avg_sell_price_eod AS DOUBLE), 0.0D)
+            AS min_to_avg_sell_price_eod_ratio,
+        CAST(min_sell_price_eod AS DOUBLE)
+            / NULLIF(CAST(max_sell_price_eod AS DOUBLE), 0.0D)
+            AS min_to_max_sell_price_eod_ratio,
         weighted_price,
         min_full_price_eod,
         max_full_price_eod,

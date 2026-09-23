@@ -43,6 +43,15 @@ G6 ограничиваются текущим `calculated_at`. All-time feedbac
 sell prices доступных SKU. `minimal_sell_price` и `minimal_full_price` —
 compatibility-копии соответствующих min-колонок.
 
+Также публикуются ценовые отношения:
+
+```text
+min_to_avg_sell_price_eod_ratio = min_sell_price_eod / avg_sell_price_eod
+min_to_max_sell_price_eod_ratio = min_sell_price_eod / max_sell_price_eod
+```
+
+При отсутствующей цене или нулевом знаменателе отношение равно `NULL`.
+
 `weighted_price` повторяет price-ветку CM2 на SKU-grain:
 
 ```text

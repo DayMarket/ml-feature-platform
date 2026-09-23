@@ -122,6 +122,14 @@ dq:
       min: 0
       max: 100
     - name: accepted_range
+      column: PRODUCT__min_to_avg_sell_price_eod_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: PRODUCT__min_to_max_sell_price_eod_ratio
+      min: 0
+      max: 1
+    - name: accepted_range
       column: PRODUCT__rating
       min: 1
       max: 5
