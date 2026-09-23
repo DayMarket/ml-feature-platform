@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     product_id INT COMMENT 'Положительный идентификатор товара из G7; часть уникального ключа calculated_at, product_id',
     PRODUCT__price_percentile DOUBLE COMMENT 'Global average-rank percentile min_sell_price_eod',
     PRODUCT__price_percentile_in_cat DOUBLE COMMENT 'Average-rank percentile min_sell_price_eod внутри листовой категории',
+    PRODUCT__price_to_avg_price_in_cat_ratio DOUBLE COMMENT 'min_sell_price_eod / средняя min_sell_price_eod по листовой категории; значение может быть больше 1',
     PRODUCT__popularity_by_orders_neg_rank DOUBLE COMMENT 'Отрицательный global average rank orders_28d по убыванию',
     PRODUCT__popularity_by_orders_neg_rank_in_cat DOUBLE COMMENT 'Отрицательный average rank orders_28d внутри листовой категории',
     PRODUCT__popularity_by_clicks_neg_rank_3d DOUBLE COMMENT 'Отрицательный global average rank clicks_3d по убыванию',

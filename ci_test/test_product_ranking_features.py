@@ -49,7 +49,7 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 21)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 22)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(
@@ -113,6 +113,11 @@ class ProductRankingFeaturesTest(unittest.TestCase):
             "COUNT(min_sell_price_eod) OVER (PARTITION BY category_id)",
             self.sql,
         )
+        self.assertIn(
+            "AVG(CAST(min_sell_price_eod AS DOUBLE)) OVER (PARTITION BY calculated_at, category_id)",
+            self.sql,
+        )
+        self.assertIn("AS price_to_avg_price_in_cat_ratio", self.sql)
 
     def test_popularity_ranks_use_28_day_orders_and_click_windows(self):
         self.assertIn(

@@ -36,6 +36,19 @@ Percentile denominator считает только non-NULL metric values. Globa
 ranks вычисляются на полной G7 population.
 
 - price percentiles используют `PRODUCT__min_sell_price_eod`;
+- `price_to_avg_price_in_cat_ratio` использует ту же `min_sell_price_eod` и
+  делит её на среднюю `min_sell_price_eod` товаров в той же листовой категории:
+
+  ```text
+  price_to_avg_price_in_cat_ratio =
+      min_sell_price_eod
+      / avg(min_sell_price_eod) over (calculated_at, category_id)
+  ```
+
+  Значение `NULL`, если цена или категория отсутствует либо средняя цена
+  категории равна нулю. В отличие от percentile, ratio не ограничен диапазоном
+  `[0,1]`: значение ниже 1 означает цену ниже среднего по категории, а выше 1 —
+  цену выше среднего.
 - order popularity использует `PRODUCT__orders_28d`;
 - click popularity использует `PRODUCT__clicks_3d` и
   `PRODUCT__clicks_28d`;
@@ -107,6 +120,6 @@ DAG работает в `07:00` и `19:00 UTC` (`12:00` и `00:00 Asia/Tashkent`
 Alert routing P3 настроен, но callbacks DAG, DQ и feature stats отключены на
 время отладки. DQ проверяет ключи, percentile/rate ranges, неположительные
 ranks и отсутствие NaN/infinity. `feature_stats` делает один Trino-скан
-каждого snapshot по 21 числовой feature-колонке.
+каждого snapshot по 22 числовым feature-колонкам.
 
 Потребители: Main, push, train и G5. Group tag: `recsys-features`.

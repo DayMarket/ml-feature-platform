@@ -11,6 +11,7 @@ RETURN_WINDOWS = (28, 90)
 RANK_AND_PERCENTILE_COLUMNS = (
     "price_percentile",
     "price_percentile_in_cat",
+    "price_to_avg_price_in_cat_ratio",
     "popularity_by_orders_neg_rank",
     "popularity_by_orders_neg_rank_in_cat",
     "popularity_by_clicks_neg_rank_3d",
@@ -115,6 +116,14 @@ def _rank_and_percentile_expressions() -> str:
             "price_percentile_in_cat",
             partition_columns=("category_id",),
             percentile=True,
+        ),
+        (
+            "CASE WHEN min_sell_price_eod IS NOT NULL "
+            "AND category_id IS NOT NULL THEN "
+            "CAST(min_sell_price_eod AS DOUBLE) / NULLIF("
+            "AVG(CAST(min_sell_price_eod AS DOUBLE)) OVER ("
+            "PARTITION BY calculated_at, category_id"
+            "), 0.0D) END AS price_to_avg_price_in_cat_ratio"
         ),
         _average_rank_expression(
             "orders_28d",
