@@ -17,7 +17,7 @@ Snapshot содержит объединение account IDs из:
 - S5 demographics;
 - пользователей с успешными заказами за 90 дней;
 - пользователей с `PRODUCT_VIEW` за 28 дней, у которых после отбора последних
-  75 product-session наблюдений остался хотя бы один товар с ценой.
+  150 product-session наблюдений остался хотя бы один товар с ценой.
 
 Если account появился только из одного источника, отсутствующие блоки остаются
 `NULL`.
@@ -89,14 +89,14 @@ Product attributes присоединяются point-in-time на snapshot `T`:
 1. S2c читается на полуоткрытом окне `[T - 28 days, T)`.
 2. `PRODUCT_VIEW` дедуплицируется по
    `account_id,session_id,product_id` с `MAX(last_received_at)`.
-3. На account остаются последние 75 строк по `last_received_at`.
+3. На account остаются последние 150 строк по `last_received_at`.
 4. Присоединяются текущие S3 price, S1 leaf category, G6 category demographics, G7 rating и
    G8 order popularity rank.
 5. Строки без `min_sell_price_eod` удаляются.
 
 Price, discount, category population shares, rating и popularity агрегируются по
 оставшимся product-session наблюдениям. Discount берётся из G7 и публикуется как
-среднее, медиана и p10 текущего discount по последним 75 наблюдениям; шкала
+среднее, медиана и p10 текущего discount по последним 150 наблюдениям; шкала
 discount — 0..100. `*_male_cat_share_raw` и
 `*_female_cat_share_raw` — средние значения `CATEGORY__male_click_share_28d`
 и `CATEGORY__female_click_share_28d` из G6 по категориям последних кликов;
@@ -132,7 +132,7 @@ callbacks DAG, DQ и feature stats отключены на время отлад
 DQ проверяет primary key, положительный `account_id`, домены demographics,
 неотрицательные order totals и prices, порядок min/median/max, а также диапазоны
 shares, ratings, discounts и percentiles. SQL unit tests фиксируют ограничение
-75 last-clicked строк и point-in-time joins.
+150 last-clicked строк и point-in-time joins.
 
 `feature_stats` выполняет отдельный Trino-скан каждого 12-часового snapshot.
 Ranking upload не настраивается. Потребители: Main, push и train.

@@ -569,7 +569,7 @@ selected_clicks AS (
         product_id,
         last_received_at
     FROM ranked_clicks
-    WHERE click_row_number <= 75
+    WHERE click_row_number <= 150
 ),
 enriched_last_clicks AS (
     SELECT

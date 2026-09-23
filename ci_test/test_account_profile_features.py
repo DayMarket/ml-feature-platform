@@ -228,9 +228,9 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn("MAX(last_received_at) AS last_received_at", self.sql)
-        self.assertIn("WHERE click_row_number <= 75", self.sql)
+        self.assertIn("WHERE click_row_number <= 150", self.sql)
         self.assertLess(
-            self.sql.index("WHERE click_row_number <= 75"),
+            self.sql.index("WHERE click_row_number <= 150"),
             self.sql.index("WHERE prices.min_sell_price_eod IS NOT NULL"),
         )
         self.assertIn("event_type = 'PRODUCT_VIEW'", self.sql)
