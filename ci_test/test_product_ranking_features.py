@@ -49,7 +49,7 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 22)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 26)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(
@@ -132,8 +132,13 @@ class ProductRankingFeaturesTest(unittest.TestCase):
 
     def test_feedback_rate_uses_global_prior_and_alpha_ten(self):
         self.assertIn("global_feedback_prior AS (", self.sql)
+        self.assertIn("global_feedback_to_orders_rate", self.sql)
+        self.assertIn("global_feedback_gte_4_to_orders_rate", self.sql)
         self.assertIn("SUM(feedback_lte_3_28d)", self.sql)
+        self.assertIn("SUM(feedback_gte_4_28d)", self.sql)
         self.assertIn("SUM(orders_28d)", self.sql)
+        self.assertIn("AS feedback_to_orders_rate_smoothed", self.sql)
+        self.assertIn("AS feedback_gte_4_to_orders_rate_smoothed", self.sql)
         self.assertIn("10.0D * prior.global_feedback_lte_3_to_orders_rate", self.sql)
         self.assertIn("CAST(category.feedback_lte_3_28d AS DOUBLE)", self.sql)
         self.assertIn("AS feedback_lte_3_to_orders_rate_smoothed", self.sql)

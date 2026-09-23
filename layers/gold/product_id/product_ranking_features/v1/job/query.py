@@ -21,6 +21,10 @@ RANK_AND_PERCENTILE_COLUMNS = (
     "rating_percentile_in_cat",
     "discount_percentile_in_cat",
     "feedback_quantity_percentile_in_cat",
+    "feedback_to_orders_rate_smoothed",
+    "feedback_to_orders_rate_percentile_in_cat",
+    "feedback_gte_4_to_orders_rate_smoothed",
+    "feedback_gte_4_to_orders_rate_percentile_in_cat",
     "feedback_lte_3_to_orders_rate_smoothed",
     "feedback_lte_3_to_orders_rate_percentile_in_cat",
 )
@@ -170,6 +174,18 @@ def _rank_and_percentile_expressions() -> str:
             _average_rank_expression(
                 "feedback_quantity",
                 "feedback_quantity_percentile_in_cat",
+                partition_columns=("category_id",),
+                percentile=True,
+            ),
+            _average_rank_expression(
+                "feedback_to_orders_rate_smoothed",
+                "feedback_to_orders_rate_percentile_in_cat",
+                partition_columns=("category_id",),
+                percentile=True,
+            ),
+            _average_rank_expression(
+                "feedback_gte_4_to_orders_rate_smoothed",
+                "feedback_gte_4_to_orders_rate_percentile_in_cat",
                 partition_columns=("category_id",),
                 percentile=True,
             ),
@@ -342,6 +358,7 @@ g7_snapshot AS (
         base.PRODUCT__rating AS rating,
         base.PRODUCT__cheapest_sku_discount_pct AS discount,
         base.PRODUCT__feedback_quantity AS feedback_quantity,
+        base.PRODUCT__feedback_gte_4_28d AS feedback_gte_4_28d,
         base.PRODUCT__feedback_lte_3 AS feedback_lte_3,
         base.PRODUCT__feedback_lte_3_28d AS feedback_lte_3_28d,
         COALESCE(returns.n_completed_28d, 0) AS n_completed_28d,
@@ -357,6 +374,12 @@ g7_snapshot AS (
 ),
 global_feedback_prior AS (
     SELECT
+        CAST(SUM(feedback_gte_4_28d + feedback_lte_3_28d) AS DOUBLE)
+            / NULLIF(CAST(SUM(orders_28d) AS DOUBLE), 0.0D)
+            AS global_feedback_to_orders_rate,
+        CAST(SUM(feedback_gte_4_28d) AS DOUBLE)
+            / NULLIF(CAST(SUM(orders_28d) AS DOUBLE), 0.0D)
+            AS global_feedback_gte_4_to_orders_rate,
         CAST(SUM(feedback_lte_3_28d) AS DOUBLE)
             / NULLIF(CAST(SUM(orders_28d) AS DOUBLE), 0.0D)
             AS global_feedback_lte_3_to_orders_rate
@@ -380,8 +403,19 @@ smoothed_inputs AS (
         category.rating,
         category.discount,
         category.feedback_quantity,
+        category.feedback_gte_4_28d,
         category.feedback_lte_3,
         category.feedback_lte_3_28d,
+        (CAST(category.feedback_gte_4_28d + category.feedback_lte_3_28d AS DOUBLE)
+            + {SMOOTHING_ALPHA}D * prior.global_feedback_to_orders_rate)
+            / NULLIF(CAST(category.orders_28d AS DOUBLE)
+                + {SMOOTHING_ALPHA}D, 0.0D)
+            AS feedback_to_orders_rate_smoothed,
+        (CAST(category.feedback_gte_4_28d AS DOUBLE)
+            + {SMOOTHING_ALPHA}D * prior.global_feedback_gte_4_to_orders_rate)
+            / NULLIF(CAST(category.orders_28d AS DOUBLE)
+                + {SMOOTHING_ALPHA}D, 0.0D)
+            AS feedback_gte_4_to_orders_rate_smoothed,
         (CAST(category.feedback_lte_3_28d AS DOUBLE)
             + {SMOOTHING_ALPHA}D * prior.global_feedback_lte_3_to_orders_rate)
             / NULLIF(CAST(category.orders_28d AS DOUBLE)
@@ -405,6 +439,8 @@ derived_rates AS (
         rating,
         discount,
         feedback_quantity,
+        feedback_to_orders_rate_smoothed,
+        feedback_gte_4_to_orders_rate_smoothed,
         feedback_lte_3_to_orders_rate_smoothed,
         {return_features}
     FROM smoothed_inputs
@@ -414,6 +450,8 @@ unprefixed_features AS (
         calculated_at,
         product_id,
         {rank_and_percentiles},
+        feedback_to_orders_rate_smoothed,
+        feedback_gte_4_to_orders_rate_smoothed,
         feedback_lte_3_to_orders_rate_smoothed,
         {", ".join(RETURN_FEATURE_COLUMNS)}
     FROM derived_rates

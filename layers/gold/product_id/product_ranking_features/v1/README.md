@@ -59,15 +59,34 @@ ranks вычисляются на полной G7 population.
 `alpha = 10`. Global prior считается на полном G7 snapshot:
 
 ```text
-global_rate = sum(feedback_lte_3_28d) / sum(orders_28d)
+global_feedback_to_orders_rate =
+    sum(feedback_gte_4_28d + feedback_lte_3_28d) / sum(orders_28d)
+global_feedback_gte_4_to_orders_rate =
+    sum(feedback_gte_4_28d) / sum(orders_28d)
+global_feedback_lte_3_to_orders_rate =
+    sum(feedback_lte_3_28d) / sum(orders_28d)
+
+feedback_to_orders_rate_smoothed =
+    (feedback_gte_4_28d + feedback_lte_3_28d
+        + alpha * global_feedback_to_orders_rate)
+    / (orders_28d + alpha)
+
+feedback_gte_4_to_orders_rate_smoothed =
+    (feedback_gte_4_28d
+        + alpha * global_feedback_gte_4_to_orders_rate)
+    / (orders_28d + alpha)
 
 feedback_lte_3_to_orders_rate_smoothed =
-    (feedback_lte_3_28d + alpha * global_rate)
+    (feedback_lte_3_28d
+        + alpha * global_feedback_lte_3_to_orders_rate)
     / (orders_28d + alpha)
 ```
 
 Нулевой global denominator даёт `NULL`. Smoothed rate не ограничивается
-единицей. Его average-rank percentile внутри листовой категории публикуется как
+единицей. Для каждой из трёх сглаженных rates публикуется average-rank
+percentile внутри листовой категории:
+`feedback_to_orders_rate_percentile_in_cat`,
+`feedback_gte_4_to_orders_rate_percentile_in_cat` и
 `feedback_lte_3_to_orders_rate_percentile_in_cat`.
 
 ## Return rates
@@ -120,6 +139,6 @@ DAG работает в `07:00` и `19:00 UTC` (`12:00` и `00:00 Asia/Tashkent`
 Alert routing P3 настроен, но callbacks DAG, DQ и feature stats отключены на
 время отладки. DQ проверяет ключи, percentile/rate ranges, неположительные
 ranks и отсутствие NaN/infinity. `feature_stats` делает один Trino-скан
-каждого snapshot по 22 числовым feature-колонкам.
+каждого snapshot по 26 числовым feature-колонкам.
 
 Потребители: Main, push, train и G5. Group tag: `recsys-features`.
