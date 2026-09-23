@@ -127,6 +127,11 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         self.assertIn("AS popularity_by_orders_neg_rank", self.sql)
         self.assertIn("AS popularity_by_clicks_neg_rank_3d", self.sql)
         self.assertIn("AS popularity_by_clicks_neg_rank_28d", self.sql)
+        self.assertIn("AS popularity_by_orders_percentile_in_cat", self.sql)
+        self.assertIn("AS popularity_by_clicks_percentile_in_cat_3d", self.sql)
+        self.assertIn("AS popularity_by_clicks_percentile_in_cat_28d", self.sql)
+        self.assertNotIn("popularity_by_orders_neg_rank_in_cat", self.sql)
+        self.assertNotIn("popularity_by_clicks_neg_rank_in_cat", self.sql)
         self.assertNotIn("orders_30d", self.sql)
         self.assertNotIn("clicks_30d", self.sql)
 

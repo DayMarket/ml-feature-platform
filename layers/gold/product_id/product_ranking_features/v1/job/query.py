@@ -13,11 +13,11 @@ RANK_AND_PERCENTILE_COLUMNS = (
     "price_percentile_in_cat",
     "price_to_avg_price_in_cat_ratio",
     "popularity_by_orders_neg_rank",
-    "popularity_by_orders_neg_rank_in_cat",
+    "popularity_by_orders_percentile_in_cat",
     "popularity_by_clicks_neg_rank_3d",
     "popularity_by_clicks_neg_rank_28d",
-    "popularity_by_clicks_neg_rank_in_cat_3d",
-    "popularity_by_clicks_neg_rank_in_cat_28d",
+    "popularity_by_clicks_percentile_in_cat_3d",
+    "popularity_by_clicks_percentile_in_cat_28d",
     "rating_percentile_in_cat",
     "discount_percentile_in_cat",
     "feedback_quantity_percentile_in_cat",
@@ -136,9 +136,9 @@ def _rank_and_percentile_expressions() -> str:
         ),
         _average_rank_expression(
             "orders_28d",
-            "popularity_by_orders_neg_rank_in_cat",
+            "popularity_by_orders_percentile_in_cat",
             partition_columns=("category_id",),
-            descending=True,
+            percentile=True,
         ),
     ]
     for window in (3, 28):
@@ -151,9 +151,9 @@ def _rank_and_percentile_expressions() -> str:
                 ),
                 _average_rank_expression(
                     f"clicks_{window}d",
-                    f"popularity_by_clicks_neg_rank_in_cat_{window}d",
+                    f"popularity_by_clicks_percentile_in_cat_{window}d",
                     partition_columns=("category_id",),
-                    descending=True,
+                    percentile=True,
                 ),
             )
         )

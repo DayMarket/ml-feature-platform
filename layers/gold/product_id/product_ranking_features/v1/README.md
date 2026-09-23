@@ -31,9 +31,16 @@ percentile   = average_rank / N_non_null
 negative_rank = -average_rank(metric DESC)
 ```
 
-Наиболее популярный товар получает negative rank, ближайший к нулю.
+Наиболее популярный товар получает global negative rank, ближайший к нулю.
 Percentile denominator считает только non-NULL metric values. Global и category
-ranks вычисляются на полной G7 population.
+ranks вычисляются на полной G7 population. Для категорийных popularity-признаков
+используется percentile вместо абсолютного rank; он считается по возрастанию
+метрики, поэтому более популярные товары получают значения ближе к 1:
+
+```text
+popularity_percentile_in_cat =
+    average_rank(metric ASC) / N_non_null
+```
 
 - price percentiles используют `PRODUCT__min_sell_price_eod`;
 - `price_to_avg_price_in_cat_ratio` использует ту же `min_sell_price_eod` и
@@ -52,6 +59,10 @@ ranks вычисляются на полной G7 population.
 - order popularity использует `PRODUCT__orders_28d`;
 - click popularity использует `PRODUCT__clicks_3d` и
   `PRODUCT__clicks_28d`;
+- категорийная order popularity публикуется как
+  `popularity_by_orders_percentile_in_cat`, а категориальная click popularity —
+  как `popularity_by_clicks_percentile_in_cat_3d` и
+  `popularity_by_clicks_percentile_in_cat_28d`;
 - rating, discount и feedback quantity percentiles считаются внутри листовой категории.
 
 ## Smoothed feedback rate
