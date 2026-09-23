@@ -128,6 +128,9 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertIn("order_item.b2b_order = FALSE", self.sql)
         self.assertIn("AND order_item.account_id IS NOT NULL", self.sql)
+        self.assertNotIn("CAST(id AS INT) AS sku_id", self.sql)
+        self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)
+        self.assertNotIn("CAST(order_item.sku_id AS INT)", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
 
     def test_gmv_denominator_keeps_unbranded_and_unmapped_products(self):
@@ -181,7 +184,7 @@ class AccountBrandFeaturesTest(unittest.TestCase):
         self.assertIn("product_id.product_metadata", dag_text)
         self.assertIn("account_product_session_action_counts_12h", dag_text)
         self.assertIn("resource_profile: small", config_text)
-        self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
+        self.assertIn('start_date: "2026-09-13T07:00:00Z"', config_text)
         self.assertIn("is_paused_upon_creation=True", dag_text)
         self.assertIn('# default_args["on_failure_callback"]', dag_text)
         self.assertEqual(dag_text.count("failure_callback_enabled=False"), 2)

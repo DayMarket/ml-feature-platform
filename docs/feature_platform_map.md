@@ -233,7 +233,7 @@ UTC cron 0 7,19 * * * · P3 · small`"]
     d7["`account_l5_category_features
 UTC cron 0 7,19 * * * · P3 · small`"]
     d8["`account_product_features
-UTC cron 0 7,19 * * * · P3 · small`"]
+UTC cron 0 7,19 * * * · P3 · medium`"]
     d9["`account_shop_features
 UTC cron 0 7,19 * * * · P3 · small`"]
     d10["`buyout_online_city_features

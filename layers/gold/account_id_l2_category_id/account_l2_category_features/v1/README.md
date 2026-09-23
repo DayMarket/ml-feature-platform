@@ -58,14 +58,14 @@ Impressions суммируются из iceberg.silver.feature_platform_account_
 
 - `conv_imp2{signal}_raw_{window}d`: исходная account-category conversion,
   `signal_count / impression_count`;
-- `total_account_conv_imp2{signal}_raw_{window}d`: исходная conversion
+- `overall_conv_imp2{signal}_raw_{window}d`: исходная conversion
   пользователя по всем категориям L2;
 - `conv_imp2{signal}_div_total_category_conv_{window}d`: исходная
   account-category conversion, делённая на общий baseline этой категории;
-- `conv_imp2{signal}_div_total_account_conv_{window}d`: account-category
+- `conv_imp2{signal}_div_overall_conv_{window}d`: account-category
   conversion, делённая на общую conversion пользователя по всем категориям.
 
-`total_account_conv_imp2order_raw_{window}d` и соответствующий относительный
+`overall_conv_imp2order_raw_{window}d` и соответствующий относительный
 признак используют marketplace `COUNT(DISTINCT order_id)`, а не сумму category
 counts: один заказ может включать несколько категорий. Нулевой denominator
 всегда даёт NULL. Conversion может быть больше 1.
@@ -93,7 +93,7 @@ category-level показателя пользователя.
 ## Запись, зависимости и наблюдаемость
 
 DAG запускается в 07:00 и 19:00 UTC, то есть в 12:00 и 00:00 Asia/Tashkent.
-start_date = 2026-09-05T07:00:00Z — первый snapshot после накопления полного
+start_date = 2026-09-13T07:00:00Z — начало backfill последних 10 дней после накопления полного
 28-дневного окна Silver; catchup=true, resource_profile=small.
 
 До записи DAG ждёт dq владельцев S1 и S2c и S2b. Для

@@ -149,7 +149,7 @@ action_features AS (
     GROUP BY account_id, l5_category_id
 ),
 sku_mapping AS (
-    SELECT CAST(id AS INT) AS sku_id, CAST(MIN(product_id) AS INT) AS product_id
+    SELECT id AS sku_id, CAST(MIN(product_id) AS INT) AS product_id
     FROM {settings.sku_table}
     GROUP BY id
 ),
@@ -157,11 +157,11 @@ filtered_order_lines AS (
     SELECT
         CAST(order_item.account_id AS INT) AS account_id,
         sku.product_id,
-        CAST(order_item.order_id AS INT) AS order_id,
+        order_item.order_id AS order_id,
         CAST(order_item.generated_at AS TIMESTAMP) AS generated_at,
         CAST(order_item.payment_price AS DOUBLE) * CAST(order_item.item_quantity AS DOUBLE) AS line_gmv
     FROM {settings.order_items_table} order_item
-    INNER JOIN sku_mapping sku ON CAST(order_item.sku_id AS INT) = sku.sku_id
+    INNER JOIN sku_mapping sku ON order_item.sku_id = sku.sku_id
     WHERE order_item.generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS
         AND order_item.generated_at < TIMESTAMP '{calculated_at_utc}'
         AND order_item.order_item_status IN (

@@ -87,7 +87,7 @@ class AccountShopFeaturesTest(unittest.TestCase):
         self.assertIn("AS ACCOUNT_SHOP__n_clicks_7d", self.sql)
         self.assertIn("primary_key: calculated_at,account_id,shop_id", config_text)
         self.assertIn("resource_profile: small", config_text)
-        self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
+        self.assertIn('start_date: "2026-09-13T07:00:00Z"', config_text)
 
     def test_query_topology_is_not_assembled_conditionally(self):
         query_text = (ENTITY / "job/query.py").read_text(encoding="utf-8")
@@ -131,6 +131,9 @@ class AccountShopFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
         self.assertIn("AND order_item.account_id IS NOT NULL", self.sql)
+        self.assertNotIn("CAST(id AS INT) AS sku_id", self.sql)
+        self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)
+        self.assertNotIn("CAST(order_item.sku_id AS INT)", self.sql)
         self.assertNotIn("brand_id", self.sql)
 
     def test_missing_families_are_zero_and_ratios_use_published_shops(self):
