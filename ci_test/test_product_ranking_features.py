@@ -49,7 +49,7 @@ class ProductRankingFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 26)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 28)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(
@@ -172,6 +172,10 @@ class ProductRankingFeaturesTest(unittest.TestCase):
             )
             self.assertIn(
                 f"AS return_rate_smoothed_to_category_return_neg_{window}d",
+                self.sql,
+            )
+            self.assertIn(
+                f"AS return_rate_neg_percentile_in_cat_{window}d",
                 self.sql,
             )
         self.assertNotIn("AVG(return_rate", self.sql)

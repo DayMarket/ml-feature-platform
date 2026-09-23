@@ -120,6 +120,18 @@ category_return_rate_neg_Nd =
     / sum(n_completed_Nd + n_returned_Nd)
 ```
 
+Дополнительно для каждого окна публикуется percentile raw negative return rate
+внутри листовой категории:
+
+```text
+return_rate_neg_percentile_in_cat_Nd =
+    average_rank(return_rate_neg_Nd ASC) / N_non_null
+```
+
+Поскольку rate отрицательная, товар с меньшей долей возвратов получает значение
+ближе к `1`. Если категория или raw return rate отсутствует, percentile равен
+`NULL`.
+
 ```text
 return_rate_neg_smoothed_Nd =
     -(n_returned_Nd - 10 * category_return_rate_neg_Nd)

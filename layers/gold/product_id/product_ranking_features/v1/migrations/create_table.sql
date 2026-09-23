@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     PRODUCT__feedback_gte_4_to_orders_rate_percentile_in_cat DOUBLE COMMENT 'Average-rank percentile сглаженной feedback rating 4..5 to orders rate внутри листовой категории',
     PRODUCT__feedback_lte_3_to_orders_rate_smoothed DOUBLE COMMENT 'Feedback rating 1..3 за 28 дней к orders_28d, сглаженное global prior с alpha 10',
     PRODUCT__feedback_lte_3_to_orders_rate_percentile_in_cat DOUBLE COMMENT 'Average-rank percentile smoothed feedback rating 1..3 to orders rate внутри листовой категории',
+    PRODUCT__return_rate_neg_percentile_in_cat_28d DOUBLE COMMENT 'Average-rank percentile отрицательной product return rate внутри листовой категории за 28 дней; больше — лучше',
+    PRODUCT__return_rate_neg_percentile_in_cat_90d DOUBLE COMMENT 'Average-rank percentile отрицательной product return rate внутри листовой категории за 90 дней; больше — лучше',
     PRODUCT__category_return_rate_neg_28d DOUBLE COMMENT 'Взвешенная отрицательная доля строк RETURNED в листовой категории за 28 дней',
     PRODUCT__return_rate_neg_smoothed_28d DOUBLE COMMENT 'Отрицательная product return rate, сглаженная к baseline листовой категории за 28 дней с alpha 10',
     PRODUCT__return_rate_to_category_return_neg_28d DOUBLE COMMENT 'Положительная product return rate / отрицательный baseline листовой категории за 28 дней; значение не выше 0, больше — лучше',

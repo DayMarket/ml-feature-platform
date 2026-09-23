@@ -27,6 +27,8 @@ RANK_AND_PERCENTILE_COLUMNS = (
     "feedback_gte_4_to_orders_rate_percentile_in_cat",
     "feedback_lte_3_to_orders_rate_smoothed",
     "feedback_lte_3_to_orders_rate_percentile_in_cat",
+    "return_rate_neg_percentile_in_cat_28d",
+    "return_rate_neg_percentile_in_cat_90d",
 )
 RETURN_FEATURE_COLUMNS = tuple(
     f"{family}_{window}d"
@@ -197,6 +199,15 @@ def _rank_and_percentile_expressions() -> str:
             ),
         )
     )
+    for window in RETURN_WINDOWS:
+        expressions.append(
+            _average_rank_expression(
+                f"return_rate_neg_{window}d",
+                f"return_rate_neg_percentile_in_cat_{window}d",
+                partition_columns=("category_id",),
+                percentile=True,
+            )
+        )
     return ",\n        ".join(expressions)
 
 
@@ -274,6 +285,7 @@ def _return_feature_expressions() -> str:
         smoothed_rate = f"return_rate_neg_smoothed_{window}d"
         expressions.extend(
             (
+                f"return_rate_neg_{window}d",
                 category_rate,
                 smoothed_rate,
                 (
