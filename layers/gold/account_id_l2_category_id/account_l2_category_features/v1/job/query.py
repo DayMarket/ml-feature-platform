@@ -31,12 +31,12 @@ BASE_FEATURE_COLUMNS = (
         for window in ACTION_WINDOWS
     )
     + tuple(
-        f"total_account_conv_imp2{signal}_raw_{window}d"
+        f"overall_conv_imp2{signal}_raw_{window}d"
         for signal, _ in CONVERSION_SIGNALS
         for window in ACTION_WINDOWS
     )
     + tuple(
-        f"conv_imp2{signal}_div_total_{baseline}_conv_{window}d"
+        f"conv_imp2{signal}_div_{'total_category' if baseline == 'category' else 'overall'}_conv_{window}d"
         for baseline in ("category", "account")
         for signal, _ in CONVERSION_SIGNALS
         for window in ACTION_WINDOWS
@@ -110,7 +110,7 @@ def _relative_conversion_expressions() -> str:
         f"CASE WHEN {baseline}.{signal}_{window}d > 0 "
         f"THEN conv_imp2{signal}_raw_{window}d / "
         f"{baseline}.{signal}_{window}d END AS "
-        f"conv_imp2{signal}_div_total_{baseline}_conv_{window}d"
+        f"conv_imp2{signal}_div_{'total_category' if baseline == 'category' else 'overall'}_conv_{window}d"
         for baseline in ("category", "account")
         for signal, _ in CONVERSION_SIGNALS
         for window in ACTION_WINDOWS
@@ -119,7 +119,7 @@ def _relative_conversion_expressions() -> str:
 
 def _total_account_raw_conversion_expressions() -> str:
     return ",\n        ".join(
-        f"account.{signal}_{window}d AS total_account_conv_imp2{signal}_raw_{window}d"
+        f"account.{signal}_{window}d AS overall_conv_imp2{signal}_raw_{window}d"
         for signal, _ in CONVERSION_SIGNALS
         for window in ACTION_WINDOWS
     )
