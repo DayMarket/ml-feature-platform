@@ -129,9 +129,12 @@ def test_resolved_dq_settings_are_all_warn_and_growth_is_disabled():
 
 
 def test_dataset_parameters_are_declared_in_config():
+    # Пин согласованных параметров сбора: оба значения меняются осознанно
+    # (модель — с ретрейном, доля — после замеров Spark), поэтому тест обязан
+    # падать при правке конфига, а не читать значение из него.
     dataset = load_config()["dataset"]
-    assert dataset["model_name"] == "search_unified_model_v9_cold_start"
-    assert dataset["sample_percent"] == 0.01
+    assert dataset["model_name"] == "search_unified_model_v10"
+    assert dataset["sample_percent"] == 1
 
 
 def test_ddl_columns_match_the_agreed_order():

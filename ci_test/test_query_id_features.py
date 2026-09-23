@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 from pathlib import Path
@@ -292,13 +293,18 @@ class PairMigrationAndConfigTest(unittest.TestCase):
     def test_primary_key_matches_layer_directory_group(self):
         self.assertEqual(PAIR_QID.parents[1].name, "query_sku_group_id")
 
-    def test_resource_profile_matches_the_origin(self):
-        origin_config = read_simple_config(PAIR_ORIGIN / "config.yaml")
+    def test_resource_profile_is_the_declared_search_dataset_profile(self):
+        # Зеркало оригинала — это колонки, имена фичей и формулы, но не ресурсы:
+        # разворот по группам даёт ~3.3x строк, и профиль подбирался отдельно
+        # (#155 завёл search_dataset, #181 поставил его этой энтити вместо
+        # несуществовавшего search_qid_features). Пин ловит откат вслепую.
+        profile = self.config["spark"]["resource_profile"]
 
-        self.assertEqual(
-            self.config["spark"]["resource_profile"],
-            origin_config["spark"]["resource_profile"],
-        )
+        self.assertEqual(profile, "search_dataset")
+        declared = json.loads(
+            (ROOT / "config" / "spark" / "resources.yaml").read_text(encoding="utf-8")
+        )["profiles"]
+        self.assertIn(profile, declared)
 
 
 class PairJobTest(unittest.TestCase):
