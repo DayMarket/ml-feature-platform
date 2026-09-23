@@ -331,7 +331,7 @@ g7_snapshot AS (
         base.PRODUCT__clicks_3d AS clicks_3d,
         base.PRODUCT__clicks_28d AS clicks_28d,
         base.PRODUCT__rating AS rating,
-        base.PRODUCT__discount AS discount,
+        base.PRODUCT__cheapest_sku_discount_pct AS discount,
         base.PRODUCT__feedback_quantity AS feedback_quantity,
         base.PRODUCT__feedback_lte_3 AS feedback_lte_3,
         base.PRODUCT__feedback_lte_3_28d AS feedback_lte_3_28d,
