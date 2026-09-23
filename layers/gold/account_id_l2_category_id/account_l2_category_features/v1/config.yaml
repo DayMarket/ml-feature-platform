@@ -103,22 +103,22 @@ dq:
         - ACCOUNT_L2__conv_imp2order_raw_7d
         - ACCOUNT_L2__conv_imp2order_raw_14d
         - ACCOUNT_L2__conv_imp2order_raw_28d
-        - ACCOUNT_L2__overall_conv_imp2click_raw_3d
-        - ACCOUNT_L2__overall_conv_imp2click_raw_7d
-        - ACCOUNT_L2__overall_conv_imp2click_raw_14d
-        - ACCOUNT_L2__overall_conv_imp2click_raw_28d
-        - ACCOUNT_L2__overall_conv_imp2atc_raw_3d
-        - ACCOUNT_L2__overall_conv_imp2atc_raw_7d
-        - ACCOUNT_L2__overall_conv_imp2atc_raw_14d
-        - ACCOUNT_L2__overall_conv_imp2atc_raw_28d
-        - ACCOUNT_L2__overall_conv_imp2atf_raw_3d
-        - ACCOUNT_L2__overall_conv_imp2atf_raw_7d
-        - ACCOUNT_L2__overall_conv_imp2atf_raw_14d
-        - ACCOUNT_L2__overall_conv_imp2atf_raw_28d
-        - ACCOUNT_L2__overall_conv_imp2order_raw_3d
-        - ACCOUNT_L2__overall_conv_imp2order_raw_7d
-        - ACCOUNT_L2__overall_conv_imp2order_raw_14d
-        - ACCOUNT_L2__overall_conv_imp2order_raw_28d
+        - ACCOUNT_L2__total_account_conv_imp2click_raw_3d
+        - ACCOUNT_L2__total_account_conv_imp2click_raw_7d
+        - ACCOUNT_L2__total_account_conv_imp2click_raw_14d
+        - ACCOUNT_L2__total_account_conv_imp2click_raw_28d
+        - ACCOUNT_L2__total_account_conv_imp2atc_raw_3d
+        - ACCOUNT_L2__total_account_conv_imp2atc_raw_7d
+        - ACCOUNT_L2__total_account_conv_imp2atc_raw_14d
+        - ACCOUNT_L2__total_account_conv_imp2atc_raw_28d
+        - ACCOUNT_L2__total_account_conv_imp2atf_raw_3d
+        - ACCOUNT_L2__total_account_conv_imp2atf_raw_7d
+        - ACCOUNT_L2__total_account_conv_imp2atf_raw_14d
+        - ACCOUNT_L2__total_account_conv_imp2atf_raw_28d
+        - ACCOUNT_L2__total_account_conv_imp2order_raw_3d
+        - ACCOUNT_L2__total_account_conv_imp2order_raw_7d
+        - ACCOUNT_L2__total_account_conv_imp2order_raw_14d
+        - ACCOUNT_L2__total_account_conv_imp2order_raw_28d
         - ACCOUNT_L2__conv_imp2click_div_total_category_conv_3d
         - ACCOUNT_L2__conv_imp2click_div_total_category_conv_7d
         - ACCOUNT_L2__conv_imp2click_div_total_category_conv_14d
@@ -135,22 +135,22 @@ dq:
         - ACCOUNT_L2__conv_imp2order_div_total_category_conv_7d
         - ACCOUNT_L2__conv_imp2order_div_total_category_conv_14d
         - ACCOUNT_L2__conv_imp2order_div_total_category_conv_28d
-        - ACCOUNT_L2__conv_imp2click_div_overall_conv_3d
-        - ACCOUNT_L2__conv_imp2click_div_overall_conv_7d
-        - ACCOUNT_L2__conv_imp2click_div_overall_conv_14d
-        - ACCOUNT_L2__conv_imp2click_div_overall_conv_28d
-        - ACCOUNT_L2__conv_imp2atc_div_overall_conv_3d
-        - ACCOUNT_L2__conv_imp2atc_div_overall_conv_7d
-        - ACCOUNT_L2__conv_imp2atc_div_overall_conv_14d
-        - ACCOUNT_L2__conv_imp2atc_div_overall_conv_28d
-        - ACCOUNT_L2__conv_imp2atf_div_overall_conv_3d
-        - ACCOUNT_L2__conv_imp2atf_div_overall_conv_7d
-        - ACCOUNT_L2__conv_imp2atf_div_overall_conv_14d
-        - ACCOUNT_L2__conv_imp2atf_div_overall_conv_28d
-        - ACCOUNT_L2__conv_imp2order_div_overall_conv_3d
-        - ACCOUNT_L2__conv_imp2order_div_overall_conv_7d
-        - ACCOUNT_L2__conv_imp2order_div_overall_conv_14d
-        - ACCOUNT_L2__conv_imp2order_div_overall_conv_28d
+        - ACCOUNT_L2__conv_imp2click_div_total_account_conv_3d
+        - ACCOUNT_L2__conv_imp2click_div_total_account_conv_7d
+        - ACCOUNT_L2__conv_imp2click_div_total_account_conv_14d
+        - ACCOUNT_L2__conv_imp2click_div_total_account_conv_28d
+        - ACCOUNT_L2__conv_imp2atc_div_total_account_conv_3d
+        - ACCOUNT_L2__conv_imp2atc_div_total_account_conv_7d
+        - ACCOUNT_L2__conv_imp2atc_div_total_account_conv_14d
+        - ACCOUNT_L2__conv_imp2atc_div_total_account_conv_28d
+        - ACCOUNT_L2__conv_imp2atf_div_total_account_conv_3d
+        - ACCOUNT_L2__conv_imp2atf_div_total_account_conv_7d
+        - ACCOUNT_L2__conv_imp2atf_div_total_account_conv_14d
+        - ACCOUNT_L2__conv_imp2atf_div_total_account_conv_28d
+        - ACCOUNT_L2__conv_imp2order_div_total_account_conv_3d
+        - ACCOUNT_L2__conv_imp2order_div_total_account_conv_7d
+        - ACCOUNT_L2__conv_imp2order_div_total_account_conv_14d
+        - ACCOUNT_L2__conv_imp2order_div_total_account_conv_28d
     - name: finite
       columns:
         - ACCOUNT_L2__conv_imp2click_raw_3d
@@ -169,22 +169,22 @@ dq:
         - ACCOUNT_L2__conv_imp2order_raw_7d
         - ACCOUNT_L2__conv_imp2order_raw_14d
         - ACCOUNT_L2__conv_imp2order_raw_28d
-        - ACCOUNT_L2__overall_conv_imp2click_raw_3d
-        - ACCOUNT_L2__overall_conv_imp2click_raw_7d
-        - ACCOUNT_L2__overall_conv_imp2click_raw_14d
-        - ACCOUNT_L2__overall_conv_imp2click_raw_28d
-        - ACCOUNT_L2__overall_conv_imp2atc_raw_3d
-        - ACCOUNT_L2__overall_conv_imp2atc_raw_7d
-        - ACCOUNT_L2__overall_conv_imp2atc_raw_14d
-        - ACCOUNT_L2__overall_conv_imp2atc_raw_28d
-        - ACCOUNT_L2__overall_conv_imp2atf_raw_3d
-        - ACCOUNT_L2__overall_conv_imp2atf_raw_7d
-        - ACCOUNT_L2__overall_conv_imp2atf_raw_14d
-        - ACCOUNT_L2__overall_conv_imp2atf_raw_28d
-        - ACCOUNT_L2__overall_conv_imp2order_raw_3d
-        - ACCOUNT_L2__overall_conv_imp2order_raw_7d
-        - ACCOUNT_L2__overall_conv_imp2order_raw_14d
-        - ACCOUNT_L2__overall_conv_imp2order_raw_28d
+        - ACCOUNT_L2__total_account_conv_imp2click_raw_3d
+        - ACCOUNT_L2__total_account_conv_imp2click_raw_7d
+        - ACCOUNT_L2__total_account_conv_imp2click_raw_14d
+        - ACCOUNT_L2__total_account_conv_imp2click_raw_28d
+        - ACCOUNT_L2__total_account_conv_imp2atc_raw_3d
+        - ACCOUNT_L2__total_account_conv_imp2atc_raw_7d
+        - ACCOUNT_L2__total_account_conv_imp2atc_raw_14d
+        - ACCOUNT_L2__total_account_conv_imp2atc_raw_28d
+        - ACCOUNT_L2__total_account_conv_imp2atf_raw_3d
+        - ACCOUNT_L2__total_account_conv_imp2atf_raw_7d
+        - ACCOUNT_L2__total_account_conv_imp2atf_raw_14d
+        - ACCOUNT_L2__total_account_conv_imp2atf_raw_28d
+        - ACCOUNT_L2__total_account_conv_imp2order_raw_3d
+        - ACCOUNT_L2__total_account_conv_imp2order_raw_7d
+        - ACCOUNT_L2__total_account_conv_imp2order_raw_14d
+        - ACCOUNT_L2__total_account_conv_imp2order_raw_28d
         - ACCOUNT_L2__conv_imp2click_div_total_category_conv_3d
         - ACCOUNT_L2__conv_imp2click_div_total_category_conv_7d
         - ACCOUNT_L2__conv_imp2click_div_total_category_conv_14d
@@ -201,22 +201,22 @@ dq:
         - ACCOUNT_L2__conv_imp2order_div_total_category_conv_7d
         - ACCOUNT_L2__conv_imp2order_div_total_category_conv_14d
         - ACCOUNT_L2__conv_imp2order_div_total_category_conv_28d
-        - ACCOUNT_L2__conv_imp2click_div_overall_conv_3d
-        - ACCOUNT_L2__conv_imp2click_div_overall_conv_7d
-        - ACCOUNT_L2__conv_imp2click_div_overall_conv_14d
-        - ACCOUNT_L2__conv_imp2click_div_overall_conv_28d
-        - ACCOUNT_L2__conv_imp2atc_div_overall_conv_3d
-        - ACCOUNT_L2__conv_imp2atc_div_overall_conv_7d
-        - ACCOUNT_L2__conv_imp2atc_div_overall_conv_14d
-        - ACCOUNT_L2__conv_imp2atc_div_overall_conv_28d
-        - ACCOUNT_L2__conv_imp2atf_div_overall_conv_3d
-        - ACCOUNT_L2__conv_imp2atf_div_overall_conv_7d
-        - ACCOUNT_L2__conv_imp2atf_div_overall_conv_14d
-        - ACCOUNT_L2__conv_imp2atf_div_overall_conv_28d
-        - ACCOUNT_L2__conv_imp2order_div_overall_conv_3d
-        - ACCOUNT_L2__conv_imp2order_div_overall_conv_7d
-        - ACCOUNT_L2__conv_imp2order_div_overall_conv_14d
-        - ACCOUNT_L2__conv_imp2order_div_overall_conv_28d
+        - ACCOUNT_L2__conv_imp2click_div_total_account_conv_3d
+        - ACCOUNT_L2__conv_imp2click_div_total_account_conv_7d
+        - ACCOUNT_L2__conv_imp2click_div_total_account_conv_14d
+        - ACCOUNT_L2__conv_imp2click_div_total_account_conv_28d
+        - ACCOUNT_L2__conv_imp2atc_div_total_account_conv_3d
+        - ACCOUNT_L2__conv_imp2atc_div_total_account_conv_7d
+        - ACCOUNT_L2__conv_imp2atc_div_total_account_conv_14d
+        - ACCOUNT_L2__conv_imp2atc_div_total_account_conv_28d
+        - ACCOUNT_L2__conv_imp2atf_div_total_account_conv_3d
+        - ACCOUNT_L2__conv_imp2atf_div_total_account_conv_7d
+        - ACCOUNT_L2__conv_imp2atf_div_total_account_conv_14d
+        - ACCOUNT_L2__conv_imp2atf_div_total_account_conv_28d
+        - ACCOUNT_L2__conv_imp2order_div_total_account_conv_3d
+        - ACCOUNT_L2__conv_imp2order_div_total_account_conv_7d
+        - ACCOUNT_L2__conv_imp2order_div_total_account_conv_14d
+        - ACCOUNT_L2__conv_imp2order_div_total_account_conv_28d
     - name: accepted_range
       column: ACCOUNT_L2__n_imps_3d_ratio
       min: 0
