@@ -64,12 +64,18 @@ weighted_price = sum(sell_price_uzs * n_orders_28d) / sum(n_orders_28d), ина�
 остаётся `NULL`.
 
 ```text
-discount = clip(100 * (1 - min_sell_price_eod / min_full_price_eod), 0, 100)
+cheapest_sku_discount_pct =
+  clip(100 * (1 - min_sell_price_eod / min_full_price_eod), 0, 100)
+
+discount_uzs =
+  min_full_price_eod * cheapest_sku_discount_pct / 100
 ```
 
-Если `min_sell_price_eod` отсутствует, discount остаётся `NULL`. При
+`cheapest_sku_discount_pct` — процентная скидка для SKU с минимальной sell price;
+`discount_uzs` — абсолютный размер этой скидки в UZS. Если
+`min_sell_price_eod` отсутствует, обе фичи остаются `NULL`. При
 непустой sell price и отсутствующей или неположительной `min_full_price_eod`
-discount равен нулю.
+обе фичи равны нулю.
 
 `age_in_days` — число локальных календарных дней между `S1.created_at` и
 `calculated_at` в `Asia/Tashkent`; отсутствующая или будущая дата даёт `NULL`.

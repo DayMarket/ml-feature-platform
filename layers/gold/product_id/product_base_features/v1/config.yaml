@@ -118,9 +118,12 @@ dq:
       column: PRODUCT__category_is_male
       values: [0, 1]
     - name: accepted_range
-      column: PRODUCT__discount
+      column: PRODUCT__cheapest_sku_discount_pct
       min: 0
       max: 100
+    - name: non_negative
+      columns:
+        - PRODUCT__discount_uzs
     - name: accepted_range
       column: PRODUCT__min_to_avg_sell_price_eod_ratio
       min: 0

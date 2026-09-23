@@ -20,7 +20,8 @@ PRICE_COLUMNS = (
     "max_active_sku_sell_price_eod",
     "minimal_sell_price",
     "minimal_full_price",
-    "discount",
+    "cheapest_sku_discount_pct",
+    "discount_uzs",
     "age_in_days",
 )
 ACTION_COLUMNS = (
@@ -663,7 +664,20 @@ unprefixed_features AS (
                     100.0D * (1.0D - min_sell_price_eod / min_full_price_eod)
                 )
             )
-        END AS discount,
+        END AS cheapest_sku_discount_pct,
+        CASE
+            WHEN min_sell_price_eod IS NULL
+                THEN NULL
+            WHEN min_full_price_eod IS NULL OR min_full_price_eod <= 0.0D
+                THEN 0.0D
+            ELSE min_full_price_eod * LEAST(
+                100.0D,
+                GREATEST(
+                    0.0D,
+                    100.0D * (1.0D - min_sell_price_eod / min_full_price_eod)
+                )
+            ) / 100.0D
+        END AS discount_uzs,
         CASE
             WHEN created_at IS NULL
               OR created_at > TIMESTAMP '{calculated_at_utc}'

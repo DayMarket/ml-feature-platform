@@ -49,7 +49,7 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         )
         expected = {"calculated_at", "product_id", *query.FEATURE_COLUMNS}
         self.assertEqual(migration_columns, expected)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 70)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 71)
         self.assertNotIn("BIGINT", migration)
         self.assertTrue(
             all(column.startswith("PRODUCT__") for column in query.FEATURE_COLUMNS)
@@ -95,6 +95,8 @@ class ProductBaseFeaturesTest(unittest.TestCase):
         self.assertIn("AS category_orders_share_28d", self.sql)
         self.assertIn("AS min_to_avg_sell_price_eod_ratio", self.sql)
         self.assertIn("AS min_to_max_sell_price_eod_ratio", self.sql)
+        self.assertIn("AS cheapest_sku_discount_pct", self.sql)
+        self.assertIn("AS discount_uzs", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
 
     def test_feedback_uses_rating_buckets_and_keeps_smoothing_for_g8(self):
