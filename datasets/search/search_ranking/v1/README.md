@@ -105,7 +105,11 @@ orders` идёт по `install_id` и `session_id` - и при этом лома
 
 После дедупликации добавляется `deduplicate_rank`: `row_number` внутри `event_date, install_id, session_id, query`, отсортированный по `position`, `received_at`, `logged_at`, `sku_group_id`. Эта колонка не удаляет строки и нужна, чтобы training code мог применять собственную политику отбора повторов внутри поискового контекста.
 
-Заказы берутся из атрибуции:
+Заказы берутся из атрибуции двумя независимыми ветками: у каждой метки свой набор строк
+`order_items_attribution`, свой агрегат и свой `LEFT JOIN` к показам. Одним джоином их не
+получить - ветки отбирают разные строки.
+
+Ветка `attributed_orders` -> `orders` -> метка `is_generated_order` (контракт не менялся):
 
 - `event_received_at >= event_date`;
 - `event_received_at < event_date + 1 day`;
@@ -113,15 +117,68 @@ orders` идёт по `install_id` и `session_id` - и при этом лома
 - `widget_space_name IN ('SHOP_SEARCH_RESULTS', 'COLLECTION_SEARCH_RESULTS', 'SEARCH', 'SEARCH_RESULTS')`;
 - `COALESCE(is_full_catpred, 'false') = 'false'`.
 
-`order_items` фильтруется:
+Ветка `search_attributed_orders` -> `search_attr_orders` -> метка `has_search_attr`:
 
-- `order_item_status NOT IN ('CREATED', 'NOT_CREATED')`;
-- `generated_at >= event_date - 15 days`;
-- `generated_at < event_date + 1 day`.
+- `event_received_at >= event_date`;
+- `event_received_at < event_date + 1 day`;
+- `has_search_attr`.
 
-Перед join с показами заказы агрегируются до `install_id, last_search_session_id, query, sku_group_id`, чтобы несколько `order_item_id` не размножали impression-строку. Агрегат хранит только binary label `is_generated_order = 1`; GMV, статусы и timestamps заказов в v1 не сохраняются.
+Других фильтров у второй ветки нет намеренно. Для этой метки неважно, откуда пришел заказ:
+`has_search_attr` сам по себе отвечает на вопрос "заказ пришел из поиска", поэтому ни список
+`widget_space_name`, ни `is_full_catpred`, ни `query != ''`, ни `order_item_status` она не
+наследует. Из фильтров остается только окно партиции.
 
-Метка `is_generated_order` равна `1`, если для `install_id, session_id, query, sku_group_id` найден хотя бы один атрибутированный заказ, иначе `0`.
+Цена решения, замеренная на `event_received_at = 2026-09-15` по ключу агрегата: 40 230 ключей
+с прежними фильтрами против 138 665 без них, то есть в 3.4 раза больше. Весь рост дает один
+снятый фильтр - `is_full_catpred`. Два других не значат ничего:
+`order_item_status NOT IN ('CREATED', 'NOT_CREATED')` не убирает ни одной строки с флагом, а
+пустой `query` дает 671 строку, которые все равно не матчатся с показами, потому что join идет
+по `query`.
+
+### Что на самом деле отбирает `is_full_catpred`
+
+В `order_items_attribution` это не boolean, а `varchar` с тремя состояниями. Срез
+`widget_space_name = 'SEARCH_RESULTS'` за 2026-09-15:
+
+| `is_full_catpred` | строк | платформа | примеры запросов |
+| --- | --- | --- | --- |
+| `''` | 64 221 | ANDROID 63 211, IOS 886 | `naushnik`, `наушники`, `sumka ayollar uchun` |
+| `'false'` | 41 305 | IOS 33 707, ANDROID 6 683 | `kitoblar`, `soat`, `iphone 11 chexol` |
+| `'true'` | 5 619 | ANDROID 3 006, IOS 2 517 | `косметика`, `зубная паста`, `презервативы` |
+
+Настоящий catpred - только `'true'`: запрос целиком распознан как категория. Пустая строка
+никакого отношения к catpred не имеет - это Android, который поле не логирует, и запросы в ней
+неотличимы от `'false'`. Доля стабильна минимум месяц (25.08-21.09, 58-60% строк поиска).
+
+Предикат `COALESCE(is_full_catpred, 'false') = 'false'` в ветке `is_generated_order` эту пустую
+строку отбрасывает. По ключу агрегата на том же срезе: 40 695 ключей с текущим фильтром,
+102 100 если считать `''` за "не catpred", 107 634 совсем без фильтра; только на `''`
+приходится 61 416 ключей.
+
+В показах перекос обратный: в `silver_b2c_clickstream.events` колонка `boolean`, Android
+присылает `NULL` (57.9 млн показов поиска из 70.5 млн за тот же день), и
+`COALESCE(is_full_catpred, false) = false` их сохраняет. То есть Android-показы в витрине есть, а
+Android-заказы ветка `is_generated_order` почти целиком теряет - `is_generated_order` смещен по
+платформе. Ветка `has_search_attr` без фильтров этот перекос не наследует. Выравнивание самого
+`is_generated_order` в этой версии не делалось: это отдельное решение, меняющее исторический
+таргет.
+
+`order_items` читается обеими ветками одним сканом `order_items_enhanced`, ограниченным только
+окном `generated_at` (`event_date - 15 days` .. `event_date + 15 days`) - это граница скана, а
+не бизнес-фильтр. Статус заказа фильтруется внутри ветки `is_generated_order`
+(`order_item_status NOT IN ('CREATED', 'NOT_CREATED')`), чтобы метка `has_search_attr` его не
+наследовала.
+
+Перед join с показами каждая ветка агрегируется до `install_id, last_search_session_id, query,
+sku_group_id`, чтобы несколько `order_item_id` не размножали impression-строку. После `GROUP BY`
+в каждом агрегате ровно одна строка на ключ, поэтому второй `LEFT JOIN` не добавляет показов.
+Агрегаты хранят только binary label - `1`; GMV, статусы и timestamps заказов в v1 не сохраняются.
+
+Метка `is_generated_order` равна `1`, если для `install_id, session_id, query, sku_group_id`
+найден хотя бы один атрибутированный заказ, прошедший фильтры своей ветки, иначе `0`. Метка
+`has_search_attr` равна `1`, если для того же ключа найден хотя бы один заказ с
+`has_search_attr = true`, иначе `0`. Обе метки получают `0` и для показов без заказа, и для
+показов, чей заказ не попал в набор строк своей ветки.
 
 Score-поля берутся из `iceberg.silver.ranking_analytics_events` за тот же `event_date`:
 
@@ -157,13 +214,17 @@ Score-поля берутся из `iceberg.silver.ranking_analytics_events` з�
 - `normalized_linear_score` - средний `normalized_linear_score` по `query, sku_group_id` из ranking analytics за `event_date`.
 - `linear_score` - средний `linear_score` по `query, sku_group_id` из ranking analytics за `event_date`.
 - `dssm_score` - средний `dssm_score` по `query, sku_group_id` из ranking analytics за `event_date`.
-- `is_generated_order` - binary label.
+- `is_generated_order` - binary label наличия атрибутированного заказа.
+- `has_search_attr` - binary label новой поисковой атрибуции заказа по тому же ключу, собранный отдельной веткой атрибуции без фильтра `widget_space_name`.
 
 ## DQ
 
 Таска `dq` проверяет `final_price` тестом `not_null` с severity `warn`: после COALESCE поле
 должно быть заполнено всегда, поэтому `NULL` в нём - признак сломавшегося контракта
-`event_parameters`. Тем же тестом и с той же severity покрыт `sell_price`: на срезе он пуст
+`event_parameters`. Тем же тестом и с той же severity покрыт `has_search_attr`: после `COALESCE(..., 0)` он
+заполнен всегда, а в источнике колонка `boolean` без единого `NULL` на замере, поэтому `NULL`
+здесь означал бы сломавшийся контракт источника или потерянный `COALESCE`. Тем же тестом и с той
+же severity покрыт `sell_price`: на срезе он пуст
 у 2 показов из 85 980 264, то есть `NULL` в нём тоже означает сломавшийся источник, а не
 редкий валидный случай. `cpo_adv_version`, `bid_id` и `seller_price` под `not_null` не
 заводятся: у них пропуски штатны. В профиле `feature_stats` `bid_id` исключён как идентификатор,
@@ -174,4 +235,4 @@ Score-поля берутся из `iceberg.silver.ranking_analytics_events` з�
 гранулярность строки, а не контракт для потребителей. Мусорные показы отфильтрованы в
 джобе (см. "Логика сбора"), но качеством `silver_b2c_clickstream.events` мы не управляем,
 и будить дежурного из-за источника не нужно. Результат тестов по-прежнему пишется в
-`feature_platform_dq_results`. Табличные DQ проверки для распределения label, полноты партиций, допустимых значений `is_generated_order` или score-диапазонов не добавлены в этой версии, чтобы сначала накопить статистику по объему и стабильности источников.
+`feature_platform_dq_results`. Табличные DQ проверки для распределения label, полноты партиций, допустимых значений `is_generated_order` и `has_search_attr` или score-диапазонов не добавлены в этой версии, чтобы сначала накопить статистику по объему и стабильности источников.

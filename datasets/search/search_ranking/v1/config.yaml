@@ -72,6 +72,16 @@ dq:
     - name: not_null
       columns: [sell_price]
       severity: warn
+    # has_search_attr в витрине собирается отдельной веткой атрибуции (только
+    # по самому флагу, без бизнес-фильтров) и через
+    # COALESCE(..., 0), поэтому заполнен всегда; в источнике колонка boolean и за
+    # event_received_at = 2026-09-15 (284 605 строк) NULL не встретился ни разу.
+    # NULL здесь означал бы сломавшийся контракт источника или потерянный
+    # COALESCE, а не редкий валидный случай. Отдельной записью, а не в columns
+    # выше: у sell_price и final_price свои обоснования, к метке они не относятся.
+    - name: not_null
+      columns: [has_search_attr]
+      severity: warn
 
 feature_stats:
   trino_conn_id: trino_search

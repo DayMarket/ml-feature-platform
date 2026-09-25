@@ -1,0 +1,2 @@
+ALTER TABLE {target_table}
+ADD COLUMN IF NOT EXISTS has_search_attr INT COMMENT 'Метка новой поисковой атрибуции заказа: 1, если по ключу install_id, session_id, query, sku_group_id есть хотя бы один заказ с order_items_attribution.has_search_attr = true, иначе 0. Собирается отдельной веткой атрибуции без бизнес-фильтров (ни widget_space_name, ни is_full_catpred, ни order_item_status), поэтому не вложена в is_generated_order';
