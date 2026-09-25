@@ -1,0 +1,51 @@
+{
+  "resources": {
+    "path": "config/resources.yaml"
+  },
+  "dag": {
+    "id": "feature-platform.upload.query_category_relevance_upload",
+    "group_tag": "query-category-relevance",
+    "schedule": "0 4 * * *",
+    "start_date": "2026-09-14T00:00:00+00:00",
+    "team": "search",
+    "team_tag": "team::search",
+    "owner": "team:search"
+  },
+  "alerts": {
+    "team": "search",
+    "severity": "P3",
+    "oncall_webhook_conn_id": "oncall_webhook_search"
+  },
+  "kafka": {
+    "connection_id": "kafka_ranking",
+    "topic": "ranking.features.updates"
+  },
+  "models": [
+    {
+      "name": "search_unified_model_clusters",
+      "feature_groups": [
+        {
+          "name": "query_category_relevance",
+          "features": [
+            "relevance"
+          ]
+        }
+      ]
+    }
+  ],
+  "feature_groups": [
+    {
+      "source": {
+        "schema": "gold",
+        "table": "feature_platform_query_category_relevance_expanded",
+        "dependency_dag_id": "feature-platform.layers.gold.category_id_query_text.query_category_relevance_expanded",
+        "dependency_execution_delta_minutes": 30,
+        "dependency_task_id": "dq"
+      },
+      "name": "query_category_relevance",
+      "features": [
+        "relevance"
+      ]
+    }
+  ]
+}

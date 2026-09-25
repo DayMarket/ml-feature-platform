@@ -162,6 +162,7 @@ deduplicated_actions AS (
         AND event_type IN (
             'PRODUCT_VIEW', 'ADD_TO_CART', 'ADD_TO_FAVORITES'
         )
+        AND account_id IS NOT NULL
     GROUP BY account_id, session_id, product_id, event_type
 ),
 mapped_actions AS (
@@ -206,6 +207,7 @@ filtered_order_lines AS (
             'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'
         )
         AND order_item.b2b_order = FALSE
+        AND order_item.account_id IS NOT NULL
 ),
 mapped_order_lines AS (
     SELECT

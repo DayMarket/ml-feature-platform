@@ -15,6 +15,7 @@ UPLOAD_SOURCE_DAGS = (
     "layers/gold/sku_group_id/sku_group_stock_features/v1/dag.py",
     "layers/gold/sku_group_id/sku_group_price_features/v1/dag.py",
     "layers/gold/sku_group_id/feedback_sku_group_id/v1/dag.py",
+    "layers/gold/category_id_query_text/query_category_relevance_expanded/v1/dag.py",
     (
         "layers/gold/calculated_at_sku_group_id_promotion_id/"
         "dynamic_pricing_sku_group_price_features/v1/dag.py"

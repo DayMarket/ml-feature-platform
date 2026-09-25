@@ -90,11 +90,12 @@ class AccountProductFeaturesTest(unittest.TestCase):
             "GROUP BY account_id, product_id, event_type, session_id",
             self.sql,
         )
+        self.assertIn("AND account_id IS NOT NULL", self.sql)
         self.assertIn("COUNT(DISTINCT CASE", self.sql)
         self.assertNotIn("n_events", self.sql)
 
     def test_orders_use_sku_mapping_success_status_and_transaction_gmv(self):
-        self.assertIn("order_item.sku_id AS INT) = sku.sku_id", self.sql)
+        self.assertIn("order_item.sku_id = sku.sku_id", self.sql)
         self.assertIn(
             "order_item.order_item_status IN (\n"
             "            'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'\n"
@@ -105,8 +106,12 @@ class AccountProductFeaturesTest(unittest.TestCase):
         self.assertIn("order_item.item_quantity AS DOUBLE", self.sql)
         self.assertIn("COUNT(DISTINCT CASE", self.sql)
         self.assertIn("order_item.b2b_order = FALSE", self.sql)
+        self.assertIn("AND order_item.account_id IS NOT NULL", self.sql)
         self.assertNotIn("BETWEEN 1", self.sql)
         self.assertNotIn("order_item.order_id > 0", self.sql)
+        self.assertNotIn("CAST(order_item.order_id AS INT)", self.sql)
+        self.assertNotIn("CAST(order_item.sku_id AS INT)", self.sql)
+        self.assertNotIn("CAST(id AS INT) AS sku_id", self.sql)
 
     def test_cutoffs_are_half_open_and_snapshot_is_local_time(self):
         self.assertIn("TIMESTAMP '2026-09-10 12:00:00' AS calculated_at", self.sql)
@@ -193,8 +198,8 @@ class AccountProductFeaturesTest(unittest.TestCase):
         config_text = (ENTITY / "config.yaml").read_text(encoding="utf-8")
         self.assertIn('external_task_id="dq"', dag_text)
         self.assertIn("account_product_session_action_counts_12h", dag_text)
-        self.assertIn("resource_profile: small", config_text)
-        self.assertIn('start_date: "2026-09-05T07:00:00Z"', config_text)
+        self.assertIn("resource_profile: medium", config_text)
+        self.assertIn('start_date: "2026-09-13T07:00:00Z"', config_text)
         self.assertIn("severity: P3", config_text)
         self.assertIn("oncall_webhook_conn_id: oncall_webhook_recsys", config_text)
         self.assertIn("is_paused_upon_creation=True", dag_text)

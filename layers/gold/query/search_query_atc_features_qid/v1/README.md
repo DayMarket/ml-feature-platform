@@ -29,12 +29,12 @@
   сам DAG справочника, не его DQ. Это осознанное отступление от общего правила AGENTS.md (ждать
   DQ-прогон, а не Spark-DAG): владелец фичи явно потребовал, чтобы новые DAG стартовали после
   самого `search_query_id`. Технически это и правильнее: PK справочника - `query_text,version`, без
-  колонки `date`, поэтому `scripts/sync_dbt_sources.py` не генерирует для него freshness- и
-  row-count-тесты по дате, и его DQ-прогон не несёт партиционной семантики, на которую можно было
-  бы выравнивать `execution_delta`.
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`
+  колонки `date`, поэтому у него выключены `freshness` и `row_count_growth` (см. «Отключённые
+  базовые тесты» в `AGENTS.md`), и его DQ-прогон не несёт партиционной семантики, на которую можно
+  было бы выравнивать `execution_delta`.
+- `feature-platform.layers.silver.sku_group_id_query_category.sku_group_install`, таска `dq`
   (`execution_delta = 5 часов`).
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq`
+- `feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders`, таска `dq`
   (`execution_delta = 5 часов`).
 
 ## Логика

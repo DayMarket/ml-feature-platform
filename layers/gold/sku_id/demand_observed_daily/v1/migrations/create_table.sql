@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     sales_snapshot_id BIGINT NOT NULL COMMENT 'Точный прочитанный Iceberg snapshot sales',
     sales_table_uuid STRING NOT NULL COMMENT 'UUID прочитанной таблицы sales',
     is_in_stock_eod BOOLEAN NOT NULL COMMENT 'Для ключа существует строка sparse stock EOD',
+    purchase_price_eod BIGINT COMMENT 'Цена покупки для покупателя на конец дня из stock EOD, UZS; NULL без stock-строки или при неизвестной цене',
+    sell_price_eod BIGINT COMMENT 'Цена продавца из карточки на конец дня из stock EOD, UZS; NULL без stock-строки или при неизвестной цене',
+    full_price_eod BIGINT COMMENT 'Цена до скидки на конец дня из stock EOD, UZS; NULL без stock-строки или при неизвестной цене',
     stock_snapshot_id BIGINT NOT NULL COMMENT 'Точный прочитанный Iceberg snapshot stock',
     stock_table_uuid STRING NOT NULL COMMENT 'UUID прочитанной таблицы stock',
     source_manifest_id STRING NOT NULL COMMENT 'Идентификатор захвата gold и точных входов',
@@ -48,6 +51,6 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     ingested_at TIMESTAMP NOT NULL COMMENT 'Время записи gold UTC'
 )
 USING iceberg
-COMMENT 'Разреженное дневное объединение sales и бинарного EOD-наличия'
+COMMENT 'Разреженное дневное объединение sales, бинарного EOD-наличия и цен на конец дня'
 PARTITIONED BY (date)
 TBLPROPERTIES ('engine.hive.lock-enabled' = 'false')

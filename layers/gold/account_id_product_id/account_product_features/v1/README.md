@@ -147,8 +147,8 @@ recency без соответствующего события остаётся 
 ## Запись и оркестрация
 
 DAG запускается в `07:00` и `19:00 UTC`, то есть в `12:00` и `00:00
-Asia/Tashkent`. `start_date = 2026-09-05T07:00:00Z` — первый snapshot после
-накопления полного 28-дневного окна S2c; `catchup=true`.
+Asia/Tashkent`. `start_date = 2026-09-13T07:00:00Z` — начало backfill последних 10 дней
+после накопления полного 28-дневного окна S2c; `catchup=true`.
 
 Перед Spark-задачей `ExternalTaskSensor` ждёт внутреннюю задачу `dq` S2c с тем
 же logical date. `order_items` и `sku` являются внешними источниками платформы;
@@ -158,7 +158,7 @@ Asia/Tashkent`. `start_date = 2026-09-05T07:00:00Z` — первый snapshot п
 только текущий `calculated_at`. Таблица партиционирована по
 `days(calculated_at)`.
 
-Используется общий Spark image с `git-sync` и `resource_profile: small`.
+Используется общий Spark image с `git-sync` и `resource_profile: medium`.
 
 ## DQ и потребители
 

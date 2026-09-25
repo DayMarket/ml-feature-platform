@@ -44,10 +44,11 @@ Gold-витрина не читает собственные предыдущи�
 
 Деление в conversion и ratio признаках оставляет Spark-семантику `NULL` для нулевого или отсутствующего знаменателя. Это сделано для приближения к старому feature-store поведению, где такие значения не заменялись на `0.0` на этапе расчета pairwise-признаков.
 
-DAG ждет DQ DAG-и silver-источников:
+DAG ждёт таски `dq` DAG'ов-владельцев silver-источников (`execution_delta = 2 часа`:
+владельцы идут в `01:00` UTC, этот DAG — в `03:00` UTC):
 
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`;
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq`.
+- `feature-platform.layers.silver.sku_group_id_query_category.sku_group_install`;
+- `feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders`.
 
 Полная схема для новых окружений описана в `migrations/create_table.sql`. Существующие окружения получают raw impression-колонки через idempotent migration `20260814_add_raw_impression_columns.sql`.
 

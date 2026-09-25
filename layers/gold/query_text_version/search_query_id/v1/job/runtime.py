@@ -85,6 +85,22 @@ def table_ref(config: Mapping[str, Any]) -> TableRef:
     return TableRef(**values)
 
 
+def table_ref_from_identifier(identifier: str) -> TableRef:
+    """Разбирает `catalog.schema.table` из config.yaml во внешний TableRef.
+
+    Источники, которые энтити не создаёт сама, объявляются в config одной
+    строкой, а каталог всё равно должен пройти через trino_table_name: у
+    соединений trino_* каталог `iceberg` называется `dwh-iceberg`.
+    """
+    parts = [part.strip() for part in str(identifier or "").split(".")]
+    if len(parts) != 3 or not all(parts):
+        raise ValueError(
+            "table identifier must be 'catalog.schema.table', got "
+            f"{identifier!r}"
+        )
+    return TableRef(*parts)
+
+
 def trino_table_name(ref: TableRef) -> str:
     catalog = "dwh-iceberg" if ref.catalog == "iceberg" else ref.catalog
     return f'"{catalog}".{ref.schema}.{ref.name}'

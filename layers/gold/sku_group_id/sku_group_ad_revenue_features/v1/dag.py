@@ -55,10 +55,8 @@ default_args = {
 def collect_gold_sku_group_ad_revenue_features():
     wait_for_silver_ad_revenue = ExternalTaskSensor(
         task_id="wait_for_silver_sku_group_ad_revenue_daily",
-        external_dag_id=(
-            "dbt.source.trino.ml_feature_platform_silver."
-            "feature_platform_sku_group_ad_revenue_daily.dq"
-        ),
+        external_dag_id="feature-platform.layers.silver.sku_group_id.sku_group_ad_revenue_daily",
+        external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
         mode="poke",

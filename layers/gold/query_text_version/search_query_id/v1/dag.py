@@ -1,4 +1,4 @@
-"""Append canonical query_id rows for search queries first seen on the interval day."""
+"""Append canonical query_id rows for search queries that have no query_id yet."""
 
 import importlib.util
 import os
@@ -37,6 +37,11 @@ SILVER_CONFIG_PATH = os.path.join(
     "config.yaml",
 )
 
+# DAG-владелец silver-источника: ждём его таску dq, а не отдельный dbt-DQ-DAG.
+# Идентификатор записан литералом, потому что у sku_group_install блок dag:
+# в config.yaml несёт только team — сам dag_id объявлен прямо в его dag.py.
+SILVER_DAG_ID = "feature-platform.layers.silver.sku_group_id_query_category.sku_group_install"
+
 
 def _read_config(path: str) -> dict:
     with open(path, encoding="utf-8") as config_stream:
@@ -44,7 +49,6 @@ def _read_config(path: str) -> dict:
 
 
 CONFIG = _read_config(CONFIG_PATH)
-SILVER_CONFIG = _read_config(SILVER_CONFIG_PATH)
 
 
 def _load_job_module(filename: str, module_name: str):
@@ -77,14 +81,6 @@ def _executor_config() -> dict:
             )
         )
     }
-
-
-def _dq_dag_id(config: dict) -> str:
-    table = config["table"]
-    return (
-        f"dbt.source.trino.ml_feature_platform_{table['schema']}."
-        f"{table['name']}.dq"
-    )
 
 
 def get_dag_default_args() -> dict:
@@ -126,7 +122,8 @@ def get_dag_default_args() -> dict:
 def search_query_id_dag() -> None:
     wait_for_silver_install_query = ExternalTaskSensor(
         task_id="wait_for_silver_sku_group_install_query_dq",
-        external_dag_id=_dq_dag_id(SILVER_CONFIG),
+        external_dag_id=SILVER_DAG_ID,
+        external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
         mode="reschedule",
@@ -149,6 +146,7 @@ def search_query_id_dag() -> None:
         silver_ref = runtime.table_ref(silver_config)
 
         source_config = output_config["source"]
+        ranking_events_config = source_config["ranking_events"]
         elastic = runtime.elasticsearch_config(source_config["elasticsearch"])
 
         catalog = runtime.get_iceberg_catalog(output_ref)
@@ -163,8 +161,15 @@ def search_query_id_dag() -> None:
             query.build_new_queries_query(
                 partition_date=partition_date,
                 install_query_table=runtime.trino_table_name(silver_ref),
+                ranking_events_table=runtime.trino_table_name(
+                    runtime.table_ref_from_identifier(
+                        str(ranking_events_config["table"])
+                    )
+                ),
                 query_id_table=runtime.trino_table_name(output_ref),
                 space=str(source_config["space"]),
+                model_name_like=str(ranking_events_config["model_name_like"]),
+                lookback_days=int(ranking_events_config["lookback_days"]),
                 version=version,
             ),
         )
