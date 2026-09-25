@@ -64,6 +64,14 @@ dq:
     - name: not_null
       columns: [final_price]
       severity: warn
+    # sell_price приходит плоской колонкой и покрыт на 99.999998% показов
+    # (2 пустых на 85 980 264 после фильтров джоба, received_at = 2026-09-15),
+    # поэтому NULL здесь означает сломавшийся контракт источника, а не редкий
+    # валидный случай. Отдельной записью, а не в columns выше: у final_price
+    # своё обоснование через COALESCE, к sell_price оно не относится.
+    - name: not_null
+      columns: [sell_price]
+      severity: warn
 
 feature_stats:
   trino_conn_id: trino_search

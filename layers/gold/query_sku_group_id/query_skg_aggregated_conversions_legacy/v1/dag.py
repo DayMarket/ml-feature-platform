@@ -56,9 +56,10 @@ def collect_gold_query_skg_aggregated_conversions_legacy():
     #wait_for_silver_daily_conversions = ExternalTaskSensor(
     #    task_id="wait_for_silver_query_skg_daily_conversions_legacy",
     #    external_dag_id=(
-    #        "dbt.source.trino.ml_feature_platform_silver."
-    #        "feature_platform_query_skg_daily_conversions_legacy.dq"
+    #        "feature-platform.layers.silver.query_platform_sku_group_id."
+    #        "query_skg_daily_conversions_legacy"
     #    ),
+    #    external_task_id="dq",
     #    allowed_states=["success"],
     #    failed_states=["failed"],
     #    mode="poke",

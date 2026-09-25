@@ -84,7 +84,11 @@ def test_query_projects_ddl_columns_in_order():
 
 
 def test_query_filters_the_configured_model_only():
-    assert "e.model_name = 'search_unified_model_v9_cold_start'" in build_query()
+    # Модель берётся из config.yaml, а не литералом: dataset.model_name —
+    # настраиваемый параметр (v9_cold_start -> v10), и тест проверяет именно
+    # то, что джоб фильтрует по объявленной модели, а не по конкретной строке.
+    model_name = load_settings().model_name
+    assert f"e.model_name = '{model_name}'" in build_query()
 
 
 def test_query_samples_requests_deterministically():

@@ -1,0 +1,10 @@
+output-label: output
+input-labels:
+  - label: cm2_features
+    type: OFFLINE
+    missing-feature-value: 0.0
+    feature-sets:
+      - name: query_category_relevance
+        schema: SKU_GROUP_CATEGORY_TO_QUERY
+        missing-feature-value: 0.0
+        size: 1

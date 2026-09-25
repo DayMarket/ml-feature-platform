@@ -61,11 +61,20 @@ orders` идёт по `install_id` и `session_id` - и при этом лома
 
 ## Рекламные и ценовые поля показа
 
-`cpo_adv_version`, `bid_id`, `seller_price` и `final_price` берутся из того же события показа.
+`cpo_adv_version`, `bid_id`, `sell_price`, `seller_price` и `final_price` берутся из того же
+события показа.
 
 - `bid_id` читается из плоской колонки `iceberg.silver_b2c_clickstream.events.bid_id`, а не из JSON.
   На срезе `received_at = 2026-07-01` (89 163 741 показ после фильтров джоба) плоская колонка
   совпала с `event_properties.event_parameters.bid_id` на всех строках, включая совпадение `NULL`.
+- `sell_price` читается так же - из плоской колонки `events.sell_price`. На срезе
+  `received_at = 2026-09-15` (85 980 264 показа после фильтров джоба) она совпала с
+  `event_parameters.sell_price` на всех 85 980 262 непустых строках, включая совпадение `NULL`;
+  пустых в JSON и непустых в колонке, как и наоборот, не было. Парсить JSON ради того же
+  значения на 86 млн строк в день незачем.
+- `sell_price` и `seller_price` - разные поля одного события, и путать их нельзя: на том же
+  срезе они расходятся на 8.4% показов. С собираемым `final_price` расхождение ещё больше -
+  41% показов, так что колонка несёт собственный сигнал, а не дублирует соседние.
 - `cpo_adv_version` и `seller_price` читаются из `event_properties.event_parameters` через
   `get_json_object`. `seller_price` нельзя подменить плоской колонкой `events.sell_price`:
   на том же срезе значения расходятся на 12.3% показов.
@@ -142,6 +151,7 @@ Score-поля берутся из `iceberg.silver.ranking_analytics_events` з�
 - `widget_section_name`, `widget_space_name` - контекст виджета.
 - `cpo_adv_version` - версия CPO рекламной кампании показа; `NULL`, если поле не логировалось.
 - `bid_id` - идентификатор рекламной ставки показа; `0` - ставки не было, `NULL` - поле не логировалось.
+- `sell_price` - цена показа из плоской колонки `events.sell_price`.
 - `seller_price` - цена продавца из `event_parameters.seller_price`.
 - `final_price` - итоговая цена показа, `COALESCE(final_price, seller_price, full_price)`.
 - `normalized_linear_score` - средний `normalized_linear_score` по `query, sku_group_id` из ranking analytics за `event_date`.
@@ -153,8 +163,10 @@ Score-поля берутся из `iceberg.silver.ranking_analytics_events` з�
 
 Таска `dq` проверяет `final_price` тестом `not_null` с severity `warn`: после COALESCE поле
 должно быть заполнено всегда, поэтому `NULL` в нём - признак сломавшегося контракта
-`event_parameters`. `cpo_adv_version`, `bid_id` и `seller_price` под `not_null` не заводятся:
-у них пропуски штатны. В профиле `feature_stats` `bid_id` исключён как идентификатор,
+`event_parameters`. Тем же тестом и с той же severity покрыт `sell_price`: на срезе он пуст
+у 2 показов из 85 980 264, то есть `NULL` в нём тоже означает сломавшийся источник, а не
+редкий валидный случай. `cpo_adv_version`, `bid_id` и `seller_price` под `not_null` не
+заводятся: у них пропуски штатны. В профиле `feature_stats` `bid_id` исключён как идентификатор,
 `cpo_adv_version` оставлен.
 
 Базовые тесты `primary_key_not_null` и `primary_key_unique` спущены в severity `warn`:

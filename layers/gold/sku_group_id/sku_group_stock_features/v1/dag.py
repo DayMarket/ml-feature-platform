@@ -55,17 +55,18 @@ default_args = {
 def collect_gold_sku_group_stock_features():
     wait_for_silver_sku_stock_daily = ExternalTaskSensor(
         task_id="wait_for_silver_sku_stock_daily",
-        external_dag_id=(
-            "dbt.source.trino.ml_feature_platform_silver."
-            "feature_platform_sku_stock_daily.dq"
-        ),
+        external_dag_id="feature-platform.layers.silver.sku_id.sku_stock_daily",
+        external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
         mode="poke",
         poke_interval=30,
         timeout=6 * 60 * 60,
         check_existence=True,
-        execution_delta=timedelta(hours=2),
+        # Дельта 3 часа, а не прежние 2: легаси dbt-DQ-DAG шёл в 01:00, а владелец
+        # таблицы — в 00:00. Логическая дата этого DAG'а (03:00) минус 3 часа
+        # попадает ровно в ран владельца, который записал партицию того же дня.
+        execution_delta=timedelta(hours=3),
     )
 
     collect_features = SparkKubernetesOperator(

@@ -68,7 +68,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
             migration_columns = set(
                 re.findall(
                     r"^\s{4}([A-Za-z][A-Za-z0-9_]*)\s+"
-                    r"(?:INT|DOUBLE|TIMESTAMP)\b",
+                    r"(?:INT|BIGINT|DOUBLE|TIMESTAMP)\b",
                     migration,
                     flags=re.MULTILINE,
                 )
@@ -86,8 +86,16 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 self.assertEqual(migration_columns, expected)
                 for column in self.contracts[level][2].FEATURE_COLUMNS:
                     self.assertIn(f"AS {column}", sql)
-                self.assertNotIn("BIGINT", migration)
-                self.assertNotIn("BIGINT", self.contracts[level][4])
+                if level <= 2:
+                    for window in EVENT_WINDOWS:
+                        self.assertRegex(
+                            migration,
+                            rf"(?m)^\s+ACCOUNT_L{level}__n_imps_{window}d BIGINT\b",
+                        )
+                    self.assertIn("AS BIGINT) AS n_imps_28d", self.contracts[level][4])
+                else:
+                    self.assertNotIn("BIGINT", migration)
+                    self.assertNotIn("BIGINT", self.contracts[level][4])
 
     def test_feature_namespace_prefixes_every_physical_feature_column(self):
         for level, (entity, _, query, _, _) in self.contracts.items():
@@ -134,6 +142,11 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                     "GROUP BY account_id, session_id, product_id, event_type",
                     sql,
                 )
+                expected_account_filters = 2 if level <= 2 else 1
+                self.assertEqual(
+                    sql.count("AND account_id IS NOT NULL"),
+                    expected_account_filters,
+                )
                 self.assertNotIn(
                     "MAX(source_calculated_at) AS source_calculated_at",
                     sql,
@@ -164,8 +177,12 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 self.assertIn("order_item.payment_price AS DOUBLE", sql)
                 self.assertIn("order_item.item_quantity AS DOUBLE", sql)
                 self.assertIn("order_item.b2b_order = FALSE", sql)
+                self.assertIn("AND order_item.account_id IS NOT NULL", sql)
                 self.assertNotIn("BETWEEN 1", sql)
                 self.assertNotIn("order_item.account_id >", sql)
+                self.assertNotIn("CAST(order_item.order_id AS INT)", sql)
+                self.assertNotIn("CAST(order_item.sku_id AS INT)", sql)
+                self.assertNotIn("CAST(id AS INT) AS sku_id", sql)
 
     def test_cross_slice_session_product_distinct_semantics(self):
         rows = (
@@ -306,7 +323,7 @@ class AccountCategoryFeaturesTest(unittest.TestCase):
                 )
                 self.assertIn("resource_profile: small", config_text)
                 self.assertIn(
-                    'start_date: "2026-09-05T07:00:00Z"',
+                    'start_date: "2026-09-13T07:00:00Z"',
                     config_text,
                 )
                 self.assertIn("severity: P3", config_text)

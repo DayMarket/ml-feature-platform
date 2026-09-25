@@ -24,8 +24,12 @@
 
 ## Зависимости
 
-- `merge_center_solution_to_kafka_gurobi_mvp_dag`;
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_dynamic_pricing_daily_prices.dq`.
+- `merge_center_solution_to_kafka_gurobi_mvp_dag` — единственный сенсор этого DAG'а.
+- `iceberg.silver.feature_platform_dynamic_pricing_daily_prices` читается **без сенсора**:
+  DAG идёт каждые 3 часа (`0 */3 * * *`), а владелец таблицы
+  (`feature-platform.layers.silver.sku_id_promotion_id.dynamic_pricing_prices`) — раз в сутки
+  в `01:00` UTC, поэтому дневной `execution_delta` к внутридневной сетке не приводится.
+  Раньше здесь лежали неиспользуемые хелперы под старый dbt-DQ-контракт; они удалены.
 
 ## Логика
 

@@ -13,6 +13,12 @@ from .checkpoint import PROOF_KEY, verify_proof, written_receipt
 from .manifest import ContentDigest, day_manifest
 
 
+def single_typed_value(column, expected):
+    """Сравнить константу с учётом timezone фактического Arrow-типа."""
+    typed_expected = pa.scalar(expected, type=column.type).as_py()
+    return column.unique().to_pylist() == [typed_expected]
+
+
 def fingerprint(batch):
     """Хешировать значения и NULL-маски независимо от chunks и скрытых null-буферов."""
     schema = pa.schema([pa.field(f.name, f.type, nullable=f.nullable) for f in batch.schema])
@@ -85,7 +91,7 @@ def write_day(config, catalog, batches, *, day, selected, run, manifest, version
                 continue
             for name, value in [('source_manifest_id', manifest), ('source_contract_version', version),
                                    ('ingested_at', captured)]:
-                if batch[name].unique().to_pylist() != [value]:
+                if not single_typed_value(batch[name], value):
                     raise ValueError(f'Смешанные {name}')
             content.update(batch)
             first = (batch['sku_id'][0].as_py(), batch['estimate_kind'][0].as_py())

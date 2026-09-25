@@ -57,16 +57,17 @@ def collect_gold_query_skg_pairwise_features_legacy():
    # wait_for_aggregated_conversions = ExternalTaskSensor(
    #     task_id="wait_for_gold_query_skg_aggregated_conversions_legacy",
    #     external_dag_id=(
-   #         "dbt.source.trino.ml_feature_platform_gold."
-   #         "feature_platform_query_skg_aggregated_conversions_legacy.dq"
+   #         "feature-platform.layers.gold.query_sku_group_id."
+   #         "query_skg_aggregated_conversions_legacy"
    #     ),
+   #     external_task_id="dq",
    #     allowed_states=["success"],
    #     failed_states=["failed"],
   #      mode="poke",
   #      poke_interval=30,
   #      timeout=6 * 60 * 60,
   #      check_existence=True,
-  #      execution_delta=timedelta(hours=2, minutes=30),
+  #      execution_delta=timedelta(minutes=30),
   #  )
 
     collect_features = SparkKubernetesOperator(

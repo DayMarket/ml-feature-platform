@@ -61,6 +61,7 @@ default_args = {
         "silver",
         "product",
         "feedback",
+        "recsys",
     ],
     dagrun_timeout=timedelta(hours=6),
     is_paused_upon_creation=True,

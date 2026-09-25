@@ -252,7 +252,12 @@ class GeoDagArchitectureTest(unittest.TestCase):
         self.assertIn("ExternalTaskSensor", dag_source)
         self.assertIn("silver_dq_sensors >> gold_task", dag_source)
         self.assertEqual(config["dag"]["schedule"], "0 2 * * *")
-        self.assertIn("execution_delta=timedelta(hours=1)", dag_source)
+        # Ждём таску dq DAG'ов-владельцев, а не снятый dbt-DQ-контракт: владельцы
+        # идут в 00:00, этот DAG — в 02:00, поэтому дельта 2 часа, а не прежний 1
+        # (легаси dbt-DQ-DAG шёл в 01:00).
+        self.assertIn('external_task_id="dq"', dag_source)
+        self.assertNotIn("dbt.source.trino.ml_feature_platform", dag_source)
+        self.assertIn("execution_delta=timedelta(hours=2)", dag_source)
         for entity in SILVER_ENTITIES:
             self.assertIn(entity, dag_source)
 
