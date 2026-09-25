@@ -104,6 +104,7 @@ search_attributed_orders AS (
         -- is_generated_order почти целиком теряет; has_search_attr без
         -- фильтров этого перекоса не наследует.
         has_search_attr
+        AND query != ''
         AND event_received_at >= p.event_date
         AND event_received_at < DATE_ADD(p.event_date, 1)
 ),
