@@ -83,6 +83,13 @@ def build_sql() -> str:
     return spark.sql_text
 
 
+def strip_sql_comments(sql: str) -> str:
+    """Убирает строки-комментарии: снятый фильтр разрешено объяснять словами."""
+    return "\n".join(
+        line for line in sql.splitlines() if not line.strip().startswith("--")
+    )
+
+
 def ddl_columns() -> list[str]:
     body = DDL_PATH.read_text(encoding="utf-8")
     body = body[body.index("(") + 1 : body.index("\n)\nUSING iceberg")]
@@ -167,6 +174,154 @@ class SearchRankingDatasetTest(unittest.TestCase):
 
         self.assertEqual(len(specs), 1)
         self.assertEqual(specs[0]["severity"], "warn")
+
+    def test_has_search_attr_is_declared_next_to_is_generated_order(self):
+        # Новая атрибуция — отдельная метка рядом со старым таргетом, а не его
+        # замена: is_generated_order обязан остаться в витрине нетронутым.
+        columns = ddl_columns()
+
+        self.assertIn("is_generated_order", columns)
+        self.assertIn("has_search_attr", columns)
+
+    def test_has_search_attr_is_aggregated_on_the_is_generated_order_grain(self):
+        # Метка собирается своим агрегатом, но на той же грани, что и
+        # is_generated_order (install_id, last_search_session_id, query,
+        # sku_group_id), и тем же правилом "хотя бы один заказ" -> константа 1
+        # плюс COALESCE(..., 0) для показов без заказа. Иначе два таргета одной
+        # строки означали бы разные вещи.
+        sql = build_sql()
+        aggregate = sql[
+            sql.index("search_attr_orders AS (") : sql.index("sessions_raw AS (")
+        ]
+
+        self.assertIn("1 AS has_search_attr", aggregate)
+        self.assertIn("FROM search_attributed_orders sao", aggregate)
+        self.assertIn("INNER JOIN order_items_enhanced oie", aggregate)
+        for key in (
+            "sao.last_search_session_id",
+            "sao.install_id",
+            "sao.query",
+            "oie.sku_group_id",
+        ):
+            with self.subTest(key=key):
+                self.assertIn(key, aggregate.split("GROUP BY")[1])
+
+        self.assertIn("COALESCE(sa.has_search_attr, 0) AS has_search_attr", sql)
+
+    def test_attribution_is_joined_twice_on_the_same_keys(self):
+        # Два независимых LEFT JOIN'а к атрибуции: старый таргет и новая метка
+        # собираются из разных наборов строк, поэтому одним джоином их не
+        # получить. Ключ у обоих один, иначе метки поехали бы относительно
+        # друг друга. Каждый агрегат даёт одну строку на ключ (GROUP BY), так
+        # что второй джоин не размножает показы.
+        sql = build_sql()
+        tail = sql[sql.index("\nFROM sessions s") :]
+
+        self.assertIn("LEFT JOIN orders o", tail)
+        self.assertIn("LEFT JOIN search_attr_orders sa", tail)
+        for alias in ("o", "sa"):
+            with self.subTest(alias=alias):
+                self.assertIn(f"ON {alias}.install_id = s.install_id", tail)
+                self.assertIn(f"AND {alias}.last_search_session_id = s.session_id", tail)
+                self.assertIn(f"AND {alias}.sku_group_id = s.sku_group_id", tail)
+                self.assertIn(f"AND {alias}.query = s.query", tail)
+
+    def test_has_search_attr_is_read_from_the_attribution_source(self):
+        # Флаг живёт в iceberg.silver.order_items_attribution и задаёт набор
+        # строк своей CTE; брать его из order_items или events нельзя - это
+        # поле атрибуции, а не заказа и не показа.
+        sql = strip_sql_comments(build_sql())
+        search_attributed = sql[
+            sql.index("search_attributed_orders AS (") : sql.index(
+                "order_items_enhanced AS ("
+            )
+        ]
+
+        self.assertIn("FROM iceberg.silver.order_items_attribution", search_attributed)
+        self.assertIn("\n        has_search_attr\n", search_attributed)
+
+    def test_search_attribution_branch_filters_on_the_flag_only(self):
+        # Контракт метки: важен сам флаг, а не то, откуда пришел заказ. Поэтому
+        # вторая CTE не наследует ни один бизнес-фильтр ветки
+        # is_generated_order - ни список widget_space_name, ни is_full_catpred,
+        # ни query != ''. Из фильтров остается только окно партиции.
+        # Возврат любого из них - это смена контракта метки, а не рефакторинг:
+        # на 2026-09-15 фильтры срезают ключи с 138 665 до 40 230.
+        # Комментарии выброшены: снятые фильтры разрешено объяснять словами,
+        # запрещено применять.
+        sql = strip_sql_comments(build_sql())
+        attributed = sql[
+            sql.index("attributed_orders AS (") : sql.index(
+                "search_attributed_orders AS ("
+            )
+        ]
+        search_attributed = sql[
+            sql.index("search_attributed_orders AS (") : sql.index(
+                "order_items_enhanced AS ("
+            )
+        ]
+
+        self.assertIn("widget_space_name IN (", attributed)
+        self.assertIn("COALESCE(is_full_catpred, 'false') = 'false'", attributed)
+        self.assertIn("query != ''", attributed)
+        self.assertNotIn("has_search_attr", attributed)
+
+        self.assertIn("has_search_attr", search_attributed)
+        self.assertNotIn("widget_space_name", search_attributed)
+        self.assertNotIn("is_full_catpred", search_attributed)
+        self.assertNotIn("query != ''", search_attributed)
+
+    def test_order_item_status_is_filtered_inside_the_is_generated_order_branch(self):
+        # order_item_status - фильтр старого таргета, а не общей CTE: оставь он
+        # в order_items_enhanced, новая метка молча унаследовала бы его. Обе
+        # ветки по-прежнему читают order_items одним сканом, ограниченным
+        # окном generated_at.
+        sql = strip_sql_comments(build_sql())
+        items = sql[
+            sql.index("order_items_enhanced AS (") : sql.index("\norders AS (")
+        ]
+        orders = sql[sql.index("\norders AS (") : sql.index("search_attr_orders AS (")]
+        search_attr_orders = sql[
+            sql.index("search_attr_orders AS (") : sql.index("sessions_raw AS (")
+        ]
+
+        self.assertNotIn("order_item_status NOT IN", items)
+        self.assertIn("oi.generated_at >=", items)
+        self.assertIn("oie.order_item_status NOT IN ('CREATED', 'NOT_CREATED')", orders)
+        self.assertNotIn("order_item_status", search_attr_orders)
+
+    def test_has_search_attr_is_covered_by_an_idempotent_migration(self):
+        # Таблица уже существует в проде: без ALTER TABLE колонка не появится
+        # в существующем окружении, только в новом из create_table.sql.
+        added = set()
+        for migration in MIGRATIONS_DIR.glob("*.sql"):
+            if migration.name == "create_table.sql":
+                continue
+            added.update(ADDED_COLUMN.findall(migration.read_text(encoding="utf-8")))
+
+        self.assertIn("has_search_attr", added)
+
+    def test_has_search_attr_has_a_not_null_dq_test(self):
+        # После COALESCE колонка заполнена всегда, а в источнике за
+        # event_received_at = 2026-09-15 (284 605 строк) NULL не встретился ни
+        # разу, поэтому NULL здесь означает сломавшийся контракт источника.
+        # severity warn — как у всех тестов этой энтити.
+        specs = [
+            spec
+            for spec in load_config()["dq"]["tests"]
+            if spec["name"] == "not_null" and "has_search_attr" in spec.get("columns", [])
+        ]
+
+        self.assertEqual(len(specs), 1)
+        self.assertEqual(specs[0]["severity"], "warn")
+
+    def test_has_search_attr_stays_in_the_feature_stats_profile(self):
+        # Метка, а не идентификатор: как и у is_generated_order, доля единиц в
+        # партиции — то, по чему видно, что атрибуция поехала.
+        exclude = load_config()["feature_stats"].get("exclude_columns", [])
+
+        self.assertNotIn("has_search_attr", exclude)
+        self.assertNotIn("is_generated_order", exclude)
 
     def test_sell_price_stays_in_the_feature_stats_profile(self):
         # Цена — признак, а не идентификатор: в exclude_columns ей не место,

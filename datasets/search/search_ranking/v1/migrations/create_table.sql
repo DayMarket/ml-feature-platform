@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     normalized_linear_score DOUBLE COMMENT 'Средний normalized_linear_score из ranking analytics events для query и sku_group_id за event_date',
     linear_score DOUBLE COMMENT 'Средний linear_score из ranking analytics events для query и sku_group_id за event_date',
     dssm_score DOUBLE COMMENT 'Средний dssm_score из ranking analytics events для query и sku_group_id за event_date',
-    is_generated_order INT COMMENT 'Метка наличия атрибутированного сгенерированного заказа: 1 или 0'
+    is_generated_order INT COMMENT 'Метка наличия атрибутированного сгенерированного заказа: 1 или 0',
+    has_search_attr INT COMMENT 'Метка новой поисковой атрибуции заказа: 1, если по ключу install_id, session_id, query, sku_group_id есть хотя бы один заказ с order_items_attribution.has_search_attr = true, иначе 0. Собирается отдельной веткой атрибуции без бизнес-фильтров (ни widget_space_name, ни is_full_catpred, ни order_item_status), поэтому не вложена в is_generated_order'
 )
 USING iceberg
 COMMENT 'Training dataset v1 для search ranking на уровне поискового показа'

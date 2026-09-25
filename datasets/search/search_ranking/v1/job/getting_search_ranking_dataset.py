@@ -68,18 +68,60 @@ attributed_orders AS (
         )
         AND event_received_at >= p.event_date
         AND event_received_at < DATE_ADD(p.event_date, 1)
-        AND COALESCE(is_full_catpred, 'false') = 'false'
+),
+search_attributed_orders AS (
+    SELECT DISTINCT
+        last_search_session_id,
+        install_id,
+        order_id,
+        order_item_id,
+        trim(lower(query)) AS query
+    FROM iceberg.silver.order_items_attribution
+    CROSS JOIN params p
+    WHERE
+        -- Метка новой атрибуции берется как есть: ни widget_space_name, ни
+        -- is_full_catpred, ни query != '' здесь не фильтруют - has_search_attr
+        -- сам по себе отвечает на вопрос "заказ пришел из поиска". Из фильтров
+        -- остается только окно партиции.
+        --
+        -- Цена решения, замеренная на event_received_at = 2026-09-15 по ключу
+        -- агрегата: 40 230 ключей с прежними фильтрами против 138 665 без них.
+        -- Весь рост дает снятый фильтр is_full_catpred, и это не catpred, а
+        -- платформа: в атрибуции колонка varchar с тремя состояниями - ''
+        -- (64 221 строка поиска), 'false' (41 305) и 'true' (5 619). Пустая
+        -- строка - это Android, который флаг не логирует (63 211 из 64 221
+        -- на ANDROID, iOS присылает 'false'), и предикат
+        -- COALESCE(is_full_catpred, 'false') = 'false' ее отбрасывает.
+        -- Настоящий catpred - только 'true': это запросы-категории вроде
+        -- "косметика" или "зубная паста", около 5% строк поиска.
+        -- Пустой query дает еще 671 строку, но они не матчатся с показами:
+        -- join идет по query.
+        --
+        -- В sessions_raw ниже перекос обратный: там колонка boolean, Android
+        -- присылает NULL (57.9M показов поиска из 70.5M за тот же день), и
+        -- COALESCE(is_full_catpred, false) = false их сохраняет. То есть
+        -- Android-показы в витрине есть, а Android-заказы ветка
+        -- is_generated_order почти целиком теряет; has_search_attr без
+        -- фильтров этого перекоса не наследует.
+        has_search_attr
+        AND event_received_at >= p.event_date
+        AND event_received_at < DATE_ADD(p.event_date, 1)
 ),
 order_items_enhanced AS (
     SELECT
         oi.order_item_id,
+        oi.order_item_status,
         s.sku_group_id
     FROM iceberg.silver.order_items oi
     INNER JOIN iceberg.silver.sku s ON s.id = oi.sku_id
     CROSS JOIN params p
     WHERE
-        oi.order_item_status NOT IN ('CREATED', 'NOT_CREATED')
-        AND oi.generated_at >= DATE_SUB(p.event_date, 15)
+        -- Окно generated_at - граница скана order_items, общая для обеих
+        -- веток. order_item_status фильтруется не здесь, а в ветке
+        -- is_generated_order: has_search_attr не должен наследовать ее
+        -- фильтры. На метку это не влияет - среди строк с has_search_attr =
+        -- true статусов CREATED/NOT_CREATED за 2026-09-15 нет ни одной.
+        oi.generated_at >= DATE_SUB(p.event_date, 15)
         AND oi.generated_at < DATE_ADD(p.event_date, 15)
 ),
 orders AS (
@@ -92,10 +134,27 @@ orders AS (
     FROM attributed_orders ao
     INNER JOIN order_items_enhanced oie
         ON oie.order_item_id = ao.order_item_id
+    WHERE oie.order_item_status NOT IN ('CREATED', 'NOT_CREATED')
     GROUP BY
         ao.last_search_session_id,
         ao.install_id,
         ao.query,
+        oie.sku_group_id
+),
+search_attr_orders AS (
+    SELECT
+        sao.last_search_session_id,
+        sao.install_id,
+        sao.query,
+        oie.sku_group_id,
+        1 AS has_search_attr
+    FROM search_attributed_orders sao
+    INNER JOIN order_items_enhanced oie
+        ON oie.order_item_id = sao.order_item_id
+    GROUP BY
+        sao.last_search_session_id,
+        sao.install_id,
+        sao.query,
         oie.sku_group_id
 ),
 sessions_raw AS (
@@ -301,13 +360,19 @@ SELECT
     rs.normalized_linear_score,
     rs.linear_score,
     rs.dssm_score,
-    COALESCE(o.is_generated_order, 0) AS is_generated_order
+    COALESCE(o.is_generated_order, 0) AS is_generated_order,
+    COALESCE(sa.has_search_attr, 0) AS has_search_attr
 FROM sessions s
 LEFT JOIN orders o
     ON o.install_id = s.install_id
     AND o.last_search_session_id = s.session_id
     AND o.sku_group_id = s.sku_group_id
     AND o.query = s.query
+LEFT JOIN search_attr_orders sa
+    ON sa.install_id = s.install_id
+    AND sa.last_search_session_id = s.session_id
+    AND sa.sku_group_id = s.sku_group_id
+    AND sa.query = s.query
 LEFT JOIN ranking_scores rs
     ON rs.query = s.query
     AND rs.sku_group_id = s.sku_group_id
