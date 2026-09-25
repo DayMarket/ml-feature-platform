@@ -35,6 +35,7 @@ def _install_stubs():
     pyspark_sql_module = types.ModuleType("pyspark.sql")
     pyspark_sql_module.DataFrame = object
     pyspark_sql_module.SparkSession = object
+    pyspark_sql_module.Window = object
     pyspark_sql_functions_module = types.ModuleType("pyspark.sql.functions")
     pyspark_sql_types_module = types.ModuleType("pyspark.sql.types")
     pyspark_sql_types_module.BinaryType = object
@@ -45,6 +46,7 @@ def _install_stubs():
         "AccountFeatureSet",
         "AccountToCategoryFeatureSet",
         "QueryFeatureSet",
+        "SkuGroupCategoryToQueryFeatureSet",
         "SkuGroupFeatureSet",
         "SkuGroupToCategoryFeatureSet",
         "SkuGroupToQueryFeatureSet",

@@ -1,148 +1,111 @@
-"""Порционно загрузить разреженное наличие одного EOD-дня."""
+"""Перезаписать дневные партиции EOD-наличия из ClickHouse в Iceberg."""
 
-from datetime import date, datetime, timezone
-from itertools import chain
-import re
+from __future__ import annotations
+
+from contextlib import ExitStack
+from datetime import date, datetime, timedelta, timezone
+import logging
 
 import pyarrow as pa
 
-from .preparation import RAW_COLUMNS, prepare_batch, target_ref, validate_schema
-from .query import count_query, source_query, source_ref
-from .writer import write_day
+from .query import source_query
+
+logger = logging.getLogger("airflow.task")
+BATCH_ROWS = 100_000
 
 
-def source_arrow(rows, columns):
-    names = [name for name, _ in columns]
-    if tuple(names) != RAW_COLUMNS or any(len(row) != len(names) for row in rows):
-        raise ValueError("Неверная схема ClickHouse source")
-    arrays = []
-    for index, (name, declared_type) in enumerate(columns):
-        kind = declared_type
-        nullable = False
-        while kind.startswith(("Nullable(", "LowCardinality(")) and kind.endswith(")"):
-            wrapper, kind = kind.split("(", 1)
-            nullable = nullable or wrapper == "Nullable"
-            kind = kind[:-1]
-        values = [row[index] for row in rows]
-        if not nullable and any(value is None for value in values):
-            raise ValueError(f"NULL противоречит типу источника {name}")
-        if kind in ("Date", "Date32"):
-            dtype = pa.date32()
-            invalid = any(value is not None and type(value) is not date for value in values)
-        elif re.fullmatch(r"U?Int(8|16|32|64)", kind):
-            dtype = pa.uint64() if kind.startswith("U") else pa.int64()
-            invalid = any(value is not None and type(value) is not int for value in values)
-        else:
-            raise ValueError(f"Не поддержан source type {name}: {declared_type}")
-        if invalid:
-            raise ValueError(f"Неверные значения source {name}")
-        arrays.append(pa.array(values, type=dtype))
-    return pa.Table.from_arrays(arrays, names=names)
-
-
-def read_audit(config, client, day):
-    """Оперативные статусы не заменяют проверку текущего source-множества."""
-    rows = client.execute(count_query(config, day))
-    if (
-        not isinstance(rows, (list, tuple))
-        or len(rows) != 1
-        or not isinstance(rows[0], (list, tuple))
-        or len(rows[0]) != 6
-    ):
-        raise ValueError("Неверный ответ source проверки")
-    total, keys, invalid_keys, invalid_values, key_hash, updated_at = rows[0]
-    if any(type(value) is not int or value < 0 for value in rows[0][:5]):
-        raise ValueError("Source проверки требуют целые неотрицательные счётчики")
-    if total <= 0 or keys != total or invalid_keys or invalid_values or not isinstance(updated_at, datetime):
-        raise ValueError(f"Source day {day}: пустой день, неуникальный ключ или недопустимые значения")
-    return total, keys, invalid_keys, invalid_values, key_hash, updated_at
-
-
-def read_count(config, client, day):
-    return read_audit(config, client, day)[0]
-
-
-def load_day(config, catalog, client, *, day, manifest, require_source_ready=None):
-    """Проверить источник, записать sparse-день и повторить его сигнатуру до commit."""
-    from pyiceberg.transforms import IdentityTransform
-
-    if type(day) is not date or (require_source_ready is not None and not callable(require_source_ready)):
-        raise ValueError("Нужны DATE и корректный coordination hook")
-    version = config["source"]["contract_version"]
-    if any(not isinstance(value, str) or not value.strip() for value in (manifest, version)):
-        raise ValueError("Нужны manifest/version")
-    limit = config["runtime"]["max_batch_rows"]
-    max_bytes = config["runtime"]["max_batch_bytes"]
-    if any(type(value) is not int or value <= 0 for value in (limit, max_bytes)):
-        raise ValueError("Неверные лимиты порций")
-    identifier = target_ref(config, catalog.name)
-    source_ref(config)
-    if not catalog.table_exists(identifier):
-        raise ValueError(f"Нет таблицы {identifier}: сначала миграции")
-    table = catalog.load_table(identifier)
-    schema = table.schema().as_arrow()
-    validate_schema(schema)
-    fields = table.spec().fields
-    if (
-        len(fields) != 1
-        or fields[0].source_id != table.schema().find_field("date").field_id
-        or not isinstance(fields[0].transform, IdentityTransform)
-    ):
-        raise ValueError("Нужен identity partition по date")
-    if require_source_ready is not None and require_source_ready(day) is not True:
-        raise ValueError("Upstream не готов")
-    audit = read_audit(config, client, day)
-    captured = datetime.now(timezone.utc)
-    sql = source_query(config, day)
-
-    def batches():
-        stream = iter(
-            client.execute_iter(
-                sql,
-                with_column_types=True,
-                chunk_size=limit,
-                settings={"max_block_size": limit},
-            )
-        )
-        try:
-            first = next(stream, None)
-            if not isinstance(first, list) or not first:
-                raise ValueError("Нет метаданных streaming query")
-            columns, records = first[0], first[1:]
-            source_arrow([], columns)
-            for records in chain((records,), stream):
-                if not records:
-                    continue
-                yield prepare_batch(
-                    source_arrow(records, columns),
-                    schema,
-                    day=day,
-                    manifest=manifest,
-                    version=version,
-                    ingested_at=captured,
-                )
-        finally:
-            close = getattr(stream, "close", None)
-            if callable(close):
-                close()
-
-    def verify():
-        if require_source_ready is not None and require_source_ready(day) is not True:
-            return False
-        return read_audit(config, client, day) == audit
-
-    stream = batches()
+def day_range(start: str, end: str, *, today: date | None = None) -> list[date]:
+    """Включительный диапазон завершённых UTC-дней `[start, end]`."""
     try:
-        return write_day(
-            config,
-            catalog,
-            stream,
-            day=day,
-            expected_rows=audit[0],
-            manifest=manifest,
-            version=version,
-            ingested_at=captured,
-            verify_source=verify,
-        )
-    finally:
-        stream.close()
+        first, last = date.fromisoformat(str(start)), date.fromisoformat(str(end))
+    except ValueError as error:
+        raise ValueError(f"start/end должны быть датами YYYY-MM-DD: {start!r}, {end!r}") from error
+    today = today or datetime.now(timezone.utc).date()
+    if first > last:
+        raise ValueError(f"start {first} позже end {last}")
+    if last >= today:
+        raise ValueError(f"end {last} должен быть раньше текущего UTC-дня {today}")
+    return [first + timedelta(days=offset) for offset in range((last - first).days + 1)]
+
+
+def to_arrow(values, dtype: pa.DataType) -> pa.Array:
+    if pa.types.is_timestamp(dtype):
+        # ClickHouse отдаёт aware datetime; в Iceberg хранится UTC без зоны.
+        return pa.array(values, type=pa.timestamp(dtype.unit, "UTC")).cast(dtype)
+    return pa.array(values, type=dtype)
+
+
+def rows_to_arrow(names: list[str], rows: list, schema: pa.Schema, constants: dict) -> pa.Table:
+    """Порция строк → Arrow по схеме Iceberg; недостающие колонки берутся из constants."""
+    columns = dict(zip(names, zip(*rows))) if rows else {name: () for name in names}
+    arrays = []
+    for field in schema:
+        if field.name in columns:
+            arrays.append(to_arrow(columns[field.name], field.type))
+        elif field.name in constants:
+            arrays.append(to_arrow([constants[field.name]] * len(rows), field.type))
+        else:
+            raise ValueError(f"Запрос не вернул колонку {field.name}")
+    return pa.Table.from_arrays(arrays, schema=schema)
+
+
+def clickhouse_arrow(client, sql: str, schema: pa.Schema, constants: dict) -> pa.Table:
+    """Прочитать результат порциями BATCH_ROWS, чтобы не держать все строки Python-объектами."""
+    logger.info("ClickHouse query:\n%s", sql)
+    stream = client.execute_iter(
+        sql, with_column_types=True, chunk_size=BATCH_ROWS, settings={"max_block_size": BATCH_ROWS}
+    )
+    names, parts = None, []
+    for chunk in stream:
+        if names is None:
+            names, chunk = [name for name, _ in chunk[0]], chunk[1:]
+        if chunk:
+            parts.append(rows_to_arrow(names, chunk, schema, constants))
+    if names is None:
+        raise ValueError("ClickHouse не вернул метаданные колонок")
+    return pa.concat_tables(parts) if parts else schema.empty_table()
+
+
+def load_table(config: dict, catalog=None):
+    from dq.results_writer import load_results_catalog
+
+    table = config["table"]
+    catalog = catalog or load_results_catalog(table["catalog"])
+    return catalog.load_table((table["schema"], table["name"]))
+
+
+def write_day(table, data: pa.Table, day: date) -> None:
+    """Атомарно заменить одну партицию `date`; пустой день не перезаписывается."""
+    from pyiceberg.expressions import EqualTo
+
+    from dq.results_writer import run_iceberg_commit_with_retry
+
+    if data.num_rows == 0:
+        raise ValueError(f"{day}: источник вернул 0 строк, партиция не перезаписана")
+
+    def commit() -> None:
+        table.refresh()
+        table.overwrite(data, overwrite_filter=EqualTo("date", day.isoformat()))
+
+    run_iceberg_commit_with_retry(commit, f"overwrite {table.name()} date={day}")
+    logger.info("%s: записано %d строк", day, data.num_rows)
+
+
+def load_range(config: dict, start: str, end: str, *, run_id: str, client=None, catalog=None) -> list[str]:
+    days = day_range(start, end)
+    table = load_table(config, catalog)
+    schema = table.schema().as_arrow()
+    constants = {
+        "source_manifest_id": run_id,
+        "source_contract_version": config["source"]["contract_version"],
+        "ingested_at": datetime.now(timezone.utc).replace(microsecond=0),
+    }
+    with ExitStack() as stack:
+        if client is None:
+            from airflow_commons.hooks.clickhouse_hook import ClickHouseHook
+
+            hook = ClickHouseHook(clickhouse_conn_id=config["source"]["conn_id"], use_numpy=False)
+            client = stack.enter_context(hook.get_conn())
+        for day in days:
+            write_day(table, clickhouse_arrow(client, source_query(config, day), schema, constants), day)
+    return [day.isoformat() for day in days]

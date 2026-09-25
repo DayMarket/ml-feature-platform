@@ -8,9 +8,7 @@ table:
     team: team:operations
 
 source:
-  engine: clickhouse
-  schema: silver
-  name: b2b_marketing_sale
+  # ClickHouse silver.b2b_marketing_sale, полный реестр акций.
   clickhouse_conn_id: clickhouse_dwh_team_logistics
 
 inputs:
@@ -21,7 +19,6 @@ runtime:
   cpu: "1"
   memory: 2Gi
 
-# Один исполнитель сериализует штатную и ручную запись с DQ.
 dag:
   id: feature-platform.layers.silver.event_code.demand_event_calendar
   group_tag: demand-forecast
@@ -45,7 +42,7 @@ dq:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ ti.xcom_pull(task_ids="write_events")["ingested_at"] }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
   tests:
     - name: row_count_growth
       enabled: false
@@ -77,5 +74,5 @@ feature_stats:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ ti.xcom_pull(task_ids="write_events")["ingested_at"] }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
   exclude_columns: []

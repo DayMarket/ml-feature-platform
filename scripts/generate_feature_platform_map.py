@@ -516,8 +516,8 @@ def _dependencies_for_function(
     path: str,
 ) -> list[Dependency]:
     dependencies: list[Dependency] = []
-    unresolved_dq_sensor = False
-    unresolved_dq_delta = 0
+    unresolved_owner_sensor = False
+    unresolved_owner_delta = 0
     for call in (node for node in ast.walk(function) if isinstance(node, ast.Call)):
         call_name = _call_name(call.func)
         if call_name == "ExternalTaskSensor":
@@ -529,9 +529,13 @@ def _dependencies_for_function(
                 dependencies.append(
                     Dependency(upstream, _sensor_kind(upstream, external_task_id), delta_minutes)
                 )
-            elif isinstance(expression, ast.Call) and _call_name(expression.func) == "_dq_dag_id":
-                unresolved_dq_sensor = True
-                unresolved_dq_delta = delta_minutes
+            elif _is_owner_dag_id_lookup(expression) and external_task_id == "dq":
+                # Сенсор берёт dag_id владельца из его же config.yaml — например
+                # внутри list comprehension по нескольким silver-конфигам, где
+                # переменная цикла статически не вычисляется. Владельцы известны:
+                # это конфиги, которые файл прочитал (_referenced_configs).
+                unresolved_owner_sensor = True
+                unresolved_owner_delta = delta_minutes
             elif area == "upload":
                 dependencies.extend(_upload_dependencies(config))
             else:
@@ -547,13 +551,32 @@ def _dependencies_for_function(
             if upstream:
                 dependencies.append(Dependency(upstream, "trigger", 0))
 
-    if unresolved_dq_sensor:
+    if unresolved_owner_sensor:
         for referenced_config in referenced_configs:
-            dq_dag_id = _dq_dag_id(referenced_config)
-            if dq_dag_id:
-                dependencies.append(Dependency(dq_dag_id, "legacy-dq", unresolved_dq_delta))
+            owner_dag_id = referenced_config.get("dag", {}).get("id")
+            if owner_dag_id:
+                dependencies.append(
+                    Dependency(str(owner_dag_id), "dq", unresolved_owner_delta)
+                )
 
     return dependencies
+
+
+def _is_owner_dag_id_lookup(expression: ast.AST | None) -> bool:
+    """Распознать `<какой-то конфиг>["dag"]["id"]`, не вычисляя сам конфиг."""
+    if not isinstance(expression, ast.Subscript):
+        return False
+    inner = expression.value
+    return (
+        _subscript_key(expression) == "id"
+        and isinstance(inner, ast.Subscript)
+        and _subscript_key(inner) == "dag"
+    )
+
+
+def _subscript_key(expression: ast.Subscript) -> str | None:
+    key = expression.slice
+    return key.value if isinstance(key, ast.Constant) and isinstance(key.value, str) else None
 
 
 def _sensor_kind(upstream_dag_id: str, external_task_id: str | None) -> str:
@@ -921,13 +944,6 @@ def _call_name(expression: ast.AST) -> str:
     if isinstance(expression, ast.Attribute):
         return expression.attr
     return ""
-
-
-def _dq_dag_id(config: dict[str, Any]) -> str | None:
-    table = config.get("table", {})
-    if not table.get("schema") or not table.get("name"):
-        return None
-    return f"dbt.source.trino.ml_feature_platform_{table['schema']}.{table['name']}.dq"
 
 
 def _resource_label(config: dict[str, Any], entity_dir: Path) -> str:

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS {target_table} (
     widget_space_name STRING COMMENT 'Пространство виджета события показа',
     cpo_adv_version BIGINT COMMENT 'Версия CPO рекламной кампании из event_parameters.cpo_adv_version; NULL, если поле не логировалось событием',
     bid_id BIGINT COMMENT 'Идентификатор рекламной ставки показа из плоской колонки events.bid_id; 0 - ставки не было, NULL - поле не логировалось событием',
+    sell_price BIGINT COMMENT 'Цена показа из плоской колонки events.sell_price; совпадает с event_parameters.sell_price на всех непустых показах. Не равна seller_price: разные поля одного события, расходятся на 8.4% показов',
     seller_price BIGINT COMMENT 'Цена продавца из event_parameters.seller_price; не равна events.sell_price и берется только из JSON',
     final_price BIGINT COMMENT 'Итоговая цена показа: COALESCE(event_parameters.final_price, seller_price, full_price)',
     normalized_linear_score DOUBLE COMMENT 'Средний normalized_linear_score из ranking analytics events для query и sku_group_id за event_date',

@@ -1,126 +1,143 @@
-"""Соединить точные проверенные silver-срезы и атомарно записать один gold-день."""
+"""Перезаписать дневные партиции observed-панели FULL JOIN-ом в Trino."""
 
-from copy import deepcopy
-from datetime import date, datetime, timezone
+from __future__ import annotations
 
-from .checkpoint import resume_day
-from .inputs import bind_inputs, day_inputs, preflight_inputs, source_configs
-from .preparation import join_batches
-from .reader import read_batches, read_union_count
-from .writer import require_head, write_day
+from contextlib import closing
+from datetime import date, datetime, timedelta, timezone
+import logging
+from pathlib import Path
+
+import pyarrow as pa
+
+from .query import counts_query, source_query, versioned
+
+logger = logging.getLogger("airflow.task")
+BATCH_ROWS = 100_000
 
 
-def load_day(config, repo_root, catalog, connection, *, day, references, fetch_checked,
-             manifest, ingested_at=None):
-    """Соединением владеет caller; payload task=dq перечитывается перед commit/resume."""
-    if not callable(fetch_checked):
-        raise ValueError("Нужно чтение точных upstream DQ payloads")
-    captured = datetime.now(timezone.utc) if ingested_at is None else ingested_at
-    version = config["source"]["contract_version"]
-    if (type(day) is not date or not isinstance(captured, datetime) or captured.utcoffset() is None
-            or any(not isinstance(v, str) or not v.strip() for v in (manifest, version))):
-        raise ValueError("Нужны DATE, manifest/version и aware capture")
-    if day >= captured.astimezone(timezone.utc).date():
-        raise ValueError("Observed читает только завершённые дни UTC")
-    references = deepcopy(references)
-    sources = source_configs(config, repo_root)
-    bound = bind_inputs(sources, references, fetch_checked(references), days=[day], captured_at=captured)
-    tables = preflight_inputs(config, sources, catalog, bound)
-    inputs = day_inputs(bound, day)
-
-    def verify():
-        current = bind_inputs(sources, references, fetch_checked(references), days=[day], captured_at=captured)
-        if current != bound:
-            raise ValueError("Upstream DQ receipt сменился во время gold load")
-        preflight_inputs(config, sources, catalog, bound)
-        return True
-
-    receipt = resume_day(config, catalog, day=day, inputs=inputs, manifest=manifest, version=version)
-    if receipt is not None:
-        verify()
-        return receipt
-    expected = read_union_count(connection, sources, repo_root, inputs, day)
-    limits = {key: config["runtime"][key] for key in ("max_batch_rows", "max_batch_bytes")}
-    streams = {kind: read_batches(connection, kind, sources[kind], repo_root, inputs[kind],
-                                 tables[kind].schema().as_arrow(), day=day, **limits)
-               for kind in sources}
-    output = join_batches(streams["sales"], streams["stock"], tables["output"].schema().as_arrow(),
-                          day=day, inputs=inputs, manifest=manifest, version=version,
-                          ingested_at=captured, max_batch_rows=limits["max_batch_rows"])
+def day_range(start: str, end: str, *, today: date | None = None) -> list[date]:
+    """Включительный диапазон завершённых UTC-дней `[start, end]`."""
     try:
-        return write_day(config, catalog, output, day=day, expected_rows=expected, inputs=inputs,
-                         manifest=manifest, version=version, ingested_at=captured, verify_inputs=verify)
-    finally:
-        output.close()
-        for stream in streams.values():
-            stream.close()
+        first, last = date.fromisoformat(str(start)), date.fromisoformat(str(end))
+    except ValueError as error:
+        raise ValueError(f"start/end должны быть датами YYYY-MM-DD: {start!r}, {end!r}") from error
+    today = today or datetime.now(timezone.utc).date()
+    if first > last:
+        raise ValueError(f"start {first} позже end {last}")
+    if last >= today:
+        raise ValueError(f"end {last} должен быть раньше текущего UTC-дня {today}")
+    return [first + timedelta(days=offset) for offset in range((last - first).days + 1)]
 
 
-def require_planned_state(table, state, *, manifest, version, days):
-    """После частичного успеха допускаются только собственные commits этого запроса."""
-    if state is None:
-        return
-    if state.get("table_uuid") != str(table.metadata.table_uuid):
-        raise ValueError("Gold UUID изменился после планирования")
-    expected = state.get("snapshot_id")
-    allowed_dates = {day.isoformat() for day in days}
-    current = table.current_snapshot()
-    while current is not None and current.snapshot_id != expected:
-        props = current.summary.additional_properties if current.summary else {}
-        if (props.get("source_manifest_id") != manifest or props.get("source_contract_version") != version
-                or props.get("date") not in allowed_dates):
-            raise ValueError("Gold изменился после планирования coverage: нужен новый запрос")
-        parent = current.parent_snapshot_id
-        if parent == expected:
-            return
-        current = table.snapshot_by_id(parent) if parent is not None else None
-        if parent is not None and current is None:
-            raise ValueError("Не доказана цепочка gold commits после планирования")
-    if current is None and expected is not None:
-        raise ValueError("Исходный gold snapshot плана недоступен")
+def to_arrow(values, dtype: pa.DataType) -> pa.Array:
+    if pa.types.is_timestamp(dtype):
+        return pa.array(values, type=pa.timestamp(dtype.unit, "UTC")).cast(dtype)
+    return pa.array(values, type=dtype)
 
 
-def load_range(config, repo_root, catalog, connection, *, days, references, fetch_checked,
-               request_id, manifest, ingested_at=None, expected_output_state=None):
-    """Scheduled/manual используют один последовательный writer, DQ выполняется позже."""
-    if not callable(fetch_checked):
-        raise ValueError("Нужно чтение точных upstream DQ payloads")
-    captured = datetime.now(timezone.utc) if ingested_at is None else ingested_at
-    if (not isinstance(captured, datetime) or captured.utcoffset() is None
-            or any(not isinstance(v, str) or not v.strip() for v in (request_id, manifest))
-            or not isinstance(days, list) or not days or any(type(day) is not date for day in days)
-            or days != sorted(set(days)) or days[-1] >= captured.astimezone(timezone.utc).date()):
-        raise ValueError("Нужен непустой уникальный диапазон завершённых дней и ID/capture")
-    days, references = list(days), deepcopy(references)
-    sources = source_configs(config, repo_root)
-    initial = bind_inputs(sources, references, fetch_checked(references), days=days, captured_at=captured)
-    tables = preflight_inputs(config, sources, catalog, initial)
-    target = tables["output"]
-    table_uuid = str(target.metadata.table_uuid)
-    head = target.current_snapshot()
-    head_id = head.snapshot_id if head else None
-    require_planned_state(target, expected_output_state, manifest=manifest,
-                          version=config["source"]["contract_version"], days=days)
+def rows_to_arrow(names: list[str], rows: list, schema: pa.Schema, constants: dict) -> pa.Table:
+    """Порция строк → Arrow по схеме Iceberg; недостающие колонки берутся из constants."""
+    columns = dict(zip(names, zip(*rows))) if rows else {name: () for name in names}
+    arrays = []
+    for field in schema:
+        if field.name in columns:
+            arrays.append(to_arrow(columns[field.name], field.type))
+        elif field.name in constants:
+            arrays.append(to_arrow([constants[field.name]] * len(rows), field.type))
+        else:
+            raise ValueError(f"Запрос не вернул колонку {field.name}")
+    return pa.Table.from_arrays(arrays, schema=schema)
 
-    def same_checked(refs):
-        checked = fetch_checked(refs)
-        if bind_inputs(sources, refs, checked, days=days, captured_at=captured) != initial:
-            raise ValueError("Upstream диапазон изменился после общего preflight")
-        return checked
 
-    receipts = []
-    for day in days:
-        require_head(config, catalog, table_uuid, head_id)
-        receipt = load_day(config, repo_root, catalog, connection, day=day, references=references,
-                           fetch_checked=same_checked, manifest=manifest, ingested_at=captured)
-        if receipt["table_uuid"] != table_uuid:
-            raise ValueError("Gold UUID изменился внутри диапазона")
-        head_id = receipt["snapshot_id"]
-        require_head(config, catalog, table_uuid, head_id)
-        receipts.append(receipt)
-    same_checked(references)
-    preflight_inputs(config, sources, catalog, initial)
-    require_head(config, catalog, table_uuid, head_id)
-    return {"status": "written", "request_id": request_id, "snapshot_id": head_id,
-            "table_uuid": table_uuid, "dates": [day.isoformat() for day in days],
-            "day_receipts": receipts}
+def trino_arrow(connection, sql: str, schema: pa.Schema, constants: dict) -> pa.Table:
+    logger.info("Trino query:\n%s", sql)
+    parts = []
+    with closing(connection.cursor()) as cursor:
+        cursor.execute(sql)
+        names = [column[0] for column in cursor.description]
+        while rows := cursor.fetchmany(BATCH_ROWS):
+            parts.append(rows_to_arrow(names, rows, schema, constants))
+    return pa.concat_tables(parts) if parts else schema.empty_table()
+
+
+def quote(*parts: str) -> str:
+    return ".".join('"' + part.replace('"', '""') + '"' for part in parts)
+
+
+def table_ref(repo_root: str, table_config: dict) -> str:
+    from dq.config import trino_catalog_alias
+
+    alias = trino_catalog_alias(Path(repo_root), table_config["catalog"])
+    return quote(alias, table_config["schema"], table_config["name"])
+
+
+def load_table(config: dict, catalog=None):
+    from dq.results_writer import load_results_catalog
+
+    table = config["table"]
+    catalog = catalog or load_results_catalog(table["catalog"])
+    return catalog.load_table((table["schema"], table["name"]))
+
+
+def write_day(table, data: pa.Table, day: date) -> None:
+    """Атомарно заменить одну партицию `date`; пустой день не перезаписывается."""
+    from pyiceberg.expressions import EqualTo
+
+    from dq.results_writer import run_iceberg_commit_with_retry
+
+    if data.num_rows == 0:
+        raise ValueError(f"{day}: источник вернул 0 строк, партиция не перезаписана")
+
+    def commit() -> None:
+        table.refresh()
+        table.overwrite(data, overwrite_filter=EqualTo("date", day.isoformat()))
+
+    run_iceberg_commit_with_retry(commit, f"overwrite {table.name()} date={day}")
+    logger.info("%s: записано %d строк", day, data.num_rows)
+
+
+def pinned_input(config: dict, repo_root: str, catalog) -> tuple[str, dict]:
+    """Текущий snapshot входа: все дни одного запуска читают одну версию."""
+    table = load_table(config, catalog)
+    snapshot = table.current_snapshot()
+    if snapshot is None:
+        raise ValueError(f"Входная таблица {table.name()} пуста")
+    return versioned(table_ref(repo_root, config["table"]), snapshot.snapshot_id), {
+        "snapshot_id": snapshot.snapshot_id,
+        "table_uuid": str(table.metadata.table_uuid),
+    }
+
+
+def load_range(config: dict, sources: dict, repo_root: str, start: str, end: str, *,
+               run_id: str, connection=None, catalog=None) -> list[str]:
+    from dq.results_writer import load_results_catalog
+
+    days = day_range(start, end)
+    catalog = catalog or load_results_catalog(config["table"]["catalog"])
+    table = load_table(config, catalog)
+    schema = table.schema().as_arrow()
+    sales, sales_meta = pinned_input(sources["sales"], repo_root, catalog)
+    stock, stock_meta = pinned_input(sources["stock"], repo_root, catalog)
+    constants = {
+        "sales_snapshot_id": sales_meta["snapshot_id"],
+        "sales_table_uuid": sales_meta["table_uuid"],
+        "stock_snapshot_id": stock_meta["snapshot_id"],
+        "stock_table_uuid": stock_meta["table_uuid"],
+        "source_manifest_id": run_id,
+        "source_contract_version": config["source"]["contract_version"],
+        "ingested_at": datetime.now(timezone.utc).replace(microsecond=0),
+    }
+    if connection is None:
+        from airflow.providers.trino.hooks.trino import TrinoHook
+
+        connection = TrinoHook(trino_conn_id=config["source"]["conn_id"]).get_conn()
+    with closing(connection):
+        for day in days:
+            with closing(connection.cursor()) as cursor:
+                cursor.execute(counts_query(sales, stock, day))
+                sales_rows, stock_rows = cursor.fetchall()[0]
+            # Пустая stock-партиция означала бы «всё не в наличии» — такой день не пишем.
+            if not sales_rows or not stock_rows:
+                raise ValueError(f"{day}: нет входных строк (sales={sales_rows}, stock={stock_rows})")
+            write_day(table, trino_arrow(connection, source_query(sales, stock, day), schema, constants), day)
+    return [day.isoformat() for day in days]
