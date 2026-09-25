@@ -42,8 +42,8 @@ class AccountProfileFeaturesTest(unittest.TestCase):
     def test_feature_contract_and_windows(self):
         self.assertEqual(len(query.DEMOGRAPHIC_COLUMNS), 6)
         self.assertEqual(len(query.ORDER_FEATURE_COLUMNS), 76)
-        self.assertEqual(len(query.LAST_CLICKED_COLUMNS), 17)
-        self.assertEqual(len(query.FEATURE_COLUMNS), 99)
+        self.assertEqual(len(query.LAST_CLICKED_COLUMNS), 19)
+        self.assertEqual(len(query.FEATURE_COLUMNS), 101)
         self.assertEqual(len(query.FEATURE_COLUMNS), len(set(query.FEATURE_COLUMNS)))
 
         for window in ORDER_WINDOWS:
@@ -163,11 +163,11 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn(
-            "AVG(male_click_share_28d) AS last_purchased_male_cat_share_raw",
+            "AVG(male_click_share_28d) AS last_purchased_cat_avg_male_click_share_90d",
             self.sql,
         )
         self.assertIn(
-            "AVG(female_click_share_28d) AS last_purchased_female_cat_share_raw",
+            "AVG(female_click_share_28d) AS last_purchased_cat_avg_female_click_share_90d",
             self.sql,
         )
         self.assertIn(
@@ -179,7 +179,25 @@ class AccountProfileFeaturesTest(unittest.TestCase):
             self.sql,
         )
         self.assertIn(
+            "AVG(female_click_share_28d / NULLIF(female_click_share_28d + "
+            "male_click_share_28d, 0.0D))",
+            self.sql,
+        )
+        self.assertIn(
+            "AVG(male_click_share_28d / NULLIF(female_click_share_28d + "
+            "male_click_share_28d, 0.0D))",
+            self.sql,
+        )
+        self.assertIn(
             "AVG(female_click_share_28d)",
+            self.sql,
+        )
+        self.assertIn(
+            "AS last_clicked_male_category_label_share",
+            self.sql,
+        )
+        self.assertIn(
+            "AS last_clicked_female_category_label_share",
             self.sql,
         )
         self.assertIn(

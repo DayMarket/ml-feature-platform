@@ -47,13 +47,13 @@ ORDER_FEATURE_COLUMNS = tuple(
     for window in ORDER_WINDOWS
     for template in ORDER_FEATURE_TEMPLATES
 ) + (
-    "last_purchased_male_cat_share_raw",
-    "last_purchased_female_cat_share_raw",
+    "last_purchased_cat_avg_male_click_share_90d",
+    "last_purchased_cat_avg_female_click_share_90d",
     "last_purchased_female_cat_share_among_gendered",
     "last_purchased_male_cat_share_among_gendered",
 )
 
-LAST_CLICKED_RAW_COLUMNS = (
+LAST_CLICKED_PROFILE_COLUMNS = (
     "last_clicked_avg_price",
     "last_clicked_median_price",
     "last_clicked_90th_pct_price",
@@ -62,6 +62,8 @@ LAST_CLICKED_RAW_COLUMNS = (
     "last_clicked_p10_discount",
     "last_clicked_male_cat_share_raw",
     "last_clicked_female_cat_share_raw",
+    "last_clicked_male_category_label_share",
+    "last_clicked_female_category_label_share",
     "last_clicked_null_rating_share",
     "last_clicked_p10_rating",
     "last_clicked_avg_popularity_neg_rank_by_orders",
@@ -74,10 +76,10 @@ LAST_CLICKED_PERCENTILE_COLUMNS = (
     "last_clicked_median_price_pctl",
     "last_clicked_90th_pct_price_pctl",
 )
-LAST_CLICKED_COLUMNS = LAST_CLICKED_RAW_COLUMNS + LAST_CLICKED_PERCENTILE_COLUMNS
+LAST_CLICKED_COLUMNS = LAST_CLICKED_PROFILE_COLUMNS + LAST_CLICKED_PERCENTILE_COLUMNS
 
 BASE_PROFILE_COLUMNS = (
-    DEMOGRAPHIC_COLUMNS + ORDER_FEATURE_COLUMNS + LAST_CLICKED_RAW_COLUMNS
+    DEMOGRAPHIC_COLUMNS + ORDER_FEATURE_COLUMNS + LAST_CLICKED_PROFILE_COLUMNS
 )
 UNPREFIXED_FEATURE_COLUMNS = BASE_PROFILE_COLUMNS + LAST_CLICKED_PERCENTILE_COLUMNS
 FEATURE_COLUMNS = tuple(
@@ -279,19 +281,19 @@ def _order_line_expressions(calculated_at_utc: str) -> str:
             )
         )
     expressions.append(
-        "AVG(male_click_share_28d) AS last_purchased_male_cat_share_raw"
+        "AVG(male_click_share_28d) AS last_purchased_cat_avg_male_click_share_90d"
     )
     expressions.append(
-        "AVG(female_click_share_28d) AS last_purchased_female_cat_share_raw"
+        "AVG(female_click_share_28d) AS last_purchased_cat_avg_female_click_share_90d"
     )
     expressions.append(
-        "AVG(female_click_share_28d) / NULLIF("
-        "AVG(female_click_share_28d) + AVG(male_click_share_28d), 0.0D) "
+        "AVG(female_click_share_28d / NULLIF("
+        "female_click_share_28d + male_click_share_28d, 0.0D)) "
         "AS last_purchased_female_cat_share_among_gendered"
     )
     expressions.append(
-        "AVG(male_click_share_28d) / NULLIF("
-        "AVG(female_click_share_28d) + AVG(male_click_share_28d), 0.0D) "
+        "AVG(male_click_share_28d / NULLIF("
+        "female_click_share_28d + male_click_share_28d, 0.0D)) "
         "AS last_purchased_male_cat_share_among_gendered"
     )
     return ",\n        ".join(expressions)
@@ -381,7 +383,7 @@ def build_account_profile_features_query(
     order_profile_select = _nullable_select_columns("orders", ORDER_FEATURE_COLUMNS)
     last_clicked_select = _nullable_select_columns(
         "clicks",
-        LAST_CLICKED_RAW_COLUMNS,
+        LAST_CLICKED_PROFILE_COLUMNS,
     )
     final_base_select = ",\n    ".join(BASE_PROFILE_COLUMNS)
     price_rank_inputs = _price_rank_inputs()
@@ -578,6 +580,7 @@ enriched_last_clicks AS (
         clicks.product_id,
         clicks.last_received_at,
         prices.min_sell_price_eod,
+        metadata.category_id,
         category.category_gender,
         category.male_click_share_28d,
         category.female_click_share_28d,
@@ -614,6 +617,16 @@ last_clicked_raw_profile AS (
             AS last_clicked_male_cat_share_raw,
         AVG(female_click_share_28d)
             AS last_clicked_female_cat_share_raw,
+        CAST(SUM(CASE WHEN category_gender = 'M' THEN 1 ELSE 0 END) AS DOUBLE)
+            / NULLIF(
+                CAST(SUM(CASE WHEN category_id IS NOT NULL THEN 1 ELSE 0 END) AS DOUBLE),
+                0.0D
+            ) AS last_clicked_male_category_label_share,
+        CAST(SUM(CASE WHEN category_gender = 'F' THEN 1 ELSE 0 END) AS DOUBLE)
+            / NULLIF(
+                CAST(SUM(CASE WHEN category_id IS NOT NULL THEN 1 ELSE 0 END) AS DOUBLE),
+                0.0D
+            ) AS last_clicked_female_category_label_share,
         CAST(SUM(CASE WHEN rating IS NULL THEN 1 ELSE 0 END) AS DOUBLE)
             / NULLIF(CAST(COUNT(*) AS DOUBLE), 0.0D)
             AS last_clicked_null_rating_share,

@@ -72,12 +72,17 @@ Product attributes присоединяются point-in-time на snapshot `T`:
 - Purchased male/female category shares — средние значения этих G6 click-shares
   по строкам заказов в соответствующем окне. `*_unisex_cat_share_*` — доля
   строк с `category_id`, у которых `CATEGORY__gender` равен `U` или `NULL`.
-  `ACCOUNT__last_purchased_male_cat_share_raw` — то же среднее male click-share
-  по полному доступному 90-дневному order lookback, без отдельного суффикса окна;
-  это raw-значение из G6, а не доля категорий с label `M`. Аналогично
-  сохраняется `ACCOUNT__last_purchased_female_cat_share_raw`. Фичи
-  `ACCOUNT__last_purchased_*_cat_share_among_gendered` делят соответствующий
-  raw-share на сумму male и female raw-share; при нулевом знаменателе дают `NULL`.
+  `ACCOUNT__last_purchased_cat_avg_male_click_share_90d` — среднее male click-share
+  по полному доступному 90-дневному order lookback;
+  это значение из G6, а не доля категорий с label `M`. Аналогично
+  сохраняется `ACCOUNT__last_purchased_cat_avg_female_click_share_90d`. Фичи
+  `ACCOUNT__last_purchased_*_cat_share_among_gendered` считаются непосредственно
+  по каждой строке покупки как условная доля соответствующего G6 click-share:
+  `female_click_share_28d / (female_click_share_28d + male_click_share_28d)`
+  или аналогичная male-формула. Затем берётся среднее по строкам; при нулевой
+  или неизвестной сумме gendered shares строка даёт `NULL` и не участвует в
+  среднем. Эти признаки не вычисляются через отношение уже агрегированных
+  male/female значений.
 
 `last_purchased_neg_p90_popularity_rank_*` вычисляется как p10 уже
 отрицательного rank, то есть как `-p90` положительного rank. Симметричная
@@ -102,6 +107,12 @@ discount — 0..100. `*_male_cat_share_raw` и
 и `CATEGORY__female_click_share_28d` из G6 по категориям последних кликов;
 они не являются долями category labels `M`/`F`. Нормализованные shares делят
 эти две величины на их сумму.
+
+Дополнительно публикуются `ACCOUNT__last_clicked_male_category_label_share` и
+`ACCOUNT__last_clicked_female_category_label_share`. Это доли последних кликов
+по категориям с label `CATEGORY__gender = M` или `F` среди всех последних кликов
+с известным `category_id`. Они используют разметку категории, а не population
+click-shares G6; поэтому их сумма может быть меньше 1 из-за U/NULL-разметки.
 
 Price percentiles рассчитываются на полной account population snapshot с average-rank tie
 semantics:

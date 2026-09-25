@@ -123,6 +123,14 @@ dq:
       min: 0
       max: 1
     - name: accepted_range
+      column: ACCOUNT__last_clicked_male_category_label_share
+      min: 0
+      max: 1
+    - name: accepted_range
+      column: ACCOUNT__last_clicked_female_category_label_share
+      min: 0
+      max: 1
+    - name: accepted_range
       column: ACCOUNT__last_clicked_null_rating_share
       min: 0
       max: 1
@@ -187,11 +195,11 @@ dq:
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT__last_purchased_male_cat_share_raw
+      column: ACCOUNT__last_purchased_cat_avg_male_click_share_90d
       min: 0
       max: 1
     - name: accepted_range
-      column: ACCOUNT__last_purchased_female_cat_share_raw
+      column: ACCOUNT__last_purchased_cat_avg_female_click_share_90d
       min: 0
       max: 1
     - name: expression_is_true
