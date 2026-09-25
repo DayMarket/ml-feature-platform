@@ -30,10 +30,11 @@ Grain: одна строка на `date` и нормализованный `quer
 
 Название `uniq` сохранено в стиле существующих search-фичей. На этом слое значения считаются как сумма `sum_impressions` и `sum_atc` из silver-источника после агрегации по query.
 
-DAG ждет DQ DAG silver-источников:
+DAG ждёт таски `dq` DAG'ов-владельцев silver-источников (`execution_delta = 2 часа`:
+владельцы идут в `01:00` UTC, этот DAG — в `03:00` UTC):
 
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`.
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq`.
+- `feature-platform.layers.silver.sku_group_id_query_category.sku_group_install`;
+- `feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders`.
 
 Версия `v1` создается как новая Iceberg-таблица. Вся схема, включая `query_orders_*`, описана в `migrations/create_table.sql`; отдельных schema-change миграций для добавления фичей в этой версии нет.
 

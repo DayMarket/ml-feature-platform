@@ -87,7 +87,7 @@ def get_dag_default_args() -> dict:
     catchup=False,
 )
 def dp_neighbor_order_features_dag() -> None:
-    @task()
+    @task(executor_config=_executor_config())
     def materialize(partition_value: str) -> None:
         runtime = _load_module("runtime.py", "dp_neighbor_order_features_runtime")
         query = _load_module("query.py", "dp_neighbor_order_features_query")

@@ -91,6 +91,7 @@ def get_dag_default_args() -> dict:
         "silver",
         "sku",
         "cm2",
+        "recsys",
     ],
     dagrun_timeout=timedelta(hours=3),
     is_paused_upon_creation=True,

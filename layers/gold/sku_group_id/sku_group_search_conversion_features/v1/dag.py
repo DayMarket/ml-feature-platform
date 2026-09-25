@@ -55,10 +55,8 @@ default_args = {
 def collect_gold_sku_group_search_conversion_features():
     wait_for_silver_install_stats = ExternalTaskSensor(
         task_id="wait_for_silver_sku_group_install_stats",
-        external_dag_id=(
-            "dbt.source.trino.ml_feature_platform_silver."
-            "feature_platform_search_sku_group_id_install_query.dq"
-        ),
+        external_dag_id="feature-platform.layers.silver.sku_group_id_query_category.sku_group_install",
+        external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
         mode="poke",
@@ -70,10 +68,8 @@ def collect_gold_sku_group_search_conversion_features():
 
     wait_for_silver_search_orders = ExternalTaskSensor(
         task_id="wait_for_silver_sku_group_query_search_orders",
-        external_dag_id=(
-            "dbt.source.trino.ml_feature_platform_silver."
-            "feature_platform_sku_group_query_search_orders.dq"
-        ),
+        external_dag_id="feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders",
+        external_task_id="dq",
         allowed_states=["success"],
         failed_states=["failed"],
         mode="poke",

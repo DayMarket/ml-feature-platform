@@ -195,13 +195,13 @@ GROUP BY sku_group_id
 - `job/*.py` - как считаются исходные метрики;
 - `README.md` - описаны ли caveats.
 
-Если источник - feature-platform таблица, downstream DAG должен ждать ее dbt DQ DAG, а не Spark DAG записи таблицы.
-
-Пример DQ DAG id:
+Если источник - feature-platform таблица, downstream DAG должен ждать таску `dq` DAG'а-владельца этой таблицы, а не таску записи:
 
 ```text
-dbt.source.trino.ml_feature_platform_<schema>.<table_name>.dq
+external_dag_id=<dag id владельца таблицы>, external_task_id="dq"
 ```
+
+Ссылки вида `dbt.source.trino.ml_feature_platform_<schema>.<table_name>.dq` — устаревший контракт: у новых таблиц такого DAG'а просто не существует. Список оставшихся легаси-сенсоров — в разделе `## 4` файла `docs/feature_platform_map.md`.
 
 ## 8. Пример: создать с Trino/ClickHouse-источником
 
@@ -296,7 +296,7 @@ DESCRIBE iceberg.silver.order_items_attribution
 
 Основной конфиг - `upload/features_service_upload/v1/config.yaml`. В нем перечислены feature groups. Каждая group читает одну gold-таблицу, например `feature_platform_sku_group_feedback_base_stats`, и отправляет упорядоченный список колонок в Kafka topic `ranking.features.updates`.
 
-Перед чтением таблицы upload DAG ждет dbt DQ DAG исходной таблицы. Затем job читает партицию за `{{ ds }}`, строит protobuf `FeaturesUpdate` через `ranking-python-client` и пишет сообщения в Kafka.
+Перед чтением таблицы upload DAG ждет таску `dq` DAG'а-владельца исходной таблицы. Затем job читает партицию за `{{ ds }}`, строит protobuf `FeaturesUpdate` через `ranking-python-client` и пишет сообщения в Kafka.
 
 Порядок feature groups и размеры в serving contract лежат в `upload/features_service_upload/v1/ranking_service_input.yaml`. Порядок важен: в сервис отправляются значения, а не имена колонок.
 
@@ -416,7 +416,7 @@ table:
     create_maintenance_pr: true
 ```
 
-`create_dbt_pr` контролирует PR в `DayMarket/dbt-trino` с source definitions и DQ-тестами. `create_maintenance_pr` контролирует PR в `DayMarket/pyspark-etl` для Iceberg maintenance. Если флаг отсутствует или равен `true`, master-side CI считает таблицу eligible для автоматического добавления missing downstream entry. Если флаг равен `false`, CI пропускает создание соответствующей downstream-записи для этой таблицы. Значение `false` не означает удаление: существующие dbt-trino source/DQ records и maintenance records не должны удаляться только из-за этого флага.
+`create_dbt_pr` контролирует PR в `DayMarket/dbt-trino` с source definitions. DQ-тесты туда больше не уезжают — их считает таска `dq` внутри DAG'а, см. раздел 14. `create_maintenance_pr` контролирует PR в `DayMarket/pyspark-etl` для Iceberg maintenance. Если флаг отсутствует или равен `true`, master-side CI считает таблицу eligible для автоматического добавления missing downstream entry. Если флаг равен `false`, CI пропускает создание соответствующей downstream-записи для этой таблицы. Значение `false` не означает удаление: существующие dbt-trino source/DQ records и maintenance records не должны удаляться только из-за этого флага.
 
 ### Конфигурация SparkApplication и ресурсов
 
@@ -588,34 +588,31 @@ GROUP BY
 
 ## 14. Дефолтные DQ-тесты
 
-Для каждой repository-managed таблицы набор DQ-тестов формируется автоматически — инженеру не нужно описывать их вручную. Логика заложена в генераторе `scripts/sync_dbt_sources.py` (см. `print_source_yaml`, строки ~280–334), а сами тесты создаются на стороне `dbt-trino` через source sync.
+Для каждой repository-managed таблицы набор DQ-тестов формируется автоматически — инженеру не нужно описывать их вручную. Тесты считает таска `dq`, штатный шаг того же DAG'а, который пишет партицию; движок — Trino, код — в пакете `dq/`, полный каталог тестов — в `dq/README.md`. Результаты прогонов пишутся в `iceberg.silver.feature_platform_dq_results`.
 
-### Базовый набор — создаётся для любой таблицы
+В `dbt-trino` DQ-тесты больше не создаются. `scripts/sync_dbt_sources.py` отправляет туда только source-блок (owner и колонки первичного ключа) ради lineage и каталога; `tests:` и `freshness:` он не рендерит. Раньше DQ жил там, и отдельный DQ-DAG запускался не гарантированно после DAG'а, писавшего партицию, а каждая правка набора тестов требовала PR в чужой репозиторий — поэтому проверки переехали внутрь платформы.
 
-Основой служит первичный ключ таблицы. На его основе всегда генерируются два теста.
+### Базовый набор — включён всегда, даже без блока `dq:` в конфиге
 
-- `dbt_utils.unique_combination_of_columns` по всем колонкам из `table.primary_key` — гарантирует, что в таблице нет дублей на уровне ключа.
-- `not_null` для каждой колонки, входящей в первичный ключ — защищает от пропусков в полях, которые однозначно идентифицируют запись.
+- `primary_key_not_null` — ни одна колонка из `table.primary_key` не содержит NULL.
+- `primary_key_unique` — в партиции нет дублей на уровне ключа.
+- `row_count_min` — в записанной партиции есть строки (`min_rows`, по умолчанию `0`).
+- `row_count_growth` — объём партиции не отличается от предыдущей больше чем на `max_growth_ratio` (по умолчанию `0.2`); проверка двусторонняя, ловит и обвал, и всплеск.
+- `freshness` — данные не отстают больше чем на `max_lag_days` (по умолчанию `2`).
 
-### Расширенный набор — когда в ключе есть колонка `date`
-
-Если первичный ключ содержит колонку `date`, генератор понимает, что таблица партиционирована по дате, и добавляет ещё три проверки, отвечающие за свежесть и динамику данных.
-
-- Контроль свежести (freshness): `loaded_at_field = CAST(date AS timestamp) + INTERVAL '1' DAY`, порог тревоги `error_after: count: 2, period: day`. Если данные не обновлялись более двух дней, тест поднимает ошибку.
-- `row_count_greater_than_for_date` с `min_rows: 0` — проверяет, что за предыдущий день в таблице вообще появились строки. Имя теста: `<table>_previous_day_has_rows`.
-- `row_count_growth_within_limit` с `max_growth_ratio: 0.2` — ограничивает аномальный рост: объём данных за день не должен увеличиваться более чем на 20%. Имя теста: `<table>_previous_day_row_count_growth_within_20_percent`.
-
-Итог: «из коробки» каждая таблица получает контроль целостности ключа, а таблицы с датой — дополнительно полный набор проверок свежести и объёма данных.
+Скоуп по умолчанию — партиция дня, а не вся история таблицы. Отключить базовый тест можно только с письменной причиной и условием повторного включения, записанными и в `config.yaml` энтити, и в разделе «Отключённые базовые тесты» файла `AGENTS.md`.
 
 ### Дополнительные DQ-тесты
 
-Поверх базового уровня дополнительные тесты стоит предлагать только когда они являются частью feature contract:
+Поверх базового уровня дополнительные тесты объявляются именами в `dq.tests` и стоит предлагать их только когда они являются частью feature contract:
 
 - accepted values для enum/status;
 - range checks для ratio, probability, rating, price, count;
 - non-negative checks;
 - consistency checks, например `min <= median <= max`;
 - более сильный row-count threshold, если `min_rows: 0` слишком слабый.
+
+Пороги `row_count_min` и `row_count_growth` подбираются по реальной истории таблицы в Trino, а не назначаются на глаз, и каждый порог сопровождается комментарием в `config.yaml` с наблюдённым диапазоном.
 
 Не добавляйте дорогие relationship tests по высококардинальным ключам без явного согласования.
 
@@ -630,8 +627,8 @@ GROUP BY
 5. Merge в `master`: CI применяет миграции и создает или обновляет Iceberg-таблицу. Для новых repository-managed таблиц также создаются downstream PR в `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`, если это не отключено флагами `table.meta.create_dbt_pr: false` или `table.meta.create_maintenance_pr: false`.
 6. После master merge надо проверить таблицу в Iceberg: схема, партиция, наличие данных за ожидаемый `ds`, ключи, базовые агрегаты и несколько sanity-check значений.
 7. Пока downstream PR не мержатся автоматически, нужно вручную сходить в оба репозитория: `DayMarket/dbt-trino` и `DayMarket/pyspark-etl`. Для них надо запросить review, временно через DE, проверить diff и замержить.
-8. После merge downstream PR надо включить основной Airflow DAG и DQ DAG. Основной DAG пишет таблицу, DQ DAG проверяет source contract для downstream-потребителей.
-9. После первого успешного запуска надо проверить DQ, свежесть партиции и, если есть ranking upload, что upload DAG дождался DQ и отправил ожидаемый feature group.
+8. После merge downstream PR надо включить основной Airflow DAG. Отдельный DQ DAG больше не заводится: таски `dq` и `feature_stats` — штатные шаги того же DAG'а.
+9. После первого успешного запуска надо проверить результат таски `dq` в `iceberg.silver.feature_platform_dq_results`, свежесть партиции и, если есть ranking upload, что upload DAG дождался DQ и отправил ожидаемый feature group.
 
 Важно: таблица в Iceberg создается не локально и не при merge в `dev`, а master-side CI при merge в `master`.
 
@@ -639,13 +636,13 @@ GROUP BY
 
 После merge в `master` CI может создать downstream PR:
 
-- в `DayMarket/dbt-trino` - source definitions и DQ-тесты для новых/измененных repository-managed таблиц;
+- в `DayMarket/dbt-trino` - source definitions (без DQ-тестов) для новых/измененных repository-managed таблиц;
 - в `DayMarket/pyspark-etl` - регистрация Iceberg maintenance для таблиц из `layers/**/config.yaml`.
 
 Создание этих PR контролируется `table.meta`:
 
 - `create_dbt_pr: true` или отсутствие флага - можно создать missing PR entry в `DayMarket/dbt-trino`;
-- `create_dbt_pr: false` - не создавать missing dbt-trino source/DQ entry для этой таблицы;
+- `create_dbt_pr: false` - не создавать missing dbt-trino source entry для этой таблицы;
 - `create_maintenance_pr: true` или отсутствие флага - можно создать missing PR entry в `DayMarket/pyspark-etl`;
 - `create_maintenance_pr: false` - не создавать missing Iceberg maintenance entry для этой таблицы.
 
@@ -714,14 +711,14 @@ Ranking upload находится в `upload/features_service_upload/v1`.
 - `category_id,sku_group_id`;
 - `account_id,category_id`.
 
-Чтобы добавить feature group, пользователь описывает, какую `gold`-таблицу и какие колонки нужно отдавать в ranking service. Агент проверяет, что таблица действительно repository-managed `gold`, что все колонки есть в migrations, что entity keys поддержаны upload job, что `source.dq_execution_delta_minutes` соответствует DQ DAG исходной таблицы, и что порядок колонок согласован с serving contract.
+Чтобы добавить feature group, пользователь описывает, какую `gold`-таблицу и какие колонки нужно отдавать в ranking service. Агент проверяет, что таблица действительно repository-managed `gold`, что все колонки есть в migrations, что entity keys поддержаны upload job, что `source.dq_execution_delta_minutes` соответствует расписанию DAG'а-владельца исходной таблицы, и что порядок колонок согласован с serving contract.
 
 После этого обновляются `upload/features_service_upload/v1/config.yaml` и `upload/features_service_upload/v1/ranking_service_input.yaml`. Проверка ranking upload подтверждает, что source table, schema, feature list, entity keys и размеры feature groups согласованы между конфигами и миграциями.
 
 ## 19. Другие важные особенности
 
 - `{{ ds }}` - это partition date, но включение или исключение `ds` зависит от конкретной фичи. Агент должен сверить это с job и README конкретной таблицы.
-- Для feature-platform зависимостей downstream DAG должен ждать dbt DQ DAG, а не Spark DAG.
+- Для feature-platform зависимостей downstream DAG должен ждать таску `dq` DAG'а-владельца, а не таску записи.
 - Для внешних источников используйте DQ/source contract команды-владельца.
 - Не прячьте source table names в неочевидных константах: lineage должен читаться из job.
 - Не добавляйте custom Spark image для обычных code/config/SQL changes. Используйте общий `config/spark/layer_spark_application.yaml`, default Spark image и `git-sync`.
@@ -778,13 +775,13 @@ Grain: `date,sku_group_id`.
 Источники: `iceberg.silver.example_source`, join по `sku_id`.
 Окна: `7d = [ds - 6, ds]`, `ds` включен.
 Фичи: `example_feature_7d`.
-DQ: дефолтные dbt source tests по primary key и freshness.
+DQ: базовый набор тестов в таске `dq` DAG'а (`primary_key_not_null`, `primary_key_unique`, `row_count_min`, `row_count_growth`, `freshness`).
 Runtime: default Spark image + git-sync.
 Downstream: ranking upload не добавлялся.
 
 Проверки:
 - базовые repository contracts и layer configs читаются корректно;
-- dbt source sync видит новую таблицу и сможет создать DQ definitions;
+- dbt source sync видит новую таблицу и сможет создать source definition;
 - Iceberg maintenance sync добавляет только repository-managed таблицы;
 - ranking upload config валиден, если он менялся;
 - whitespace-проверка прошла.

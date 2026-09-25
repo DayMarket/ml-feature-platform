@@ -1,88 +1,111 @@
-"""Построить и записать дерево из одного полного SKU snapshot с повторным DQ binding."""
+"""Полностью заменить дерево категорий, построенное из текущего SKU-каталога."""
 
-from copy import deepcopy
+from __future__ import annotations
+
+from contextlib import closing
 from datetime import datetime, timezone
-from hashlib import sha256
+import logging
 from pathlib import Path
 
-import yaml
+import pyarrow as pa
 
-from .inputs import bind_source, migration_schema, preflight_source, source_config, validate_reference, validate_schema
-from .preparation import prepare_tree, target_ref
-from .reader import metadata_query, read_batches, source_sql, table_ref
-from .writer import preflight, write_prepared
+logger = logging.getLogger("airflow.task")
 
 
-def validate_arguments(config, repo_root, reference, source_manifest_id, ingested_at):
-    if not isinstance(source_manifest_id, str) or not source_manifest_id.strip():
-        raise ValueError("Нужен manifest дерева")
-    captured = (datetime.now(timezone.utc) if ingested_at is None else ingested_at).replace(
-        microsecond=0
-    )
-    if not isinstance(captured, datetime) or captured.utcoffset() is None:
-        raise ValueError("Нужно aware время материализации дерева")
-    limits = {key: config["runtime"].get(key) for key in ("max_batch_rows", "max_batch_bytes")}
-    if any(type(value) is not int or value <= 0 for value in limits.values()):
-        raise ValueError("Нужны положительные лимиты порций")
-    source, expected = source_config(config, repo_root)
-    validate_reference(source, reference)
-    return captured, limits, source, expected
+def source_query(sku: str) -> str:
+    """Уникальные рёбра market → l1 → … → leaf из валидных путей SKU.
+
+    Passthrough — узел L2+ повторяет категорию родителя (выравнивание глубины).
+    Узел с несколькими родителями даст повтор ключа и будет отклонён DQ.
+    """
+    return f"""WITH paths AS (
+    SELECT DISTINCT market, l1, l2, l3, l4, l5, leaf, "date", catalog_version
+    FROM {sku}
+    WHERE category_path_status = 'valid'
+)
+SELECT DISTINCT
+    p."date",
+    t.level,
+    t.node_id,
+    t.level_code,
+    t.parent_id,
+    t.level_code >= 2 AND split_part(t.node_id, ':', 2) = split_part(t.parent_id, ':', 2) AS is_passthrough,
+    p.catalog_version
+FROM paths AS p
+CROSS JOIN UNNEST(
+    ARRAY['market', 'l1', 'l2', 'l3', 'l4', 'l5', 'leaf'],
+    ARRAY[0, 1, 2, 3, 4, 5, 6],
+    ARRAY[p.market, p.l1, p.l2, p.l3, p.l4, p.l5, p.leaf],
+    ARRAY[CAST(NULL AS VARCHAR), p.market, p.l1, p.l2, p.l3, p.l4, p.l5]
+) AS t(level, level_code, node_id, parent_id)
+ORDER BY t.level_code, t.node_id"""
 
 
-def execute_load(config, repo_root, *, catalog, connection, reference, get_checked,
-                 source_manifest_id, ingested_at=None):
-    """Соединения принадлежат caller; get_checked повторно читает task=dq выбранного run."""
-    if not callable(get_checked):
-        raise ValueError("Нужен exact DQ getter")
-    captured, limits, source, expected = validate_arguments(config, repo_root, reference, source_manifest_id, ingested_at)
-    reference = deepcopy(reference)
-    checked = deepcopy(get_checked(deepcopy(reference)))
-    bound = bind_source(source, reference, checked, captured_at=captured)
-    target = preflight(config, catalog)
-    if set(config.get("feature_stats", {}).get("exclude_columns", [])) - set(target.schema().column_names):
-        raise ValueError("Неизвестные feature_stats.exclude_columns")
-    initial_target = target.metadata_location
-    input_table, schema = preflight_source(source, catalog, bound, expected)
-    schema_id = input_table.snapshot_by_id(bound["receipt"]["snapshot_id"]).schema_id
-    # Проверяем все существующие таблицы до большого скана SKU.
-    entries = [(config, target.schema().as_arrow())]
-    for relative in ("dq/results/config.yaml", "feature_stats/results/config.yaml"):
-        path = Path(repo_root) / relative
-        cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
-        identifier = target_ref(cfg, catalog.name)
-        if not catalog.table_exists(identifier):
-            raise ValueError(f"Нет служебной таблицы {identifier}: сначала миграции")
-        table = catalog.load_table(identifier)
-        validate_schema(table.schema().as_arrow(), migration_schema(path.parent))
-        entries.append((cfg, table.schema().as_arrow()))
-    for cfg, arrow in entries:
-        metadata_query(connection, f"SELECT * FROM {table_ref(cfg, repo_root)} LIMIT 0", arrow)
-    metadata_query(connection, f"SELECT * FROM {table_ref(source, repo_root)} "
-                   f"FOR VERSION AS OF {bound['receipt']['snapshot_id']} LIMIT 0", schema)
+def quote(*parts: str) -> str:
+    return ".".join('"' + part.replace('"', '""') + '"' for part in parts)
 
-    def verify_source():
-        current = deepcopy(get_checked(deepcopy(reference)))
-        rebound = bind_source(source, reference, current, captured_at=captured)
-        if current != checked or rebound != bound:
-            raise ValueError("DQ payload выбранного SKU run изменился")
-        table, _ = preflight_source(source, catalog, bound, expected)
-        if table.snapshot_by_id(bound["receipt"]["snapshot_id"]).schema_id != schema_id:
-            raise ValueError("Схема выбранного SKU snapshot изменилась")
-        return True
 
-    receipt = bound["receipt"]
-    stream = read_batches(connection, source, repo_root, bound, schema, **limits)
-    try:
-        batch, audit = prepare_tree(stream, target.schema().as_arrow(), capture_date=bound["date"],
-                                    catalog_version=receipt["catalog_version"], source_snapshot_id=receipt["snapshot_id"],
-                                    expected_source_rows=receipt["rows_written"], source_manifest_id=source_manifest_id,
-                                    source_contract_version=config["source"]["contract_version"], ingested_at=captured)
-    finally:
-        stream.close()
-    result = write_prepared(config, catalog, batch, capture_date=bound["date"], catalog_version=receipt["catalog_version"],
-                            source_snapshot_id=receipt["snapshot_id"], expected_nodes=audit["n_nodes"],
-                            verify_source=verify_source, expected_metadata_location=initial_target)
-    result["source_audit"] = {**audit, "reference": reference, "receipt": receipt, "schema_id": schema_id,
-                              "identifier": list(target_ref(source, catalog.name)), "catalog": catalog.name,
-                              "query_sha256": sha256(source_sql(source, repo_root, bound).encode()).hexdigest()}
-    return result
+def rows_to_arrow(names, rows, schema: pa.Schema, constants: dict) -> pa.Table:
+    values = dict(zip(names, zip(*rows))) if rows else {name: () for name in names}
+    arrays = []
+    for field in schema:
+        column = values.get(field.name)
+        if column is None:
+            if field.name not in constants:
+                raise ValueError(f"Запрос не вернул колонку {field.name}")
+            column = [constants[field.name]] * len(rows)
+        if pa.types.is_timestamp(field.type):
+            arrays.append(pa.array(column, type=pa.timestamp(field.type.unit, "UTC")).cast(field.type))
+        else:
+            arrays.append(pa.array(column, type=field.type))
+    return pa.Table.from_arrays(arrays, schema=schema)
+
+
+def replace_table(table, data: pa.Table) -> None:
+    """Атомарно заменить всё содержимое; пустой результат не удаляет прежние данные."""
+    from dq.results_writer import run_iceberg_commit_with_retry
+
+    if data.num_rows == 0:
+        raise ValueError(f"{table.name()}: пустой результат, таблица не перезаписана")
+
+    def commit() -> None:
+        table.refresh()
+        table.overwrite(data)
+
+    run_iceberg_commit_with_retry(commit, f"replace {table.name()}")
+    logger.info("%s: записано %d строк", table.name(), data.num_rows)
+
+
+def load(config: dict, sku_config: dict, repo_root: str, *, run_id: str,
+         connection=None, catalog=None) -> dict:
+    from dq.config import trino_catalog_alias
+    from dq.results_writer import load_results_catalog
+
+    table_config = config["table"]
+    catalog = catalog or load_results_catalog(table_config["catalog"])
+    table = catalog.load_table((table_config["schema"], table_config["name"]))
+    source_config = sku_config["table"]
+    snapshot = catalog.load_table((source_config["schema"], source_config["name"])).current_snapshot()
+    if snapshot is None:
+        raise ValueError("SKU-каталог пуст")
+    alias = trino_catalog_alias(Path(repo_root), source_config["catalog"])
+    sku = f"{quote(alias, source_config['schema'], source_config['name'])} FOR VERSION AS OF {snapshot.snapshot_id}"
+    captured = datetime.now(timezone.utc).replace(microsecond=0)
+    constants = {
+        "catalog_sku_snapshot_id": snapshot.snapshot_id,
+        "source_contract_version": config["source"]["contract_version"],
+        "source_manifest_id": run_id,
+        "ingested_at": captured,
+    }
+    if connection is None:
+        from airflow.providers.trino.hooks.trino import TrinoHook
+
+        connection = TrinoHook(trino_conn_id=config["source"]["conn_id"]).get_conn()
+    sql = source_query(sku)
+    logger.info("Trino query:\n%s", sql)
+    with closing(connection), closing(connection.cursor()) as cursor:
+        cursor.execute(sql)
+        names = [column[0] for column in cursor.description]
+        rows = cursor.fetchall()
+    replace_table(table, rows_to_arrow(names, rows, table.schema().as_arrow(), constants))
+    return {"ingested_at": captured.strftime("%Y-%m-%d %H:%M:%S"), "rows": len(rows)}

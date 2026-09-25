@@ -59,8 +59,7 @@
   ближайшего предка не делается. Из 6853 категорий `dict.category` уровень `l2` заполнен у 6830,
   `l3` — у 6598, `l4` — только у 4758 (69%). Заказы в категориях с деревом мельче уровня N
   не входят в срез `lN` вообще. Это отличается от подхода
-  `layers/silver/account_id_category_id/account_l*_event_w_imps_counts`, где применяется
-  `COALESCE` вниз по иерархии.
+  текущего account/category event-контракта, где применяется `COALESCE` вниз по иерархии.
 - `return_cause NOT IN (...)` в Trino отбрасывает строки с `return_cause IS NULL`. По замеру на
   `analyze_date = 2026-08-01` за 120 дней таких строк 12 995 из 32 251 724 (0.04%), и все они
   внутри статусов `RETURNED` и `RETURNED AFTER COMPLETED`. Ни одна позиция `COMPLETED`,

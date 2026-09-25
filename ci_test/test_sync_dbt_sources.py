@@ -16,6 +16,26 @@ def load_sync_module():
     return module
 
 
+DQ_TEST_MARKERS = (
+    "tests:",
+    "freshness:",
+    "loaded_at_field:",
+    "not_null",
+    "dbt_utils.unique_combination_of_columns",
+    "row_count_greater_than_for_date",
+    "row_count_growth_within_limit",
+)
+
+
+def assert_no_dq_tests(rendered_yaml: str) -> None:
+    """DQ живёт в таске `dq` внутри DAG'а, dbt-source остаётся только ради lineage."""
+    for marker in DQ_TEST_MARKERS:
+        assert marker not in rendered_yaml, (
+            f"sync_dbt_sources.py must not render DQ tests in dbt sources: "
+            f"found {marker!r} in\n{rendered_yaml}"
+        )
+
+
 def main() -> int:
     sync = load_sync_module()
     dbt_config = {
@@ -226,6 +246,7 @@ sources:
             include_document_header=False,
             include_source_header=True,
         )
+        assert_no_dq_tests(gold_source_yaml)
         sync._append_to_sources_file(sources_path, gold_source_yaml)
 
         silver_table_config = {
@@ -243,6 +264,7 @@ sources:
             include_document_header=False,
             include_source_header=False,
         )
+        assert_no_dq_tests(silver_table_yaml)
         sync._append_table_to_source_block(
             sources_path,
             "silver",
@@ -256,6 +278,7 @@ sources:
             include_document_header=False,
             include_source_header=False,
         )
+        assert_no_dq_tests(dataset_table_yaml)
         sync._append_table_to_source_block(
             sources_path,
             "silver",
@@ -280,6 +303,10 @@ sources:
             'ml-feature-platform and consumed by ML feature pipelines."'
         ) in final_yaml
         assert not (models_path / "sources_gold.yaml").exists()
+        assert_no_dq_tests(final_yaml)
+        assert "- name: date" in final_yaml
+        assert "- name: sku_group_id" in final_yaml
+        assert not hasattr(sync, "print_primary_key_tests")
 
     print("dbt source schema sync tests completed successfully")
     return 0

@@ -80,7 +80,7 @@ denominator ratio равна `NULL`. Фильтр `brand_id IS NOT NULL` при�
 ## Запись и оркестрация
 
 DAG запускается в `07:00` и `19:00 UTC`, то есть в `12:00` и `00:00
-Asia/Tashkent. `start_date = 2026-09-05T07:00:00Z` — первый snapshot после
+Asia/Tashkent. `start_date = 2026-09-13T07:00:00Z` — начало backfill последних 10 дней после
 накопления полного 28-дневного окна Silver; `catchup=true`. Новый DAG создаётся
 на паузе.
 

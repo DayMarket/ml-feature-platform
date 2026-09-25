@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ci_test.test_demand_daily_preparation import config, module
+from ci_test.test_demand_restored_preparation import config, module
 
 requests = module("restored", "requests")
 NOW = datetime(2026, 9, 9, tzinfo=timezone.utc)

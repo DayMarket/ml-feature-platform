@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 from pathlib import Path
@@ -226,19 +227,22 @@ class QueryLevelDagTest(unittest.TestCase):
             self.source,
         )
 
-    def test_it_waits_for_both_silver_dq_dags(self):
+    def test_it_waits_for_the_dq_task_of_both_silver_owners(self):
+        # Ждём таску dq DAG'ов-владельцев, а не снятый dbt-DQ-контракт.
         self.assertIn(
-            "feature_platform_search_sku_group_id_install_query.dq",
+            '"feature-platform.layers.silver.sku_group_id_query_category.sku_group_install"',
             self.source,
         )
         self.assertIn(
-            "feature_platform_sku_group_query_search_orders.dq",
+            '"feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders"',
             self.source,
         )
+        self.assertEqual(2, self.source.count('external_task_id="dq"'))
+        self.assertNotIn("dbt.source.trino.ml_feature_platform", self.source)
 
     def test_execution_deltas_line_up_with_the_schedule(self):
         # 06:00 логической даты минус 1 час = 05:00, логическая дата прогона search_query_id.
-        # 06:00 минус 5 часов = 01:00, логическая дата DQ силверов.
+        # 06:00 минус 5 часов = 01:00, логическая дата прогонов обоих silver-владельцев.
         self.assertIn("execution_delta=timedelta(hours=1)", self.source)
         self.assertIn("execution_delta=timedelta(hours=5)", self.source)
 
@@ -289,13 +293,18 @@ class PairMigrationAndConfigTest(unittest.TestCase):
     def test_primary_key_matches_layer_directory_group(self):
         self.assertEqual(PAIR_QID.parents[1].name, "query_sku_group_id")
 
-    def test_resource_profile_matches_the_origin(self):
-        origin_config = read_simple_config(PAIR_ORIGIN / "config.yaml")
+    def test_resource_profile_is_the_declared_search_dataset_profile(self):
+        # Зеркало оригинала — это колонки, имена фичей и формулы, но не ресурсы:
+        # разворот по группам даёт ~3.3x строк, и профиль подбирался отдельно
+        # (#155 завёл search_dataset, #181 поставил его этой энтити вместо
+        # несуществовавшего search_qid_features). Пин ловит откат вслепую.
+        profile = self.config["spark"]["resource_profile"]
 
-        self.assertEqual(
-            self.config["spark"]["resource_profile"],
-            origin_config["spark"]["resource_profile"],
-        )
+        self.assertEqual(profile, "search_dataset")
+        declared = json.loads(
+            (ROOT / "config" / "spark" / "resources.yaml").read_text(encoding="utf-8")
+        )["profiles"]
+        self.assertIn(profile, declared)
 
 
 class PairJobTest(unittest.TestCase):
@@ -436,9 +445,12 @@ class PairDagTest(unittest.TestCase):
         )
         self.assertIn("execution_delta=timedelta(hours=1)", self.source)
 
-    def test_it_waits_for_both_silver_dq_dags(self):
-        self.assertIn("feature_platform_search_sku_group_id_install_query.dq", self.source)
-        self.assertIn("feature_platform_sku_group_query_search_orders.dq", self.source)
+    def test_it_waits_for_the_dq_task_of_both_silver_owners(self):
+        # Ждём таску dq DAG'ов-владельцев, а не снятый dbt-DQ-контракт.
+        self.assertIn('"feature-platform.layers.silver.sku_group_id_query_category.sku_group_install"', self.source)
+        self.assertIn('"feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders"', self.source)
+        self.assertEqual(2, self.source.count('external_task_id="dq"'))
+        self.assertNotIn("dbt.source.trino.ml_feature_platform", self.source)
         self.assertIn("execution_delta=timedelta(hours=5)", self.source)
 
     def test_dag_is_paused_upon_creation(self):
