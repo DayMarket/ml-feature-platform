@@ -13,9 +13,9 @@ python3 scripts/generate_feature_platform_map.py
 python3 scripts/generate_feature_platform_map.py --check
 ```
 
-Всего DAG: **77**. Внутренних зависимостей: **78**. Внешних зависимостей: **8**. P1: **0**. P2: **9**. P3: **63**. P4: **5**.
+Всего DAG: **78**. Внутренних зависимостей: **80**. Внешних зависимостей: **8**. P1: **0**. P2: **9**. P3: **64**. P4: **5**.
 
-Таска `dq`: **70** из **77**. Таска `feature_stats`: **70** из **77** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **0**.
+Таска `dq`: **71** из **78**. Таска `feature_stats`: **71** из **78** (upload и backfill их не имеют по построению). Рёбер на устаревшем dbt-DQ-контракте: **0**.
 
 Severity policy:
 
@@ -246,63 +246,65 @@ UTC 04:00 · P3 · airflow-python`"]
 UTC 03:00 · P3 · small`"]
     d14["`product_base_features
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d15["`search_query_atc_features_qid
+    d15["`product_ranking_features
+UTC cron 0 7,19 * * * · P3 · small`"]
+    d16["`search_query_atc_features_qid
 UTC 06:00 · P4 · small`"]
-    d16["`sku_group_query_atc_order_features_qid
+    d17["`sku_group_query_atc_order_features_qid
 UTC 06:00 · P4 · search_dataset`"]
-    d17["`sku_group_search_conversion_features
+    d18["`sku_group_search_conversion_features
 UTC 03:00 · P3 · large`"]
-    d18["`sku_group_query_atc_features
+    d19["`sku_group_query_atc_features
 UTC 02:00 · P3 · large`"]
-    d19["`demand_observed_daily
+    d20["`demand_observed_daily
 UTC 05:00 · P3 · airflow-python`"]
-    d20["`account_demographics
+    d21["`account_demographics
 UTC 19:00 · P3 · large`"]
-    d21["`account_l1_imp_counts_12h
+    d22["`account_l1_imp_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d22["`account_l2_imp_counts_12h
+    d23["`account_l2_imp_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d23["`account_product_session_action_counts_12h
+    d24["`account_product_session_action_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d24["`delivery_cpi_city_features
+    d25["`delivery_cpi_city_features
 UTC 03:00 · P2 · airflow-python`"]
-    d25["`backfill
+    d26["`backfill
 UTC 03:00 · P2 · airflow-python`"]
-    d26["`demand_calendar
+    d27["`demand_calendar
 UTC 03:00 · P3 · airflow-python`"]
-    d27["`demand_event_calendar
+    d28["`demand_event_calendar
 UTC 03:10 · P3 · airflow-python`"]
-    d28["`demand_catalog_tree
+    d29["`demand_catalog_tree
 UTC 04:00 · P3 · airflow-python`"]
-    d29["`product_feedback_counts_12h
+    d30["`product_feedback_counts_12h
 UTC cron 0 7,19 * * * · P3 · small`"]
-    d30["`product_metadata
+    d31["`product_metadata
 UTC 19:00 · P3 · small`"]
-    d31["`product_prices_daily
+    d32["`product_prices_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d32["`product_search_queries
+    d33["`product_search_queries
 UTC 09:00 · P4 · search_product`"]
-    d33["`search_query_sku_group_es_features
+    d34["`search_query_sku_group_es_features
 manual · P3 · airflow-python`"]
-    d34["`demand_catalog_seller
+    d35["`demand_catalog_seller
 UTC 04:00 · P3 · airflow-python`"]
-    d35["`sku_group_orders
+    d36["`sku_group_orders
 UTC 01:00 · P3 · large`"]
-    d36["`demand_catalog_sku
+    d37["`demand_catalog_sku
 UTC 04:00 · P3 · airflow-python`"]
-    d37["`demand_sales_daily
+    d38["`demand_sales_daily
 UTC 04:00 · P3 · airflow-python`"]
-    d38["`demand_stock_daily
+    d39["`demand_stock_daily
 UTC 04:00 · P3 · airflow-python`"]
-    d39["`sku_cm2_inputs_daily
+    d40["`sku_cm2_inputs_daily
 UTC 19:00 · P3 · airflow-python`"]
-    d40["`sku_daily_dynamic_prices
+    d41["`sku_daily_dynamic_prices
 UTC 01:00 · P3 · airflow-python`"]
-    d41["`demand_restored_daily
+    d42["`demand_restored_daily
 manual · P3 · airflow-python`"]
-    d42["`demand_finance_daily
+    d43["`demand_finance_daily
 UTC 04:00 · P3 · airflow-python`"]
-    d43["`demand_seller_sales_observed_daily
+    d44["`demand_seller_sales_observed_daily
 UTC 04:00 · P3 · airflow-python`"]
     x0["dwh_core.quantity_eod"]
     x1["search_query_id"]
@@ -311,56 +313,58 @@ UTC 04:00 · P3 · airflow-python`"]
     x4["sku_group_query_search_orders"]
     x5["sku_group_install"]
     x2 -->|"dq"| d0
-    d23 -->|"dq"| d2
-    d30 -->|"dq"| d2
-    d21 -->|"dq"| d3
-    d23 -->|"dq"| d3
-    d30 -->|"dq"| d3
-    d22 -->|"dq"| d4
+    d24 -->|"dq"| d2
+    d31 -->|"dq"| d2
+    d22 -->|"dq"| d3
+    d24 -->|"dq"| d3
+    d31 -->|"dq"| d3
     d23 -->|"dq"| d4
-    d30 -->|"dq"| d4
-    d23 -->|"dq"| d5
-    d30 -->|"dq"| d5
-    d23 -->|"dq"| d6
-    d30 -->|"dq"| d6
-    d23 -->|"dq"| d7
-    d30 -->|"dq"| d7
-    d23 -->|"dq"| d8
-    d23 -->|"dq"| d9
-    d30 -->|"dq"| d9
-    d20 -->|"dq"| d10
-    d23 -->|"dq"| d10
-    d30 -->|"dq"| d10
-    d24 -->|"dq Δ3h"| d11
-    d26 -->|"dq Δ1h"| d12
-    d27 -->|"dq Δ50m"| d12
+    d24 -->|"dq"| d4
+    d31 -->|"dq"| d4
+    d24 -->|"dq"| d5
+    d31 -->|"dq"| d5
+    d24 -->|"dq"| d6
+    d31 -->|"dq"| d6
+    d24 -->|"dq"| d7
+    d31 -->|"dq"| d7
+    d24 -->|"dq"| d8
+    d24 -->|"dq"| d9
+    d31 -->|"dq"| d9
+    d21 -->|"dq"| d10
+    d24 -->|"dq"| d10
+    d31 -->|"dq"| d10
+    d25 -->|"dq Δ3h"| d11
+    d27 -->|"dq Δ1h"| d12
+    d28 -->|"dq Δ50m"| d12
     d10 -->|"dq"| d14
     d13 -->|"dq"| d14
-    d23 -->|"dq"| d14
-    d29 -->|"dq"| d14
+    d24 -->|"dq"| d14
     d30 -->|"dq"| d14
     d31 -->|"dq"| d14
-    d39 -->|"dq"| d14
-    x1 -->|"sensor Δ1h"| d15
-    x4 -->|"dq Δ5h"| d15
-    x5 -->|"dq Δ5h"| d15
+    d32 -->|"dq"| d14
+    d40 -->|"dq"| d14
+    d14 -->|"dq"| d15
+    d31 -->|"dq"| d15
     x1 -->|"sensor Δ1h"| d16
     x4 -->|"dq Δ5h"| d16
     x5 -->|"dq Δ5h"| d16
-    x4 -->|"dq Δ2h"| d17
-    x5 -->|"dq Δ2h"| d17
-    x5 -->|"dq Δ1h"| d18
-    d37 -->|"dq Δ1h"| d19
-    d38 -->|"dq Δ1h"| d19
-    d26 -->|"dq Δ10m"| d27
-    d36 -->|"dq"| d28
-    x0 -->|"sensor Δ19h"| d31
-    x3 -->|"sensor"| d33
-    d34 -->|"dq"| d36
-    d43 -->|"dq"| d37
-    x0 -->|"sensor Δ19h"| d39
-    class d20,d21,d22,d23,d24,d25,d26,d27,d28,d29,d30,d31,d32,d33,d34,d35,d36,d37,d38,d39,d40,d41,d42,d43 silver
-    class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19 gold
+    x1 -->|"sensor Δ1h"| d17
+    x4 -->|"dq Δ5h"| d17
+    x5 -->|"dq Δ5h"| d17
+    x4 -->|"dq Δ2h"| d18
+    x5 -->|"dq Δ2h"| d18
+    x5 -->|"dq Δ1h"| d19
+    d38 -->|"dq Δ1h"| d20
+    d39 -->|"dq Δ1h"| d20
+    d27 -->|"dq Δ10m"| d28
+    d37 -->|"dq"| d29
+    x0 -->|"sensor Δ19h"| d32
+    x3 -->|"sensor"| d34
+    d35 -->|"dq"| d37
+    d44 -->|"dq"| d38
+    x0 -->|"sensor Δ19h"| d40
+    class d21,d22,d23,d24,d25,d26,d27,d28,d29,d30,d31,d32,d33,d34,d35,d36,d37,d38,d39,d40,d41,d42,d43,d44 silver
+    class d2,d3,d4,d5,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20 gold
     class d0,d1 datasets
     class x0,x1,x2,x3,x4,x5 external
     classDef silver fill:#dbeafe,stroke:#2563eb,color:#172554
