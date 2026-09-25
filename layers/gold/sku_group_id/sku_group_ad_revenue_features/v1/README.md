@@ -43,9 +43,10 @@ DAG id: `feature-platform.layers.gold.sku_group_id.sku_group_ad_revenue_features
 
 ## Оркестрация
 
-Gold DAG ждет DQ-DAG silver-источника:
-`dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_ad_revenue_daily.dq`
-(а не Spark-DAG, который пишет silver-таблицу).
+Gold DAG ждёт таску `dq` DAG'а-владельца silver-источника:
+`feature-platform.layers.silver.sku_group_id.sku_group_ad_revenue_daily`, таска `dq`
+(`execution_delta = 2 часа`: владелец идёт в `01:00` UTC, этот DAG — в `03:00` UTC).
+Именно таску `dq`, а не запись: успешная запись без прошедшего DQ не даёт права считать gold.
 
 ## Downstream
 

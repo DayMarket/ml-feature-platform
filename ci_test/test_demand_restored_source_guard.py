@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from ci_test.test_demand_daily_preparation import config, module
+from ci_test.test_demand_restored_preparation import config, module
 from ci_test.test_demand_restored_writer import bundle
 
 guard = module("restored", "source_guard")

@@ -3,7 +3,8 @@ import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from dq.config import RenderContext, load_dq_settings
 from dq.results_writer import (
@@ -173,6 +174,43 @@ def test_iceberg_commit_retry_refreshes_after_concurrent_commit(monkeypatch) -> 
     assert result == "committed"
     assert calls == [1, 2, 3]
     assert sleeps == [1.0, 2.0]
+
+
+def test_write_results_batch_commits_all_dates_once(monkeypatch, tmp_path) -> None:
+    pytest = __import__("pytest")
+    pytest.importorskip("pyiceberg")
+    from dataclasses import replace
+
+    import yaml
+    from pyiceberg.catalog.sql import SqlCatalog
+
+    import dq.results_writer as writer
+
+    catalog = SqlCatalog("iceberg", uri=f"sqlite:///{tmp_path}/c.db", warehouse=(tmp_path / "w").as_uri())
+    table_config = yaml.safe_load((ROOT / "dq/results/config.yaml").read_text(encoding="utf-8"))["table"]
+    catalog.create_namespace(table_config["schema"])
+    import re
+    import pyarrow as pa
+
+    types = {"DATE": pa.date32(), "TIMESTAMP": pa.timestamp("us"), "STRING": pa.string(), "INT": pa.int32(),
+             "BIGINT": pa.int64(), "DOUBLE": pa.float64(), "BOOLEAN": pa.bool_()}
+    ddl = (ROOT / "dq/results/migrations/create_table.sql").read_text(encoding="utf-8")
+    fields = re.findall(r"^\s+(\w+) ([A-Z]+)( NOT NULL)? COMMENT", ddl, re.M)
+    catalog.create_table(
+        (table_config["schema"], table_config["name"]),
+        pa.schema([pa.field(n, types[t], nullable=not r) for n, t, r in fields]),
+    )
+    monkeypatch.setattr(writer, "load_results_catalog", lambda name: catalog)
+    settings = load_dq_settings({"table": {"primary_key": "date"}})
+    outcome = DqRunOutcome(results=[
+        TestResult("row_count_min", "row_count_min", "consistency", "passed", "error", 0, 1.0,
+                   "row_count > 0", 10, "SELECT 1"),
+    ])
+    checked = [(outcome, CTX), (outcome, replace(CTX, partition_date=date(2026, 8, 20)))]
+    writer.write_results_batch(ROOT, checked, settings, META)
+    writer.write_results_batch(ROOT, checked, settings, META)
+    rows = catalog.load_table((table_config["schema"], table_config["name"])).scan().to_arrow()
+    assert sorted(rows["date"].to_pylist()) == [date(2026, 8, 19), date(2026, 8, 20)]
 
 
 def main() -> int:

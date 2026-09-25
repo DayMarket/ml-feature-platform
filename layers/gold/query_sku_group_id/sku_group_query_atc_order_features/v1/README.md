@@ -27,9 +27,10 @@ Gold-витрина не читает собственные предыдущи�
 
 Деление в conversion и ratio признаках оставляет Spark-семантику `NULL` для нулевого или отсутствующего знаменателя. Это сделано для приближения к старому feature-store поведению, где такие значения не заменялись на `0.0` на этапе расчета pairwise-признаков.
 
-DAG ждет DQ DAG-и silver-источников:
+DAG ждёт таски `dq` DAG'ов-владельцев silver-источников (`execution_delta = 2 часа`:
+владельцы идут в `01:00` UTC, этот DAG — в `03:00` UTC):
 
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`;
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq`.
+- `feature-platform.layers.silver.sku_group_id_query_category.sku_group_install`;
+- `feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders`.
 
 Пайплайн использует общий способ доставки Spark job: дефолтный Spark image и `git-sync` initContainer. Код запускается из `/git/repo/layers/gold/query_sku_group_id/sku_group_query_atc_order_features/v1/entrypoints/get_sku_group_query_atc_order_features.py`, поэтому отдельный Docker image для этой сущности не собирается.

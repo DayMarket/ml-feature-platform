@@ -75,19 +75,6 @@ def _executor_config() -> dict:
     }
 
 
-def _dq_dag_id(config: dict) -> str:
-    table = config["table"]
-    return (
-        f"dbt.source.trino.ml_feature_platform_{table['schema']}."
-        f"{table['name']}.dq"
-    )
-
-
-def _silver_dq_logical_date(logical_date, **_):
-    logical_date = pendulum.instance(logical_date).in_timezone("UTC")
-    return logical_date.start_of("day").add(hours=1)
-
-
 def get_dag_default_args() -> dict:
     return {
         "owner": CONFIG["dag"]["owner"],

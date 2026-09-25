@@ -116,14 +116,6 @@ def _executor_config() -> dict:
     }
 
 
-def _dq_dag_id(config: dict) -> str:
-    table = config["table"]
-    return (
-        f"dbt.source.trino.ml_feature_platform_{table['schema']}."
-        f"{table['name']}.dq"
-    )
-
-
 def get_dag_default_args() -> dict:
     return {
         "owner": CONFIG["dag"]["owner"],
@@ -157,11 +149,15 @@ def location_h3_forecast_features_dag() -> None:
     silver_dq_sensors = [
         ExternalTaskSensor(
             task_id=f"wait_for_{alias}_dq",
-            external_dag_id=_dq_dag_id(silver_config),
+            external_dag_id=silver_config["dag"]["id"],
+            external_task_id="dq",
             allowed_states=["success"],
             failed_states=["failed"],
             check_existence=True,
-            execution_delta=timedelta(hours=1),
+            # Дельта 2 часа, а не прежний 1: легаси dbt-DQ-DAG шёл в 01:00, а все
+            # пять silver-владельцев идут в 00:00. Логическая дата этого DAG'а
+            # (02:00) минус 2 часа попадает в их ран за ту же партицию.
+            execution_delta=timedelta(hours=2),
             mode="reschedule",
             poke_interval=60,
             timeout=3 * 60 * 60,

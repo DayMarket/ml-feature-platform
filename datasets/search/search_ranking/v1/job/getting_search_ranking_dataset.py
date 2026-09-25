@@ -116,6 +116,15 @@ sessions_raw AS (
         -- (проверено на received_at = 2026-07-01, 89 163 741 строк),
         -- поэтому JSON здесь не парсится.
         CAST(bid_id AS BIGINT) AS bid_id,
+        -- sell_price тоже есть плоской колонкой и совпадает со своим двойником
+        -- в event_parameters на всех 85 980 262 непустых показах (проверено на
+        -- received_at = 2026-09-15, 85 980 264 строки после фильтров ниже),
+        -- включая совпадение NULL, поэтому JSON здесь не парсится.
+        -- Не путать с seller_price ниже: это разные поля одного события, они
+        -- расходятся на 8.4% показов, и подменять одно другим нельзя.
+        CAST(
+            get_json_object(event_properties, '$.event_parameters.sell_price') AS BIGINT
+        ) AS sell_price,
         CAST(
             get_json_object(event_properties, '$.event_parameters.cpo_adv_version') AS BIGINT
         ) AS cpo_adv_version,
@@ -186,6 +195,7 @@ sessions_deduplicated AS (
         widget_section_name,
         widget_space_name,
         bid_id,
+        sell_price,
         cpo_adv_version,
         seller_price,
         final_price,
@@ -285,6 +295,7 @@ SELECT
     s.widget_space_name,
     s.cpo_adv_version,
     s.bid_id,
+    s.sell_price,
     s.seller_price,
     s.final_price,
     rs.normalized_linear_score,

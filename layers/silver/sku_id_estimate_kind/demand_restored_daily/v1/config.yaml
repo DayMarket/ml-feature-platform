@@ -38,7 +38,7 @@ dq:
   trino_conn_id: trino_search
   warmup_days: 0
   partition_column: date
-  partition_date_template: '{{ ti.xcom_pull(task_ids="write_range")["dates"][-1] }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_range")["dates"] | join(",") }}'
   tests:
     - name: row_count_growth
       enabled: false
@@ -63,6 +63,7 @@ dq:
       columns: [run_id, prediction_date, sales_units, source_updated_at, source_state_version, source_model_version, source_code_version, source_catalog_version, source_manifest_id, source_contract_version, ingested_at]
 feature_stats:
   trino_conn_id: trino_search
+  query_timeout_seconds: 21600
   partition_column: date
-  partition_date_template: '{{ ti.xcom_pull(task_ids="write_range")["dates"][-1] }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write_range")["dates"] | join(",") }}'
   exclude_columns: [source_state_version]

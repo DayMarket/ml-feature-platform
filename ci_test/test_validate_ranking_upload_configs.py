@@ -118,6 +118,154 @@ def check_sink_requires_connection_schema_table(validator) -> list[str]:
     return errors
 
 
+def check_full_table_and_dq_waiver(validator) -> list[str]:
+    """full_table требует date в ключе; сенсор не на dq — только с явной причиной."""
+    errors = []
+    config_path = Path("upload/query_category_relevance_upload/v1/config.yaml")
+    table_key = ("gold", "feature_platform_query_category_relevance")
+    base_table = {
+        "catalog": "iceberg",
+        "schema": "gold",
+        "table": table_key[1],
+        "primary_key": ["date", "category_id", "query_text"],
+        "columns": {"date", "query_id", "query_text", "category_id", "relevance"},
+        "has_dq_task": False,
+    }
+    base_group = {
+        "source": {
+            "schema": "gold",
+            "table": table_key[1],
+            "read_mode": "full_table",
+            "dependency_dag_id": (
+                "feature-platform.layers.gold.category_id_query_text."
+                "query_category_relevance"
+            ),
+            "dependency_execution_delta_minutes": 60,
+            "dependency_task_id": "materialize",
+            "dq_waiver_reason": "DAG витрины — заглушка без dq",
+        },
+        "name": "query_category_relevance",
+        "features": ["relevance"],
+    }
+
+    def run(group=base_group, table=base_table):
+        return validator.validate_feature_group(config_path, group, {table_key: table})
+
+    found = run()
+    if found:
+        errors.append(f"category_id,query_text + full_table + waiver валиден, получено: {found}")
+
+    no_reason = {**base_group, "source": {**base_group["source"]}}
+    no_reason["source"].pop("dq_waiver_reason")
+    found = run(no_reason)
+    if not any('dependency_task_id must be "dq"' in error for error in found):
+        errors.append(f"без dq_waiver_reason сенсор не на dq должен падать, получено: {found}")
+
+    found = run(table={**base_table, "has_dq_task": True})
+    if not any("dq_waiver_reason" in error for error in found):
+        errors.append(
+            f"исключение при DAG'е-владельце с build_dq_task должно падать, получено: {found}"
+        )
+
+    with_dq = {**base_group, "source": {**base_group["source"], "dependency_task_id": "dq"}}
+    found = run(with_dq, {**base_table, "has_dq_task": True})
+    if not any("dq_waiver_reason" in error for error in found):
+        errors.append(f"dq_waiver_reason вместе с сенсором на dq лишний, получено: {found}")
+
+    no_date_table = {
+        **base_table,
+        "primary_key": ["category_id", "query_text"],
+    }
+    found = run(table=no_date_table)
+    if not any("read_mode=full_table" in error for error in found):
+        errors.append(f"full_table без date в primary_key должен падать, получено: {found}")
+
+    unknown_mode = {**base_group, "source": {**base_group["source"], "read_mode": "all"}}
+    found = run(unknown_mode)
+    if not any("read_mode" in error for error in found):
+        errors.append(f"неизвестный read_mode должен падать, получено: {found}")
+
+    return errors
+
+
+def check_query_id_dictionary(validator) -> list[str]:
+    """Справочник query_id: только full_table, ключ с query_text, query_id в обеих таблицах."""
+    errors = []
+    config_path = Path("upload/query_category_relevance_upload/v1/config.yaml")
+    source_key = ("gold", "feature_platform_query_category_relevance")
+    dictionary_key = ("gold", "feature_platform_search_query_id")
+    source_table = {
+        "catalog": "iceberg",
+        "schema": "gold",
+        "table": source_key[1],
+        "primary_key": ["date", "category_id", "query_text"],
+        "columns": {"date", "query_id", "query_text", "category_id", "relevance"},
+        "has_dq_task": False,
+    }
+    dictionary_table = {
+        "catalog": "iceberg",
+        "schema": "gold",
+        "table": dictionary_key[1],
+        "primary_key": ["query_text", "version"],
+        "columns": {"updated_at", "query_text", "query_id", "version"},
+        "has_dq_task": True,
+    }
+    group = {
+        "source": {
+            "schema": "gold",
+            "table": source_key[1],
+            "read_mode": "full_table",
+            "dependency_dag_id": (
+                "feature-platform.layers.gold.category_id_query_text."
+                "query_category_relevance"
+            ),
+            "dependency_execution_delta_minutes": 60,
+            "dependency_task_id": "materialize",
+            "dq_waiver_reason": "DAG витрины — заглушка без dq",
+            "query_id_dictionary": {"schema": "gold", "table": dictionary_key[1]},
+        },
+        "name": "query_category_relevance",
+        "features": ["relevance"],
+    }
+
+    def run(group=group, source=source_table, dictionary=dictionary_table):
+        tables = {source_key: source}
+        if dictionary is not None:
+            tables[dictionary_key] = dictionary
+        return validator.validate_feature_group(config_path, group, tables)
+
+    def with_source(**changes):
+        return {**group, "source": {**group["source"], **changes}}
+
+    found = run()
+    if found:
+        errors.append(f"full_table + query_id_dictionary валиден, получено: {found}")
+
+    invalid_cases = {
+        "справочник не объявлен в layers": run(dictionary=None),
+        "в справочнике нет query_id": run(
+            dictionary={**dictionary_table, "columns": {"query_text", "version"}}
+        ),
+        "в витрине нет query_id": run(
+            source={**source_table, "columns": source_table["columns"] - {"query_id"}}
+        ),
+        "read_mode не full_table": run(with_source(read_mode=None)),
+        "справочник без table": run(with_source(query_id_dictionary={"schema": "gold"})),
+        "ключ без query_text": run(
+            source={
+                **source_table,
+                "primary_key": ["date", "category_id", "sku_group_id"],
+                "columns": source_table["columns"] | {"sku_group_id"},
+            }
+        ),
+    }
+    for case, found in invalid_cases.items():
+        if not any("query_id_dictionary" in error for error in found):
+            errors.append(f"{case}: ожидалась ошибка query_id_dictionary, получено: {found}")
+
+    return errors
+
+
 def main() -> int:
     validator = load_validator()
     config_path = Path("upload/features_service_upload/v1/config.yaml")
@@ -284,6 +432,12 @@ def main() -> int:
     assert not errors, errors
 
     errors = check_sink_requires_connection_schema_table(validator)
+    assert not errors, errors
+
+    errors = check_full_table_and_dq_waiver(validator)
+    assert not errors, errors
+
+    errors = check_query_id_dictionary(validator)
     assert not errors, errors
 
     print("Ranking upload model manifest validation tests completed successfully")

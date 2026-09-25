@@ -109,6 +109,7 @@ deduplicated_clicks AS (
         AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
         AND last_received_at < TIMESTAMP '{calculated_at_local}'
         AND event_type = 'PRODUCT_VIEW'
+        AND account_id IS NOT NULL
     GROUP BY
         account_id,
         session_id,
@@ -129,7 +130,7 @@ click_features AS (
 ),
 sku_mapping AS (
     SELECT
-        CAST(id AS INT) AS sku_id,
+        id AS sku_id,
         CAST(MIN(product_id) AS INT) AS product_id
     FROM {settings.sku_table}
     GROUP BY id
@@ -143,13 +144,14 @@ filtered_order_lines AS (
             * CAST(order_item.item_quantity AS DOUBLE) AS line_gmv
     FROM {settings.order_items_table} order_item
     INNER JOIN sku_mapping sku
-        ON CAST(order_item.sku_id AS INT) = sku.sku_id
+        ON order_item.sku_id = sku.sku_id
     WHERE order_item.generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS
         AND order_item.generated_at < TIMESTAMP '{calculated_at_utc}'
         AND order_item.order_item_status IN (
             'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'
         )
         AND order_item.b2b_order = FALSE
+        AND order_item.account_id IS NOT NULL
 ),
 mapped_order_lines AS (
     SELECT

@@ -28,12 +28,12 @@ Pairwise-фичи ATC и заказных конверсий по паре за�
   сам DAG справочника, не его DQ. Это осознанное отступление от общего правила AGENTS.md (ждать
   DQ-прогон, а не Spark-DAG): владелец фичи явно потребовал, чтобы новые DAG стартовали после
   самого `search_query_id`. Технически это и правильнее: PK справочника - `query_text,version`, без
-  колонки `date`, поэтому `scripts/sync_dbt_sources.py` не генерирует для него freshness- и
-  row-count-тесты по дате, и его DQ-прогон не несёт партиционной семантики, на которую можно было
-  бы выравнивать `execution_delta`.
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_search_sku_group_id_install_query.dq`
+  колонки `date`, поэтому у него выключены `freshness` и `row_count_growth` (см. «Отключённые
+  базовые тесты» в `AGENTS.md`), и его DQ-прогон не несёт партиционной семантики, на которую можно
+  было бы выравнивать `execution_delta`.
+- `feature-platform.layers.silver.sku_group_id_query_category.sku_group_install`, таска `dq`
   (`execution_delta = 5 часов`).
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_group_query_search_orders.dq`
+- `feature-platform.layers.silver.query_sku_group_id.sku_group_query_search_orders`, таска `dq`
   (`execution_delta = 5 часов`).
 
 ## Логика
@@ -55,6 +55,14 @@ Pairwise-фичи ATC и заказных конверсий по паре за�
 Число строк растёт: на замере от 2026-08-09 разворот даёт около 3.3 раза к v2 при среднем размере
 группы 1.30, и растёт дальше по мере наполнения справочника. Отсечки топ-N нет, пишутся все пары.
 
+## Схема и миграции
+
+Полная схема для новых окружений описана в `migrations/create_table.sql`. Существующие окружения
+получают raw impression-колонки `query_skg_uniq_impressions_{1,3,7,14,21,30,60,90}` через idempotent
+migration `20260923_add_raw_impression_columns.sql` - зеркало `20260814_add_raw_impression_columns.sql`
+оригинала: там эти суммы уже считались как промежуточные, и сохраняются они по той же границе
+`date >= ds - n` и `date <= ds`.
+
 ## Колонки сверх зеркала
 
 - `query_id` - ключ группы, по которой посчитана строка. При фолбэке равен самому `query`.
@@ -71,7 +79,7 @@ Pairwise-фичи ATC и заказных конверсий по паре за�
 ## Рантайм
 
 Shared Spark-образ и `git-sync`, шаблон `config/spark/layer_spark_application.yaml`, профиль
-ресурсов `large`. Запись - `overwritePartitions()` по `date`.
+ресурсов `search_dataset`. Запись - `overwritePartitions()` по `date`.
 
 ## Владелец / алерты
 

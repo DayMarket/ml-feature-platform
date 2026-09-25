@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from ci_test.test_demand_daily_preparation import CAPTURE, DAY, config, module
+from ci_test.test_demand_restored_preparation import CAPTURE, DAY, config, module
 from ci_test.test_demand_restored_writer import bundle, target, prepared  # noqa: F401
 
 ranges = module("restored", "ranges")
