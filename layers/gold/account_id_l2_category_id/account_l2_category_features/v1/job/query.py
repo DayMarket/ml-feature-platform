@@ -36,8 +36,8 @@ BASE_FEATURE_COLUMNS = (
         for window in ACTION_WINDOWS
     )
     + tuple(
-        f"conv_imp2{signal}_div_total_{baseline}_conv_{window}d"
-        for baseline in ("category", "account")
+        f"conv_imp2{signal}_div_{feature_baseline}_conv_{window}d"
+        for feature_baseline in ("total_category", "total_account")
         for signal, _ in CONVERSION_SIGNALS
         for window in ACTION_WINDOWS
     )
@@ -110,14 +110,17 @@ def _relative_conversion_expressions() -> str:
         f"CASE WHEN {baseline}.{signal}_{window}d > 0 "
         f"THEN conv_imp2{signal}_raw_{window}d / "
         f"{baseline}.{signal}_{window}d END AS "
-        f"conv_imp2{signal}_div_total_{baseline}_conv_{window}d"
-        for baseline in ("category", "account")
+        f"conv_imp2{signal}_div_{feature_baseline}_conv_{window}d"
+        for baseline, feature_baseline in (
+            ("category", "total_category"),
+            ("account", "total_account"),
+        )
         for signal, _ in CONVERSION_SIGNALS
         for window in ACTION_WINDOWS
     )
 
 
-def _total_account_raw_conversion_expressions() -> str:
+def _overall_raw_conversion_expressions() -> str:
     return ",\n        ".join(
         f"account.{signal}_{window}d AS total_account_conv_imp2{signal}_raw_{window}d"
         for signal, _ in CONVERSION_SIGNALS
@@ -145,9 +148,7 @@ def build_account_category_features_query(
     account_ratio_expressions = _account_ratio_expressions()
     raw_conversion_expressions = _raw_conversion_expressions()
     relative_conversion_expressions = _relative_conversion_expressions()
-    total_account_raw_conversion_expressions = (
-        _total_account_raw_conversion_expressions()
-    )
+    overall_raw_conversion_expressions = _overall_raw_conversion_expressions()
     namespaced_feature_select = _namespaced_feature_select("unprefixed_features")
     return f"""
 WITH product_categories AS (
@@ -170,6 +171,7 @@ deduplicated_actions AS (
         AND calculated_at <= TIMESTAMP '{calculated_at_local}'
         AND last_received_at >= TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
         AND last_received_at < TIMESTAMP '{calculated_at_local}'
+        AND account_id IS NOT NULL
     GROUP BY account_id, session_id, product_id, event_type
 ),
 mapped_actions AS (
@@ -205,17 +207,18 @@ impression_features AS (
     SELECT
         CAST(account_id AS INT) AS account_id,
         CAST(l2_category_id AS INT) AS l2_category_id,
-        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 3 DAYS THEN n_impressions ELSE 0 END) AS INT) AS n_imps_3d,
-        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 7 DAYS THEN n_impressions ELSE 0 END) AS INT) AS n_imps_7d,
-        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 14 DAYS THEN n_impressions ELSE 0 END) AS INT) AS n_imps_14d,
-        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS THEN n_impressions ELSE 0 END) AS INT) AS n_imps_28d
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 3 DAYS THEN n_impressions ELSE 0 END) AS BIGINT) AS n_imps_3d,
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 7 DAYS THEN n_impressions ELSE 0 END) AS BIGINT) AS n_imps_7d,
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 14 DAYS THEN n_impressions ELSE 0 END) AS BIGINT) AS n_imps_14d,
+        CAST(SUM(CASE WHEN calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS THEN n_impressions ELSE 0 END) AS BIGINT) AS n_imps_28d
     FROM {settings.impression_counts_table}
     WHERE calculated_at > TIMESTAMP '{calculated_at_local}' - INTERVAL 28 DAYS
         AND calculated_at <= TIMESTAMP '{calculated_at_local}'
+        AND account_id IS NOT NULL
     GROUP BY account_id, l2_category_id
 ),
 sku_mapping AS (
-    SELECT CAST(id AS INT) AS sku_id, CAST(MIN(product_id) AS INT) AS product_id
+    SELECT id AS sku_id, CAST(MIN(product_id) AS INT) AS product_id
     FROM {settings.sku_table}
     GROUP BY id
 ),
@@ -223,17 +226,18 @@ filtered_order_lines AS (
     SELECT
         CAST(order_item.account_id AS INT) AS account_id,
         sku.product_id,
-        CAST(order_item.order_id AS INT) AS order_id,
+        order_item.order_id AS order_id,
         CAST(order_item.generated_at AS TIMESTAMP) AS generated_at,
         CAST(order_item.payment_price AS DOUBLE) * CAST(order_item.item_quantity AS DOUBLE) AS line_gmv
     FROM {settings.order_items_table} order_item
-    INNER JOIN sku_mapping sku ON CAST(order_item.sku_id AS INT) = sku.sku_id
+    INNER JOIN sku_mapping sku ON order_item.sku_id = sku.sku_id
     WHERE order_item.generated_at >= TIMESTAMP '{calculated_at_utc}' - INTERVAL 90 DAYS
         AND order_item.generated_at < TIMESTAMP '{calculated_at_utc}'
         AND order_item.order_item_status IN (
             'COMPLETED', 'PAID', 'DELIVERED', 'IN_DELIVERY'
         )
         AND order_item.b2b_order = FALSE
+        AND order_item.account_id IS NOT NULL
 ),
 mapped_order_lines AS (
     SELECT
@@ -374,7 +378,7 @@ account_baselines AS (
 unprefixed_features AS (
     SELECT
         features.*,
-        {total_account_raw_conversion_expressions},
+        {overall_raw_conversion_expressions},
         {relative_conversion_expressions}
     FROM features
     INNER JOIN category_baselines category USING (l2_category_id)

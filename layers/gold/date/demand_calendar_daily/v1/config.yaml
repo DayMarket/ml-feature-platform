@@ -10,6 +10,7 @@ table:
 inputs:
   calendar_config: layers/silver/date/demand_calendar/v1/config.yaml
   events_config: layers/silver/event_code/demand_event_calendar/v1/config.yaml
+  trino_conn_id: trino_search
 
 runtime:
   image: ghcr.io/daymarket/airflow:3.1.8-python3.11-ml-2
@@ -40,7 +41,7 @@ dq:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ ti.xcom_pull(task_ids="write_calendar")["ingested_at"] }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
   tests:
     - name: row_count_growth
       enabled: false
@@ -79,5 +80,5 @@ feature_stats:
   partition_column: ingested_at
   partition_granularity: timestamp
   snapshot_interval_hours: 24
-  partition_date_template: '{{ ti.xcom_pull(task_ids="write_calendar")["ingested_at"] }}'
+  partition_date_template: '{{ ti.xcom_pull(task_ids="write")["ingested_at"] }}'
   exclude_columns: [calendar_snapshot_id, events_snapshot_id]

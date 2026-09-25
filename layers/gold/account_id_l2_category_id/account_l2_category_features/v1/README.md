@@ -16,7 +16,9 @@ Alert уровня P3 для команды recsys через oncall_webhook_rec
 
 Grain и primary key: calculated_at,account_id,l2_category_id.
 
-Идентификаторы и счётчики в физическом контракте имеют тип INT.
+Идентификаторы и обычные счётчики в физическом контракте имеют тип INT. Rolling
+impression-счётчики `ACCOUNT_L2__n_imps_*` имеют тип BIGINT, поскольку сумма
+12-часовых `n_impressions` за окно может превышать предел INT.
 
 Namespace контракта — `ACCOUNT_L2`. Все физические feature-колонки уже содержат
 его, например `ACCOUNT_L2__n_clicks_7d`; устаревший префикс `l2_` не
@@ -91,7 +93,7 @@ category-level показателя пользователя.
 ## Запись, зависимости и наблюдаемость
 
 DAG запускается в 07:00 и 19:00 UTC, то есть в 12:00 и 00:00 Asia/Tashkent.
-start_date = 2026-09-05T07:00:00Z — первый snapshot после накопления полного
+start_date = 2026-09-13T07:00:00Z — начало backfill последних 10 дней после накопления полного
 28-дневного окна Silver; catchup=true, resource_profile=small.
 
 До записи DAG ждёт dq владельцев S1 и S2c и S2b. Для

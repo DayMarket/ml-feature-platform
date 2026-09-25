@@ -119,35 +119,46 @@ def build_rows(
 def write_results(
     repo_root: Path, stats: Sequence[FeatureStat], ctx: StatsContext, meta: RunMeta
 ) -> None:
-    rows = build_rows(stats, ctx, meta)
+    write_results_batch(repo_root, [(stats, ctx)], meta)
+
+
+def write_results_batch(
+    repo_root: Path,
+    profiled: Sequence[tuple[Sequence[FeatureStat], StatsContext]],
+    meta: RunMeta,
+) -> None:
+    """Записать профили нескольких партиций одной таблицы одним commit'ом."""
+    rows = [row for stats, ctx in profiled for row in build_rows(stats, ctx, meta)]
     if not rows:
         return
 
     import pyarrow as pa
-    from pyiceberg.expressions import And, EqualTo
+    from pyiceberg.expressions import And, EqualTo, In
 
     schema, name = results_table_ref(repo_root)
     catalog = load_results_catalog(results_catalog_name(repo_root))
-    values = overwrite_filter_values(ctx, meta)
     # Фильтр собирается из того же словаря, который проверяет тест: перечисление
     # ключей руками означало бы, что правка, роняющая partition_ts, не поймается
     # ничем — pyiceberg в окружении нет, write_results юнит-тестом не покрыть.
+    keys = [overwrite_filter_values(ctx, meta) for _, ctx in profiled]
+    tables = {values["table_name"] for values in keys}
+    if len(tables) != 1:
+        raise ValueError(f"Один commit профилей допускает одну таблицу, получено {sorted(tables)}")
+    predicates = []
+    for key in keys[0]:
+        values = sorted({values[key] for values in keys})
+        predicates.append(EqualTo(key, values[0]) if len(values) == 1 else In(key, values))
     identifier = (schema, name)
 
     def overwrite_current_results() -> None:
         table = catalog.load_table(identifier)
         arrow_table = pa.Table.from_pylist(rows, schema=table.schema().as_arrow())
-        table.overwrite(
-            arrow_table,
-            overwrite_filter=reduce(
-                And,
-                (EqualTo(key, value) for key, value in values.items()),
-            ),
-        )
+        table.overwrite(arrow_table, overwrite_filter=reduce(And, predicates))
 
+    first, last = keys[0]["partition_ts"], keys[-1]["partition_ts"]
     run_iceberg_commit_with_retry(
         overwrite_current_results,
         "write feature stats for "
-        f"dag_id={meta.dag_id} table={ctx.render.table} "
-        f"partition_ts={ctx.partition_ts}",
+        f"dag_id={meta.dag_id} table={profiled[0][1].render.table} "
+        f"partition_ts={first}..{last}",
     )

@@ -31,9 +31,10 @@ skg_total_stock_n = SUM(total_stock)
 
 где сумма берется по всем SKU внутри `sku_group_id` и по всем дневным партициям окна `[ds - n, ds - 1]`.
 
-DAG ждет DQ DAG silver-источника:
+DAG ждёт таску `dq` DAG'а-владельца silver-источника:
 
-- `dbt.source.trino.ml_feature_platform_silver.feature_platform_sku_stock_daily.dq`.
+- `feature-platform.layers.silver.sku_id.sku_stock_daily`, таска `dq`
+  (`execution_delta = 3 часа`: владелец идёт в `00:00` UTC, этот DAG — в `03:00` UTC).
 
 `iceberg.silver.sku` используется как справочник маппинга `sku_id -> sku_group_id`; отдельный DQ sensor для него в этом DAG не настроен, как и в соседних feature-platform jobs, которые используют этот справочник.
 

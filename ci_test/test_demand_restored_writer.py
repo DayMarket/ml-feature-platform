@@ -7,7 +7,7 @@ import json
 import pyarrow as pa
 import pytest
 
-from ci_test.test_demand_daily_preparation import CAPTURE, DAY, config, module, raw, run, schema
+from ci_test.test_demand_restored_preparation import CAPTURE, DAY, config, module, raw, run, schema
 
 
 @pytest.fixture

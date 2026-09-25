@@ -91,7 +91,7 @@ shop_ratio = shop_value
 ## Orchestration
 
 DAG работает в `07:00` и `19:00 UTC`, то есть в `12:00` и `00:00`
-Asia/Tashkent. `start_date = 2026-09-05T07:00:00Z`, `catchup=true`; DAG создаётся
+Asia/Tashkent. `start_date = 2026-09-13T07:00:00Z` (backfill последних 10 дней), `catchup=true`; DAG создаётся
 на паузе. Дата выбрана как первый snapshot с полным 28-дневным action-lookback
 после старта S2c 8 августа 2026 года.
 

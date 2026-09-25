@@ -5,7 +5,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import BinaryType
 from ranking_python_client import (
@@ -13,6 +13,7 @@ from ranking_python_client import (
     AccountToCategoryFeatureSet,
     FeaturesUpdate,
     QueryFeatureSet,
+    SkuGroupCategoryToQueryFeatureSet,
     SkuGroupFeatureSet,
     SkuGroupToCategoryFeatureSet,
     SkuGroupToQueryFeatureSet,
@@ -46,6 +47,10 @@ ENTITY_TYPES = {
         "skuGroupToPromoFeatureSet",
         SkuGroupToPromoFeatureSet,
     ),
+    ("category_id", "query_text"): (
+        "skuGroupCategoryToQueryFeatureSet",
+        SkuGroupCategoryToQueryFeatureSet,
+    ),
 }
 
 PROTO_KEY_ARGUMENTS = {
@@ -55,6 +60,16 @@ PROTO_KEY_ARGUMENTS = {
     "query": "query",
     "sku_group_id": "skuGroupId",
 }
+
+# Поля proto, имя которых зависит от коллекции, а не только от колонки.
+ENTITY_KEY_ARGUMENTS = {
+    ("category_id", "query_text"): {
+        "category_id": "skuGroupCategoryId",
+        "query_text": "query",
+    },
+}
+
+LATEST_DATE_RANK_COLUMN = "_latest_date_rank"
 
 
 def _json_default(value: Any) -> Any:
@@ -214,6 +229,51 @@ def _entity_keys(metadata: dict[str, Any]) -> tuple[str, ...]:
     return tuple(sorted(metadata["entity_keys"]))
 
 
+def _latest_date_per_entity(
+    frame: DataFrame,
+    feature_group: dict[str, Any],
+    metadata: dict[str, Any],
+) -> DataFrame:
+    # Ключ сущности повторяется в разных партициях, а порядок сообщений в Kafka
+    # при записи из Spark не определён: публикуем только строку самой свежей даты.
+    # При равной дате (ключи, совпавшие после lower) побеждают максимальные признаки.
+    if not metadata["date_column"]:
+        raise ValueError(
+            f"Source {_source_table(feature_group, metadata)} with "
+            "read_mode=full_table must have date in primary_key"
+        )
+    window = Window.partitionBy(
+        *[F.col(key) for key in metadata["entity_keys"]]
+    ).orderBy(
+        F.col(metadata["date_column"]).desc(),
+        *[F.col(feature_name).desc() for feature_name in feature_group["features"]],
+    )
+    return (
+        frame.withColumn(LATEST_DATE_RANK_COLUMN, F.row_number().over(window))
+        .filter(F.col(LATEST_DATE_RANK_COLUMN) == 1)
+        .drop(LATEST_DATE_RANK_COLUMN)
+    )
+
+
+def _merge_query_id_dictionary(
+    spark: SparkSession,
+    frame: DataFrame,
+    feature_group: dict[str, Any],
+    metadata: dict[str, Any],
+) -> DataFrame:
+    # Источник хранит одну формулировку на query_id, а ranking-service ищет признак
+    # по тексту запроса: строки дублируются на все формулировки этого query_id
+    # из справочника. Итоговый текст только приводится к нижнему регистру.
+    dictionary = feature_group["source"]["query_id_dictionary"]
+    dictionary_frame = spark.table(
+        f"{metadata['catalog']}.{dictionary['schema']}.{dictionary['table']}"
+    ).select(F.col("query_id"), F.col("query_text"))
+    expanded = frame.drop("query_text").join(dictionary_frame, "query_id", "inner")
+    return frame.unionByName(expanded).withColumn(
+        "query_text", F.lower(F.col("query_text"))
+    )
+
+
 def _prepare_source_frame(
     spark: SparkSession,
     feature_group: dict[str, Any],
@@ -221,7 +281,11 @@ def _prepare_source_frame(
     run_date: str,
 ) -> DataFrame:
     frame = spark.table(_source_table(feature_group, metadata))
-    if metadata["date_column"]:
+    if feature_group["source"].get("read_mode") == "full_table":
+        if feature_group["source"].get("query_id_dictionary"):
+            frame = _merge_query_id_dictionary(spark, frame, feature_group, metadata)
+        frame = _latest_date_per_entity(frame, feature_group, metadata)
+    elif metadata["date_column"]:
         frame = frame.filter(
             F.col(metadata["date_column"]) == F.lit(run_date).cast("date")
         )
@@ -286,8 +350,12 @@ def _row_to_proto(
             f"ranking_python_client does not support entity keys {entity_keys}. "
             "Update the ranking upload image/client before enabling this feature group."
         )
+    key_argument_names = {
+        **PROTO_KEY_ARGUMENTS,
+        **ENTITY_KEY_ARGUMENTS.get(entity_keys, {}),
+    }
     key_arguments = {
-        PROTO_KEY_ARGUMENTS[key]: row[key]
+        key_argument_names[key]: row[key]
         for key in metadata["entity_keys"]
     }
     message = message_class(
@@ -380,7 +448,9 @@ def run(spark: SparkSession, arguments: Arguments) -> None:
         print(
             f"Prepared feature group {feature_group['name']} "
             f"from {_source_table(feature_group, metadata)} "
-            f"date={arguments.run_date} rows={source_count} "
+            f"date={arguments.run_date} "
+            f"read_mode={feature_group['source'].get('read_mode', 'date')} "
+            f"rows={source_count} "
             f"limit={feature_group['source'].get('limit')}"
         )
         if source_count == 0:

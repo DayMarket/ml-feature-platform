@@ -118,3 +118,16 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def test_partition_values_split_rendered_list() -> None:
+    from dq.task import partition_values
+
+    assert partition_values("2026-09-01") == ["2026-09-01"]
+    assert partition_values("2026-09-01, 2026-09-02,") == ["2026-09-01", "2026-09-02"]
+    try:
+        partition_values(" , ")
+    except Exception as error:  # noqa: BLE001
+        assert "пустое" in str(error)
+    else:
+        raise AssertionError("пустой шаблон должен падать")
