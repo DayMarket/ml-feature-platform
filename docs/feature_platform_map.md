@@ -225,7 +225,7 @@ UTC cron 0 7,19 * * * · P3 · small`"]
     d3["`account_l1_category_features
 UTC cron 0 7,19 * * * · P3 · small`"]
     d4["`account_l2_category_features
-UTC cron 0 7,19 * * * · P3 · small`"]
+UTC cron 0 7,19 * * * · P3 · medium`"]
     d5["`account_l3_category_features
 UTC cron 0 7,19 * * * · P3 · small`"]
     d6["`account_l4_category_features
