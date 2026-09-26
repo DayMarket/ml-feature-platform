@@ -5,7 +5,7 @@ spark:
   template_path: ../../../../../config/spark/layer_spark_application.yaml
   application_name: fetch-gold-account-l2-category-features
   main_application_file: local:///git/repo/layers/gold/account_id_l2_category_id/account_l2_category_features/v1/entrypoints/get_account_l2_category_features.py
-  resource_profile: small
+  resource_profile: medium
 
 table:
   key: account_l2_category_features
